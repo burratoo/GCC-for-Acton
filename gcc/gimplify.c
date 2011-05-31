@@ -2573,7 +2573,9 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
 			   new_locus);
       append_to_statement_list (t, &expr);
     }
-  else if (TREE_CODE (pred) == COND_EXPR)
+  else if (TREE_CODE (pred) == COND_EXPR
+	   && !VOID_TYPE_P (TREE_TYPE (TREE_OPERAND (pred, 1)))
+	   && !VOID_TYPE_P (TREE_TYPE (TREE_OPERAND (pred, 2))))
     {
       location_t new_locus;
 
@@ -2581,7 +2583,10 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
 	 if (a)
 	   if (b) goto yes; else goto no;
 	 else
-	   if (c) goto yes; else goto no;  */
+	   if (c) goto yes; else goto no;
+
+	 Don't do this if one of the arms has void type, which can happen
+	 in C++ when the arm is throw.  */
 
       /* Keep the original source location on the first 'if'.  Set the source
 	 location of the ? on the second 'if'.  */
@@ -2848,7 +2853,7 @@ gimple_boolify (tree expr)
     default:
       /* Other expressions that get here must have boolean values, but
 	 might need to be converted to the appropriate mode.  */
-      if (TREE_CODE (type) == BOOLEAN_TYPE)
+      if (type == boolean_type_node)
 	return expr;
       return fold_convert_loc (loc, boolean_type_node, expr);
     }
@@ -6754,13 +6759,17 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	  }
 
 	case TRUTH_NOT_EXPR:
-	  if (TREE_CODE (TREE_TYPE (*expr_p)) != BOOLEAN_TYPE)
-	    {
-	      tree type = TREE_TYPE (*expr_p);
-	      *expr_p = fold_convert (type, gimple_boolify (*expr_p));
-	      ret = GS_OK;
-	      break;
-	    }
+	  {
+	    tree org_type = TREE_TYPE (*expr_p);
+
+	    *expr_p = gimple_boolify (*expr_p);
+	    if (org_type != boolean_type_node)
+	      {
+		*expr_p = fold_convert (org_type, *expr_p);
+		ret = GS_OK;
+		break;
+	      }
+	  }
 
 	  ret = gimplify_expr (&TREE_OPERAND (*expr_p, 0), pre_p, post_p,
 			       is_gimple_val, fb_rvalue);
@@ -7199,14 +7208,30 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	       fold_truth_not_expr) happily uses operand type and doesn't
 	       automatically uses boolean_type as result, we need to keep
 	       orignal type.  */
-	    if (TREE_CODE (org_type) != BOOLEAN_TYPE)
+	    if (org_type != boolean_type_node)
 	      {
 		*expr_p = fold_convert (org_type, *expr_p);
 		ret = GS_OK;
 		break;
 	      }
 	  }
-	  
+
+	  /* With two-valued operand types binary truth expressions are
+	     semantically equivalent to bitwise binary expressions.  Canonicalize
+	     them to the bitwise variant.  */	switch (TREE_CODE (*expr_p))
+	  {
+	  case TRUTH_AND_EXPR:
+	    TREE_SET_CODE (*expr_p, BIT_AND_EXPR);
+	    break;
+	  case TRUTH_OR_EXPR:
+	    TREE_SET_CODE (*expr_p, BIT_IOR_EXPR);
+	    break;
+	  case TRUTH_XOR_EXPR:
+	    TREE_SET_CODE (*expr_p, BIT_XOR_EXPR);
+	    break;
+	  default:
+	    break;
+	  }
 	  /* Classified as tcc_expression.  */
 	  goto expr_2;
 

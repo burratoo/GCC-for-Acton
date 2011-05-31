@@ -1599,6 +1599,13 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
       return error_mark_node;
     }
 
+  if (type_uses_auto (type))
+    {
+      if (complain & tf_error)
+	error ("invalid use of %<auto%>");
+      type = error_mark_node;
+    }
+
   if (processing_template_decl)
     {
       tree t;
@@ -1756,10 +1763,13 @@ add_exception_specifier (tree list, tree spec, int complain)
 tree
 merge_exception_specifiers (tree list, tree add)
 {
-  if (!list || !add)
-    return NULL_TREE;
+  /* No exception-specifier or noexcept(false) are less strict than
+     anything else.  Prefer the newer variant (LIST).  */
+  if (!list || list == noexcept_false_spec)
+    return list;
+  else if (!add || add == noexcept_false_spec)
+    return add;
   /* For merging noexcept(true) and throw(), take the more recent one (LIST).
-     A throw(type-list) spec takes precedence over a noexcept(false) spec.
      Any other noexcept-spec should only be merged with an equivalent one.
      So the !TREE_VALUE code below is correct for all cases.  */
   else if (!TREE_VALUE (add))

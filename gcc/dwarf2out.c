@@ -13031,7 +13031,7 @@ modified_type_die (tree type, int is_const_type, int is_volatile_type,
     }
   else if (code == REFERENCE_TYPE)
     {
-      if (TYPE_REF_IS_RVALUE (type) && use_debug_types)
+      if (TYPE_REF_IS_RVALUE (type) && dwarf_version >= 4)
 	mod_type_die = new_die (DW_TAG_rvalue_reference_type, comp_unit_die (),
 				type);
       else
@@ -17719,7 +17719,9 @@ tree_add_const_value_attribute_for_decl (dw_die_ref var_die, tree decl)
 
   if (!decl
       || (TREE_CODE (decl) != VAR_DECL
-	  && TREE_CODE (decl) != CONST_DECL))
+	  && TREE_CODE (decl) != CONST_DECL)
+      || (TREE_CODE (decl) == VAR_DECL
+	  && !TREE_STATIC (decl)))
     return false;
 
     if (TREE_READONLY (decl)
@@ -20684,7 +20686,7 @@ gen_reference_type_die (tree type, dw_die_ref context_die)
 {
   dw_die_ref ref_die, scope_die = scope_die_for (type, context_die);
 
-  if (TYPE_REF_IS_RVALUE (type) && use_debug_types)
+  if (TYPE_REF_IS_RVALUE (type) && dwarf_version >= 4)
     ref_die = new_die (DW_TAG_rvalue_reference_type, scope_die, type);
   else
     ref_die = new_die (DW_TAG_reference_type, scope_die, type);

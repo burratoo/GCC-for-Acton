@@ -137,8 +137,7 @@ optimize_expr (gfc_expr **e, int *walk_subtrees ATTRIBUTE_UNUSED,
 
 
 /* Callback function for common function elimination, called from cfe_expr_0.
-   Put all eligible function expressions into expr_array.  We can't do
-   allocatable functions.  */
+   Put all eligible function expressions into expr_array.  */
 
 static int
 cfe_register_funcs (gfc_expr **e, int *walk_subtrees ATTRIBUTE_UNUSED,
@@ -148,24 +147,23 @@ cfe_register_funcs (gfc_expr **e, int *walk_subtrees ATTRIBUTE_UNUSED,
   if ((*e)->expr_type != EXPR_FUNCTION)
     return 0;
 
-  /* We don't do character functions (yet).  */
-  if ((*e)->ts.type == BT_CHARACTER)
+  /* We don't do character functions with unknown charlens.  */
+  if ((*e)->ts.type == BT_CHARACTER 
+      && ((*e)->ts.u.cl == NULL || (*e)->ts.u.cl->length == NULL
+	  || (*e)->ts.u.cl->length->expr_type != EXPR_CONSTANT))
     return 0;
 
-  /* If we don't know the shape at compile time, we do not create a temporary
-     variable to hold the intermediate result.  FIXME: Change this later when
-     allocation on assignment works for intrinsics.  */
+  /* If we don't know the shape at compile time, we create an allocatable
+     temporary variable to hold the intermediate result, but only if
+     allocation on assignment is active.  */
 
-  if ((*e)->rank > 0 && (*e)->shape == NULL)
+  if ((*e)->rank > 0 && (*e)->shape == NULL && !gfc_option.flag_realloc_lhs)
     return 0;
   
   /* Skip the test for pure functions if -faggressive-function-elimination
      is specified.  */
   if ((*e)->value.function.esym)
     {
-      if ((*e)->value.function.esym->attr.allocatable)
-	return 0;
-
       /* Don't create an array temporary for elemental functions.  */
       if ((*e)->value.function.esym->attr.elemental && (*e)->rank > 0)
 	return 0;
@@ -181,9 +179,10 @@ cfe_register_funcs (gfc_expr **e, int *walk_subtrees ATTRIBUTE_UNUSED,
   if ((*e)->value.function.isym)
     {
       /* Conversions are handled on the fly by the middle end,
-	 transpose during trans-* stages.  */
+	 transpose during trans-* stages and TRANSFER by the middle end.  */
       if ((*e)->value.function.isym->id == GFC_ISYM_CONVERSION
-	  || (*e)->value.function.isym->id == GFC_ISYM_TRANSPOSE)
+	  || (*e)->value.function.isym->id == GFC_ISYM_TRANSPOSE
+	  || (*e)->value.function.isym->id == GFC_ISYM_TRANSFER)
 	return 0;
 
       /* Don't create an array temporary for elemental functions,
@@ -250,22 +249,38 @@ create_var (gfc_expr * e)
 
   symbol = symtree->n.sym;
   symbol->ts = e->ts;
-  symbol->as = gfc_get_array_spec ();
-  symbol->as->rank = e->rank;
-  symbol->as->type = AS_EXPLICIT;
-  for (i=0; i<e->rank; i++)
+
+  if (e->rank > 0)
     {
-      gfc_expr *p, *q;
+      symbol->as = gfc_get_array_spec ();
+      symbol->as->rank = e->rank;
+
+      if (e->shape == NULL)
+	{
+	  /* We don't know the shape at compile time, so we use an
+	     allocatable. */
+	  symbol->as->type = AS_DEFERRED;
+	  symbol->attr.allocatable = 1;
+	}
+      else
+	{
+	  symbol->as->type = AS_EXPLICIT;
+	  /* Copy the shape.  */
+	  for (i=0; i<e->rank; i++)
+	    {
+	      gfc_expr *p, *q;
       
-      p = gfc_get_constant_expr (BT_INTEGER, gfc_default_integer_kind,
-				 &(e->where));
-      mpz_set_si (p->value.integer, 1);
-      symbol->as->lower[i] = p;
-	  
-      q = gfc_get_constant_expr (BT_INTEGER, gfc_index_integer_kind,
-				 &(e->where));
-      mpz_set (q->value.integer, e->shape[i]);
-      symbol->as->upper[i] = q;
+	      p = gfc_get_constant_expr (BT_INTEGER, gfc_default_integer_kind,
+					 &(e->where));
+	      mpz_set_si (p->value.integer, 1);
+	      symbol->as->lower[i] = p;
+	      
+	      q = gfc_get_constant_expr (BT_INTEGER, gfc_index_integer_kind,
+					 &(e->where));
+	      mpz_set (q->value.integer, e->shape[i]);
+	      symbol->as->upper[i] = q;
+	    }
+	}
     }
 
   symbol->attr.flavor = FL_VARIABLE;

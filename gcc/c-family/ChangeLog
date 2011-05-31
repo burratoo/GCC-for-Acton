@@ -1,3 +1,61 @@
+2011-05-30  Nathan Froyd  <froydnj@gcc.gnu.org>
+
+	PR bootstrap/49190
+
+	Revert:
+	2011-05-26  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.h (struct c_common_identifier): Inherit from tree_typed,
+	not tree_common.
+
+2011-05-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/49165
+	* c-common.c (c_common_truthvalue_conversion) <case COND_EXPR>: For
+	C++ don't call c_common_truthvalue_conversion on void type arms.
+
+2011-05-27  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.h (struct stmt_tree_s) [x_cur_stmt_list]: Change to a VEC.
+	(stmt_list_stack): Define.
+	(cur_stmt_list): Adjust for new type of x_cur_stmt_list.
+	* c-semantics.c (push_stmt_list, pop_stmt_list): Likewise.
+
+2011-05-26  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.c (warning_candidate_p): Check for BLOCKs.
+
+2011-05-26  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.h (struct c_common_identifier): Inherit from tree_typed,
+	not tree_common.
+
+2011-05-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-common.c (def_fn_type): Remove extra va_end.
+
+2011-05-23  Jason Merrill  <jason@redhat.com>
+
+	PR c++/48106
+	* c-common.c (c_common_get_narrower): New.
+	(shorten_binary_op, shorten_compare, warn_for_sign_compare): Use it.
+
+2011-05-23  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.h (check_function_arguments): Tweak prototype of
+	check_function_arguments.
+	* c-common.c (check_function_arguments): Likewise.  Adjust
+	calls to check_function_nonnull, check_function_format, and
+	check_function_sentinel.
+	(check_function_sentinel): Take a FUNCTION_TYPE rather than
+	separate attributes and typelist arguments.  Use
+	FOREACH_FUNCTION_ARGS to iterate over argument types.
+
+2011-05-15  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* c-common.c (c_common_reswords): Reorder.
+	* c-common.h (rid): Likewise.
+
 2011-05-10  Nathan Froyd  <froydnj@codesourcery.com>
 
 	* c-common.c (def_fn_type): Don't call build_function_type, call
@@ -48,6 +106,11 @@
 	* c-ppoutput.c (maybe_print_line): Always optimize newlines
 	for output size with -P.
 
+2011-04-25  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* c-common.c (struct c_common_resword): Add __underlying_type.
+	* c-common.h (enum rid): Add RID_UNDERLYING_TYPE.
+
 2011-04-20  Jim Meyering  <meyering@redhat.com>
 
 	* c-format.c (init_dollar_format_checking): Remove useless
@@ -56,15 +119,15 @@
 2011-04-15  Nicola Pero  <nicola.pero@meta-innovation.com>
 
 	* c-objc.h (objc_get_interface_ivars): Removed.
-	(objc_detect_field_duplicates): New.	
+	(objc_detect_field_duplicates): New.
 	* stub-objc.c: Likewise.
-	
+
 2011-04-14  Nicola Pero  <nicola.pero@meta-innovation.com>
 
 	* stub-objc.c (objc_declare_protocols): Renamed to
 	objc_declare_protocol.
 	* c-objc.h: Likewise.
-	
+
 2011-04-14  Nicola Pero  <nicola.pero@meta-innovation.com>
 
 	* stub-objc.c (objc_declare_class): Updated argument name.
