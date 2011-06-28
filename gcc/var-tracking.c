@@ -4837,7 +4837,7 @@ get_address_mode (rtx mem)
 static rtx
 replace_expr_with_values (rtx loc)
 {
-  if (REG_P (loc))
+  if (REG_P (loc) || GET_CODE (loc) == ENTRY_VALUE)
     return NULL;
   else if (MEM_P (loc))
     {
@@ -5052,6 +5052,7 @@ add_uses (rtx *ploc, void *data)
 	  if (MEM_P (vloc)
 	      && !REG_P (XEXP (vloc, 0))
 	      && !MEM_P (XEXP (vloc, 0))
+	      && GET_CODE (XEXP (vloc, 0)) != ENTRY_VALUE
 	      && (GET_CODE (XEXP (vloc, 0)) != PLUS
 		  || XEXP (XEXP (vloc, 0), 0) != cfa_base_rtx
 		  || !CONST_INT_P (XEXP (XEXP (vloc, 0), 1))))
@@ -5130,6 +5131,7 @@ add_uses (rtx *ploc, void *data)
 	  if (MEM_P (oloc)
 	      && !REG_P (XEXP (oloc, 0))
 	      && !MEM_P (XEXP (oloc, 0))
+	      && GET_CODE (XEXP (oloc, 0)) != ENTRY_VALUE
 	      && (GET_CODE (XEXP (oloc, 0)) != PLUS
 		  || XEXP (XEXP (oloc, 0), 0) != cfa_base_rtx
 		  || !CONST_INT_P (XEXP (XEXP (oloc, 0), 1))))
@@ -5214,6 +5216,8 @@ add_uses_1 (rtx *x, void *cui)
 {
   for_each_rtx (x, add_uses, cui);
 }
+
+#define EXPR_DEPTH (PARAM_VALUE (PARAM_MAX_VARTRACK_EXPR_DEPTH))
 
 /* Attempt to reverse the EXPR operation in the debug info.  Say for
    reg1 = reg2 + 6 even when reg2 is no longer live we
@@ -5381,6 +5385,7 @@ add_stores (rtx loc, const_rtx expr, void *cuip)
       if (MEM_P (loc) && type == MO_VAL_SET
 	  && !REG_P (XEXP (loc, 0))
 	  && !MEM_P (XEXP (loc, 0))
+	  && GET_CODE (XEXP (loc, 0)) != ENTRY_VALUE
 	  && (GET_CODE (XEXP (loc, 0)) != PLUS
 	      || XEXP (XEXP (loc, 0), 0) != cfa_base_rtx
 	      || !CONST_INT_P (XEXP (XEXP (loc, 0), 1))))
@@ -5584,9 +5589,11 @@ prepare_call_arguments (basic_block bb, rtx insn)
   rtx this_arg = NULL_RTX;
   tree type = NULL_TREE, t, fndecl = NULL_TREE;
   tree obj_type_ref = NULL_TREE;
-  CUMULATIVE_ARGS args_so_far;
+  CUMULATIVE_ARGS args_so_far_v;
+  cumulative_args_t args_so_far;
 
-  memset (&args_so_far, 0, sizeof (args_so_far));
+  memset (&args_so_far_v, 0, sizeof (args_so_far_v));
+  args_so_far = pack_cumulative_args (&args_so_far_v);
   if (GET_CODE (call) == PARALLEL)
     call = XVECEXP (call, 0, 0);
   if (GET_CODE (call) == SET)
@@ -5634,11 +5641,11 @@ prepare_call_arguments (basic_block bb, rtx insn)
 		  tree struct_addr = build_pointer_type (TREE_TYPE (type));
 		  enum machine_mode mode = TYPE_MODE (struct_addr);
 		  rtx reg;
-		  INIT_CUMULATIVE_ARGS (args_so_far, type, NULL_RTX, fndecl,
+		  INIT_CUMULATIVE_ARGS (args_so_far_v, type, NULL_RTX, fndecl,
 					nargs + 1);
-		  reg = targetm.calls.function_arg (&args_so_far, mode,
+		  reg = targetm.calls.function_arg (args_so_far, mode,
 						    struct_addr, true);
-		  targetm.calls.function_arg_advance (&args_so_far, mode,
+		  targetm.calls.function_arg_advance (args_so_far, mode,
 						      struct_addr, true);
 		  if (reg == NULL_RTX)
 		    {
@@ -5653,14 +5660,14 @@ prepare_call_arguments (basic_block bb, rtx insn)
 		}
 	      else
 #endif
-		INIT_CUMULATIVE_ARGS (args_so_far, type, NULL_RTX, fndecl,
+		INIT_CUMULATIVE_ARGS (args_so_far_v, type, NULL_RTX, fndecl,
 				      nargs);
 	      if (obj_type_ref && TYPE_ARG_TYPES (type) != void_list_node)
 		{
 		  enum machine_mode mode;
 		  t = TYPE_ARG_TYPES (type);
 		  mode = TYPE_MODE (TREE_VALUE (t));
-		  this_arg = targetm.calls.function_arg (&args_so_far, mode,
+		  this_arg = targetm.calls.function_arg (args_so_far, mode,
 							 TREE_VALUE (t), true);
 		  if (this_arg && !REG_P (this_arg))
 		    this_arg = NULL_RTX;
@@ -5740,12 +5747,12 @@ prepare_call_arguments (basic_block bb, rtx insn)
 	    tree argtype = TREE_VALUE (t);
 	    enum machine_mode mode = TYPE_MODE (argtype);
 	    rtx reg;
-	    if (pass_by_reference (&args_so_far, mode, argtype, true))
+	    if (pass_by_reference (&args_so_far_v, mode, argtype, true))
 	      {
 		argtype = build_pointer_type (argtype);
 		mode = TYPE_MODE (argtype);
 	      }
-	    reg = targetm.calls.function_arg (&args_so_far, mode,
+	    reg = targetm.calls.function_arg (args_so_far, mode,
 					      argtype, true);
 	    if (TREE_CODE (argtype) == REFERENCE_TYPE
 		&& INTEGRAL_TYPE_P (TREE_TYPE (argtype))
@@ -5799,11 +5806,34 @@ prepare_call_arguments (basic_block bb, rtx insn)
 			}
 		  }
 	      }
-	    targetm.calls.function_arg_advance (&args_so_far, mode,
+	    targetm.calls.function_arg_advance (args_so_far, mode,
 						argtype, true);
 	    t = TREE_CHAIN (t);
 	  }
       }
+
+  /* Add debug arguments.  */
+  if (fndecl
+      && TREE_CODE (fndecl) == FUNCTION_DECL
+      && DECL_HAS_DEBUG_ARGS_P (fndecl))
+    {
+      VEC(tree, gc) **debug_args = decl_debug_args_lookup (fndecl);
+      if (debug_args)
+	{
+	  unsigned int ix;
+	  tree param;
+	  for (ix = 0; VEC_iterate (tree, *debug_args, ix, param); ix += 2)
+	    {
+	      rtx item;
+	      tree dtemp = VEC_index (tree, *debug_args, ix + 1);
+	      enum machine_mode mode = DECL_MODE (dtemp);
+	      item = gen_rtx_DEBUG_PARAMETER_REF (mode, param);
+	      item = gen_rtx_CONCAT (mode, item, DECL_RTL (dtemp));
+	      call_arguments = gen_rtx_EXPR_LIST (VOIDmode, item,
+						  call_arguments);
+	    }
+	}
+    }
 
   /* Reverse call_arguments chain.  */
   prev = NULL_RTX;
@@ -7416,7 +7446,7 @@ vt_expand_loc (rtx loc, htab_t vars, bool ignore_cur_loc)
   data.dummy = false;
   data.cur_loc_changed = false;
   data.ignore_cur_loc = ignore_cur_loc;
-  loc = cselib_expand_value_rtx_cb (loc, scratch_regs, 8,
+  loc = cselib_expand_value_rtx_cb (loc, scratch_regs, EXPR_DEPTH,
 				    vt_expand_loc_callback, &data);
 
   if (loc && MEM_P (loc))
@@ -7438,7 +7468,7 @@ vt_expand_loc_dummy (rtx loc, htab_t vars, bool *pcur_loc_changed)
   data.dummy = true;
   data.cur_loc_changed = false;
   data.ignore_cur_loc = false;
-  ret = cselib_dummy_expand_value_rtx_cb (loc, scratch_regs, 8,
+  ret = cselib_dummy_expand_value_rtx_cb (loc, scratch_regs, EXPR_DEPTH,
 					  vt_expand_loc_callback, &data);
   *pcur_loc_changed = data.cur_loc_changed;
   return ret;
@@ -8376,6 +8406,39 @@ vt_get_decl_and_offset (rtx rtl, tree *declp, HOST_WIDE_INT *offsetp)
   return false;
 }
 
+/* Helper function for vt_add_function_parameter.  RTL is
+   the expression and VAL corresponding cselib_val pointer
+   for which ENTRY_VALUE should be created.  */
+
+static void
+create_entry_value (rtx rtl, cselib_val *val)
+{
+  cselib_val *val2;
+  struct elt_loc_list *el;
+  el = (struct elt_loc_list *) ggc_alloc_cleared_atomic (sizeof (*el));
+  el->next = val->locs;
+  el->loc = gen_rtx_ENTRY_VALUE (GET_MODE (rtl));
+  ENTRY_VALUE_EXP (el->loc) = rtl;
+  el->setting_insn = get_insns ();
+  val->locs = el;
+  val2 = cselib_lookup_from_insn (el->loc, GET_MODE (rtl), true,
+				  VOIDmode, get_insns ());
+  if (val2
+      && val2 != val
+      && val2->locs
+      && rtx_equal_p (val2->locs->loc, el->loc))
+    {
+      struct elt_loc_list *el2;
+
+      preserve_value (val2);
+      el2 = (struct elt_loc_list *) ggc_alloc_cleared_atomic (sizeof (*el2));
+      el2->next = val2->locs;
+      el2->loc = val->val_rtx;
+      el2->setting_insn = get_insns ();
+      val2->locs = el2;
+    }
+}
+
 /* Insert function parameter PARM in IN and OUT sets of ENTRY_BLOCK.  */
 
 static void
@@ -8499,32 +8562,8 @@ vt_add_function_parameter (tree parm)
 			 VAR_INIT_STATUS_INITIALIZED, NULL, INSERT);
       if (dv_is_value_p (dv))
 	{
-	  cselib_val *val = CSELIB_VAL_PTR (dv_as_value (dv)), *val2;
-	  struct elt_loc_list *el;
-	  el = (struct elt_loc_list *)
-	    ggc_alloc_cleared_atomic (sizeof (*el));
-	  el->next = val->locs;
-	  el->loc = gen_rtx_ENTRY_VALUE (GET_MODE (incoming));
-	  ENTRY_VALUE_EXP (el->loc) = incoming;
-	  el->setting_insn = get_insns ();
-	  val->locs = el;
-	  val2 = cselib_lookup_from_insn (el->loc, GET_MODE (incoming),
-					  true, VOIDmode, get_insns ());
-	  if (val2
-	      && val2 != val
-	      && val2->locs
-	      && rtx_equal_p (val2->locs->loc, el->loc))
-	    {
-	      struct elt_loc_list *el2;
-
-	      preserve_value (val2);
-	      el2 = (struct elt_loc_list *)
-		ggc_alloc_cleared_atomic (sizeof (*el2));
-	      el2->next = val2->locs;
-	      el2->loc = dv_as_value (dv);
-	      el2->setting_insn = get_insns ();
-	      val2->locs = el2;
-	    }
+	  cselib_val *val = CSELIB_VAL_PTR (dv_as_value (dv));
+	  create_entry_value (incoming, val);
 	  if (TREE_CODE (TREE_TYPE (parm)) == REFERENCE_TYPE
 	      && INTEGRAL_TYPE_P (TREE_TYPE (TREE_TYPE (parm))))
 	    {
@@ -8536,31 +8575,7 @@ vt_add_function_parameter (tree parm)
 	      if (val)
 		{
 		  preserve_value (val);
-		  el = (struct elt_loc_list *)
-		    ggc_alloc_cleared_atomic (sizeof (*el));
-		  el->next = val->locs;
-		  el->loc = gen_rtx_ENTRY_VALUE (indmode);
-		  ENTRY_VALUE_EXP (el->loc) = mem;
-		  el->setting_insn = get_insns ();
-		  val->locs = el;
-		  val2 = cselib_lookup_from_insn (el->loc, GET_MODE (mem),
-						  true, VOIDmode,
-						  get_insns ());
-		  if (val2
-		      && val2 != val
-		      && val2->locs
-		      && rtx_equal_p (val2->locs->loc, el->loc))
-		    {
-		      struct elt_loc_list *el2;
-
-		      preserve_value (val2);
-		      el2 = (struct elt_loc_list *)
-			ggc_alloc_cleared_atomic (sizeof (*el2));
-		      el2->next = val2->locs;
-		      el2->loc = val->val_rtx;
-		      el2->setting_insn = get_insns ();
-		      val2->locs = el2;
-		    }
+		  create_entry_value (mem, val);
 		}
 	    }
 	}
@@ -9121,7 +9136,7 @@ variable_tracking_main (void)
 static bool
 gate_handle_var_tracking (void)
 {
-  return (flag_var_tracking);
+  return (flag_var_tracking && !targetm.delay_vartrack);
 }
 
 
@@ -9141,6 +9156,6 @@ struct rtl_opt_pass pass_variable_tracking =
   0,                                    /* properties_provided */
   0,                                    /* properties_destroyed */
   0,                                    /* todo_flags_start */
-  TODO_dump_func | TODO_verify_rtl_sharing/* todo_flags_finish */
+  TODO_verify_rtl_sharing               /* todo_flags_finish */
  }
 };

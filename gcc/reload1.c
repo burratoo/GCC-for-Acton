@@ -250,6 +250,10 @@ static char *reload_insn_firstobj;
    examine.  */
 struct insn_chain *reload_insn_chain;
 
+/* TRUE if we potentially left dead insns in the insn stream and want to
+   run DCE immediately after reload, FALSE otherwise.  */
+static bool need_dce;
+
 /* List of all insns needing reloads.  */
 static struct insn_chain *insns_need_reload;
 
@@ -695,10 +699,11 @@ static int *temp_pseudo_reg_arr;
    If GLOBAL is zero, we do not have enough information to do that,
    so any pseudo reg that is spilled must go to the stack.
 
-   Return value is nonzero if reload failed
-   and we must not do any more for this function.  */
+   Return value is TRUE if reload likely left dead insns in the
+   stream and a DCE pass should be run to elimiante them.  Else the
+   return value is FALSE.  */
 
-int
+bool
 reload (rtx first, int global)
 {
   int i, n;
@@ -1329,7 +1334,9 @@ reload (rtx first, int global)
 
   gcc_assert (bitmap_empty_p (&spilled_pseudos));
 
-  return failure;
+  reload_completed = !failure;
+
+  return need_dce;
 }
 
 /* Yet another special case.  Unfortunately, reg-stack forces people to
@@ -2123,14 +2130,19 @@ delete_dead_insn (rtx insn)
   rtx prev = prev_active_insn (insn);
   rtx prev_dest;
 
-  /* If the previous insn sets a register that dies in our insn, delete it
-     too.  */
+  /* If the previous insn sets a register that dies in our insn make
+     a note that we want to run DCE immediately after reload.
+
+     We used to delete the previous insn & recurse, but that's wrong for
+     block local equivalences.  Instead of trying to figure out the exact
+     circumstances where we can delete the potentially dead insns, just
+     let DCE do the job.  */
   if (prev && GET_CODE (PATTERN (prev)) == SET
       && (prev_dest = SET_DEST (PATTERN (prev)), REG_P (prev_dest))
       && reg_mentioned_p (prev_dest, PATTERN (insn))
       && find_regno_note (insn, REG_DEAD, REGNO (prev_dest))
       && ! side_effects_p (SET_SRC (PATTERN (prev))))
-    delete_dead_insn (prev);
+    need_dce = 1;
 
   SET_INSN_DELETED (insn);
 }
@@ -4471,6 +4483,43 @@ scan_paradoxical_subregs (rtx x)
 	}
     }
 }
+
+/* *OP_PTR and *OTHER_PTR are two operands to a conceptual reload.
+   If *OP_PTR is a paradoxical subreg, try to remove that subreg
+   and apply the corresponding narrowing subreg to *OTHER_PTR.
+   Return true if the operands were changed, false otherwise.  */
+
+static bool
+strip_paradoxical_subreg (rtx *op_ptr, rtx *other_ptr)
+{
+  rtx op, inner, other, tem;
+
+  op = *op_ptr;
+  if (GET_CODE (op) != SUBREG)
+    return false;
+
+  inner = SUBREG_REG (op);
+  if (GET_MODE_SIZE (GET_MODE (op)) <= GET_MODE_SIZE (GET_MODE (inner)))
+    return false;
+
+  other = *other_ptr;
+  tem = gen_lowpart_common (GET_MODE (inner), other);
+  if (!tem)
+    return false;
+
+  /* If the lowpart operation turned a hard register into a subreg,
+     rather than simplifying it to another hard register, then the
+     mode change cannot be properly represented.  For example, OTHER
+     might be valid in its current mode, but not in the new one.  */
+  if (GET_CODE (tem) == SUBREG
+      && REG_P (other)
+      && HARD_REGISTER_P (other))
+    return false;
+
+  *op_ptr = inner;
+  *other_ptr = tem;
+  return true;
+}
 
 /* A subroutine of reload_as_needed.  If INSN has a REG_EH_REGION note,
    examine all of the reload insns between PREV and NEXT exclusive, and
@@ -4807,6 +4856,13 @@ reload_as_needed (int live_known)
 	{
 	  AND_COMPL_HARD_REG_SET (reg_reloaded_valid, call_used_reg_set);
 	  AND_COMPL_HARD_REG_SET (reg_reloaded_valid, reg_reloaded_call_part_clobbered);
+
+	  /* If this is a call to a setjmp-type function, we must not
+	     reuse any reload reg contents across the call; that will
+	     just be clobbered by other uses of the register in later
+	     code, before the longjmp.  */
+	  if (find_reg_note (insn, REG_SETJMP, NULL_RTX))
+	    CLEAR_HARD_REG_SET (reg_reloaded_valid);
 	}
     }
 
@@ -5538,7 +5594,7 @@ gen_reload_chain_without_interm_reg_p (int r1, int r2)
      chain reloads or do need an intermediate hard registers.  */
   bool result = true;
   int regno, n, code;
-  rtx out, in, tem, insn;
+  rtx out, in, insn;
   rtx last = get_last_insn ();
 
   /* Make r2 a component of r1.  */
@@ -5557,11 +5613,7 @@ gen_reload_chain_without_interm_reg_p (int r1, int r2)
 
   /* If IN is a paradoxical SUBREG, remove it and try to put the
      opposite SUBREG on OUT.  Likewise for a paradoxical SUBREG on OUT.  */
-  if (GET_CODE (in) == SUBREG
-      && (GET_MODE_SIZE (GET_MODE (in))
-	  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (in))))
-      && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (in)), out)) != 0)
-    in = SUBREG_REG (in), out = tem;
+  strip_paradoxical_subreg (&in, &out);
 
   if (GET_CODE (in) == PLUS
       && (REG_P (XEXP (in, 0))
@@ -7557,7 +7609,6 @@ emit_output_reload_insns (struct insn_chain *chain, struct reload *rl,
 	      if (tertiary_icode != CODE_FOR_nothing)
 		{
 		  rtx third_reloadreg = rld[tertiary_reload].reg_rtx;
-		  rtx tem;
 
 		  /* Copy primary reload reg to secondary reload reg.
 		     (Note that these have been swapped above, then
@@ -7566,13 +7617,7 @@ emit_output_reload_insns (struct insn_chain *chain, struct reload *rl,
 		  /* If REAL_OLD is a paradoxical SUBREG, remove it
 		     and try to put the opposite SUBREG on
 		     RELOADREG.  */
-		  if (GET_CODE (real_old) == SUBREG
-		      && (GET_MODE_SIZE (GET_MODE (real_old))
-			  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (real_old))))
-		      && 0 != (tem = gen_lowpart_common
-			       (GET_MODE (SUBREG_REG (real_old)),
-				reloadreg)))
-		    real_old = SUBREG_REG (real_old), reloadreg = tem;
+		  strip_paradoxical_subreg (&real_old, &reloadreg);
 
 		  gen_reload (reloadreg, second_reloadreg,
 			      rl->opnum, rl->when_needed);
@@ -8388,16 +8433,8 @@ gen_reload (rtx out, rtx in, int opnum, enum reload_type type)
 
   /* If IN is a paradoxical SUBREG, remove it and try to put the
      opposite SUBREG on OUT.  Likewise for a paradoxical SUBREG on OUT.  */
-  if (GET_CODE (in) == SUBREG
-      && (GET_MODE_SIZE (GET_MODE (in))
-	  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (in))))
-      && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (in)), out)) != 0)
-    in = SUBREG_REG (in), out = tem;
-  else if (GET_CODE (out) == SUBREG
-	   && (GET_MODE_SIZE (GET_MODE (out))
-	       > GET_MODE_SIZE (GET_MODE (SUBREG_REG (out))))
-	   && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (out)), in)) != 0)
-    out = SUBREG_REG (out), in = tem;
+  if (!strip_paradoxical_subreg (&in, &out))
+    strip_paradoxical_subreg (&out, &in);
 
   /* How to do this reload can get quite tricky.  Normally, we are being
      asked to reload a simple operand, such as a MEM, a constant, or a pseudo

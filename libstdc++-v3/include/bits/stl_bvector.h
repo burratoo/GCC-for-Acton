@@ -392,6 +392,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	_Bvector_impl(const _Bit_alloc_type& __a)
 	: _Bit_alloc_type(__a), _M_start(), _M_finish(), _M_end_of_storage(0)
 	{ }
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	_Bvector_impl(_Bit_alloc_type&& __a)
+	: _Bit_alloc_type(std::move(__a)), _M_start(), _M_finish(),
+	  _M_end_of_storage(0)
+	{ }
+#endif
       };
 
     public:
@@ -416,8 +423,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       : _M_impl(__a) { }
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
-      _Bvector_base(_Bvector_base&& __x)
-      : _M_impl(__x._M_get_Bit_allocator())
+      _Bvector_base(_Bvector_base&& __x) noexcept
+      : _M_impl(std::move(__x._M_get_Bit_allocator()))
       {
 	this->_M_impl._M_start = __x._M_impl._M_start;
 	this->_M_impl._M_finish = __x._M_impl._M_finish;
@@ -436,8 +443,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
       _Bit_type*
       _M_allocate(size_t __n)
-      { return _M_impl.allocate((__n + int(_S_word_bit) - 1)
-				/ int(_S_word_bit)); }
+      { return _M_impl.allocate(_S_nword(__n)); }
 
       void
       _M_deallocate()
@@ -446,6 +452,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  _M_impl.deallocate(_M_impl._M_start._M_p,
 			     _M_impl._M_end_of_storage - _M_impl._M_start._M_p);
       }
+
+      static size_t
+      _S_nword(size_t __n)
+      { return (__n + int(_S_word_bit) - 1) / int(_S_word_bit); }
     };
 
 _GLIBCXX_END_NAMESPACE_CONTAINER
@@ -504,6 +514,7 @@ template<typename _Alloc>
   protected:
     using _Base::_M_allocate;
     using _Base::_M_deallocate;
+    using _Base::_S_nword;
     using _Base::_M_get_Bit_allocator;
 
   public:
@@ -532,7 +543,7 @@ template<typename _Alloc>
     }
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
-    vector(vector&& __x)
+    vector(vector&& __x) noexcept
     : _Base(std::move(__x)) { }
 
     vector(initializer_list<bool> __l,
@@ -553,7 +564,7 @@ template<typename _Alloc>
 	_M_initialize_dispatch(__first, __last, _Integral());
       }
 
-    ~vector() { }
+    ~vector() _GLIBCXX_NOEXCEPT { }
 
     vector&
     operator=(const vector& __x)
@@ -717,7 +728,13 @@ template<typename _Alloc>
     { _M_range_check(__n); return (*this)[__n]; }
 
     void
-    reserve(size_type __n);
+    reserve(size_type __n)
+    {
+      if (__n > max_size())
+	__throw_length_error(__N("vector::reserve"));
+      if (capacity() < __n)
+	_M_reallocate(__n);
+    }
 
     reference
     front()
@@ -837,7 +854,7 @@ template<typename _Alloc>
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
     void
     shrink_to_fit()
-    { std::__shrink_to_fit<vector>::_S_do_it(*this); }
+    { _M_shrink_to_fit(); }
 #endif
 
     void
@@ -868,12 +885,18 @@ template<typename _Alloc>
     _M_initialize(size_type __n)
     {
       _Bit_type* __q = this->_M_allocate(__n);
-      this->_M_impl._M_end_of_storage = (__q
-					 + ((__n + int(_S_word_bit) - 1)
-					    / int(_S_word_bit)));
+      this->_M_impl._M_end_of_storage = __q + _S_nword(__n);
       this->_M_impl._M_start = iterator(__q, 0);
       this->_M_impl._M_finish = this->_M_impl._M_start + difference_type(__n);
     }
+
+    void
+    _M_reallocate(size_type __n);
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+    bool
+    _M_shrink_to_fit();
+#endif
 
     // Check whether it's an integral type.  If so, it's not an iterator.
 

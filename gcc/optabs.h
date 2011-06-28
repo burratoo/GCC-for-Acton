@@ -220,6 +220,7 @@ enum optab_index
   OTI_ffs,
   OTI_clz,
   OTI_ctz,
+  OTI_clrsb,
   OTI_popcount,
   OTI_parity,
   /* Square root */
@@ -456,6 +457,7 @@ enum optab_index
 #define ffs_optab (&optab_table[OTI_ffs])
 #define clz_optab (&optab_table[OTI_clz])
 #define ctz_optab (&optab_table[OTI_ctz])
+#define clrsb_optab (&optab_table[OTI_clrsb])
 #define popcount_optab (&optab_table[OTI_popcount])
 #define parity_optab (&optab_table[OTI_parity])
 #define sqrt_optab (&optab_table[OTI_sqrt])
@@ -1058,6 +1060,8 @@ create_integer_operand (struct expand_operand *op, HOST_WIDE_INT intval)
 {
   create_expand_operand (op, EXPAND_INTEGER, GEN_INT (intval), VOIDmode, false);
 }
+
+extern bool valid_multiword_target_p (rtx);
 
 extern bool maybe_legitimize_operands (enum insn_code icode,
 				       unsigned int opno, unsigned int nops,

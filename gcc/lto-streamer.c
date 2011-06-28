@@ -37,6 +37,9 @@ along with GCC; see the file COPYING3.  If not see
 /* Statistics gathered during LTO, WPA and LTRANS.  */
 struct lto_stats_d lto_stats;
 
+/* Streamer hooks.  */
+struct streamer_hooks streamer_hooks;
+
 /* LTO uses bitmaps with different life-times.  So use a seperate
    obstack for all LTO bitmaps.  */
 static bitmap_obstack lto_obstack;
@@ -478,10 +481,8 @@ lto_streamer_cache_get (struct lto_streamer_cache_d *cache, unsigned ix)
 /* Record NODE in CACHE.  */
 
 static void
-lto_record_common_node (struct lto_streamer_cache_d *cache, tree *nodep)
+lto_record_common_node (struct lto_streamer_cache_d *cache, tree node)
 {
-  tree node = *nodep;
-
   /* We have to make sure to fill exactly the same number of
      elements for all frontends.  That can include NULL trees.
      As our hash table can't deal with zero entries we'll simply stream
@@ -491,25 +492,12 @@ lto_record_common_node (struct lto_streamer_cache_d *cache, tree *nodep)
   if (!node)
     node = error_mark_node;
 
-  if (TYPE_P (node))
-    {
-      /* Type merging will get confused by the canonical types as they
-	 are set by the middle-end.  */
-      if (in_lto_p)
-	TYPE_CANONICAL (node) = NULL_TREE;
-      node = gimple_register_type (node);
-      TYPE_CANONICAL (node) = gimple_register_canonical_type (node);
-      if (in_lto_p)
-	TYPE_CANONICAL (*nodep) = TYPE_CANONICAL (node);
-      *nodep = node;
-    }
-
   lto_streamer_cache_append (cache, node);
 
   if (POINTER_TYPE_P (node)
       || TREE_CODE (node) == COMPLEX_TYPE
       || TREE_CODE (node) == ARRAY_TYPE)
-    lto_record_common_node (cache, &TREE_TYPE (node));
+    lto_record_common_node (cache, TREE_TYPE (node));
   else if (TREE_CODE (node) == RECORD_TYPE)
     {
       /* The FIELD_DECLs of structures should be shared, so that every
@@ -519,7 +507,7 @@ lto_record_common_node (struct lto_streamer_cache_d *cache, tree *nodep)
 	 nonoverlapping_component_refs_p).  */
       tree f;
       for (f = TYPE_FIELDS (node); f; f = TREE_CHAIN (f))
-	lto_record_common_node (cache, &f);
+	lto_record_common_node (cache, f);
     }
 }
 
@@ -553,16 +541,20 @@ lto_preload_common_nodes (struct lto_streamer_cache_d *cache)
   gcc_assert (fileptr_type_node == ptr_type_node);
   gcc_assert (TYPE_MAIN_VARIANT (fileptr_type_node) == ptr_type_node);
 
-  /* Skip itk_char.  char_type_node is shared with the appropriately
-     signed variant.  */
-  for (i = itk_signed_char; i < itk_none; i++)
-    lto_record_common_node (cache, &integer_types[i]);
+  for (i = 0; i < itk_none; i++)
+    /* Skip itk_char.  char_type_node is dependent on -f[un]signed-char.  */
+    if (i != itk_char)
+      lto_record_common_node (cache, integer_types[i]);
 
   for (i = 0; i < TYPE_KIND_LAST; i++)
-    lto_record_common_node (cache, &sizetype_tab[i]);
+    lto_record_common_node (cache, sizetype_tab[i]);
 
   for (i = 0; i < TI_MAX; i++)
-    lto_record_common_node (cache, &global_trees[i]);
+    /* Skip boolean type and constants, they are frontend dependent.  */
+    if (i != TI_BOOLEAN_TYPE
+	&& i != TI_BOOLEAN_FALSE
+	&& i != TI_BOOLEAN_TRUE)
+      lto_record_common_node (cache, global_trees[i]);
 }
 
 /* Create a cache of pickled nodes.  */
@@ -579,7 +571,7 @@ lto_streamer_cache_create (void)
   /* Load all the well-known tree nodes that are always created by
      the compiler on startup.  This prevents writing them out
      unnecessarily.  */
-  lto_preload_common_nodes (cache);
+  streamer_hooks.preload_common_nodes (cache);
 
   return cache;
 }
@@ -723,4 +715,53 @@ lto_check_version (int major, int minor)
 	         "of the expected %d.%d",
 		 major, minor,
 		 LTO_major_version, LTO_minor_version);
+}
+
+
+/* Return true if EXPR is a tree node that can be written to disk.  */
+static inline bool
+lto_is_streamable (tree expr)
+{
+  enum tree_code code = TREE_CODE (expr);
+
+  /* Notice that we reject SSA_NAMEs as well.  We only emit the SSA
+     name version in lto_output_tree_ref (see output_ssa_names).  */
+  return !is_lang_specific (expr)
+	 && code != SSA_NAME
+	 && code != CALL_EXPR
+	 && code != LANG_TYPE
+	 && code != MODIFY_EXPR
+	 && code != INIT_EXPR
+	 && code != TARGET_EXPR
+	 && code != BIND_EXPR
+	 && code != WITH_CLEANUP_EXPR
+	 && code != STATEMENT_LIST
+	 && code != OMP_CLAUSE
+	 && code != OPTIMIZATION_NODE
+	 && (code == CASE_LABEL_EXPR
+	     || code == DECL_EXPR
+	     || TREE_CODE_CLASS (code) != tcc_statement);
+}
+
+
+/* Initialize all the streamer hooks used for streaming GIMPLE.  */
+
+void
+lto_streamer_hooks_init (void)
+{
+  streamer_hooks_init ();
+  streamer_hooks.name = "gimple";
+  streamer_hooks.preload_common_nodes = lto_preload_common_nodes;
+  streamer_hooks.is_streamable = lto_is_streamable;
+  streamer_hooks.write_tree = lto_streamer_write_tree;
+  streamer_hooks.read_tree = lto_streamer_read_tree;
+}
+
+
+/* Initialize the current set of streamer hooks.  */
+
+void
+streamer_hooks_init (void)
+{
+  memset (&streamer_hooks, 0, sizeof (streamer_hooks));
 }

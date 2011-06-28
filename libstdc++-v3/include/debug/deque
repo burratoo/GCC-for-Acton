@@ -113,7 +113,7 @@ namespace __debug
       : _Base(__l, __a), _Safe_base() { }
 #endif
 
-      ~deque() { }
+      ~deque() _GLIBCXX_NOEXCEPT { }
 
       deque&
       operator=(const deque& __x)
@@ -277,7 +277,12 @@ namespace __debug
 #endif
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
-      using _Base::shrink_to_fit;
+      void
+      shrink_to_fit()
+      {
+	if (_Base::_M_shrink_to_fit())
+	  this->_M_invalidate_all();
+      }
 #endif
 
       using _Base::empty;

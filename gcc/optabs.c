@@ -1,7 +1,7 @@
 /* Expand the basic unary and binary arithmetic operations, for GNU compiler.
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
+   2011  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1537,7 +1537,10 @@ expand_binop (enum machine_mode mode, optab binoptab, rtx op0, rtx op1,
 
       /* If TARGET is the same as one of the operands, the REG_EQUAL note
 	 won't be accurate, so use a new target.  */
-      if (target == 0 || target == op0 || target == op1)
+      if (target == 0
+	  || target == op0
+	  || target == op1
+	  || !valid_multiword_target_p (target))
 	target = gen_reg_rtx (mode);
 
       start_sequence ();
@@ -1605,7 +1608,10 @@ expand_binop (enum machine_mode mode, optab binoptab, rtx op0, rtx op1,
 
 	  /* If TARGET is the same as one of the operands, the REG_EQUAL note
 	     won't be accurate, so use a new target.  */
-	  if (target == 0 || target == op0 || target == op1)
+	  if (target == 0
+	      || target == op0
+	      || target == op1
+	      || !valid_multiword_target_p (target))
 	    target = gen_reg_rtx (mode);
 
 	  start_sequence ();
@@ -1659,7 +1665,11 @@ expand_binop (enum machine_mode mode, optab binoptab, rtx op0, rtx op1,
 	 opportunities, and second because if target and op0 happen to be MEMs
 	 designating the same location, we would risk clobbering it too early
 	 in the code sequence we generate below.  */
-      if (target == 0 || target == op0 || target == op1 || ! REG_P (target))
+      if (target == 0
+	  || target == op0
+	  || target == op1
+	  || !REG_P (target)
+	  || !valid_multiword_target_p (target))
 	target = gen_reg_rtx (mode);
 
       start_sequence ();
@@ -1779,7 +1789,7 @@ expand_binop (enum machine_mode mode, optab binoptab, rtx op0, rtx op1,
 
       xtarget = gen_reg_rtx (mode);
 
-      if (target == 0 || !REG_P (target))
+      if (target == 0 || !REG_P (target) || !valid_multiword_target_p (target))
 	target = xtarget;
 
       /* Indicate for flow that the entire target reg is being set.  */
@@ -2317,9 +2327,12 @@ expand_simple_unop (enum machine_mode mode, enum rtx_code code, rtx op0,
 /* Try calculating
 	(clz:narrow x)
    as
-	(clz:wide (zero_extend:wide x)) - ((width wide) - (width narrow)).  */
+	(clz:wide (zero_extend:wide x)) - ((width wide) - (width narrow)).
+
+   A similar operation can be used for clrsb.  UNOPTAB says which operation
+   we are trying to expand.  */
 static rtx
-widen_clz (enum machine_mode mode, rtx op0, rtx target)
+widen_leading (enum machine_mode mode, rtx op0, rtx target, optab unoptab)
 {
   enum mode_class mclass = GET_MODE_CLASS (mode);
   if (CLASS_HAS_WIDER_MODES_P (mclass))
@@ -2329,7 +2342,7 @@ widen_clz (enum machine_mode mode, rtx op0, rtx target)
 	   wider_mode != VOIDmode;
 	   wider_mode = GET_MODE_WIDER_MODE (wider_mode))
 	{
-	  if (optab_handler (clz_optab, wider_mode) != CODE_FOR_nothing)
+	  if (optab_handler (unoptab, wider_mode) != CODE_FOR_nothing)
 	    {
 	      rtx xop0, temp, last;
 
@@ -2337,8 +2350,10 @@ widen_clz (enum machine_mode mode, rtx op0, rtx target)
 
 	      if (target == 0)
 		target = gen_reg_rtx (mode);
-	      xop0 = widen_operand (op0, wider_mode, mode, true, false);
-	      temp = expand_unop (wider_mode, clz_optab, xop0, NULL_RTX, true);
+	      xop0 = widen_operand (op0, wider_mode, mode,
+				    unoptab != clrsb_optab, false);
+	      temp = expand_unop (wider_mode, unoptab, xop0, NULL_RTX,
+				  unoptab != clrsb_optab);
 	      if (temp != 0)
 		temp = expand_binop (wider_mode, sub_optab, temp,
 				     GEN_INT (GET_MODE_BITSIZE (wider_mode)
@@ -2481,7 +2496,7 @@ expand_doubleword_bswap (enum machine_mode mode, rtx op, rtx target)
   t0 = expand_unop (word_mode, bswap_optab,
 		    operand_subword_force (op, 1, mode), NULL_RTX, true);
 
-  if (target == 0)
+  if (target == 0 || !valid_multiword_target_p (target))
     target = gen_reg_rtx (mode);
   if (REG_P (target))
     emit_clobber (target);
@@ -2724,7 +2739,9 @@ expand_absneg_bit (enum rtx_code code, enum machine_mode mode,
   if (code == ABS)
     mask = double_int_not (mask);
 
-  if (target == 0 || target == op0)
+  if (target == 0
+      || target == op0
+      || (nwords > 1 && !valid_multiword_target_p (target)))
     target = gen_reg_rtx (mode);
 
   if (nwords > 1)
@@ -2832,7 +2849,7 @@ expand_unop (enum machine_mode mode, optab unoptab, rtx op0, rtx target,
   /* Widening (or narrowing) clz needs special treatment.  */
   if (unoptab == clz_optab)
     {
-      temp = widen_clz (mode, op0, target);
+      temp = widen_leading (mode, op0, target, unoptab);
       if (temp)
 	return temp;
 
@@ -2844,7 +2861,15 @@ expand_unop (enum machine_mode mode, optab unoptab, rtx op0, rtx target,
 	    return temp;
 	}
 
-	goto try_libcall;
+      goto try_libcall;
+    }
+
+  if (unoptab == clrsb_optab)
+    {
+      temp = widen_leading (mode, op0, target, unoptab);
+      if (temp)
+	return temp;
+      goto try_libcall;
     }
 
   /* Widening (or narrowing) bswap needs special treatment.  */
@@ -2915,7 +2940,7 @@ expand_unop (enum machine_mode mode, optab unoptab, rtx op0, rtx target,
       int i;
       rtx insns;
 
-      if (target == 0 || target == op0)
+      if (target == 0 || target == op0 || !valid_multiword_target_p (target))
 	target = gen_reg_rtx (mode);
 
       start_sequence ();
@@ -2999,7 +3024,8 @@ expand_unop (enum machine_mode mode, optab unoptab, rtx op0, rtx target,
       /* All of these functions return small values.  Thus we choose to
 	 have them return something that isn't a double-word.  */
       if (unoptab == ffs_optab || unoptab == clz_optab || unoptab == ctz_optab
-	  || unoptab == popcount_optab || unoptab == parity_optab)
+	  || unoptab == clrsb_optab || unoptab == popcount_optab
+	  || unoptab == parity_optab)
 	outmode
 	  = GET_MODE (hard_libcall_value (TYPE_MODE (integer_type_node),
 					  optab_libfunc (unoptab, mode)));
@@ -3051,8 +3077,9 @@ expand_unop (enum machine_mode mode, optab unoptab, rtx op0, rtx target,
 				  unsignedp);
 
 	      /* If we are generating clz using wider mode, adjust the
-		 result.  */
-	      if (unoptab == clz_optab && temp != 0)
+		 result.  Similarly for clrsb.  */
+	      if ((unoptab == clz_optab || unoptab == clrsb_optab)
+		  && temp != 0)
 		temp = expand_binop (wider_mode, sub_optab, temp,
 				     GEN_INT (GET_MODE_BITSIZE (wider_mode)
 					      - GET_MODE_BITSIZE (mode)),
@@ -3386,7 +3413,10 @@ expand_copysign_bit (enum machine_mode mode, rtx op0, rtx op1, rtx target,
 
   mask = double_int_setbit (double_int_zero, bitpos);
 
-  if (target == 0 || target == op0 || target == op1)
+  if (target == 0
+      || target == op0
+      || target == op1
+      || (nwords > 1 && !valid_multiword_target_p (target)))
     target = gen_reg_rtx (mode);
 
   if (nwords > 1)
@@ -5895,6 +5925,9 @@ init_optabs (void)
   init_optab (usashl_optab, US_ASHIFT);
   init_optab (ashr_optab, ASHIFTRT);
   init_optab (lshr_optab, LSHIFTRT);
+  init_optabv (vashl_optab, ASHIFT);
+  init_optabv (vashr_optab, ASHIFTRT);
+  init_optabv (vlshr_optab, LSHIFTRT);
   init_optab (rotl_optab, ROTATE);
   init_optab (rotr_optab, ROTATERT);
   init_optab (smin_optab, SMIN);
@@ -5943,6 +5976,7 @@ init_optabs (void)
   init_optab (ffs_optab, FFS);
   init_optab (clz_optab, CLZ);
   init_optab (ctz_optab, CTZ);
+  init_optab (clrsb_optab, CLRSB);
   init_optab (popcount_optab, POPCOUNT);
   init_optab (parity_optab, PARITY);
   init_optab (sqrt_optab, SQRT);
@@ -6173,6 +6207,9 @@ init_optabs (void)
   ctz_optab->libcall_basename = "ctz";
   ctz_optab->libcall_suffix = '2';
   ctz_optab->libcall_gen = gen_int_libfunc;
+  clrsb_optab->libcall_basename = "clrsb";
+  clrsb_optab->libcall_suffix = '2';
+  clrsb_optab->libcall_gen = gen_int_libfunc;
   popcount_optab->libcall_basename = "popcount";
   popcount_optab->libcall_suffix = '2';
   popcount_optab->libcall_gen = gen_int_libfunc;
@@ -7034,6 +7071,23 @@ insn_operand_matches (enum insn_code icode, unsigned int opno, rtx operand)
 	      (operand, insn_data[(int) icode].operand[opno].mode)));
 }
 
+/* TARGET is a target of a multiword operation that we are going to
+   implement as a series of word-mode operations.  Return true if
+   TARGET is suitable for this purpose.  */
+
+bool
+valid_multiword_target_p (rtx target)
+{
+  enum machine_mode mode;
+  int i;
+
+  mode = GET_MODE (target);
+  for (i = 0; i < GET_MODE_SIZE (mode); i += UNITS_PER_WORD)
+    if (!validate_subreg (word_mode, mode, target, i))
+      return false;
+  return true;
+}
+
 /* Like maybe_legitimize_operand, but do not change the code of the
    current rtx value.  */
 

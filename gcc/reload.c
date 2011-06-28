@@ -1019,6 +1019,7 @@ push_reload (rtx in, rtx out, rtx *inloc, rtx *outloc,
 #ifdef CANNOT_CHANGE_MODE_CLASS
       && !CANNOT_CHANGE_MODE_CLASS (GET_MODE (SUBREG_REG (in)), inmode, rclass)
 #endif
+      && contains_reg_of_mode[(int) rclass][(int) GET_MODE (SUBREG_REG (in))]
       && (CONSTANT_P (SUBREG_REG (in))
 	  || GET_CODE (SUBREG_REG (in)) == PLUS
 	  || strict_low
@@ -1125,6 +1126,7 @@ push_reload (rtx in, rtx out, rtx *inloc, rtx *outloc,
 #ifdef CANNOT_CHANGE_MODE_CLASS
       && !CANNOT_CHANGE_MODE_CLASS (GET_MODE (SUBREG_REG (out)), outmode, rclass)
 #endif
+      && contains_reg_of_mode[(int) rclass][(int) GET_MODE (SUBREG_REG (out))]
       && (CONSTANT_P (SUBREG_REG (out))
 	  || strict_low
 	  || (((REG_P (SUBREG_REG (out))
@@ -6787,6 +6789,15 @@ find_equiv_reg (rtx goal, rtx insn, enum reg_class rclass, int other,
       num++;
       if (p == 0 || LABEL_P (p)
 	  || num > PARAM_VALUE (PARAM_MAX_RELOAD_SEARCH_INSNS))
+	return 0;
+
+      /* Don't reuse register contents from before a setjmp-type
+	 function call; on the second return (from the longjmp) it
+	 might have been clobbered by a later reuse.  It doesn't
+	 seem worthwhile to actually go and see if it is actually
+	 reused even if that information would be readily available;
+	 just don't reuse it across the setjmp call.  */
+      if (CALL_P (p) && find_reg_note (p, REG_SETJMP, NULL_RTX))
 	return 0;
 
       if (NONJUMP_INSN_P (p)

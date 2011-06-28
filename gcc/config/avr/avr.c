@@ -102,11 +102,10 @@ static unsigned int avr_case_values_threshold (void);
 static bool avr_frame_pointer_required_p (void);
 static bool avr_can_eliminate (const int, const int);
 static bool avr_class_likely_spilled_p (reg_class_t c);
-static rtx avr_function_arg (CUMULATIVE_ARGS *, enum machine_mode,
+static rtx avr_function_arg (cumulative_args_t , enum machine_mode,
 			     const_tree, bool);
-static void avr_function_arg_advance (CUMULATIVE_ARGS *, enum machine_mode,
+static void avr_function_arg_advance (cumulative_args_t, enum machine_mode,
 				      const_tree, bool);
-static void avr_help (void);
 static bool avr_function_ok_for_sibcall (tree, tree);
 static void avr_asm_named_section (const char *name, unsigned int flags, tree decl);
 
@@ -156,13 +155,6 @@ static const struct attribute_spec avr_attribute_table[] =
     false },
   { NULL,        0, 0, false, false, false, NULL, false }
 };
-
-/* Implement TARGET_OPTION_OPTIMIZATION_TABLE.  */
-static const struct default_options avr_option_optimization_table[] =
-  {
-    { OPT_LEVELS_1_PLUS, OPT_fomit_frame_pointer, NULL, 1 },
-    { OPT_LEVELS_NONE, 0, NULL, 0 }
-  };
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
@@ -254,17 +246,8 @@ static const struct default_options avr_option_optimization_table[] =
 #undef TARGET_OPTION_OVERRIDE
 #define TARGET_OPTION_OVERRIDE avr_option_override
 
-#undef TARGET_OPTION_OPTIMIZATION_TABLE
-#define TARGET_OPTION_OPTIMIZATION_TABLE avr_option_optimization_table
-
 #undef TARGET_CANNOT_MODIFY_JUMPS_P
 #define TARGET_CANNOT_MODIFY_JUMPS_P avr_cannot_modify_jumps_p
-
-#undef TARGET_HELP
-#define TARGET_HELP avr_help
-
-#undef TARGET_EXCEPT_UNWIND_INFO
-#define TARGET_EXCEPT_UNWIND_INFO sjlj_except_unwind_info
 
 #undef TARGET_FUNCTION_OK_FOR_SIBCALL
 #define TARGET_FUNCTION_OK_FOR_SIBCALL avr_function_ok_for_sibcall
@@ -281,21 +264,9 @@ struct gcc_target targetm = TARGET_INITIALIZER;
 static void
 avr_option_override (void)
 {
-  const struct mcu_type_s *t;
-
   flag_delete_null_pointer_checks = 0;
 
-  for (t = avr_mcu_types; t->name; t++)
-    if (strcmp (t->name, avr_mcu_name) == 0)
-      break;
-
-  if (!t->name)
-    {
-      error ("unrecognized argument to -mmcu= option: %qs", avr_mcu_name);
-      inform (input_location,  "See --target-help for supported MCUs");
-    }
-
-  avr_current_device = t;
+  avr_current_device = &avr_mcu_types[avr_mcu_index];
   avr_current_arch = &avr_arch_types[avr_current_device->arch];
   avr_extra_arch_macro = avr_current_device->macro;
 
@@ -303,42 +274,6 @@ avr_option_override (void)
   zero_reg_rtx = gen_rtx_REG (QImode, ZERO_REGNO);
 
   init_machine_status = avr_init_machine_status;
-}
-
-/* Implement TARGET_HELP */
-/* Report extra information for --target-help */
-
-static void
-avr_help (void)
-{
-  const struct mcu_type_s *t;
-  const char * const indent = "  ";
-  int len;
-
-  /* Give a list of MCUs that are accepted by -mmcu=* .
-     Note that MCUs supported by the compiler might differ from
-     MCUs supported by binutils. */
-
-  len = strlen (indent);
-  printf ("Known MCU names:\n%s", indent);
-
-  /* Print a blank-separated list of all supported MCUs */
-
-  for (t = avr_mcu_types; t->name; t++)
-    {
-      printf ("%s ", t->name);
-      len += 1 + strlen (t->name);
-
-      /* Break long lines */
-      
-      if (len > 66 && (t+1)->name)
-        {
-          printf ("\n%s", indent);
-          len = strlen (indent);
-        }
-    }
-
-  printf ("\n\n");
 }
 
 /*  return register class from register number.  */
@@ -1756,9 +1691,10 @@ avr_num_arg_regs (enum machine_mode mode, const_tree type)
    in a register, and which register.  */
 
 static rtx
-avr_function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+avr_function_arg (cumulative_args_t cum_v, enum machine_mode mode,
 		  const_tree type, bool named ATTRIBUTE_UNUSED)
 {
+  CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   int bytes = avr_num_arg_regs (mode, type);
 
   if (cum->nregs && bytes <= cum->nregs)
@@ -1771,9 +1707,10 @@ avr_function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode,
    in the argument list.  */
    
 static void
-avr_function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+avr_function_arg_advance (cumulative_args_t cum_v, enum machine_mode mode,
 			  const_tree type, bool named ATTRIBUTE_UNUSED)
 {
+  CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
   int bytes = avr_num_arg_regs (mode, type);
 
   cum->nregs -= bytes;
@@ -1784,7 +1721,8 @@ avr_function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
      a function must not pass arguments in call-saved regs in order to get
      tail-called. */
   
-  if (cum->regno >= 0
+  if (cum->regno >= 8
+      && cum->nregs >= 0
       && !call_used_regs[cum->regno])
     {
       /* FIXME: We ship info on failing tail-call in struct machine_function.
@@ -1800,7 +1738,8 @@ avr_function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
      user has fixed a GPR needed to pass an argument, an (implicit) function
      call would clobber that fixed register.  See PR45099 for an example.  */
   
-  if (cum->regno >= 0)
+  if (cum->regno >= 8
+      && cum->nregs >= 0)
     {
       int regno;
 
@@ -5329,11 +5268,11 @@ static void
 avr_file_start (void)
 {
   if (avr_current_arch->asm_only)
-    error ("MCU %qs supported for assembler only", avr_mcu_name);
+    error ("MCU %qs supported for assembler only", avr_current_device->name);
 
   default_file_start ();
 
-/*  fprintf (asm_out_file, "\t.arch %s\n", avr_mcu_name);*/
+/*  fprintf (asm_out_file, "\t.arch %s\n", avr_current_device->name);*/
   fputs ("__SREG__ = 0x3f\n"
 	 "__SP_H__ = 0x3e\n"
 	 "__SP_L__ = 0x3d\n", asm_out_file);
