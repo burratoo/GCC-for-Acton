@@ -7230,6 +7230,55 @@ package body Sem_Prag is
             end if;
          end CPU;
 
+         ------------------
+         -- Cycle_Period --
+         ------------------
+
+         --  pragma Cycle_Period (time_span_EXPRESSION);
+
+         when Pragma_Cycle_Period => Cycle_Period : declare
+            P   : constant Node_Id := Parent (N);
+            Arg : Node_Id;
+
+         begin
+            --  Ada_2005_Pragma;
+            Check_No_Identifiers;
+            Check_Arg_Count (1);
+
+            Arg := Get_Pragma_Arg (Arg1);
+
+            --  The expression must be analyzed in the special manner described
+            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+
+            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
+            --  Subprogram case
+
+            if Nkind (P) = N_Subprogram_Body then
+               Check_In_Main_Program;
+
+            --  Tasks
+
+            elsif Nkind (P) = N_Task_Definition then
+               null;
+
+            --  Anything else is incorrect
+
+            else
+               Pragma_Misplaced;
+            end if;
+
+            if Has_Pragma_Cycle_Period (P) then
+               Error_Pragma ("duplicate pragma% not allowed");
+            else
+               Set_Has_Pragma_Cycle_Period (P, True);
+
+               if Nkind (P) = N_Task_Definition then
+                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
+               end if;
+            end if;
+         end Cycle_Period;
+
          -----------
          -- Debug --
          -----------
@@ -11158,6 +11207,50 @@ package body Sem_Prag is
             end if;
          end Persistent_BSS;
 
+         -----------
+         -- Phase --
+         -----------
+
+         --  pragma Phase (time_span_EXPRESSION);
+
+         when Pragma_Phase => Phase : declare
+            P   : constant Node_Id := Parent (N);
+            Arg : Node_Id;
+
+         begin
+            --  Ada_2005_Pragma;
+            Check_No_Identifiers;
+            Check_Arg_Count (1);
+
+            Arg := Get_Pragma_Arg (Arg1);
+
+            --  The expression must be analyzed in the special manner described
+            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+
+            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
+            --  Tasks
+
+            if Nkind (P) = N_Task_Definition then
+               null;
+
+            --  Anything else is incorrect
+
+            else
+               Pragma_Misplaced;
+            end if;
+
+            if Has_Pragma_Phase (P) then
+               Error_Pragma ("duplicate pragma% not allowed");
+            else
+               Set_Has_Pragma_Phase (P, True);
+
+               if Nkind (P) = N_Task_Definition then
+                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
+               end if;
+            end if;
+         end Phase;
+
          -------------
          -- Polling --
          -------------
@@ -13961,6 +14054,7 @@ package body Sem_Prag is
       Pragma_Controlled                    =>  0,
       Pragma_Convention                    =>  0,
       Pragma_Convention_Identifier         =>  0,
+      Pragma_Cycle_Period                  => -1,
       Pragma_Debug                         => -1,
       Pragma_Debug_Policy                  =>  0,
       Pragma_Detect_Blocking               => -1,
@@ -14041,6 +14135,7 @@ package body Sem_Prag is
       Pragma_Preelaborable_Initialization  => -1,
       Pragma_Polling                       => -1,
       Pragma_Persistent_BSS                =>  0,
+      Pragma_Phase                         => -1,
       Pragma_Postcondition                 => -1,
       Pragma_Precondition                  => -1,
       Pragma_Predicate                     => -1,

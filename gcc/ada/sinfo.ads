@@ -1148,6 +1148,14 @@ package Sinfo is
    --    flag the presence of a CPU pragma in the declaration sequence (public
    --    or private in the task case).
 
+   --  Has_Pragma_Cycle_Period (Flag10-Sem)
+   --    A flag present in N_Subprogram_Body and N_Task_Definition nodes to
+   --    flag the presence of a pragma Cycle_Period.
+
+   --  Has_Pragma_Phase (Flag11-Sem)
+   --    A flag present in N_Subprogram_Body and N_Task_Definition nodes to
+   --    flag the presence of a pragma Phase.
+
    --  Has_Pragma_Suppress_All (Flag14-Sem)
    --    This flag is set in an N_Compilation_Unit node if the Suppress_All
    --    pragma appears anywhere in the unit. This accommodates the rather
@@ -4575,6 +4583,8 @@ package Sinfo is
       --  Was_Originally_Stub (Flag13-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
+      --  Has_Pragma_Cycle_Period (Flag10)
+      --  Has_Pragma_Phase (Flag11)
 
       ------------------------------
       -- Parameterized Expression --
@@ -8415,6 +8425,12 @@ package Sinfo is
    function Has_Pragma_CPU
      (N : Node_Id) return Boolean;    -- Flag14
 
+   function Has_Pragma_Cycle_Period
+     (N : Node_Id) return Boolean;    -- Flag10
+
+   function Has_Pragma_Phase
+     (N : Node_Id) return Boolean;   -- Flag11  
+
    function Has_Pragma_Priority
      (N : Node_Id) return Boolean;    -- Flag6
 
@@ -9378,6 +9394,12 @@ package Sinfo is
    procedure Set_Has_Pragma_CPU
      (N : Node_Id; Val : Boolean := True);    -- Flag14
 
+   procedure Set_Has_Pragma_Cycle_Period
+     (N : Node_Id; Val : Boolean := True);    -- Flag10
+     
+   procedure Set_Has_Pragma_Phase
+     (N : Node_Id; Val : Boolean := True);    -- Flag11
+     
    procedure Set_Has_Pragma_Priority
      (N : Node_Id; Val : Boolean := True);    -- Flag6
 
@@ -11769,6 +11791,8 @@ package Sinfo is
    pragma Inline (Has_Self_Reference);
    pragma Inline (Has_No_Elaboration_Code);
    pragma Inline (Has_Pragma_CPU);
+   pragma Inline (Has_Pragma_Cycle_Period);
+   pragma Inline (Has_Pragma_Phase);
    pragma Inline (Has_Pragma_Priority);
    pragma Inline (Has_Pragma_Suppress_All);
    pragma Inline (Has_Private_View);

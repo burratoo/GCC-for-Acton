@@ -1473,6 +1473,24 @@ package body Sinfo is
       return Flag14 (N);
    end Has_Pragma_CPU;
 
+   function Has_Pragma_Cycle_Period
+     (N : Node_Id) return Boolean is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body
+        or else NT (N).Nkind = N_Task_Definition);
+      return Flag10 (N);
+   end Has_Pragma_Cycle_Period;
+
+   function Has_Pragma_Phase
+     (N : Node_Id) return Boolean is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body
+        or else NT (N).Nkind = N_Task_Definition);
+      return Flag11 (N);
+   end Has_Pragma_Phase;
+
    function Has_Pragma_Priority
       (N : Node_Id) return Boolean is
    begin

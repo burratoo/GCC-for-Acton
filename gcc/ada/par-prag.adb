@@ -1127,6 +1127,7 @@ begin
            Pragma_Component_Alignment           |
            Pragma_Controlled                    |
            Pragma_Convention                    |
+           Pragma_Cycle_Period                  |
            Pragma_Debug_Policy                  |
            Pragma_Detect_Blocking               |
            Pragma_Default_Storage_Pool          |
@@ -1200,6 +1201,7 @@ begin
            Pragma_Optimize_Alignment            |
            Pragma_Pack                          |
            Pragma_Passive                       |
+           Pragma_Phase                         |
            Pragma_Preelaborable_Initialization  |
            Pragma_Polling                       |
            Pragma_Persistent_BSS                |
