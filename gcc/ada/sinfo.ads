@@ -1153,7 +1153,7 @@ package Sinfo is
    --    flag the presence of a pragma Cycle_Period.
 
    --  Has_Pragma_Phase (Flag11-Sem)
-   --    A flag present in N_Subprogram_Body and N_Task_Definition nodes to
+   --    A flag present in N_Task_Definition nodes to
    --    flag the presence of a pragma Phase.
 
    --  Has_Pragma_Suppress_All (Flag14-Sem)
@@ -4584,7 +4584,6 @@ package Sinfo is
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
       --  Has_Pragma_Cycle_Period (Flag10)
-      --  Has_Pragma_Phase (Flag11)
 
       ------------------------------
       -- Parameterized Expression --
@@ -5069,6 +5068,8 @@ package Sinfo is
       --  Has_Task_Name_Pragma (Flag8-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
+      --  Has_Pragma_Cycle_Period (Flag10)
+      --  Has_Pragma_Phase (Flag11)
 
       --------------------
       -- 9.1  Task Item --
