@@ -152,6 +152,7 @@ package Snames is
    Name_uClean                         : constant Name_Id := N + $;
    Name_uController                    : constant Name_Id := N + $;
    Name_uCPU                           : constant Name_Id := N + $;
+   Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
    Name_uExpunge                       : constant Name_Id := N + $;
    Name_uFinal_List                    : constant Name_Id := N + $;
@@ -160,6 +161,7 @@ package Snames is
    Name_uLocal_Final_List              : constant Name_Id := N + $;
    Name_uMaster                        : constant Name_Id := N + $;
    Name_uObject                        : constant Name_Id := N + $;
+   Name_uPhase                         : constant Name_Id := N + $;
    Name_uPostconditions                : constant Name_Id := N + $;
    Name_uPriority                      : constant Name_Id := N + $;
    Name_uProcess_ATSD                  : constant Name_Id := N + $;
@@ -443,6 +445,7 @@ package Snames is
    Name_CPP_Virtual                    : constant Name_Id := N + $; -- GNAT
    Name_CPP_Vtable                     : constant Name_Id := N + $; -- GNAT
    Name_CPU                            : constant Name_Id := N + $; -- Ada 12
+   Name_Cycle_Period                   : constant Name_Id := N + $; -- Acton
    Name_Debug                          : constant Name_Id := N + $; -- GNAT
    Name_Dimension                      : constant Name_Id := N + $; -- GNAT
    Name_Elaborate                      : constant Name_Id := N + $; -- Ada 83
@@ -504,6 +507,7 @@ package Snames is
    Name_Pack                           : constant Name_Id := N + $;
    Name_Page                           : constant Name_Id := N + $;
    Name_Passive                        : constant Name_Id := N + $; -- GNAT
+   Name_Phase                          : constant Name_Id := N + $; -- Acton
    Name_Postcondition                  : constant Name_Id := N + $; -- GNAT
    Name_Precondition                   : constant Name_Id := N + $; -- GNAT
    Name_Predicate                      : constant Name_Id := N + $; -- GNAT
@@ -1548,7 +1552,8 @@ package Snames is
       Pragma_CPP_Virtual,
       Pragma_CPP_Vtable,
       Pragma_CPU,
-      Pragma_Debug,
+      Pragma_Cycle_Period 
+	  Pragma_Debug,
       Pragma_Dimension,
       Pragma_Elaborate,
       Pragma_Elaborate_All,
@@ -1602,6 +1607,7 @@ package Snames is
       Pragma_Pack,
       Pragma_Page,
       Pragma_Passive,
+      Pragma_Phase
       Pragma_Postcondition,
       Pragma_Precondition,
       Pragma_Predicate,
