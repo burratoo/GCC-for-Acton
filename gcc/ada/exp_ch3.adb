@@ -1472,21 +1472,7 @@ package body Exp_Ch3 is
 
       Args := New_List (Convert_Concurrent (First_Arg, Typ));
 
-      --  In the tasks case, add _Master as the value of the _Master parameter
-      --  and _Chain as the value of the _Chain parameter. At the outer level,
-      --  these will be variables holding the corresponding values obtained
-      --  from GNARL. At inner levels, they will be the parameters passed down
-      --  through the outer routines.
-
       if Has_Task (Full_Type) then
-         if Restriction_Active (No_Task_Hierarchy) then
-            Append_To (Args,
-              New_Occurrence_Of (RTE (RE_Library_Task_Level), Loc));
-         else
-            Append_To (Args, Make_Identifier (Loc, Name_uMaster));
-         end if;
-
-         Append_To (Args, Make_Identifier (Loc, Name_uChain));
 
          --  Ada 2005 (AI-287): In case of default initialized components
          --  with tasks, we generate a null string actual parameter.
@@ -2036,14 +2022,6 @@ package body Exp_Ch3 is
          First_Discr_Param := Next (First (Parameters));
 
          if Has_Task (Rec_Type) then
-            if Restriction_Active (No_Task_Hierarchy) then
-               Append_To (Args,
-                 New_Occurrence_Of (RTE (RE_Library_Task_Level), Loc));
-            else
-               Append_To (Args, Make_Identifier (Loc, Name_uMaster));
-            end if;
-
-            Append_To (Args, Make_Identifier (Loc, Name_uChain));
             Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
             First_Discr_Param := Next (Next (Next (First_Discr_Param)));
          end if;
@@ -2855,22 +2833,22 @@ package body Exp_Ch3 is
 
          if Is_Task_Record_Type (Rec_Type) then
 
-            --  In the case of the restricted run time the ATCB has already
+            --  In the case of the restricted run time the OTCR has already
             --  been preallocated.
 
-            if Restricted_Profile then
-               Append_To (Statement_List,
-                 Make_Assignment_Statement (Loc,
-                   Name => Make_Selected_Component (Loc,
-                     Prefix        => Make_Identifier (Loc, Name_uInit),
-                     Selector_Name => Make_Identifier (Loc, Name_uTask_Id)),
-                   Expression => Make_Attribute_Reference (Loc,
-                     Prefix =>
-                       Make_Selected_Component (Loc,
-                         Prefix        => Make_Identifier (Loc, Name_uInit),
-                         Selector_Name => Make_Identifier (Loc, Name_uATCB)),
-                     Attribute_Name => Name_Unchecked_Access)));
-            end if;
+            --  if Restricted_Profile then
+            --   Append_To (Statement_List,
+            --     Make_Assignment_Statement (Loc,
+            --       Name => Make_Selected_Component (Loc,
+            --         Prefix        => Make_Identifier (Loc, Name_uInit),
+            --         Selector_Name => Make_Identifier (Loc, Name_uTask_Id)),
+            --       Expression => Make_Attribute_Reference (Loc,
+            --         Prefix =>
+            --           Make_Selected_Component (Loc,
+            --             Prefix        => Make_Identifier (Loc, Name_uInit),
+            --             Selector_Name => Make_Identifier (Loc, Name_uATCB)),
+            --         Attribute_Name => Name_Unchecked_Access)));
+            --  end if;
 
             Append_To (Statement_List, Make_Task_Create_Call (Rec_Type));
 
@@ -4537,16 +4515,6 @@ package body Exp_Ch3 is
 
       if Is_Shared_Passive (Def_Id) then
          Init_After := Make_Shared_Var_Procs (N);
-      end if;
-
-      --  If tasks being declared, make sure we have an activation chain
-      --  defined for the tasks (has no effect if we already have one), and
-      --  also that a Master variable is established and that the appropriate
-      --  enclosing construct is established as a task master.
-
-      if Has_Task (Typ) then
-         Build_Activation_Chain_Entity (N);
-         Build_Master_Entity (Def_Id);
       end if;
 
       --  Build a list controller for declarations where the type is anonymous
@@ -7207,28 +7175,13 @@ package body Exp_Ch3 is
           Out_Present => True,
           Parameter_Type => New_Reference_To (Typ, Loc)));
 
-      --  For task record value, or type that contains tasks, add two more
-      --  formals, _Master : Master_Id and _Chain : in out Activation_Chain
+      --  For task record value, or type that contains tasks, add one more
+      --  formals, Task_Name : String.
       --  We also add these parameters for the task record type case.
 
       if Has_Task (Typ)
         or else (Is_Record_Type (Typ) and then Is_Task_Record_Type (Typ))
       then
-         Append_To (Formals,
-           Make_Parameter_Specification (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uMaster),
-             Parameter_Type => New_Reference_To (RTE (RE_Master_Id), Loc)));
-
-         Append_To (Formals,
-           Make_Parameter_Specification (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uChain),
-             In_Present => True,
-             Out_Present => True,
-             Parameter_Type =>
-               New_Reference_To (RTE (RE_Activation_Chain), Loc)));
-
          Append_To (Formals,
            Make_Parameter_Specification (Loc,
              Defining_Identifier =>
