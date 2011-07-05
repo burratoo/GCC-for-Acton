@@ -112,7 +112,7 @@ package body ALI is
       Normalize_Scalars_Specified          := False;
       Queuing_Policy_Specified             := ' ';
       Static_Elaboration_Model_Used        := False;
-      Task_Dispatching_Policy_Specified    := ' ';
+      Task_Dispatching_Policy_Specified    := No_Name;
       Unreserve_All_Interrupts_Specified   := False;
       Zero_Cost_Exceptions_Specified       := False;
    end Initialize_ALI;
@@ -827,7 +827,7 @@ package body ALI is
         Restrictions               => No_Restrictions,
         SAL_Interface              => False,
         Sfile                      => No_File,
-        Task_Dispatching_Policy    => ' ',
+        Task_Dispatching_Policy    => No_Name,
         Time_Slice_Value           => -1,
         Allocator_In_Body          => False,
         WC_Encoding                => 'b',
@@ -1091,7 +1091,7 @@ package body ALI is
             --  Processing for Tx
 
             elsif C = 'T' then
-               Task_Dispatching_Policy_Specified := Getc;
+               Task_Dispatching_Policy_Specified := Get_Name;
                ALIs.Table (Id).Task_Dispatching_Policy :=
                  Task_Dispatching_Policy_Specified;
 
@@ -1362,7 +1362,7 @@ package body ALI is
 
          else
             declare
-               Policy     : Character;
+               Policy     : Name_Id;
                First_Prio : Nat;
                Last_Prio  : Nat;
                Line_No    : Nat;
@@ -1371,7 +1371,7 @@ package body ALI is
                Checkc (' ');
                Skip_Space;
 
-               Policy := Getc;
+               Policy := Get_Name;
                Skip_Space;
                First_Prio := Get_Nat;
                Last_Prio := Get_Nat;

@@ -1043,9 +1043,9 @@ package body Lib.Writ is
             Write_Info_Char (Queuing_Policy);
          end if;
 
-         if Task_Dispatching_Policy /= ' ' then
+         if Task_Dispatching_Policy /= No_Name then
             Write_Info_Str  (" T");
-            Write_Info_Char (Task_Dispatching_Policy);
+            Write_Info_Str (Get_Name_String (Task_Dispatching_Policy));
             Write_Info_Char (' ');
          end if;
       end if;
@@ -1172,7 +1172,9 @@ package body Lib.Writ is
       for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
          Write_Info_Initiate ('S');
          Write_Info_Char (' ');
-         Write_Info_Char (Specific_Dispatching.Table (J).Dispatching_Policy);
+         Write_Info_Str 
+           (Get_Name_String 
+             (Specific_Dispatching.Table (J).Dispatching_Policy));
          Write_Info_Char (' ');
          Write_Info_Nat (Specific_Dispatching.Table (J).First_Priority);
          Write_Info_Char (' ');

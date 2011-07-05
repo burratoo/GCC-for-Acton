@@ -11560,7 +11560,7 @@ package body Sem_Prag is
             Prio_Id : constant Entity_Id := RTE (RE_Any_Priority);
             --  This is the entity System.Any_Priority;
 
-            DP          : Character;
+            DP          : Name_Id;
             Lower_Bound : Node_Id;
             Upper_Bound : Node_Id;
             Lower_Val   : Uint;
@@ -11572,8 +11572,7 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Is_Task_Dispatching_Policy (Arg1);
             Check_Valid_Configuration_Pragma;
-            Get_Name_String (Chars (Get_Pragma_Arg (Arg1)));
-            DP := Fold_Upper (Name_Buffer (1));
+            DP := Chars (Get_Pragma_Arg (Arg1));
 
             Lower_Bound := Get_Pragma_Arg (Arg2);
             Check_Arg_Is_Static_Expression (Lower_Bound, Standard_Integer);
@@ -11586,7 +11585,7 @@ package body Sem_Prag is
             --  It is not allowed to use Task_Dispatching_Policy and
             --  Priority_Specific_Dispatching in the same partition.
 
-            if Task_Dispatching_Policy /= ' ' then
+            if Task_Dispatching_Policy /= No_Name then
                Error_Msg_Sloc := Task_Dispatching_Policy_Sloc;
                Error_Pragma
                  ("pragma% incompatible with Task_Dispatching_Policy#");
@@ -11643,7 +11642,7 @@ package body Sem_Prag is
                --  The use of Priority_Specific_Dispatching is incompatible
                --  with Task_Dispatching_Policy.
 
-               if Task_Dispatching_Policy /= ' ' then
+               if Task_Dispatching_Policy /= No_Name then
                   Error_Msg_Sloc := Task_Dispatching_Policy_Sloc;
                      Error_Pragma
                        ("Priority_Specific_Dispatching incompatible "
@@ -12844,10 +12843,9 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Is_Task_Dispatching_Policy (Arg1);
             Check_Valid_Configuration_Pragma;
-            Get_Name_String (Chars (Get_Pragma_Arg (Arg1)));
-            DP := Fold_Upper (Name_Buffer (1));
+            DP := Chars (Get_Pragma_Arg (Arg1));
 
-            if Task_Dispatching_Policy /= ' '
+            if Task_Dispatching_Policy /= No_Name
               and then Task_Dispatching_Policy /= DP
             then
                Error_Msg_Sloc := Task_Dispatching_Policy_Sloc;

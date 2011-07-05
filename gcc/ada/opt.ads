@@ -1248,10 +1248,10 @@ package Opt is
    --  types and dispatching calls, assuming the underlying target supports
    --  it (e.g. in the JVM case).
 
-   Task_Dispatching_Policy : Character := ' ';
+   Task_Dispatching_Policy : Name_Id := No_Name;
    --  GNAT, GNATBIND
-   --  Set to ' ' for the default case (no task dispatching policy specified).
-   --  Reset to first character (uppercase) of task dispatching policy name
+   --  Set to No_Name for the default case (no task dispatching policy 
+   --  specified). Reset to the Name_Id of task dispatching policy name
    --  if a valid Task_Dispatching_Policy pragma is encountered.
 
    Task_Dispatching_Policy_Sloc : Source_Ptr := No_Location;
