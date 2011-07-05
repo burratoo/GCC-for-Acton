@@ -161,6 +161,7 @@ package Snames is
    Name_uLocal_Final_List              : constant Name_Id := N + $;
    Name_uMaster                        : constant Name_Id := N + $;
    Name_uObject                        : constant Name_Id := N + $;
+   Name_uOTCR                          : constant Name_Id := N + $;
    Name_uPhase                         : constant Name_Id := N + $;
    Name_uPostconditions                : constant Name_Id := N + $;
    Name_uPriority                      : constant Name_Id := N + $;

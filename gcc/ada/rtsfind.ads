@@ -1656,7 +1656,15 @@ package Rtsfind is
      RE_Expunge_Unactivated_Tasks,       -- System.Tasking.Stages
      RE_Move_Activation_Chain,           -- System_Tasking_Stages
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
-     RE_Terminated);                     -- System.Tasking.Stages
+     RE_Terminated,                      -- System.Tasking.Stages
+     
+     RE_Complete_Activation,             -- ARPART.Tasks
+     RE_Complete_Task,                   -- ARAPRT.Tasks
+     RE_Default_Call_Stack_Size,           
+     --  Oak.Processor_Support_Package.Call_Stack,
+     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access,
+     RE_Oak_Task);                       -- Oak.Oak_Task
+
 
    --  The following declarations build a table that is indexed by the RTE
    --  function to determine the unit containing the given entity. This table
@@ -2863,14 +2871,20 @@ package Rtsfind is
 
      RE_Abort_Tasks                      => System_Tasking_Stages,
      RE_Activate_Tasks                   => System_Tasking_Stages,
-     RE_Complete_Activation              => System_Tasking_Stages,
      RE_Create_Task                      => System_Tasking_Stages,
-     RE_Complete_Task                    => System_Tasking_Stages,
      RE_Free_Task                        => System_Tasking_Stages,
      RE_Expunge_Unactivated_Tasks        => System_Tasking_Stages,
      RE_Move_Activation_Chain            => System_Tasking_Stages,
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
-     RE_Terminated                       => System_Tasking_Stages);
+     RE_Terminated                       => System_Tasking_Stages,
+     
+     RE_Complete_Activation,             => ARPART_Tasks,
+     RE_Complete_Task                    => ARAPRT_Tasks,
+     RE_Default_Call_Stack_Size          => 
+       Oak_Processor_Support_Package_Call_Stack,
+     RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
+     RE_Oak_Task                         => Oak_Oak_Task);
+
 
    --------------------------------
    -- Configurable Run-Time Mode --

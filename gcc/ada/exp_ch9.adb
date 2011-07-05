@@ -10175,7 +10175,7 @@ package body Exp_Ch9 is
    --    begin
    --       Abort_Undefer.all;
    --       <declarations>
-   --       System.Task_Stages.Complete_Activation;
+   --       OTCR.Tasks.Complete_Activation;
    --       <statements>
    --    at end
    --       _clean;
@@ -10237,7 +10237,7 @@ package body Exp_Ch9 is
       --  field (which was set for exactly this purpose).
 
       if Restricted_Profile then
-         Call := Build_Runtime_Call (Loc, RE_Complete_Restricted_Activation);
+         Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
       else
          Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
       end if;
@@ -10251,17 +10251,6 @@ package body Exp_Ch9 is
           Specification              => Build_Task_Proc_Specification (Ttyp),
           Declarations               => Declarations (N),
           Handled_Statement_Sequence => Handled_Statement_Sequence (N));
-
-      --  If the task contains generic instantiations, cleanup actions are
-      --  delayed until after instantiation. Transfer the activation chain to
-      --  the subprogram, to insure that the activation call is properly
-      --  generated. It the task body contains inner tasks, indicate that the
-      --  subprogram is a task master.
-
-      if Delay_Cleanups (Ttyp) then
-         Set_Activation_Chain_Entity (New_N, Activation_Chain_Entity (N));
-         Set_Is_Task_Master  (New_N, Is_Task_Master (N));
-      end if;
 
       Rewrite (N, New_N);
       Analyze (N);
@@ -10321,12 +10310,13 @@ package body Exp_Ch9 is
    --  values of this task. The general form of this type declaration is
 
    --    type taskV (discriminants) is record
-   --      _Task_Id     : Task_Id;
-   --      entry_family : array (bounds) of Void;
-   --      _Priority    : Integer         := priority_expression;
-   --      _Size        : Size_Type       := Size_Type (size_expression);
-   --      _Task_Info   : Task_Info_Type  := task_info_expression;
-   --      _CPU         : Integer         := cpu_range_expression;
+   --      _OTCR              : Oak_Task;
+   --      entry_family       : array (bounds) of Void;
+   --      _Priority          : Integer         := priority_expression;
+   --      _Size              : Size_Type       := Size_Type (size_expression);
+   --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
+   --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
+   --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase;  
    --    end record;
 
    --  The discriminants are present only if the corresponding task type has
@@ -10355,20 +10345,26 @@ package body Exp_Ch9 is
    --  argument that was present in the pragma, and is used to provide the Size
    --  parameter to the call to Create_Task.
 
-   --  The _Task_Info field is present only if a Task_Info pragma appears in
-   --  the task definition. The expression captures the argument that was
-   --  present in the pragma, and is used to provide the Task_Image parameter
-   --  to the call to Create_Task.
-
-   --  The _CPU field is present only if a CPU pragma appears in the task
+   --  The _CPU field is currently not being used.
+   --  (The _CPU field is present only if a CPU pragma appears in the task
    --  definition. The expression captures the argument that was present in
    --  the pragma, and is used to provide the CPU parameter to the call to
-   --  Create_Task.
+   --  Create_Task.)
 
    --  The _Relative_Deadline field is present only if a Relative_Deadline
    --  pragma appears in the task definition. The expression captures the
    --  argument that was present in the pragma, and is used to provide the
    --  Relative_Deadline parameter to the call to Create_Task.
+
+   --  The _Cycle_Period field is present only if a _Cycle_Period
+   --  pragma appears in the task definition. The expression captures the
+   --  argument that was present in the pragma, and is used to provide the
+   --  _Cycle_Period parameter to the call to Create_Task.
+
+   --  The _Phase field is present only if a _Phase pragma appears in the
+   --  task definition. The expression captures the argument that was 
+   --  present in the pragma, and is used to provide the _Phase parameter
+   --   to the call to Create_Task.
 
    --  When a task is declared, an instance of the task value record is
    --  created. The elaboration of this declaration creates the correct bounds
@@ -10483,38 +10479,23 @@ package body Exp_Ch9 is
       --  done last, since the corresponding record initialization procedure
       --  will reference the previously created entities.
 
-      --  Fill in the component declarations -- first the _Task_Id field
-
-      Append_To (Cdecls,
-        Make_Component_Declaration (Loc,
-          Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uTask_Id),
-          Component_Definition =>
-            Make_Component_Definition (Loc,
-              Aliased_Present    => False,
-              Subtype_Indication => New_Reference_To (RTE (RO_ST_Task_Id),
-                                    Loc))));
-
-      --  Declare static ATCB (that is, created by the expander) if we are
+      --  Fill in the component declarations 
+      
+      --  Declare static OTCR (that is, created by the expander) if we are
       --  using the Restricted run time.
 
       if Restricted_Profile then
          Append_To (Cdecls,
            Make_Component_Declaration (Loc,
              Defining_Identifier  =>
-               Make_Defining_Identifier (Loc, Name_uATCB),
+               Make_Defining_Identifier (Loc, Name_uOTCR),
 
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present     => True,
                  Subtype_Indication  => Make_Subtype_Indication (Loc,
                    Subtype_Mark => New_Occurrence_Of
-                     (RTE (RE_Ada_Task_Control_Block), Loc),
-
-                   Constraint   =>
-                     Make_Index_Or_Discriminant_Constraint (Loc,
-                       Constraints =>
-                         New_List (Make_Integer_Literal (Loc, 0)))))));
+                     (RTE (RE_Oak_Task), Loc)))));
 
       end if;
 
@@ -10662,47 +10643,26 @@ package body Exp_Ch9 is
                          (Taskdef, Name_Storage_Size))))))));
       end if;
 
-      --  Add the _Task_Info component if a Task_Info pragma is present
-
-      if Present (Taskdef) and then Has_Task_Info_Pragma (Taskdef) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uTask_Info),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Task_Info_Type), Loc)),
-
-             Expression => New_Copy (
-               Expression (First (
-                 Pragma_Argument_Associations (
-                   Find_Task_Or_Protected_Pragma
-                     (Taskdef, Name_Task_Info)))))));
-      end if;
-
       --  Add the _CPU component if a CPU pragma is present
 
-      if Present (Taskdef) and then Has_Pragma_CPU (Taskdef) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uCPU),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_CPU_Range), Loc)),
-
-             Expression => New_Copy (
-               Expression (First (
-                 Pragma_Argument_Associations (
-                   Find_Task_Or_Protected_Pragma
-                     (Taskdef, Name_CPU)))))));
-      end if;
+      --  if Present (Taskdef) and then Has_Pragma_CPU (Taskdef) then
+      --     Append_To (Cdecls,
+      --       Make_Component_Declaration (Loc,
+      --         Defining_Identifier =>
+      --           Make_Defining_Identifier (Loc, Name_uCPU),
+      --  
+      --         Component_Definition =>
+      --           Make_Component_Definition (Loc,
+      --             Aliased_Present    => False,
+      --             Subtype_Indication =>
+      --               New_Reference_To (RTE (RE_CPU_Range), Loc)),
+      --  
+      --         Expression => New_Copy (
+      --           Expression (First (
+      --             Pragma_Argument_Associations (
+      --               Find_Task_Or_Protected_Pragma
+      --                 (Taskdef, Name_CPU)))))));
+      --  end if;
 
       --  Add the _Relative_Deadline component if a Relative_Deadline pragma is
       --  present. If we are using a restricted run time this component will
@@ -10732,6 +10692,52 @@ package body Exp_Ch9 is
                          (Taskdef, Name_Relative_Deadline))))))));
       end if;
 
+      --  Add the _Cycle_Period component if a Cycle_Period pragma is present
+
+      if Present (Taskdef) and then Has_Pragma_Cycle_Period (Taskdef) then
+         Append_To (Cdecls,
+           Make_Component_Declaration (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uCycle_Period),
+
+             Component_Definition =>
+               Make_Component_Definition (Loc,
+                 Aliased_Present    => False,
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Time_Span), Loc)),
+      
+             Expression =>
+               Convert_To (RTE (RE_Time_Span),
+                 Relocate_Node (
+                   Expression (First (
+                     Pragma_Argument_Associations (
+                       Find_Task_Or_Protected_Pragma
+                         (Taskdef, Name_Cycle_Period))))))));
+      end if;
+
+      --  Add the _Phase component if a Phase pragma is present
+
+      if Present (Taskdef) and then Has_Pragma_Phase (Taskdef) then
+         Append_To (Cdecls,
+           Make_Component_Declaration (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uPhase),
+
+             Component_Definition =>
+               Make_Component_Definition (Loc,
+                 Aliased_Present    => False,
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Time_Span), Loc)),
+      
+             Expression =>
+               Convert_To (RTE (RE_Time_Span),
+                 Relocate_Node (
+                   Expression (First (
+                     Pragma_Argument_Associations (
+                       Find_Task_Or_Protected_Pragma
+                         (Taskdef, Name_Phase))))))));
+      end if;
+      
       Insert_After (Size_Decl, Rec_Decl);
 
       --  Analyze the record declaration immediately after construction,
@@ -12566,18 +12572,12 @@ package body Exp_Ch9 is
 
       Args := New_List;
 
-      --  Priority parameter. Set to Unspecified_Priority unless there is a
-      --  priority pragma, in which case we take the value from the pragma.
-
-      if Present (Tdef) and then Has_Pragma_Priority (Tdef) then
-         Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
-      else
-         Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
-      end if;
+      -- Oak Task Handler
+      Append_To (Args,
+        Make_Attribute_Reference (Loc,
+          Prefix         => Make_Identifier (Loc, Name_uInit),
+          Selector_Name  => Make_Identifier (Loc, Name_uOTCR)));
+          Attribute_Name => Name_Unchecked_Access));
 
       --  Optional Stack parameter
 
@@ -12596,8 +12596,7 @@ package body Exp_Ch9 is
                 Attribute_Name => Name_Address));
 
          else
-            Append_To (Args,
-              New_Reference_To (RTE (RE_Null_Address), Loc));
+            Append_To (Args, Make_Null (Loc));
          end if;
       end if;
 
@@ -12620,21 +12619,92 @@ package body Exp_Ch9 is
          Append_To (Args,
            New_Reference_To (Storage_Size_Variable (Ttyp), Loc));
       end if;
-
-      --  Task_Info parameter. Set to Unspecified_Task_Info unless there is a
-      --  Task_Info pragma, in which case we take the value from the pragma.
+      
+      --  Task name parameter. Take this from the _Task_Name parameter to the
+      --  init call unless there is a Task_Name pragma, in which case we take
+      --  the value from the pragma.
 
       if Present (Tdef)
-        and then Has_Task_Info_Pragma (Tdef)
+        and then Has_Task_Name_Pragma (Tdef)
       then
+         --  Copy expression in full, because it may be dynamic and have
+         --  side effects.
+
+         Append_To (Args,
+           New_Copy_Tree
+             (Expression (First
+                           (Pragma_Argument_Associations
+                             (Find_Task_Or_Protected_Pragma
+                               (Tdef, Name_Task_Name))))));
+
+      else
+         Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
+      end if;
+
+
+      --  Priority parameter. Set to Unspecified_Priority unless there is a
+      --  priority pragma, in which case we take the value from the pragma.
+
+      if Present (Tdef) and then Has_Pragma_Priority (Tdef) then
          Append_To (Args,
            Make_Selected_Component (Loc,
              Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uTask_Info)));
+             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
+      end if;
+
+
+
+      --  Deadline parameter. If no Relative_Deadline pragma is present,
+      --  then the deadline is Time_Span_Zero. If a pragma is present, then
+      --  the deadline is taken from the _Relative_Deadline field of the
+      --  task value record, which was set from the pragma value. Note that
+      --  this parameter must not be generated for the restricted profiles
+      --  since Ravenscar does not allow deadlines.
+
+      --  Note that we let it here because we can.
+
+      --  Case where pragma Relative_Deadline applies: use given value
+
+      if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        =>
+               Make_Identifier (Loc, Name_uInit),
+             Selector_Name =>
+               Make_Identifier (Loc, Name_uRelative_Deadline)));
+
+      --  No pragma Relative_Deadline apply to the task
 
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_Task_Info), Loc));
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+      end if;
+
+      --  Cycle_Period parameter. Set to Time_Span_Last unless there is a 
+      --  Cycle_Period pragma,in which case we take the value from the pragma. 
+
+      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+         Make_Selected_Component (Loc,
+           Prefix        => Make_Identifier (Loc, Name_uInit),
+           Selector_Name => Make_Identifier (Loc, Name_uCycle_Period)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Time_Span_Last), Loc));
+      end if;
+
+      --  Phase parameter. Set to Time_Span_Zero unless there is a 
+      --  Phase pragma,in which case we take the value from the pragma. 
+
+      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+         Make_Selected_Component (Loc,
+           Prefix        => Make_Identifier (Loc, Name_uInit),
+           Selector_Name => Make_Identifier (Loc, Name_uPhase)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
       end if;
 
       --  CPU parameter. Set to Unspecified_CPU unless there is a CPU pragma,
@@ -12642,74 +12712,18 @@ package body Exp_Ch9 is
       --  passed as an Integer because in the case of unspecified CPU the
       --  value is not in the range of CPU_Range.
 
-      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
-         Append_To (Args,
-           Convert_To (Standard_Integer,
-             Make_Selected_Component (Loc,
-               Prefix        => Make_Identifier (Loc, Name_uInit),
-               Selector_Name => Make_Identifier (Loc, Name_uCPU))));
-
-      else
-         Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
-      end if;
-
-      if not Restricted_Profile then
-
-         --  Deadline parameter. If no Relative_Deadline pragma is present,
-         --  then the deadline is Time_Span_Zero. If a pragma is present, then
-         --  the deadline is taken from the _Relative_Deadline field of the
-         --  task value record, which was set from the pragma value. Note that
-         --  this parameter must not be generated for the restricted profiles
-         --  since Ravenscar does not allow deadlines.
-
-         --  Case where pragma Relative_Deadline applies: use given value
-
-         if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
-            Append_To (Args,
-              Make_Selected_Component (Loc,
-                Prefix        =>
-                  Make_Identifier (Loc, Name_uInit),
-                Selector_Name =>
-                  Make_Identifier (Loc, Name_uRelative_Deadline)));
-
-         --  No pragma Relative_Deadline apply to the task
-
-         else
-            Append_To (Args,
-              New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
-         end if;
-
-         --  Number of entries. This is an expression of the form:
-
-         --    n + _Init.a'Length + _Init.a'B'Length + ...
-
-         --  where a,b... are the entry family names for the task definition
-
-         Ecount :=
-           Build_Entry_Count_Expression
-             (Ttyp,
-              Component_Items
-                (Component_List
-                   (Type_Definition
-                      (Parent (Corresponding_Record_Type (Ttyp))))),
-              Loc);
-         Append_To (Args, Ecount);
-
-         --  Master parameter. This is a reference to the _Master parameter of
-         --  the initialization procedure, except in the case of the pragma
-         --  Restrictions (No_Task_Hierarchy) where the value is fixed to
-         --  System.Tasking.Library_Task_Level.
-
-         if Restriction_Active (No_Task_Hierarchy) = False then
-            Append_To (Args, Make_Identifier (Loc, Name_uMaster));
-         else
-            Append_To (Args,
-              New_Occurrence_Of (RTE (RE_Library_Task_Level), Loc));
-         end if;
-      end if;
-
-      --  State parameter. This is a pointer to the task body procedure. The
+      --  if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+      --     Append_To (Args,
+      --       Convert_To (Standard_Integer,
+      --         Make_Selected_Component (Loc,
+      --           Prefix        => Make_Identifier (Loc, Name_uInit),
+      --           Selector_Name => Make_Identifier (Loc, Name_uCPU))));
+      --  else
+      --     Append_To (Args,
+      --       New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
+      --  end if;
+  
+      --  Run_Loop parameter. This is a pointer to the task body procedure. The
       --  required value is obtained by taking 'Unrestricted_Access of the task
       --  body procedure and converting it (with an unchecked conversion) to
       --  the type required by the task kernel. For further details, see the
@@ -12731,42 +12745,18 @@ package body Exp_Ch9 is
          --  it's actually inside the init procedure for the record type that
          --  corresponds to the task type.
 
-         --  This processing is causing a crash in the .NET/JVM back ends that
-         --  is not yet understood, so skip it in these cases ???
+         Set_Itype (Ref, Subp_Ptr_Typ);
+         Append_Freeze_Action (Task_Rec, Ref);
 
-         if VM_Target = No_VM then
-            Set_Itype (Ref, Subp_Ptr_Typ);
-            Append_Freeze_Action (Task_Rec, Ref);
-
-            Append_To (Args,
-              Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-                Make_Qualified_Expression (Loc,
-                  Subtype_Mark => New_Reference_To (Subp_Ptr_Typ, Loc),
-                  Expression   =>
-                    Make_Attribute_Reference (Loc,
-                      Prefix =>
-                        New_Occurrence_Of (Body_Proc, Loc),
-                      Attribute_Name => Name_Unrestricted_Access))));
-
-         --  For the .NET/JVM cases revert to the original code below ???
-
-         else
-            Append_To (Args,
-              Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-                Make_Attribute_Reference (Loc,
-                  Prefix =>
-                    New_Occurrence_Of (Body_Proc, Loc),
-                  Attribute_Name => Name_Address)));
-         end if;
-      end;
-
-      --  Discriminants parameter. This is just the address of the task
-      --  value record itself (which contains the discriminant values
-
-      Append_To (Args,
-        Make_Attribute_Reference (Loc,
-          Prefix => Make_Identifier (Loc, Name_uInit),
-          Attribute_Name => Name_Address));
+         Append_To (Args,
+           Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
+             Make_Qualified_Expression (Loc,
+               Subtype_Mark => New_Reference_To (Subp_Ptr_Typ, Loc),
+               Expression   =>
+                 Make_Attribute_Reference (Loc,
+                   Prefix =>
+                     New_Occurrence_Of (Body_Proc, Loc),
+                   Attribute_Name => Name_Unrestricted_Access))));
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
 
@@ -12774,40 +12764,6 @@ package body Exp_Ch9 is
         Make_Attribute_Reference (Loc,
           Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
           Attribute_Name => Name_Unchecked_Access));
-
-      --  Chain parameter. This is a reference to the _Chain parameter of
-      --  the initialization procedure.
-
-      Append_To (Args, Make_Identifier (Loc, Name_uChain));
-
-      --  Task name parameter. Take this from the _Task_Id parameter to the
-      --  init call unless there is a Task_Name pragma, in which case we take
-      --  the value from the pragma.
-
-      if Present (Tdef)
-        and then Has_Task_Name_Pragma (Tdef)
-      then
-         --  Copy expression in full, because it may be dynamic and have
-         --  side effects.
-
-         Append_To (Args,
-           New_Copy_Tree
-             (Expression (First
-                           (Pragma_Argument_Associations
-                             (Find_Task_Or_Protected_Pragma
-                               (Tdef, Name_Task_Name))))));
-
-      else
-         Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
-      end if;
-
-      --  Created_Task parameter. This is the _Task_Id field of the task
-      --  record value
-
-      Append_To (Args,
-        Make_Selected_Component (Loc,
-          Prefix        => Make_Identifier (Loc, Name_uInit),
-          Selector_Name => Make_Identifier (Loc, Name_uTask_Id)));
 
       --  Build_Entry_Names generation flag. When set to true, the runtime
       --  will allocate an array to hold the string names of task entries.
@@ -12823,9 +12779,9 @@ package body Exp_Ch9 is
       end if;
 
       if Restricted_Profile then
-         Name := New_Reference_To (RTE (RE_Create_Restricted_Task), Loc);
+         Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
       else
-         Name := New_Reference_To (RTE (RE_Create_Task), Loc);
+         Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
       end if;
 
       return
