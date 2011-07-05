@@ -237,10 +237,9 @@ package Lib.Writ is
    --         SS   This unit references System.Secondary_Stack (that is,
    --              the unit makes use of the secondary stack facilities).
    --
-   --         Tx   A valid Task_Dispatching_Policy pragma applies to all
-   --              the units in this file, where x is the first character
-   --              (upper case) of the corresponding policy name (e.g. 'F'
-   --              for FIFO_Within_Priorities).
+   --         Ts   A valid Task_Dispatching_Policy pragma applies to all
+   --              the units in this file, where s is the string of the 
+   --              corresponding policy name.
    --
    --         UA  Unreserve_All_Interrupts pragma was processed in one or
    --             more units in this file
@@ -387,8 +386,8 @@ package Lib.Writ is
    --      pragma. There is one line for each separate pragma, and if no such
    --      pragmas are used, then no S lines are present.
 
-   --      The policy_identifier is the first character (upper case) of the
-   --      corresponding policy name (e.g. 'F' for FIFO_Within_Priorities).
+   --      The policy_identifier is the string of the policy name 
+   --      (e.g. FIFO_Within_Priorities).
 
    --      The first_priority and last_priority fields define the range of
    --      priorities to which the specified dispatching policy apply.
@@ -744,7 +743,7 @@ package Lib.Writ is
    --  at compile time when we can.
 
    type Specific_Dispatching_Entry is record
-      Dispatching_Policy : Character;
+      Dispatching_Policy : Name_Id;
       --  First character (upper case) of the corresponding policy name
 
       First_Priority     : Nat;

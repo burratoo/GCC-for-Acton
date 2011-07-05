@@ -162,12 +162,11 @@ package ALI is
       --  this is a language defined unit. Otherwise set to first character
       --  (upper case) of policy name. Not set if 'P' appears in Ignore_Lines.
 
-      Task_Dispatching_Policy : Character;
-      --  Indicates task dispatching policy for units in this file. Space means
-      --  tasking was not used, or that no Task_Dispatching_Policy pragma was
-      --  present or that this is a language defined unit. Otherwise set to
-      --  first character (upper case) of policy name. Not set if 'P' appears
-      --  in Ignore_Lines.
+      Task_Dispatching_Policy : Name_Id;
+      --  Indicates task dispatching policy for units in this file. No_Name 
+      --  means tasking was not used, or that no Task_Dispatching_Policy pragma 
+      --  was present or that this is a language defined unit. Otherwise set to
+      --  Name_Id of policy name. Not set if 'P' appears in Ignore_Lines.
 
       Compile_Errors : Boolean;
       --  Set to True if compile errors for unit. Note that No_Object will
@@ -421,8 +420,8 @@ package ALI is
    --  ALI file.
 
    type Specific_Dispatching_Record is record
-      Dispatching_Policy : Character;
-      --  First character (upper case) of the corresponding policy name
+      Dispatching_Policy : Name_Id;
+      --  Name_Id of the corresponding policy name
 
       First_Priority     : Nat;
       --  Lower bound of the priority range to which the specified dispatching
@@ -500,9 +499,9 @@ package ALI is
    --  non-internal unit compiled with the static elaboration model is
    --  encountered.
 
-   Task_Dispatching_Policy_Specified : Character := ' ';
+   Task_Dispatching_Policy_Specified : Name_Id := No_Name;
    --  Set to blank by Initialize_ALI. Set to the appropriate task dispatching
-   --  policy character if an ali file contains a P line setting the
+   --  policy Name_Id if an ali file contains a P line setting the
    --  task dispatching policy.
 
    Unreserve_All_Interrupts_Specified : Boolean := False;

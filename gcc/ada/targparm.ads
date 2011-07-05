@@ -105,7 +105,7 @@ package Targparm is
    --  is set to System_Location.
 
    --  If a pragma Task_Dispatching_Policy appears, then the flag
-   --  Opt.Task_Dispatching_Policy is set to the first character of the
+   --  Opt.Task_Dispatching_Policy is set to the Name_Id of the
    --  policy name, and Opt.Task_Dispatching_Policy_Sloc is set to
    --  System_Location.
 
