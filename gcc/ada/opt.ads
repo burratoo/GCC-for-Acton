@@ -40,6 +40,7 @@
 
 with Hostparm; use Hostparm;
 with Types;    use Types;
+with Namet;    use Namet;
 
 pragma Warnings (Off);
 --  This package is used also by gnatcoll
