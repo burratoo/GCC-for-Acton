@@ -5505,7 +5505,7 @@ package body Sem_Prag is
          Name_Buffer (1 .. 22) := "fifo_within_priorities";
          Name_Len              := 22;
          FIFO_Policy           := Name_Find;
-         
+
          if Task_Dispatching_Policy /= No_Name
            and then Task_Dispatching_Policy /= FIFO_Policy
          then

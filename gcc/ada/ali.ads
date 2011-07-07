@@ -124,7 +124,7 @@ package ALI is
       Main_Program : Main_Program_Type;
       --  Indicator of whether first unit can be used as main program. Not set
       --  if 'M' appears in Ignore_Lines.
-      
+
       Main_Priority : Int;
       --  Indicates priority value if Main_Program field indicates that this
       --  can be a main program. A value of -1 (No_Main_Priority) indicates
@@ -138,22 +138,22 @@ package ALI is
       --  in Ignore_Lines.
 
       Main_Cycle_Period : Int;
-      --  Indicates cycle period value if Main_Program field indicates that 
+      --  Indicates cycle period value if Main_Program field indicates that
       --  this can be a main program. A value of 0 (No_Main_Cycle_Period)
       --  indicates that no paramater was found, or no M line was present.
       --  Not set if 'M' appears in Ingore_Lines.
 
       Main_Deadline : Int;
-      --  Indicates the relative deadline period value if Main_Program field 
-      --  indicates that this can be a main program. A value of 0 
+      --  Indicates the relative deadline period value if Main_Program field
+      --  indicates that this can be a main program. A value of 0
       --  (No_Main_Deadline)indicates that no paramater was found, or no M line
       --  was present. Not set if 'M' appears in Ingore_Lines.
-      
+
       Main_Stack_Size : Int;
-      --  Indicates stack size value if Main_Program field indicates that 
+      --  Indicates stack size value if Main_Program field indicates that
       --  this can be a main program. A value of -1 (No_Main_Stack_Size)
       --  indicates that no paramater was found, or no M line was present.
-      --  Not set if 'M' appears in Ingore_Lines.      
+      --  Not set if 'M' appears in Ingore_Lines.
 
       Time_Slice_Value : Int;
       --  Indicates value of time slice parameter from T=xxx on main program
@@ -181,8 +181,8 @@ package ALI is
       --  (upper case) of policy name. Not set if 'P' appears in Ignore_Lines.
 
       Task_Dispatching_Policy : Name_Id;
-      --  Indicates task dispatching policy for units in this file. No_Name 
-      --  means tasking was not used, or that no Task_Dispatching_Policy pragma 
+      --  Indicates task dispatching policy for units in this file. No_Name
+      --  means tasking was not used, or that no Task_Dispatching_Policy pragma
       --  was present or that this is a language defined unit. Otherwise set to
       --  Name_Id of policy name. Not set if 'P' appears in Ignore_Lines.
 

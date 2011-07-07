@@ -928,7 +928,7 @@ package body ALI is
                   Checkc ('=');
                   ALIs.Table (Id).Main_CPU := Get_Nat;
                end if;
-               
+
                Skip_Space;
 
                if Nextc = 'P' then
@@ -958,7 +958,7 @@ package body ALI is
                Checkc ('W');
                Checkc ('=');
                ALIs.Table (Id).WC_Encoding := Getc;
-               
+
             end if;
 
             Skip_Eol;
