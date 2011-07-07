@@ -1251,7 +1251,7 @@ package Opt is
 
    Task_Dispatching_Policy : Name_Id := No_Name;
    --  GNAT, GNATBIND
-   --  Set to No_Name for the default case (no task dispatching policy 
+   --  Set to No_Name for the default case (no task dispatching policy
    --  specified). Reset to the Name_Id of task dispatching policy name
    --  if a valid Task_Dispatching_Policy pragma is encountered.
 

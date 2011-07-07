@@ -29,13 +29,11 @@ with Casing;   use Casing;
 with Fname;    use Fname;
 with Gnatvsn;  use Gnatvsn;
 with Hostparm;
-with Namet;    use Namet;
 with Opt;      use Opt;
 with Osint;    use Osint;
 with Osint.B;  use Osint.B;
 with Output;   use Output;
 with Rident;   use Rident;
-with Table;    use Table;
 with Targparm; use Targparm;
 with Types;    use Types;
 
@@ -88,20 +86,21 @@ package body Bindgen is
      Table_Increment      => 200,
      Table_Name           => "IS_Pragma_Settings");
 
-   --  This table assembles the Priority_Specific_Dispatching pragma
-   --  information from all the units in the partition. Note that Bcheck has
-   --  already checked that the information is consistent across units.
-   --  The entries in this table are the upper case first character of the
-   --  policy name, e.g. 'F' for FIFO_Within_Priorities.
+   ----------------------------
+   -- Scheduler_Agents Table --
+   ----------------------------
 
-   package PSD_Pragma_Settings is new Table.Table (
-     Table_Component_Type => Character,
-     Table_Index_Type     => Int,
-     Table_Low_Bound      => 0,
-     Table_Initial        => 100,
-     Table_Increment      => 200,
-     Table_Name           => "PSD_Pragma_Settings");
+   --  Table to record each scheduler agent and their associated priorities.
+   --  Used to form create calls to scheduler agents.
 
+   package Scheduler_Agents is new Table.Table
+     (Table_Component_Type => Specific_Dispatching_Record,
+      Table_Index_Type     => Natural,
+      Table_Low_Bound      => System.Any_Priority'First,
+      Table_Initial        => 10,
+      Table_Increment      => 10,
+      Table_Name           => "Scheduler_Agents");
+   
    ----------------------
    -- Run-Time Globals --
    ----------------------
@@ -109,15 +108,10 @@ package body Bindgen is
    --  This section documents the global variables that set from the
    --  generated binder file.
 
-   --     Main_Priority                 : Integer;
-   --     Time_Slice_Value              : Integer;
    --     Heap_Size                     : Natural;
    --     WC_Encoding                   : Character;
    --     Locking_Policy                : Character;
    --     Queuing_Policy                : Character;
-   --     Task_Dispatching_Policy       : Character;
-   --     Priority_Specific_Dispatching : System.Address;
-   --     Num_Specific_Dispatching      : Integer;
    --     Restrictions                  : System.Address;
    --     Interrupt_States              : System.Address;
    --     Num_Interrupt_States          : Integer;
@@ -127,16 +121,6 @@ package body Bindgen is
    --     Detect_Blocking               : Integer;
    --     Default_Stack_Size            : Integer;
    --     Leap_Seconds_Support          : Integer;
-   --     Main_CPU                      : Integer;
-
-   --  Main_Priority is the priority value set by pragma Priority in the main
-   --  program. If no such pragma is present, the value is -1.
-
-   --  Time_Slice_Value is the time slice value set by pragma Time_Slice in the
-   --  main program, or by the use of a -Tnnn parameter for the binder (if both
-   --  are present, the binder value overrides). The value is in milliseconds.
-   --  A value of zero indicates that time slicing should be suppressed. If no
-   --  pragma is present, and no -T switch was used, the value is -1.
 
    --  Heap_Size is the heap to use for memory allocations set by use of a
    --  -Hnn parameter for the binder or by the GNAT$NO_MALLOC_64 logical.
@@ -155,25 +139,6 @@ package body Bindgen is
    --  partition. If a queuing policy was specified, the value is the upper
    --  case first character of the queuing policy name for example, 'F' for
    --  FIFO_Queuing.
-
-   --  Task_Dispatching_Policy is a space if no task dispatching policy was
-   --  specified for the partition. If a task dispatching policy was specified,
-   --  the value is the upper case first character of the policy name, e.g. 'F'
-   --  for FIFO_Within_Priorities.
-
-   --  Priority_Specific_Dispatching is the address of a string used to store
-   --  the task dispatching policy specified for the different priorities in
-   --  the partition. The length of this string is determined by the last
-   --  priority for which such a pragma applies (the string will be a null
-   --  string if no specific dispatching policies were used). If pragma were
-   --  present, the entries apply to the priorities in sequence from the first
-   --  priority. The value stored is the upper case first character of the
-   --  policy name, or 'F' (for FIFO_Within_Priorities) as the default value
-   --  for those priority ranges not specified.
-
-   --  Num_Specific_Dispatching is the length of the
-   --  Priority_Specific_Dispatching string. It will be set to zero if no
-   --  Priority_Specific_Dispatching pragmas are present.
 
    --  Restrictions is the address of a null-terminated string specifying the
    --  restrictions information for the partition. The format is identical to
@@ -216,9 +181,6 @@ package body Bindgen is
    --  disabled. A value of zero indicates that leap seconds are turned "off",
    --  while a value of one signifies "on" status.
 
-   --  Main_CPU is the processor set by pragma CPU in the main program. If no
-   --  such pragma is present, the value is -1.
-
    -----------------------
    -- Local Subprograms --
    -----------------------
@@ -233,35 +195,17 @@ package body Bindgen is
    procedure Gen_Adainit_Ada;
    --  Generates the Adainit procedure (Ada code case)
 
-   procedure Gen_Adainit_C;
-   --  Generates the Adainit procedure (C code case)
-
    procedure Gen_Adafinal_Ada;
    --  Generate the Adafinal procedure (Ada code case)
-
-   procedure Gen_Adafinal_C;
-   --  Generate the Adafinal procedure (C code case)
 
    procedure Gen_Elab_Calls_Ada;
    --  Generate sequence of elaboration calls (Ada code case)
 
-   procedure Gen_Elab_Calls_C;
-   --  Generate sequence of elaboration calls (C code case)
-
    procedure Gen_Elab_Order_Ada;
    --  Generate comments showing elaboration order chosen (Ada case)
 
-   procedure Gen_Elab_Order_C;
-   --  Generate comments showing elaboration order chosen (C case)
-
-   procedure Gen_Elab_Defs_C;
-   --  Generate sequence of definitions for elaboration routines (C code case)
-
    procedure Gen_Main_Ada;
    --  Generate procedure main (Ada code case)
-
-   procedure Gen_Main_C;
-   --  Generate main() procedure (C code case)
 
    procedure Gen_Object_Files_Options;
    --  Output comments containing a list of the full names of the object
@@ -271,20 +215,11 @@ package body Bindgen is
    procedure Gen_Output_File_Ada (Filename : String);
    --  Generate output file (Ada code case)
 
-   procedure Gen_Output_File_C (Filename : String);
-   --  Generate output file (C code case)
-
    procedure Gen_Restrictions_Ada;
    --  Generate initialization of restrictions variable (Ada code case)
 
-   procedure Gen_Restrictions_C;
-   --  Generate initialization of restrictions variable (C code case)
-
    procedure Gen_Versions_Ada;
    --  Output series of definitions for unit versions (Ada code case)
-
-   procedure Gen_Versions_C;
-   --  Output series of definitions for unit versions (C code case)
 
    function Get_Ada_Main_Name return String;
    --  This function is used in the Ada main output case to compute a usable
@@ -346,8 +281,9 @@ package body Bindgen is
    procedure Set_Name_Buffer;
    --  Set the value stored in positions 1 .. Name_Len of the Name_Buffer
 
-   procedure Set_PSD_Pragma_Table;
-   --  Initializes contents of PSD_Pragma_Settings table from ALI table
+   procedure Set_Scheduler_Agent_Table;
+   --  Generates the Scheduler_Agents table from the data in the
+   --  Specific_Dispatching table.
 
    procedure Set_String (S : String);
    --  Sets characters of given string in Statement_Buffer, starting at the
@@ -422,18 +358,6 @@ package body Bindgen is
       WBI ("   end " & Ada_Final_Name.all & ";");
    end Gen_Adafinal_Ada;
 
-   --------------------
-   -- Gen_Adafinal_C --
-   --------------------
-
-   procedure Gen_Adafinal_C is
-   begin
-      WBI ("void " & Ada_Final_Name.all & " (void) {");
-      WBI ("   system__standard_library__adafinal ();");
-      WBI ("}");
-      WBI ("");
-   end Gen_Adafinal_C;
-
    ---------------------
    -- Gen_Adainit_Ada --
    ---------------------
@@ -472,49 +396,12 @@ package body Bindgen is
                Set_String ("E");
                Set_Unit_Number (Unum);
 
-               case VM_Target is
-                  when No_VM | JVM_Target =>
-                     Set_String (" : Boolean; pragma Import (Ada, ");
-                  when CLI_Target =>
-                     Set_String (" : Boolean; pragma Import (CIL, ");
-               end case;
+               Set_String (" : Boolean; pragma Import (Ada, ");
 
                Set_String ("E");
                Set_Unit_Number (Unum);
                Set_String (", """);
                Get_Name_String (U.Uname);
-
-               --  In the case of JGNAT we need to emit an Import name that
-               --  includes the class name (using '$' separators in the case
-               --  of a child unit name).
-
-               if VM_Target /= No_VM then
-                  for J in 1 .. Name_Len - 2 loop
-                     if VM_Target = CLI_Target
-                       or else Name_Buffer (J) /= '.'
-                     then
-                        Set_Char (Name_Buffer (J));
-                     else
-                        Set_String ("$");
-                     end if;
-                  end loop;
-
-                  if VM_Target /= CLI_Target or else U.Unit_Kind = 's' then
-                     Set_String (".");
-                  else
-                     Set_String ("_pkg.");
-                  end if;
-
-                  --  If the unit name is very long, then split the
-                  --  Import link name across lines using "&" (occurs
-                  --  in some C2 tests).
-
-                  if 2 * Name_Len + 60 > Hostparm.Max_Line_Length then
-                     Set_String (""" &");
-                     Write_Statement_Buffer;
-                     Set_String ("         """);
-                  end if;
-               end if;
 
                Set_Unit_Name;
                Set_String ("_E"");");
@@ -525,46 +412,12 @@ package body Bindgen is
 
       Write_Statement_Buffer;
 
-      --  If the standard library is suppressed, then the only global variables
-      --  that might be needed (by the Ravenscar profile) are the priority and
-      --  the processor for the environment task.
-
+      --  Currently in Acton we suppress the standard library. Nothing needs to
+      --  be stored in global variables.
+      
       if Suppress_Standard_Library_On_Target then
-         if Main_Priority /= No_Main_Priority then
-            WBI ("      Main_Priority : Integer;");
-            WBI ("      pragma Import (C, Main_Priority," &
-                 " ""__gl_main_priority"");");
-            WBI ("");
-         end if;
-
-         if Main_CPU /= No_Main_CPU then
-            WBI ("      Main_CPU : Integer;");
-            WBI ("      pragma Import (C, Main_CPU," &
-                 " ""__gl_main_cpu"");");
-            WBI ("");
-         end if;
-
          WBI ("   begin");
-
-         if Main_Priority /= No_Main_Priority then
-            Set_String ("      Main_Priority := ");
-            Set_Int    (Main_Priority);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-         if Main_CPU /= No_Main_CPU then
-            Set_String ("      Main_CPU := ");
-            Set_Int    (Main_CPU);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-         if Main_Priority = No_Main_Priority
-           and then Main_CPU = No_Main_CPU
-         then
-            WBI ("      null;");
-         end if;
+         WBI ("      null;");
 
       --  Normal case (standard library not suppressed). Set all global values
       --  used by the run time.
@@ -712,19 +565,6 @@ package body Bindgen is
          Set_Char   (';');
          Write_Statement_Buffer;
 
-         Set_String ("      Time_Slice_Value := ");
-
-         if Task_Dispatching_Policy_Specified = 'F'
-           and then ALIs.Table (ALIs.First).Time_Slice_Value = -1
-         then
-            Set_Int (0);
-         else
-            Set_Int (ALIs.Table (ALIs.First).Time_Slice_Value);
-         end if;
-
-         Set_Char   (';');
-         Write_Statement_Buffer;
-
          Set_String ("      WC_Encoding := '");
          Set_Char   (Get_WC_Encoding);
 
@@ -741,20 +581,7 @@ package body Bindgen is
          Set_String ("';");
          Write_Statement_Buffer;
 
-         Set_String ("      Task_Dispatching_Policy := '");
-         Set_Char   (Task_Dispatching_Policy_Specified);
-         Set_String ("';");
-         Write_Statement_Buffer;
-
          Gen_Restrictions_Ada;
-
-         WBI ("      Priority_Specific_Dispatching :=");
-         WBI ("        Local_Priority_Specific_Dispatching'Address;");
-
-         Set_String ("      Num_Specific_Dispatching := ");
-         Set_Int (PSD_Pragma_Settings.Last + 1);
-         Set_Char (';');
-         Write_Statement_Buffer;
 
          Set_String ("      Main_CPU := ");
          Set_Int    (Main_CPU);
@@ -915,293 +742,6 @@ package body Bindgen is
       WBI ("   end " & Ada_Init_Name.all & ";");
    end Gen_Adainit_Ada;
 
-   -------------------
-   -- Gen_Adainit_C --
-   --------------------
-
-   procedure Gen_Adainit_C is
-      Main_Priority : Int renames ALIs.Table (ALIs.First).Main_Priority;
-      Main_CPU      : Int renames ALIs.Table (ALIs.First).Main_CPU;
-
-   begin
-      WBI ("void " & Ada_Init_Name.all & " (void)");
-      WBI ("{");
-
-      --  Generate externals for elaboration entities
-
-      for E in Elab_Order.First .. Elab_Order.Last loop
-         declare
-            Unum : constant Unit_Id := Elab_Order.Table (E);
-            U    : Unit_Record renames Units.Table (Unum);
-
-         begin
-            --  Check for Elab entity to be set for this unit
-
-            if U.Set_Elab_Entity
-
-            --  Don't generate reference for stand alone library
-
-              and then not U.SAL_Interface
-
-            --  Don't generate reference for predefined file in No_Run_Time
-            --  mode, since we don't include the object files in this case
-
-              and then not
-                (No_Run_Time_Mode
-                   and then Is_Predefined_File_Name (U.Sfile))
-            then
-               Set_String ("   extern char ");
-               Get_Name_String (U.Uname);
-               Set_Unit_Name;
-               Set_String ("_E;");
-               Write_Statement_Buffer;
-            end if;
-         end;
-      end loop;
-
-      Write_Statement_Buffer;
-
-      --  Standard library suppressed
-
-      if Suppress_Standard_Library_On_Target then
-
-         --  Case of High_Integrity_Mode mode. Set __gl_main_priority and
-         --  __gl_main_cpu if needed for the Ravenscar profile.
-
-         if Main_Priority /= No_Main_Priority then
-            WBI ("   extern int __gl_main_priority;");
-            Set_String ("   __gl_main_priority = ");
-            Set_Int    (Main_Priority);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-         if Main_CPU /= No_Main_CPU then
-            WBI ("   extern int __gl_main_cpu;");
-            Set_String ("   __gl_main_cpu = ");
-            Set_Int    (Main_CPU);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-      --  Normal case (standard library not suppressed)
-
-      else
-         --  Generate definition for interrupt states string
-
-         Set_String ("   static const char *local_interrupt_states = """);
-
-         for J in 0 .. IS_Pragma_Settings.Last loop
-            Set_Char (IS_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-
-         --  Generate definition for priority specific dispatching string
-
-         Set_String
-           ("   static const char *local_priority_specific_dispatching = """);
-
-         for J in 0 .. PSD_Pragma_Settings.Last loop
-            Set_Char (PSD_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-
-         --  Generate declaration for secondary stack default if needed
-
-         if Sec_Stack_Used and then Default_Sec_Stack_Size /= -1 then
-            WBI ("   extern int system__secondary_stack__" &
-                 "default_secondary_stack_size;");
-         end if;
-
-         WBI ("");
-
-         --  Code for normal case (standard library not suppressed)
-
-         --  We call the routine from inside adainit() because this works for
-         --  both programs with and without binder generated "main" functions.
-
-         WBI ("   extern int __gl_main_priority;");
-         Set_String ("   __gl_main_priority = ");
-         Set_Int (Main_Priority);
-         Set_Char (';');
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_time_slice_val;");
-         Set_String ("   __gl_time_slice_val = ");
-
-         if Task_Dispatching_Policy = 'F'
-           and then ALIs.Table (ALIs.First).Time_Slice_Value = -1
-         then
-            Set_Int (0);
-         else
-            Set_Int (ALIs.Table (ALIs.First).Time_Slice_Value);
-         end if;
-
-         Set_Char   (';');
-         Write_Statement_Buffer;
-
-         WBI ("   extern char __gl_wc_encoding;");
-         Set_String ("   __gl_wc_encoding = '");
-         Set_Char (Get_WC_Encoding);
-
-         Set_String ("';");
-         Write_Statement_Buffer;
-
-         WBI ("   extern char __gl_locking_policy;");
-         Set_String ("   __gl_locking_policy = '");
-         Set_Char (Locking_Policy_Specified);
-         Set_String ("';");
-         Write_Statement_Buffer;
-
-         WBI ("   extern char __gl_queuing_policy;");
-         Set_String ("   __gl_queuing_policy = '");
-         Set_Char (Queuing_Policy_Specified);
-         Set_String ("';");
-         Write_Statement_Buffer;
-
-         WBI ("   extern char __gl_task_dispatching_policy;");
-         Set_String ("   __gl_task_dispatching_policy = '");
-         Set_Char (Task_Dispatching_Policy_Specified);
-         Set_String ("';");
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_main_cpu;");
-         Set_String ("   __gl_main_cpu = ");
-         Set_Int (Main_CPU);
-         Set_Char (';');
-         Write_Statement_Buffer;
-
-         Gen_Restrictions_C;
-
-         WBI ("   extern const void *__gl_interrupt_states;");
-         WBI ("   __gl_interrupt_states = local_interrupt_states;");
-
-         WBI ("   extern int __gl_num_interrupt_states;");
-         Set_String ("   __gl_num_interrupt_states = ");
-         Set_Int (IS_Pragma_Settings.Last + 1);
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("   extern const void *__gl_priority_specific_dispatching;");
-         WBI ("   __gl_priority_specific_dispatching =" &
-              " local_priority_specific_dispatching;");
-
-         WBI ("   extern int __gl_num_specific_dispatching;");
-         Set_String ("   __gl_num_specific_dispatching = ");
-         Set_Int (PSD_Pragma_Settings.Last + 1);
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_unreserve_all_interrupts;");
-         Set_String ("   __gl_unreserve_all_interrupts = ");
-         Set_Int    (Boolean'Pos (Unreserve_All_Interrupts_Specified));
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         if Exception_Tracebacks then
-            WBI ("   extern int __gl_exception_tracebacks;");
-            WBI ("   __gl_exception_tracebacks = 1;");
-         end if;
-
-         WBI ("   extern int __gl_zero_cost_exceptions;");
-         Set_String ("   __gl_zero_cost_exceptions = ");
-         Set_Int    (Boolean'Pos (Zero_Cost_Exceptions_Specified));
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_detect_blocking;");
-         Set_String ("   __gl_detect_blocking = ");
-
-         if Detect_Blocking then
-            Set_Int (1);
-         else
-            Set_Int (0);
-         end if;
-
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_default_stack_size;");
-         Set_String ("   __gl_default_stack_size = ");
-         Set_Int    (Default_Stack_Size);
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("   extern int __gl_leap_seconds_support;");
-         Set_String ("   __gl_leap_seconds_support = ");
-
-         if Leap_Seconds_Support then
-            Set_Int (1);
-         else
-            Set_Int (0);
-         end if;
-
-         Set_String (";");
-         Write_Statement_Buffer;
-
-         WBI ("");
-
-         --  Install elaboration time signal handler
-
-         WBI ("   if (__gnat_handler_installed == 0)");
-         WBI ("     {");
-         WBI ("        __gnat_install_handler ();");
-         WBI ("     }");
-
-         --  Call feature enable/disable routine
-
-         if OpenVMS_On_Target then
-            WBI ("   if (__gnat_features_set == 0)");
-            WBI ("     {");
-            WBI ("        __gnat_set_features ();");
-            WBI ("     }");
-         end if;
-      end if;
-
-      --  Initialize stack limit for the environment task if the stack
-      --  check method is stack limit and stack check is enabled.
-
-      if Stack_Check_Limits_On_Target
-        and then (Stack_Check_Default_On_Target or Stack_Check_Switch_Set)
-      then
-         WBI ("");
-         WBI ("   __gnat_initialize_stack_limit ();");
-      end if;
-
-      --  Generate call to set Initialize_Scalar values if needed
-
-      if Initialize_Scalars_Used then
-         WBI ("");
-         Set_String ("      system__scalar_values__initialize('");
-         Set_Char (Initialize_Scalars_Mode1);
-         Set_String ("', '");
-         Set_Char (Initialize_Scalars_Mode2);
-         Set_String ("');");
-         Write_Statement_Buffer;
-      end if;
-
-      --  Generate assignment of default secondary stack size if set
-
-      if Sec_Stack_Used and then Default_Sec_Stack_Size /= -1 then
-         WBI ("");
-         Set_String ("   system__secondary_stack__");
-         Set_String ("default_secondary_stack_size = ");
-         Set_Int (Opt.Default_Sec_Stack_Size);
-         Set_Char (';');
-         Write_Statement_Buffer;
-      end if;
-
-      --  Generate elaboration calls
-
-      WBI ("");
-      Gen_Elab_Calls_C;
-      WBI ("}");
-   end Gen_Adainit_C;
-
    ------------------------
    -- Gen_Elab_Calls_Ada --
    ------------------------
@@ -1336,141 +876,6 @@ package body Bindgen is
       end loop;
    end Gen_Elab_Calls_Ada;
 
-   ----------------------
-   -- Gen_Elab_Calls_C --
-   ----------------------
-
-   procedure Gen_Elab_Calls_C is
-   begin
-      for E in Elab_Order.First .. Elab_Order.Last loop
-         declare
-            Unum : constant Unit_Id := Elab_Order.Table (E);
-            U    : Unit_Record renames Units.Table (Unum);
-
-            Unum_Spec : Unit_Id;
-            --  This is the unit number of the spec that corresponds to
-            --  this entry. It is the same as Unum except when the body
-            --  and spec are different and we are currently processing
-            --  the body, in which case it is the spec (Unum + 1).
-
-         begin
-            if U.Utype = Is_Body then
-               Unum_Spec := Unum + 1;
-            else
-               Unum_Spec := Unum;
-            end if;
-
-            --  Nothing to do if predefined unit in no run time mode
-
-            if No_Run_Time_Mode and then Is_Predefined_File_Name (U.Sfile) then
-               null;
-
-            --  Case of no elaboration code
-
-            elsif U.No_Elab then
-
-               --  The only case in which we have to do something is if
-               --  this is a body, with a separate spec, where the separate
-               --  spec has an elaboration entity defined.
-
-               --  In that case, this is where we set the elaboration entity
-               --  to True, we do not need to test if this has already been
-               --  done, since it is quicker to set the flag than to test it.
-
-               if not U.SAL_Interface and then U.Utype = Is_Body
-                 and then Units.Table (Unum_Spec).Set_Elab_Entity
-               then
-                  Set_String ("   ");
-                  Get_Name_String (U.Uname);
-                  Set_Unit_Name;
-                  Set_String ("_E = 1;");
-                  Write_Statement_Buffer;
-               end if;
-
-            --  Here if elaboration code is present. If binding a library
-            --  or if there is a non-Ada main subprogram then we generate:
-
-            --    if (uname_E == 0) {
-            --       uname__elab[s|b] ();
-            --       uname_E++;
-            --    }
-
-            --  The uname_E assignment is skipped if this is a separate spec,
-            --  since the assignment will be done when we process the body.
-
-            elsif not U.SAL_Interface then
-               Get_Name_String (U.Uname);
-
-               if Force_Checking_Of_Elaboration_Flags or
-                  Interface_Library_Unit or
-                  (not Bind_Main_Program)
-               then
-                  Set_String ("   if (");
-                  Set_Unit_Name;
-                  Set_String ("_E == 0) {");
-                  Write_Statement_Buffer;
-                  Set_String ("   ");
-               end if;
-
-               Set_String ("   ");
-               Set_Unit_Name;
-               Set_String ("___elab");
-               Set_Char (Name_Buffer (Name_Len)); -- 's' or 'b' for spec/body
-               Set_String (" ();");
-               Write_Statement_Buffer;
-
-               if U.Utype /= Is_Spec then
-                  if Force_Checking_Of_Elaboration_Flags or
-                     Interface_Library_Unit or
-                     (not Bind_Main_Program)
-                  then
-                     Set_String ("   ");
-                  end if;
-
-                  Set_String ("   ");
-                  Set_Unit_Name;
-                  Set_String ("_E++;");
-                  Write_Statement_Buffer;
-               end if;
-
-               if Force_Checking_Of_Elaboration_Flags or
-                  Interface_Library_Unit or
-                  (not Bind_Main_Program)
-               then
-                  WBI ("   }");
-               end if;
-            end if;
-         end;
-      end loop;
-
-   end Gen_Elab_Calls_C;
-
-   ----------------------
-   -- Gen_Elab_Defs_C --
-   ----------------------
-
-   procedure Gen_Elab_Defs_C is
-   begin
-      for E in Elab_Order.First .. Elab_Order.Last loop
-
-         --  Generate declaration of elaboration procedure if elaboration
-         --  needed. Note that passive units are always excluded.
-
-         if not Units.Table (Elab_Order.Table (E)).No_Elab then
-            Get_Name_String (Units.Table (Elab_Order.Table (E)).Uname);
-            Set_String ("extern void ");
-            Set_Unit_Name;
-            Set_String ("___elab");
-            Set_Char (Name_Buffer (Name_Len)); -- 's' or 'b' for spec/body
-            Set_String (" (void);");
-            Write_Statement_Buffer;
-         end if;
-
-      end loop;
-
-      WBI ("");
-   end Gen_Elab_Defs_C;
-
    ------------------------
    -- Gen_Elab_Order_Ada --
    ------------------------
@@ -1490,24 +895,6 @@ package body Bindgen is
       WBI ("   --  END ELABORATION ORDER");
    end Gen_Elab_Order_Ada;
 
-   ----------------------
-   -- Gen_Elab_Order_C --
-   ----------------------
-
-   procedure Gen_Elab_Order_C is
-   begin
-      WBI ("");
-      WBI ("/* BEGIN ELABORATION ORDER");
-
-      for J in Elab_Order.First .. Elab_Order.Last loop
-         Get_Name_String (Units.Table (Elab_Order.Table (J)).Uname);
-         Set_Name_Buffer;
-         Write_Statement_Buffer;
-      end loop;
-
-      WBI ("   END ELABORATION ORDER */");
-   end Gen_Elab_Order_C;
-
    ------------------
    -- Gen_Main_Ada --
    ------------------
@@ -1516,45 +903,10 @@ package body Bindgen is
    begin
       WBI ("");
 
-      if Exit_Status_Supported_On_Target then
-         Set_String ("   function ");
-      else
-         Set_String ("   procedure ");
-      end if;
-
+      Set_String ("   procedure ");
       Set_String (Get_Main_Name);
-
-      if Command_Line_Args_On_Target then
-         Write_Statement_Buffer;
-         WBI ("     (argc : Integer;");
-         WBI ("      argv : System.Address;");
-         WBI ("      envp : System.Address)");
-
-         if Exit_Status_Supported_On_Target then
-            WBI ("      return Integer");
-         end if;
-
-         WBI ("   is");
-
-      else
-         if Exit_Status_Supported_On_Target then
-            Set_String (" return Integer is");
-         else
-            Set_String (" is");
-         end if;
-
-         Write_Statement_Buffer;
-      end if;
-
-      if Opt.Default_Exit_Status /= 0
-        and then Bind_Main_Program
-        and then not Configurable_Run_Time_Mode
-      then
-         WBI ("      procedure Set_Exit_Status (Status : Integer);");
-         WBI ("      pragma Import (C, Set_Exit_Status, " &
-                     """__gnat_set_exit_status"");");
-         WBI ("");
-      end if;
+      Set_String (" is");
+      Write_Statement_Buffer;
 
       --  Initialize and Finalize
 
@@ -1601,14 +953,7 @@ package body Bindgen is
 
          WBI ("");
 
-         if ALIs.Table (ALIs.First).Main_Program = Func then
-            WBI ("      Result : Integer;");
-            WBI ("");
-            WBI ("      function Ada_Main_Program return Integer;");
-
-         else
-            WBI ("      procedure Ada_Main_Program;");
-         end if;
+         WBI ("      procedure Ada_Main_Program;");
 
          Set_String ("      pragma Import (Ada, Ada_Main_Program, """);
          Get_Name_String (Units.Table (First_Unit_Entry).Uname);
@@ -1625,7 +970,33 @@ package body Bindgen is
             WBI ("");
          end if;
       end if;
-
+      
+      --  For the above reasons we call the scheduler agents' initialise
+      --  procedure through a pragma Import with the procedure's link name.
+      
+      for J in Unique_Dispatching_Policies.First
+                 .. Unique_Dispatching_Policies.Last 
+      loop
+         declare
+            Policy_Str : String := Get_Name_String 
+                                (Unique_Dispatching_Policies.Table (J));
+         begin
+            Set_String ("      procedure Create_Scheduler_Agent_");
+            Set_String (Policy_Str);
+            Set_String (";");
+            Write_Statement_Buffer;
+            
+            Set_String ("      pragma Import (Ada, Create_Scheduler_Agent_");
+            Set_String (Policy_Str);
+            Set_String (", ""__acton_scheduler_agent_");
+            Set_String (Policy_Str);
+            Set_String (""");");
+            Write_Statement_Buffer;
+         end;
+         
+         WBI ("");
+      end loop;
+                  
       --  Generate a reference to Ada_Main_Program_Name. This symbol is
       --  not referenced elsewhere in the generated program, but is needed
       --  by the debugger (that's why it is generated in the first place).
@@ -1643,41 +1014,23 @@ package body Bindgen is
          WBI ("      pragma Volatile (Ensure_Reference);");
          WBI ("");
       end if;
+      
+      --  Generate OTCR for the main task.
+      
+      WBI ("      Main_Task_OTCR : aliased Oak.Oak_Task.Oak_Task;");
+      
+      --  And now the OTCRs for the Scheduler Agents.
+
+      for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
+         Set_String ("      Scheduler_Agent_");
+         Set_Int (Int (J));
+         Set_String (" : aliased Oak.Oak_Task.Oak_Task;");
+         Write_Statement_Buffer;
+      end loop;
+      
+      WBI ("");
 
       WBI ("   begin");
-
-      --  Acquire command line arguments if present on target
-
-      if Command_Line_Args_On_Target then
-         WBI ("      gnat_argc := argc;");
-         WBI ("      gnat_argv := argv;");
-         WBI ("      gnat_envp := envp;");
-         WBI ("");
-
-      --  If configurable run time and no command line args, then nothing
-      --  needs to be done since the gnat_argc/argv/envp variables are
-      --  suppressed in this case.
-
-      elsif Configurable_Run_Time_On_Target then
-         null;
-
-      --  Otherwise set dummy values (to be filled in by some other unit?)
-
-      else
-         WBI ("      gnat_argc := 0;");
-         WBI ("      gnat_argv := System.Null_Address;");
-         WBI ("      gnat_envp := System.Null_Address;");
-      end if;
-
-      if Opt.Default_Exit_Status /= 0
-        and then Bind_Main_Program
-        and then not Configurable_Run_Time_Mode
-      then
-         Set_String ("      Set_Exit_Status (");
-         Set_Int (Opt.Default_Exit_Status);
-         Set_String (");");
-         Write_Statement_Buffer;
-      end if;
 
       if Dynamic_Stack_Measurement then
          Set_String ("      Initialize_Stack_Analysis (");
@@ -1701,12 +1054,64 @@ package body Bindgen is
 
       if not No_Main_Subprogram then
          WBI ("      Break_Start;");
-
-         if ALIs.Table (ALIs.First).Main_Program = Proc then
-            WBI ("      Ada_Main_Program;");
+         WBI ("");
+         
+         for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
+            Set_String ("      Create_Scheduler_Agent_");
+            Set_String (Get_Name_String 
+                          (Scheduler_Agents.Table (J).Dispatching_Policy));
+            Set_String (" (Scheduler_Agent_");
+            Set_Int (Int (J));
+            Set_String ("'Access, ");
+            Set_Int (Scheduler_Agents.Table (J).First_Priority);
+            Set_String (", ");
+            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
+            Set_String (");");
+            Write_Statement_Buffer;
+         end loop;
+         
+         --  Initalise main task call
+         WBI ("      Initialise_Main_Task");
+         WBI ("        (Main_Task_OTCR'Access,");
+         
+         --  Set the stack size of the main task
+         if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
+            WBI ("         Oak.Processor_Support_Package." &
+                 "Call_Stack.Main_Task_Call_Stack_Size,");
          else
-            WBI ("      Result := Ada_Main_Program;");
+            Set_String ("         ");
+            Set_Int (ALIs.Table (ALIs.First).Main_Stack_Size);
+            Set_String (", ");
+            Write_Statement_Buffer;
          end if;
+         
+         --  Set the name of the main task.
+         WBI ("         Main Task,");
+  
+         --  Set the priority of the main task       
+         if ALIs.Table (ALIs.First).Main_Priority = No_Main_Priority then
+            WBI ("         System.Default_Priority,");
+         else
+            Set_String ("         ");
+            Set_Int (ALIs.Table (ALIs.First).Main_Priority);
+            Set_String (",");
+            Write_Statement_Buffer;
+         end if;
+         
+         --  Set the relative deadline of the main task.
+         Set_String ("         ");
+         Set_Int (ALIs.Table (ALIs.First).Main_Deadline);
+         Set_String (",");
+         Write_Statement_Buffer;
+         
+         --  Set Cycle_Period
+         Set_String ("         ");
+         Set_Int (ALIs.Table (ALIs.First).Main_Cycle_Period);
+         Set_String (",");
+         Write_Statement_Buffer;
+         
+         --  Set the Address of the main task's run-loop
+         WBI ("         Ada_Main_Program'Address);");
       end if;
 
       --  Adafinal call is skipped if no finalization
@@ -1735,216 +1140,8 @@ package body Bindgen is
          WBI ("      Finalize;");
       end if;
 
-      --  Return result
-
-      if Exit_Status_Supported_On_Target then
-         if No_Main_Subprogram
-           or else ALIs.Table (ALIs.First).Main_Program = Proc
-         then
-            WBI ("      return (gnat_exit_status);");
-         else
-            WBI ("      return (Result);");
-         end if;
-      end if;
-
       WBI ("   end;");
    end Gen_Main_Ada;
-
-   ----------------
-   -- Gen_Main_C --
-   ----------------
-
-   procedure Gen_Main_C is
-   begin
-      if Exit_Status_Supported_On_Target then
-         WBI ("#include <stdlib.h>");
-         Set_String ("int ");
-      else
-         Set_String ("void ");
-      end if;
-
-      Set_String (Get_Main_Name);
-
-      --  Generate command line args in prototype if present on target
-
-      if Command_Line_Args_On_Target then
-         Write_Statement_Buffer (" (int argc, char **argv, char **envp)");
-
-      --  Case of no command line arguments on target
-
-      else
-         Write_Statement_Buffer (" (void)");
-      end if;
-
-      WBI ("{");
-
-      --  Generate a reference to __gnat_ada_main_program_name. This symbol
-      --  is  not referenced elsewhere in the generated program, but is
-      --  needed by the debugger (that's why it is generated in the first
-      --  place). The reference stops Ada_Main_Program_Name from being
-      --  optimized away by smart linkers, such as the AiX linker.
-
-      --  Because this variable is unused, we declare this variable as
-      --  volatile in order to tell the compiler to preserve it at any
-      --  level of optimization.
-
-      if Bind_Main_Program then
-         WBI ("   char * volatile ensure_reference " &
-              "__attribute__ ((__unused__)) = " &
-              "__gnat_ada_main_program_name;");
-         WBI ("");
-
-         if not Suppress_Standard_Library_On_Target
-           and then not No_Main_Subprogram
-         then
-            WBI ("   int SEH [2];");
-            WBI ("");
-         end if;
-      end if;
-
-      --  If main program is a function, generate result variable
-
-      if ALIs.Table (ALIs.First).Main_Program = Func then
-         WBI ("   int result;");
-      end if;
-
-      --  Set command line argument values from parameters if command line
-      --  arguments are present on target
-
-      if Command_Line_Args_On_Target then
-         WBI ("   gnat_argc = argc;");
-         WBI ("   gnat_argv = argv;");
-         WBI ("   gnat_envp = envp;");
-         WBI (" ");
-
-      --  If configurable run-time, then nothing to do, since in this case
-      --  the gnat_argc/argv/envp variables are entirely suppressed.
-
-      elsif Configurable_Run_Time_On_Target then
-         null;
-
-      --  if no command line arguments on target, set dummy values
-
-      else
-         WBI ("   gnat_argc = 0;");
-         WBI ("   gnat_argv = 0;");
-         WBI ("   gnat_envp = 0;");
-      end if;
-
-      if Opt.Default_Exit_Status /= 0
-        and then Bind_Main_Program
-        and then not Configurable_Run_Time_Mode
-      then
-         Set_String ("   __gnat_set_exit_status (");
-         Set_Int (Opt.Default_Exit_Status);
-         Set_String (");");
-         Write_Statement_Buffer;
-      end if;
-
-      --  Initializes dynamic stack measurement if needed
-
-      if Dynamic_Stack_Measurement then
-         Set_String ("   __gnat_stack_usage_initialize (");
-         Set_Int (Dynamic_Stack_Measurement_Array_Size);
-         Set_String (");");
-         Write_Statement_Buffer;
-      end if;
-
-      --  The __gnat_initialize routine is used only if we have a run-time
-
-      if not Suppress_Standard_Library_On_Target then
-         if not No_Main_Subprogram and then Bind_Main_Program then
-            WBI ("   __gnat_initialize ((void *)SEH);");
-         else
-            WBI ("   __gnat_initialize ((void *)0);");
-         end if;
-      end if;
-
-      WBI ("   " & Ada_Init_Name.all & " ();");
-
-      if not No_Main_Subprogram then
-         WBI ("   __gnat_break_start ();");
-         WBI (" ");
-
-         --  Output main program name
-
-         Get_Name_String (Units.Table (First_Unit_Entry).Uname);
-
-         --  Main program is procedure case
-
-         if ALIs.Table (ALIs.First).Main_Program = Proc then
-            Set_String ("   ");
-            Set_Main_Program_Name;
-            Set_String (" ();");
-            Write_Statement_Buffer;
-
-         --  Main program is function case
-
-         else -- ALIs.Table (ALIs_First).Main_Program = Func
-            Set_String ("   result = ");
-            Set_Main_Program_Name;
-            Set_String (" ();");
-            Write_Statement_Buffer;
-         end if;
-
-      end if;
-
-      --  Call adafinal if finalization active
-
-      if not Cumulative_Restrictions.Set (No_Finalization) then
-         WBI (" ");
-         WBI ("   system__standard_library__adafinal ();");
-      end if;
-
-      --  Outputs the dynamic stack measurement if needed
-
-      if Dynamic_Stack_Measurement then
-         WBI ("   __gnat_stack_usage_output_results ();");
-      end if;
-
-      --  The finalize routine is used only if we have a run-time
-
-      if not Suppress_Standard_Library_On_Target then
-         WBI ("   __gnat_finalize ();");
-      end if;
-
-      --  Case of main program is a function, so the value it returns
-      --  is the exit status in this case.
-
-      if ALIs.Table (ALIs.First).Main_Program = Func then
-         if Exit_Status_Supported_On_Target then
-
-            --  VMS must use Posix exit routine in order to get the effect
-            --  of a Unix compatible setting of the program exit status.
-            --  For all other systems, we use the standard exit routine.
-
-            if OpenVMS_On_Target then
-               WBI ("   decc$__posix_exit (result);");
-            else
-               WBI ("   exit (result);");
-            end if;
-         end if;
-
-      --  Case of main program is a procedure, in which case the exit
-      --  status is whatever was set by a Set_Exit call most recently
-
-      else
-         if Exit_Status_Supported_On_Target then
-
-            --  VMS must use Posix exit routine in order to get the effect
-            --  of a Unix compatible setting of the program exit status.
-            --  For all other systems, we use the standard exit routine.
-
-            if OpenVMS_On_Target then
-               WBI ("   decc$__posix_exit (gnat_exit_status);");
-            else
-               WBI ("   exit (gnat_exit_status);");
-            end if;
-         end if;
-      end if;
-
-      WBI ("}");
-   end Gen_Main_C;
 
    ------------------------------
    -- Gen_Object_Files_Options --
@@ -2220,10 +1417,10 @@ package body Bindgen is
 
       Set_IS_Pragma_Table;
 
-      --  Acquire settings for Priority_Specific_Dispatching pragma
+      --  Acquire Scheduler Agents
 
-      Set_PSD_Pragma_Table;
-
+      Set_Scheduler_Agent_Table;
+      
       --  Override Ada_Bind_File and Bind_Main_Program for VMs since JGNAT only
       --  supports Ada code, and the main program is already generated by the
       --  compiler.
@@ -2256,11 +1453,7 @@ package body Bindgen is
 
       Check_System_Restrictions_Used;
 
-      if Ada_Bind_File then
-         Gen_Output_File_Ada (Filename);
-      else
-         Gen_Output_File_C (Filename);
-      end if;
+      Gen_Output_File_Ada (Filename);
    end Gen_Output_File;
 
    -------------------------
@@ -2338,6 +1531,12 @@ package body Bindgen is
             WBI ("with System.Standard_Library;");
          end if;
       end if;
+      
+      --  Generate with of Oak.Oak_Task so that we can reference 
+      --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
+      --  agents OTCR.
+      
+      WBI ("with Oak.Oak_Task;");
 
       WBI ("package " & Ada_Main & " is");
       WBI ("   pragma Warnings (Off);");
@@ -2345,46 +1544,6 @@ package body Bindgen is
       --  Main program case
 
       if Bind_Main_Program then
-         if VM_Target = No_VM then
-
-            --  Generate argc/argv stuff unless suppressed
-
-            if Command_Line_Args_On_Target
-              or not Configurable_Run_Time_On_Target
-            then
-               WBI ("");
-               WBI ("   gnat_argc : Integer;");
-               WBI ("   gnat_argv : System.Address;");
-               WBI ("   gnat_envp : System.Address;");
-
-               --  If the standard library is not suppressed, these variables
-               --  are in the run-time data area for easy run time access.
-
-               if not Suppress_Standard_Library_On_Target then
-                  WBI ("");
-                  WBI ("   pragma Import (C, gnat_argc);");
-                  WBI ("   pragma Import (C, gnat_argv);");
-                  WBI ("   pragma Import (C, gnat_envp);");
-               end if;
-            end if;
-
-            --  Define exit status. Again in normal mode, this is in the
-            --  run-time library, and is initialized there, but in the
-            --  configurable runtime case, the variable is declared and
-            --  initialized in this file.
-
-            WBI ("");
-
-            if Configurable_Run_Time_Mode then
-               if Exit_Status_Supported_On_Target then
-                  WBI ("   gnat_exit_status : Integer := 0;");
-               end if;
-
-            else
-               WBI ("   gnat_exit_status : Integer;");
-               WBI ("   pragma Import (C, gnat_exit_status);");
-            end if;
-         end if;
 
          --  Generate the GNAT_Version and Ada_Main_Program_Name info only for
          --  the main program. Otherwise, it can lead under some circumstances
@@ -2403,13 +1562,8 @@ package body Bindgen is
          Set_String ("   Ada_Main_Program_Name : constant String := """);
          Get_Name_String (Units.Table (First_Unit_Entry).Uname);
 
-         if VM_Target = No_VM then
-            Set_Main_Program_Name;
-            Set_String (""" & ASCII.NUL;");
-         else
-            Set_String (Name_Buffer (1 .. Name_Len - 2) & """;");
-         end if;
-
+         Set_Main_Program_Name;
+         Set_String (""" & ASCII.NUL;");
          Write_Statement_Buffer;
 
          WBI
@@ -2457,37 +1611,9 @@ package body Bindgen is
 
          WBI ("");
 
-         if Exit_Status_Supported_On_Target then
-            Set_String ("   function ");
-         else
-            Set_String ("   procedure ");
-         end if;
-
+         Set_String ("   procedure ");
          Set_String (Get_Main_Name);
-
-         --  Generate argument list if present
-
-         if Command_Line_Args_On_Target then
-            Write_Statement_Buffer;
-            WBI ("     (argc : Integer;");
-            WBI ("      argv : System.Address;");
-            Set_String
-                ("      envp : System.Address)");
-
-            if Exit_Status_Supported_On_Target then
-               Write_Statement_Buffer;
-               WBI ("      return Integer;");
-            else
-               Write_Statement_Buffer (";");
-            end if;
-
-         else
-            if Exit_Status_Supported_On_Target then
-               Write_Statement_Buffer (" return Integer;");
-            else
-               Write_Statement_Buffer (";");
-            end if;
-         end if;
+         Write_Statement_Buffer (";");
 
          WBI ("   pragma Export (C, " & Get_Main_Name & ", """ &
            Get_Main_Name & """);");
@@ -2502,8 +1628,10 @@ package body Bindgen is
       WBI ("end " & Ada_Main & ";");
       Close_Binder_Output;
 
+      --
       --  Prepare to write body
-
+      --  
+      
       Create_Binder_Output (Filename, 'b', Bfileb);
 
       --  We always compile the binder file in Ada 95 mode so that we properly
@@ -2566,33 +1694,6 @@ package body Bindgen is
          end if;
       end if;
 
-      if not Suppress_Standard_Library_On_Target then
-
-         --  Generate Priority_Specific_Dispatching pragma string
-
-         Set_String
-           ("   Local_Priority_Specific_Dispatching : constant String := """);
-
-         for J in 0 .. PSD_Pragma_Settings.Last loop
-            Set_Char (PSD_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-
-         --  Generate Interrupt_State pragma string
-
-         Set_String ("   Local_Interrupt_States : constant String := """);
-
-         for J in 0 .. IS_Pragma_Settings.Last loop
-            Set_Char (IS_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-         WBI ("");
-      end if;
-
       Gen_Adainit_Ada;
 
       --  Generate the adafinal routine unless there is no finalization to do
@@ -2626,218 +1727,6 @@ package body Bindgen is
 
       Close_Binder_Output;
    end Gen_Output_File_Ada;
-
-   -----------------------
-   -- Gen_Output_File_C --
-   -----------------------
-
-   procedure Gen_Output_File_C (Filename : String) is
-      Bfile : Name_Id;
-      pragma Warnings (Off, Bfile);
-      --  Name of generated bind file (not referenced)
-
-   begin
-      Create_Binder_Output (Filename, 'c', Bfile);
-
-      Resolve_Binder_Options;
-
-      WBI ("extern void " & Ada_Final_Name.all & " (void);");
-
-      --  If -a has been specified use __attribute__((constructor)) for the
-      --  init procedure. No need to use a similar featute for the final
-      --  procedure as global finalization will occur when the executable
-      --  finishes execution and for plugins (shared stand-alone libraries that
-      --  can be "unloaded"), finalization should not occur automatically,
-      --  otherwise the main executable may not continue to work properly.
-
-      if Use_Pragma_Linker_Constructor then
-         WBI ("extern void " & Ada_Init_Name.all &
-              " (void) __attribute__((constructor));");
-      else
-         WBI ("extern void " & Ada_Init_Name.all & " (void);");
-      end if;
-
-      WBI ("extern void system__standard_library__adafinal (void);");
-
-      if not No_Main_Subprogram then
-         Set_String ("extern ");
-
-         if Exit_Status_Supported_On_Target then
-            Set_String ("int");
-         else
-            Set_String ("void");
-         end if;
-
-         Set_String (" main ");
-
-         if Command_Line_Args_On_Target then
-            Write_Statement_Buffer ("(int, char **, char **);");
-         else
-            Write_Statement_Buffer ("(void);");
-         end if;
-
-         if OpenVMS_On_Target then
-            WBI ("extern void decc$__posix_exit (int);");
-         else
-            WBI ("extern void exit (int);");
-         end if;
-
-         WBI ("extern void __gnat_break_start (void);");
-         Set_String ("extern ");
-
-         if ALIs.Table (ALIs.First).Main_Program = Proc then
-            Set_String ("void ");
-         else
-            Set_String ("int ");
-         end if;
-
-         Get_Name_String (Units.Table (First_Unit_Entry).Uname);
-         Set_Main_Program_Name;
-         Set_String (" (void);");
-         Write_Statement_Buffer;
-      end if;
-
-      if not Suppress_Standard_Library_On_Target then
-         WBI ("extern void __gnat_initialize (void *);");
-         WBI ("extern void __gnat_finalize (void);");
-         WBI ("extern void __gnat_install_handler (void);");
-      end if;
-
-      if Dynamic_Stack_Measurement then
-         WBI ("");
-         WBI ("extern void __gnat_stack_usage_output_results (void);");
-         WBI ("extern void __gnat_stack_usage_initialize (int size);");
-      end if;
-
-      --  Initialize stack limit for the environment task if the stack check
-      --  method is stack limit and stack check is enabled.
-
-      if Stack_Check_Limits_On_Target
-        and then (Stack_Check_Default_On_Target or Stack_Check_Switch_Set)
-      then
-         WBI ("");
-         WBI ("extern void __gnat_initialize_stack_limit (void);");
-      end if;
-
-      WBI ("");
-
-      Gen_Elab_Defs_C;
-
-      --  Imported variables used only when we have a runtime
-
-      if not Suppress_Standard_Library_On_Target then
-
-         --  Track elaboration/finalization phase
-
-         WBI ("extern int  __gnat_handler_installed;");
-         WBI ("");
-
-         --  Track feature enable/disable on VMS
-
-         if OpenVMS_On_Target then
-            WBI ("extern int  __gnat_features_set;");
-            WBI ("");
-         end if;
-      end if;
-
-      --  Write argv/argc exit status stuff if main program case
-
-      if Bind_Main_Program then
-
-         --  First deal with argc/argv/envp. In the normal case they are in the
-         --  run-time library.
-
-         if not Configurable_Run_Time_On_Target then
-            WBI ("extern int gnat_argc;");
-            WBI ("extern char **gnat_argv;");
-            WBI ("extern char **gnat_envp;");
-
-         --  If configurable run time and no command line args, then the
-         --  generation of these variables is entirely suppressed.
-
-         elsif not Command_Line_Args_On_Target then
-            null;
-
-         --  Otherwise, in the configurable run-time case they are right in the
-         --  binder file.
-
-         else
-            WBI ("int gnat_argc;");
-            WBI ("char **gnat_argv;");
-            WBI ("char **gnat_envp;");
-         end if;
-
-         --  Similarly deal with exit status
-
-         if not Configurable_Run_Time_On_Target then
-            WBI ("extern int gnat_exit_status;");
-
-         --  If configurable run time and no exit status on target, then the
-         --  generation of this variables is entirely suppressed.
-
-         elsif not Exit_Status_Supported_On_Target then
-            null;
-
-         --  Otherwise, in the configurable run-time case this variable is
-         --  right in the binder file, and initialized to zero there.
-
-         else
-            WBI ("int gnat_exit_status = 0;");
-         end if;
-
-         WBI ("");
-      end if;
-
-      --  When suppressing the standard library, the __gnat_break_start routine
-      --  (for the debugger to get initial control) is defined in this file.
-
-      if Suppress_Standard_Library_On_Target then
-         WBI ("");
-         WBI ("void __gnat_break_start (void) {}");
-      end if;
-
-      --  Generate the __gnat_version and __gnat_ada_main_program_name info
-      --  only for the main program. Otherwise, it can lead under some
-      --  circumstances to a symbol duplication during the link (for instance
-      --  when a C program uses 2 Ada libraries)
-
-      if Bind_Main_Program then
-         WBI ("");
-         WBI ("char __gnat_version[] = """ & Ver_Prefix &
-                                   Gnat_Version_String & """;");
-
-         Set_String ("char __gnat_ada_main_program_name[] = """);
-         Get_Name_String (Units.Table (First_Unit_Entry).Uname);
-         Set_Main_Program_Name;
-         Set_String (""";");
-         Write_Statement_Buffer;
-      end if;
-
-      --  Generate the adafinal routine. In no runtime mode, this is not
-      --  needed, since there is no finalization to do.
-
-      if not Cumulative_Restrictions.Set (No_Finalization) then
-         Gen_Adafinal_C;
-      end if;
-
-      Gen_Adainit_C;
-
-      --  Main is only present for Ada main case
-
-      if Bind_Main_Program then
-         Gen_Main_C;
-      end if;
-
-      --  Generate versions, elaboration order, list of object files
-
-      Gen_Versions_C;
-      Gen_Elab_Order_C;
-      Gen_Object_Files_Options;
-
-      --  C binder output is complete
-
-      Close_Binder_Output;
-   end Gen_Output_File_C;
 
    --------------------------
    -- Gen_Restrictions_Ada --
@@ -2921,96 +1810,6 @@ package body Bindgen is
       Write_Statement_Buffer;
    end Gen_Restrictions_Ada;
 
-   ------------------------
-   -- Gen_Restrictions_C --
-   ------------------------
-
-   procedure Gen_Restrictions_C is
-   begin
-      if Suppress_Standard_Library_On_Target
-        or not System_Restrictions_Used
-      then
-         return;
-      end if;
-
-      WBI ("   typedef struct {");
-      Set_String ("     char set [");
-      Set_Int (Cumulative_Restrictions.Set'Length);
-      Set_String ("];");
-      Write_Statement_Buffer;
-
-      Set_String ("     int value [");
-      Set_Int (Cumulative_Restrictions.Value'Length);
-      Set_String ("];");
-      Write_Statement_Buffer;
-
-      Set_String ("     char violated [");
-      Set_Int (Cumulative_Restrictions.Violated'Length);
-      Set_String ("];");
-      Write_Statement_Buffer;
-
-      Set_String ("     int count [");
-      Set_Int (Cumulative_Restrictions.Count'Length);
-      Set_String ("];");
-      Write_Statement_Buffer;
-
-      Set_String ("     char unknown [");
-      Set_Int (Cumulative_Restrictions.Unknown'Length);
-      Set_String ("];");
-      Write_Statement_Buffer;
-      WBI ("   } restrictions;");
-      WBI ("   extern restrictions " &
-           "system__restrictions__run_time_restrictions;");
-      WBI ("   restrictions r = {");
-      Set_String ("     {");
-
-      for J in Cumulative_Restrictions.Set'Range loop
-         Set_Int (Boolean'Pos (Cumulative_Restrictions.Set (J)));
-         Set_String (", ");
-      end loop;
-
-      Set_String_Replace ("},");
-      Write_Statement_Buffer;
-      Set_String ("     {");
-
-      for J in Cumulative_Restrictions.Value'Range loop
-         Set_Int (Int (Cumulative_Restrictions.Value (J)));
-         Set_String (", ");
-      end loop;
-
-      Set_String_Replace ("},");
-      Write_Statement_Buffer;
-      Set_String ("     {");
-
-      for J in Cumulative_Restrictions.Violated'Range loop
-         Set_Int (Boolean'Pos (Cumulative_Restrictions.Violated (J)));
-         Set_String (", ");
-      end loop;
-
-      Set_String_Replace ("},");
-      Write_Statement_Buffer;
-      Set_String ("     {");
-
-      for J in Cumulative_Restrictions.Count'Range loop
-         Set_Int (Int (Cumulative_Restrictions.Count (J)));
-         Set_String (", ");
-      end loop;
-
-      Set_String_Replace ("},");
-      Write_Statement_Buffer;
-      Set_String ("     {");
-
-      for J in Cumulative_Restrictions.Unknown'Range loop
-         Set_Int (Boolean'Pos (Cumulative_Restrictions.Unknown (J)));
-         Set_String (", ");
-      end loop;
-
-      Set_String_Replace ("}}");
-      Set_String (";");
-      Write_Statement_Buffer;
-      WBI ("   system__restrictions__run_time_restrictions = r;");
-   end Gen_Restrictions_C;
-
    ----------------------
    -- Gen_Versions_Ada --
    ----------------------
@@ -3083,54 +1882,6 @@ package body Bindgen is
       end loop;
 
    end Gen_Versions_Ada;
-
-   --------------------
-   -- Gen_Versions_C --
-   --------------------
-
-   --  This routine generates a line of the form:
-
-   --    unsigned unam = 0xhhhhhhhh;
-
-   --  for each unit, where unam is the unit name suffixed by either B or S for
-   --  body or spec, with dots replaced by double underscores.
-
-   procedure Gen_Versions_C is
-   begin
-      for U in Units.First .. Units.Last loop
-         if not Units.Table (U).SAL_Interface and then
-           ((not Bind_For_Library) or else Units.Table (U).Directly_Scanned)
-         then
-            Set_String ("unsigned ");
-
-            Get_Name_String (Units.Table (U).Uname);
-
-            for K in 1 .. Name_Len loop
-               if Name_Buffer (K) = '.' then
-                  Set_String ("__");
-
-               elsif Name_Buffer (K) = '%' then
-                  exit;
-
-               else
-                  Set_Char (Name_Buffer (K));
-               end if;
-            end loop;
-
-            if Name_Buffer (Name_Len) = 's' then
-               Set_Char ('S');
-            else
-               Set_Char ('B');
-            end if;
-
-            Set_String (" = 0x");
-            Set_String (Units.Table (U).Version);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-      end loop;
-
-   end Gen_Versions_C;
 
    ------------------------
    -- Get_Main_Unit_Name --
@@ -3457,32 +2208,59 @@ package body Bindgen is
       end loop;
    end Set_Name_Buffer;
 
-   -------------------------
-   -- Set_PSD_Pragma_Table --
-   -------------------------
+   -------------------------------
+   -- Set_Scheduler_Agent_Table --
+   -------------------------------
 
-   procedure Set_PSD_Pragma_Table is
+   procedure Set_Scheduler_Agent_Table is
+      Priority_Table : array (Int (System.Any_Priority'First) ..
+                              Int (System.Any_Priority'Last)) of 
+                         Name_Id := 
+                           (others => Unique_Dispatching_Policies.Table
+                             (Unique_Dispatching_Policies.First));
+      --  Array containing an entry per priority consisting of Name_Id
+
+      Policy         : Name_Id;
+      First_Priority : Nat;
+      SDR            : Specific_Dispatching_Record;
+      
    begin
-      for F in ALIs.First .. ALIs.Last loop
-         for K in ALIs.Table (F).First_Specific_Dispatching ..
-                  ALIs.Table (F).Last_Specific_Dispatching
-         loop
-            declare
-               DTK : Specific_Dispatching_Record
-                       renames Specific_Dispatching.Table (K);
-
-            begin
-               while PSD_Pragma_Settings.Last < DTK.Last_Priority loop
-                  PSD_Pragma_Settings.Append ('F');
-               end loop;
-
-               for Prio in DTK.First_Priority .. DTK.Last_Priority loop
-                  PSD_Pragma_Settings.Table (Prio) := DTK.Dispatching_Policy;
-               end loop;
-            end;
-         end loop;
+      for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
+         declare
+            SDTJ : Specific_Dispatching_Record
+                     renames Specific_Dispatching.Table (J);
+         begin
+            for P in SDTJ.First_Priority .. SDTJ.Last_Priority loop
+               Priority_Table (P) := SDTJ.Dispatching_Policy;
+            end loop;
+         end;
       end loop;
-   end Set_PSD_Pragma_Table;
+
+      --  For each continuous section of the Priority_Table that uses the same
+      --  dispatching policy, record a new scheduler agent in the Scheduler
+      --  Agent table.
+      First_Priority := Priority_Table'First;
+      Policy         := Priority_Table (First_Priority);
+      for P in Priority_Table'Range loop
+         if Policy /= Priority_Table (P) then
+            SDR := (Dispatching_Policy => Policy,
+                    First_Priority     => First_Priority,
+                    Last_Priority      => P - 1,
+                    PSD_Pragma_Line    => 0);
+            Scheduler_Agents.Append (SDR);
+            First_Priority := P;
+            Policy := Priority_Table (P);
+         end if;
+      end loop;
+      
+      --  Add the last scheduler agent
+      
+      SDR := (Dispatching_Policy => Policy,
+              First_Priority     => First_Priority,
+              Last_Priority      => Priority_Table'Last,
+              PSD_Pragma_Line    => 0);
+      Scheduler_Agents.Append (SDR);
+   end Set_Scheduler_Agent_Table;              
 
    ----------------
    -- Set_String --

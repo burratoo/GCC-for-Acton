@@ -268,9 +268,9 @@ package body Bcheck is
    begin
       --  Consistency checks in units specifying a Task_Dispatching_Policy
 
-      if Task_Dispatching_Policy_Specified /= ' ' then
+      if Task_Dispatching_Policy_Specified /= No_Name then
          Find_Policy : for A1 in ALIs.First .. ALIs.Last loop
-            if ALIs.Table (A1).Task_Dispatching_Policy /= ' ' then
+            if ALIs.Table (A1).Task_Dispatching_Policy /= No_Name then
 
                --  Store the place where the first task dispatching pragma
                --  appears. We may need this value for issuing consistency
@@ -279,12 +279,12 @@ package body Bcheck is
                TDP_Pragma_Afile := A1;
 
                Check_Policy : declare
-                  Policy : constant Character :=
+                  Policy : constant Name_Id :=
                              ALIs.Table (A1).Task_Dispatching_Policy;
 
                begin
                   for A2 in A1 + 1 .. ALIs.Last loop
-                     if ALIs.Table (A2).Task_Dispatching_Policy /= ' '
+                     if ALIs.Table (A2).Task_Dispatching_Policy /= Name_Id
                           and then
                         ALIs.Table (A2).Task_Dispatching_Policy /= Policy
                      then
@@ -325,8 +325,7 @@ package body Bcheck is
             --  Priority_Specific_Dispatching pragmas applying to the Priority.
 
             type Specific_Dispatching_Entry is record
-               Dispatching_Policy : Character := ' ';
-               --  First character (upper case) of corresponding policy name
+               Dispatching_Policy : Name_Id := No_Name;
 
                Afile : ALI_Id := No_ALI_Id;
                --  ALI file that generated Priority Specific Dispatching
@@ -338,7 +337,7 @@ package body Bcheck is
 
             PSD_Table  : array (0 .. Max_Prio) of Specific_Dispatching_Entry :=
                            (others => Specific_Dispatching_Entry'
-                              (Dispatching_Policy => ' ',
+                              (Dispatching_Policy => No_Name,
                                Afile              => No_ALI_Id,
                                Loc                => 0));
             --  Array containing an entry per priority containing the location
@@ -358,7 +357,7 @@ package body Bcheck is
                      --  pragma Priority_Specific_Dispatching are used in the
                      --  same partition.
 
-                     if Task_Dispatching_Policy_Specified /= ' ' then
+                     if Task_Dispatching_Policy_Specified /= No_Name then
                         Error_Msg_File_1 := ALIs.Table (F).Sfile;
                         Error_Msg_File_2 :=
                           ALIs.Table (TDP_Pragma_Afile).Sfile;
