@@ -10316,7 +10316,7 @@ package body Exp_Ch9 is
    --      _Size              : Size_Type       := Size_Type (size_expression);
    --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
    --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
-   --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase;  
+   --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase; 
    --    end record;
 
    --  The discriminants are present only if the corresponding task type has
@@ -10479,8 +10479,8 @@ package body Exp_Ch9 is
       --  done last, since the corresponding record initialization procedure
       --  will reference the previously created entities.
 
-      --  Fill in the component declarations 
-      
+      --  Fill in the component declarations
+
       --  Declare static OTCR (that is, created by the expander) if we are
       --  using the Restricted run time.
 
@@ -10650,13 +10650,13 @@ package body Exp_Ch9 is
       --       Make_Component_Declaration (Loc,
       --         Defining_Identifier =>
       --           Make_Defining_Identifier (Loc, Name_uCPU),
-      --  
+      --
       --         Component_Definition =>
       --           Make_Component_Definition (Loc,
       --             Aliased_Present    => False,
       --             Subtype_Indication =>
       --               New_Reference_To (RTE (RE_CPU_Range), Loc)),
-      --  
+      --
       --         Expression => New_Copy (
       --           Expression (First (
       --             Pragma_Argument_Associations (
@@ -10705,7 +10705,7 @@ package body Exp_Ch9 is
                  Aliased_Present    => False,
                  Subtype_Indication =>
                    New_Reference_To (RTE (RE_Time_Span), Loc)),
-      
+
              Expression =>
                Convert_To (RTE (RE_Time_Span),
                  Relocate_Node (
@@ -10728,7 +10728,7 @@ package body Exp_Ch9 is
                  Aliased_Present    => False,
                  Subtype_Indication =>
                    New_Reference_To (RTE (RE_Time_Span), Loc)),
-      
+
              Expression =>
                Convert_To (RTE (RE_Time_Span),
                  Relocate_Node (
@@ -10737,7 +10737,7 @@ package body Exp_Ch9 is
                        Find_Task_Or_Protected_Pragma
                          (Taskdef, Name_Phase))))))));
       end if;
-      
+
       Insert_After (Size_Decl, Rec_Decl);
 
       --  Analyze the record declaration immediately after construction,
@@ -12572,12 +12572,14 @@ package body Exp_Ch9 is
 
       Args := New_List;
 
-      -- Oak Task Handler
+      --  Oak Task Handler
       Append_To (Args,
-        Make_Attribute_Reference (Loc,
-          Prefix         => Make_Identifier (Loc, Name_uInit),
-          Selector_Name  => Make_Identifier (Loc, Name_uOTCR)));
-          Attribute_Name => Name_Unchecked_Access));
+		Make_Attribute_Reference (Loc,
+                Prefix         =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => Make_Identifier (Loc, Name_uInit),
+                    Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
+                Attribute_Name => Name_Unchecked_Access));
 
       --  Optional Stack parameter
 
@@ -12619,7 +12621,7 @@ package body Exp_Ch9 is
          Append_To (Args,
            New_Reference_To (Storage_Size_Variable (Ttyp), Loc));
       end if;
-      
+
       --  Task name parameter. Take this from the _Task_Name parameter to the
       --  init call unless there is a Task_Name pragma, in which case we take
       --  the value from the pragma.
@@ -12641,7 +12643,6 @@ package body Exp_Ch9 is
          Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
       end if;
 
-
       --  Priority parameter. Set to Unspecified_Priority unless there is a
       --  priority pragma, in which case we take the value from the pragma.
 
@@ -12654,8 +12655,6 @@ package body Exp_Ch9 is
          Append_To (Args,
            New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
       end if;
-
-
 
       --  Deadline parameter. If no Relative_Deadline pragma is present,
       --  then the deadline is Time_Span_Zero. If a pragma is present, then
@@ -12683,25 +12682,25 @@ package body Exp_Ch9 is
            New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
       end if;
 
-      --  Cycle_Period parameter. Set to Time_Span_Last unless there is a 
-      --  Cycle_Period pragma,in which case we take the value from the pragma. 
+      --  Cycle_Period parameter. Set to Time_Span_Last unless there is a
+      --  Cycle_Period pragma,in which case we take the value from the pragma.
 
       if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
          Make_Selected_Component (Loc,
            Prefix        => Make_Identifier (Loc, Name_uInit),
-           Selector_Name => Make_Identifier (Loc, Name_uCycle_Period)));
+           Selector_Name => Make_Identifier (Loc, Name_uCycle_Period));
       else
          Append_To (Args,
            New_Reference_To (RTE (RE_Time_Span_Last), Loc));
       end if;
 
-      --  Phase parameter. Set to Time_Span_Zero unless there is a 
-      --  Phase pragma,in which case we take the value from the pragma. 
+      --  Phase parameter. Set to Time_Span_Zero unless there is a
+      --  Phase pragma,in which case we take the value from the pragma.
 
       if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
          Make_Selected_Component (Loc,
            Prefix        => Make_Identifier (Loc, Name_uInit),
-           Selector_Name => Make_Identifier (Loc, Name_uPhase)));
+           Selector_Name => Make_Identifier (Loc, Name_uPhase));
       else
          Append_To (Args,
            New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
@@ -12722,7 +12721,7 @@ package body Exp_Ch9 is
       --     Append_To (Args,
       --       New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
       --  end if;
-  
+
       --  Run_Loop parameter. This is a pointer to the task body procedure. The
       --  required value is obtained by taking 'Unrestricted_Access of the task
       --  body procedure and converting it (with an unchecked conversion) to
@@ -12757,6 +12756,7 @@ package body Exp_Ch9 is
                    Prefix =>
                      New_Occurrence_Of (Body_Proc, Loc),
                    Attribute_Name => Name_Unrestricted_Access))));
+	  end;
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
 
