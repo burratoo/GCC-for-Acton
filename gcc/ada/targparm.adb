@@ -229,7 +229,7 @@ package body Targparm is
                  "pragma Profile (Ravenscar);"
          then
             Set_Profile_Restrictions (Ravenscar);
-            Name_Buffer (1 .. 22) := "FIFO_Within_Priorities"
+            Name_Buffer (1 .. 22) := "FIFO_Within_Priorities";
             Name_Len := 22;
             Opt.Task_Dispatching_Policy := Name_Find;
             Opt.Locking_Policy          := 'C';
@@ -423,7 +423,23 @@ package body Targparm is
                                    "pragma Task_Dispatching_Policy ("
          then
             P := P + 32;
-            Opt.Task_Dispatching_Policy := System_Text (P);
+			
+			Name_Len := 0;
+            while System_Text (P) in 'A' .. 'Z'
+                    or else
+                  System_Text (P) in 'a' .. 'z'
+                    or else
+                  System_Text (P) in '0' .. '9'
+                    or else
+                  System_Text (P) = ' '
+                    or else
+                  System_Text (P) = '_'
+            loop
+               Add_Char_To_Name_Buffer (System_Text (P));
+               P := P + 1;
+            end loop;
+
+            Opt.Task_Dispatching_Policy := Name_Find;
             Opt.Task_Dispatching_Policy_Sloc := System_Location;
             goto Line_Loop_Continue;
 

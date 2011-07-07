@@ -951,8 +951,8 @@ package body ALI is
                   P := P + 1;
                   Checkc ('=');
                   ALIs.Table (Id).Main_Stack_Size := Get_Nat;
-               end if;    
-                          
+               end if;
+
                Skip_Space;
 
                Checkc ('W');
