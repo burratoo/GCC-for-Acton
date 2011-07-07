@@ -8430,7 +8430,7 @@ package Sinfo is
      (N : Node_Id) return Boolean;    -- Flag10
 
    function Has_Pragma_Phase
-     (N : Node_Id) return Boolean;   -- Flag11  
+     (N : Node_Id) return Boolean;    -- Flag11
 
    function Has_Pragma_Priority
      (N : Node_Id) return Boolean;    -- Flag6
@@ -9397,10 +9397,10 @@ package Sinfo is
 
    procedure Set_Has_Pragma_Cycle_Period
      (N : Node_Id; Val : Boolean := True);    -- Flag10
-     
+
    procedure Set_Has_Pragma_Phase
      (N : Node_Id; Val : Boolean := True);    -- Flag11
-     
+
    procedure Set_Has_Pragma_Priority
      (N : Node_Id; Val : Boolean := True);    -- Flag6
 
