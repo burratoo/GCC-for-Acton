@@ -181,7 +181,7 @@ package Lib.Writ is
    --          single character used in the -gnatW? switch. This is used to
    --          provide the default wide-character encoding for Wide_Text_IO
    --          files.
-   
+
    --  -----------------
    --  -- A  Argument --
    --  -----------------
@@ -405,7 +405,7 @@ package Lib.Writ is
    --      pragma. There is one line for each separate pragma, and if no such
    --      pragmas are used, then no S lines are present.
 
-   --      The policy_identifier is the string of the policy name 
+   --      The policy_identifier is the string of the policy name
    --      (e.g. FIFO_Within_Priorities).
 
    --      The first_priority and last_priority fields define the range of

@@ -91,7 +91,7 @@ procedure Gnatbind is
       Table_Name           => "Gnatbind.Closure_Sources");
    --  Table to record the sources in the closure, to avoid duplications. Used
    --  only with switch -R.
-      
+
    Scheduler_Agent_ALI_Name_Length : constant := 22;
 
    function Gnatbind_Supports_Auto_Init return Boolean;
@@ -108,11 +108,11 @@ procedure Gnatbind is
 
    function Is_Cross_Compiler return Boolean;
    --  Returns True iff this is a cross-compiler
-   
+
    procedure Process_Unique_Dispatching_Policies;
-   --  Generates the Unique_Dispatching_Policies table from the data in the 
+   --  Generates the Unique_Dispatching_Policies table from the data in the
    --  Specific_Dispatching table.
-      
+
    procedure Add_ALI_File_To_List;
    --  Adds the ALI in the Name_Buffer to the ALI list.
 
@@ -479,25 +479,25 @@ procedure Gnatbind is
 
    procedure Check_Version_And_Help is
       new Check_Version_And_Help_G (Bindusg.Display);
- 
+
    -----------------------------------------
    -- Process_Unique_Dispatching_Policies --
    -----------------------------------------
-   
+
    procedure Process_Unique_Dispatching_Policies is
       Policy     : Name_Id;
       Is_Present : Boolean;
    begin
-   
+
       --  Add the Task_Dispatching_Policy if it exists. Otherwise it will be
       --  set to No_Name.
       Policy := Task_Dispatching_Policy;
-      
+
       --  We add FIFO_Within_Priorities since it is the default case
       --  if the programmer does not specify a policy for every priority or
       --  if they do not specify any priority. It is also done since we need to
-      --  know which ALIs we need before we carry out the consistency checks, 
-      --  which is required before we can start using the priority ranges 
+      --  know which ALIs we need before we carry out the consistency checks,
+      --  which is required before we can start using the priority ranges
       --  given by Specific_Dispatching table.
 
       if Policy = No_Name then
@@ -505,12 +505,12 @@ procedure Gnatbind is
          Name_Len              := 22;
          Policy                := Name_Find;
       end if;
-      
+
       Unique_Dispatching_Policies.Append (Policy);
-      
-      --  Loop through the Specific_Dispatching table and add each new unique 
+
+      --  Loop through the Specific_Dispatching table and add each new unique
       --  policy to the Unique_Dispatching_Policies table.
-      
+
       for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
          Is_Present := False;
          Policy := Specific_Dispatching.Table (J).Dispatching_Policy;
@@ -520,7 +520,7 @@ procedure Gnatbind is
                Is_Present := True;
             end if;
          end loop;
-         
+
          if not Is_Present then
             Unique_Dispatching_Policies.Append (Policy);
          end if;
@@ -530,7 +530,7 @@ procedure Gnatbind is
    --------------------------
    -- Add_ALI_File_To_List --
    --------------------------
-   
+
    procedure Add_ALI_File_To_List is
       Id : ALI_Id;
       pragma Warnings (Off, Id);
@@ -823,17 +823,17 @@ begin
       --  run-time in the generated binder file and are not referenced at all
       --  in the user's program or within the rest of Acton. Thus we need to
       --  add them here.
- 
+
       Add_Scheduler_Agent_ALIs : declare
       begin
-         Name_Buffer (1 .. Scheduler_Agent_ALI_Name_Length) 
+         Name_Buffer (1 .. Scheduler_Agent_ALI_Name_Length)
            := "acton-scheduler_agent.ali";
          Name_Len := Scheduler_Agent_ALI_Name_Length + 3;
          Add_ALI_File_To_List;
-         
+
          Process_Unique_Dispatching_Policies;
-         
-         for J in Unique_Dispatching_Policies.First .. 
+
+         for J in Unique_Dispatching_Policies.First ..
                     Unique_Dispatching_Policies.Last loop
             Name_Len := Scheduler_Agent_ALI_Name_Length;
             Add_Str_To_Name_Buffer 
@@ -842,7 +842,7 @@ begin
             Add_ALI_File_To_List;
          end loop;
       end Add_Scheduler_Agent_ALIs;
-       
+
       --  Load ALIs for all dependent units
 
       for Index in ALIs.First .. ALIs.Last loop

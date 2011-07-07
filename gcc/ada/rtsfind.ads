@@ -1687,7 +1687,6 @@ package Rtsfind is
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access,
      RE_Oak_Task);                       -- Oak.Oak_Task
 
-
    --  The following declarations build a table that is indexed by the RTE
    --  function to determine the unit containing the given entity. This table
    --  is sorted in order of package names.
@@ -2905,7 +2904,6 @@ package Rtsfind is
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
      RE_Oak_Task                         => Oak_Oak_Task);
-
 
    --------------------------------
    -- Configurable Run-Time Mode --

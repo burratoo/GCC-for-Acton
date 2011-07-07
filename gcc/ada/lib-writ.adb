@@ -1194,7 +1194,7 @@ package body Lib.Writ is
          Write_Info_Initiate ('S');
          Write_Info_Char (' ');
          Write_Info_Str 
-           (Get_Name_String 
+           (Get_Name_String
              (Specific_Dispatching.Table (J).Dispatching_Policy));
          Write_Info_Char (' ');
          Write_Info_Nat (Specific_Dispatching.Table (J).First_Priority);
