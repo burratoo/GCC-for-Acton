@@ -32,9 +32,28 @@
 
 --  See the body for exact details of the file that is generated
 
+with Namet;    use Namet;
+with Table;    use Table;
+
 package Bindgen is
 
    procedure Gen_Output_File (Filename : String);
    --  Filename is the full path name of the binder output file
+   
+   ----------------------------------
+   -- Unique_Dispatching_Policies  --
+   ----------------------------------
+   
+   --  Table to store each unique policy. Put here as it is shared with
+   --  gnatbinder.
+
+   package Unique_Dispatching_Policies is new Table.Table
+     (Table_Component_Type => Name_Id,
+      Table_Index_Type     => Natural,
+      Table_Low_Bound      => 1,
+      Table_Initial        => 10,
+      Table_Increment      => 10,
+      Table_Name           => "Gnatbind.Scheduler_Agents");
+
 
 end Bindgen;

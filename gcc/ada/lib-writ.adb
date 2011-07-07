@@ -70,28 +70,31 @@ package body Lib.Writ is
    begin
       Units.Increment_Last;
       Units.Table (Units.Last) :=
-        (Unit_File_Name   => File_Name (S),
-         Unit_Name        => No_Unit_Name,
-         Expected_Unit    => No_Unit_Name,
-         Source_Index     => S,
-         Cunit            => Empty,
-         Cunit_Entity     => Empty,
-         Dependency_Num   => 0,
-         Dynamic_Elab     => False,
-         Fatal_Error      => False,
-         Generate_Code    => False,
-         Has_Allocator    => False,
-         Has_RACW         => False,
-         Is_Compiler_Unit => False,
-         Ident_String     => Empty,
-         Loading          => False,
-         Main_Priority    => -1,
-         Main_CPU         => -1,
-         Munit_Index      => 0,
-         Serial_Number    => 0,
-         Version          => 0,
-         Error_Location   => No_Location,
-         OA_Setting       => 'O');
+        (Unit_File_Name    => File_Name (S),
+         Unit_Name         => No_Unit_Name,
+         Expected_Unit     => No_Unit_Name,
+         Source_Index      => S,
+         Cunit             => Empty,
+         Cunit_Entity      => Empty,
+         Dependency_Num    => 0,
+         Dynamic_Elab      => False,
+         Fatal_Error       => False,
+         Generate_Code     => False,
+         Has_Allocator     => False,
+         Has_RACW          => False,
+         Is_Compiler_Unit  => False,
+         Ident_String      => Empty,
+         Loading           => False,
+         Main_Priority     => Default_Main_Priority,
+         Main_CPU          => Default_Main_CPU,
+         Main_Cycle_Period => Default_Main_Cycle_Period,
+         Main_Deadline     => Default_Main_Deadline,
+         Main_Stack_Size   => Default_Main_Stack_Size,
+         Munit_Index       => 0,
+         Serial_Number     => 0,
+         Version           => 0,
+         Error_Location    => No_Location,
+         OA_Setting        => 'O');
    end Add_Preprocessing_Dependency;
 
    ------------------------------
@@ -127,28 +130,31 @@ package body Lib.Writ is
 
       Units.Increment_Last;
       Units.Table (Units.Last) := (
-        Unit_File_Name   => System_Fname,
-        Unit_Name        => System_Uname,
-        Expected_Unit    => System_Uname,
-        Source_Index     => System_Source_File_Index,
-        Cunit            => Empty,
-        Cunit_Entity     => Empty,
-        Dependency_Num   => 0,
-        Dynamic_Elab     => False,
-        Fatal_Error      => False,
-        Generate_Code    => False,
-        Has_Allocator    => False,
-        Has_RACW         => False,
-        Is_Compiler_Unit => False,
-        Ident_String     => Empty,
-        Loading          => False,
-        Main_Priority    => -1,
-        Main_CPU         => -1,
-        Munit_Index      => 0,
-        Serial_Number    => 0,
-        Version          => 0,
-        Error_Location   => No_Location,
-        OA_Setting       => 'O');
+        Unit_File_Name    => System_Fname,
+        Unit_Name         => System_Uname,
+        Expected_Unit     => System_Uname,
+        Source_Index      => System_Source_File_Index,
+        Cunit             => Empty,
+        Cunit_Entity      => Empty,
+        Dependency_Num    => 0,
+        Dynamic_Elab      => False,
+        Fatal_Error       => False,
+        Generate_Code     => False,
+        Has_Allocator     => False,
+        Has_RACW          => False,
+        Is_Compiler_Unit  => False,
+        Ident_String      => Empty,
+        Loading           => False,
+        Main_Priority     => Default_Main_Priority,
+        Main_CPU          => Default_Main_CPU,
+        Main_Cycle_Period => Default_Main_Cycle_Period,
+        Main_Deadline     => Default_Main_Deadline,
+        Main_Stack_Size   => Default_Main_Stack_Size,
+        Munit_Index       => 0,
+        Serial_Number     => 0,
+        Version           => 0,
+        Error_Location    => No_Location,
+        OA_Setting        => 'O');
 
       --  Parse system.ads so that the checksum is set right
       --  Style checks are not applied.
@@ -936,6 +942,21 @@ package body Lib.Writ is
             if Main_CPU (Main_Unit) /= Default_Main_CPU then
                Write_Info_Str (" C=");
                Write_Info_Nat (Main_CPU (Main_Unit));
+            end if;
+
+            if Main_Cycle_Period (Main_Unit) /= Default_Main_Cycle_Period then
+               Write_Info_Str (" P=");
+               Write_Info_Nat (Main_Cycle_Period (Main_Unit));
+            end if;
+
+            if Main_Deadline (Main_Unit) /= Default_Main_Deadline then
+               Write_Info_Str (" D=");
+               Write_Info_Nat (Main_Deadline (Main_Unit));
+            end if;
+
+            if Main_Stack_Size (Main_Unit) /= Default_Main_Stack_Size then
+               Write_Info_Str (" S=");
+               Write_Info_Nat (Main_Stack_Size (Main_Unit));
             end if;
 
             Write_Info_Str (" W=");

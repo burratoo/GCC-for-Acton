@@ -385,7 +385,32 @@ package Rtsfind is
       System_Tasking_Protected_Objects_Single_Entry,
       System_Tasking_Restricted_Stages,
       System_Tasking_Rendezvous,
-      System_Tasking_Stages);
+      System_Tasking_Stages,
+
+      --  ARPART
+
+      ARPART,
+
+      --  Children of ARPART
+
+      ARPART_Tasks,
+
+      --  Oak
+
+      Oak,
+
+      --  Children of Oak
+
+      Oak_Oak_Task,
+      Oak_Memory,
+
+      --  Children of Oak.Oak_Task
+
+      Oak_Oak_Task_Data_Access,
+
+      --  Children of Oak.Memory
+
+      Oak_Memory_Call_Stack);
 
    subtype Ada_Child is RTU_Id
      range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -1123,7 +1148,6 @@ package Rtsfind is
      RE_Set_63,                          -- System.Pack_63
 
      RE_Adjust_Storage_Size,             -- System_Parameters
-     RE_Default_Stack_Size,              -- System.Parameters
      RE_Garbage_Collected,               -- System.Parameters
      RE_Size_Type,                       -- System.Parameters
      RE_Unspecified_Size,                -- System.Parameters
@@ -1313,6 +1337,7 @@ package Rtsfind is
      RE_Exception_Code,                  -- System.Standard_Library
      RE_Exception_Data_Ptr,              -- System.Standard_Library
 
+     RE_Storage_Count,                   -- System.Storage_Elements
      RE_Integer_Address,                 -- System.Storage_Elements
      RE_Storage_Offset,                  -- System.Storage_Elements
      RE_Storage_Array,                   -- System.Storage_Elements
@@ -1649,19 +1674,16 @@ package Rtsfind is
 
      RE_Abort_Tasks,                     -- System.Tasking.Stages
      RE_Activate_Tasks,                  -- System.Tasking.Stages
-     RE_Complete_Activation,             -- System.Tasking.Stages
      RE_Create_Task,                     -- System.Tasking.Stages
-     RE_Complete_Task,                   -- System.Tasking.Stages
      RE_Free_Task,                       -- System.Tasking.Stages
      RE_Expunge_Unactivated_Tasks,       -- System.Tasking.Stages
      RE_Move_Activation_Chain,           -- System_Tasking_Stages
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
-     
+
      RE_Complete_Activation,             -- ARPART.Tasks
      RE_Complete_Task,                   -- ARAPRT.Tasks
-     RE_Default_Call_Stack_Size,           
-     --  Oak.Processor_Support_Package.Call_Stack,
+     RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access,
      RE_Oak_Task);                       -- Oak.Oak_Task
 
@@ -2308,7 +2330,6 @@ package Rtsfind is
      RE_Set_63                           => System_Pack_63,
 
      RE_Adjust_Storage_Size              => System_Parameters,
-     RE_Default_Stack_Size               => System_Parameters,
      RE_Garbage_Collected                => System_Parameters,
      RE_Size_Type                        => System_Parameters,
      RE_Unspecified_Size                 => System_Parameters,
@@ -2498,6 +2519,7 @@ package Rtsfind is
      RE_Exception_Code                   => System_Standard_Library,
      RE_Exception_Data_Ptr               => System_Standard_Library,
 
+     RE_Storage_Count                    => System_Storage_Elements,
      RE_Integer_Address                  => System_Storage_Elements,
      RE_Storage_Offset                   => System_Storage_Elements,
      RE_Storage_Array                    => System_Storage_Elements,
@@ -2877,11 +2899,10 @@ package Rtsfind is
      RE_Move_Activation_Chain            => System_Tasking_Stages,
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
-     
-     RE_Complete_Activation,             => ARPART_Tasks,
-     RE_Complete_Task                    => ARAPRT_Tasks,
-     RE_Default_Call_Stack_Size          => 
-       Oak_Processor_Support_Package_Call_Stack,
+
+     RE_Complete_Activation              => ARPART_Tasks,
+     RE_Complete_Task                    => ARPART_Tasks,
+     RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
      RE_Oak_Task                         => Oak_Oak_Task);
 

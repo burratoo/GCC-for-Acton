@@ -5498,12 +5498,16 @@ package body Sem_Prag is
          Selector_Entity : Entity_Id;
          Prefix_Node     : Node_Id;
          Node            : Node_Id;
+         FIFO_Policy     : Name_Id;
 
       begin
          --  pragma Task_Dispatching_Policy (FIFO_Within_Priorities)
-
-         if Task_Dispatching_Policy /= ' '
-           and then Task_Dispatching_Policy /= 'F'
+         Name_Buffer (1 .. 22) := "fifo_within_priorities";
+         Name_Len              := 22;
+         FIFO_Policy           := Name_Find;
+         
+         if Task_Dispatching_Policy /= No_Name
+           and then Task_Dispatching_Policy /= FIFO_Policy
          then
             Error_Msg_Sloc := Task_Dispatching_Policy_Sloc;
             Error_Pragma ("Profile (Ravenscar) incompatible with policy#");
@@ -5513,7 +5517,7 @@ package body Sem_Prag is
          --  name.
 
          else
-            Task_Dispatching_Policy := 'F';
+            Task_Dispatching_Policy := FIFO_Policy;
 
             if Task_Dispatching_Policy_Sloc /= System_Location then
                Task_Dispatching_Policy_Sloc := Loc;
@@ -7245,22 +7249,58 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
-            Arg := Get_Pragma_Arg (Arg1);
-
-            --  The expression must be analyzed in the special manner described
-            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
-
-            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
             --  Subprogram case
 
             if Nkind (P) = N_Subprogram_Body then
                Check_In_Main_Program;
 
+               Arg := Get_Pragma_Arg (Arg1);
+               Analyze_And_Resolve (Arg, Any_Integer);
+
+               --  Must be static
+
+               if not Is_Static_Expression (Arg) then
+                  Flag_Non_Static_Expr
+                    ("main task cycle period is not static!", Arg);
+                  raise Pragma_Exit;
+
+               --  If constraint error, then we already signalled an error
+
+               elsif Raises_Constraint_Error (Arg) then
+                  null;
+
+               --  Otherwise check in range
+
+               else
+                  declare
+                     Time_Span : constant Entity_Id := RTE (RE_Time_Span);
+
+                     Val : constant Uint := Expr_Value (Arg);
+
+                  begin
+                     if Val < 0
+                          or else
+                        Val > Expr_Value (Type_High_Bound (Time_Span))
+                     then
+                        Error_Pragma_Arg
+                          ("main task cycle period is out of range", Arg1);
+                     end if;
+                  end;
+               end if;
+
+               Set_Main_Cycle_Period
+                    (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
+
             --  Tasks
 
             elsif Nkind (P) = N_Task_Definition then
-               null;
+               Arg := Get_Pragma_Arg (Arg1);
+
+               --  The expression must be analyzed in the special manner
+               --  described in "Handling of Default and Per-Object
+               --  Expressions" in sem.ads.
+
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
 
             --  Anything else is incorrect
 
@@ -12059,22 +12099,56 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
-            Arg := Get_Pragma_Arg (Arg1);
-
-            --  The expression must be analyzed in the special manner described
-            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
-
-            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
-            --  Subprogram case
-
             if Nkind (P) = N_Subprogram_Body then
                Check_In_Main_Program;
+
+               Arg := Get_Pragma_Arg (Arg1);
+               Analyze_And_Resolve (Arg, Any_Integer);
+
+               --  Must be static
+
+               if not Is_Static_Expression (Arg) then
+                  Flag_Non_Static_Expr
+                    ("main task relative deadline is not static!", Arg);
+                  raise Pragma_Exit;
+
+               --  If constraint error, then we already signalled an error
+
+               elsif Raises_Constraint_Error (Arg) then
+                  null;
+
+               --  Otherwise check in range
+
+               else
+                  declare
+                     Time_Span : constant Entity_Id := RTE (RE_Time_Span);
+
+                     Val : constant Uint := Expr_Value (Arg);
+
+                  begin
+                     if Val < 0
+                          or else
+                        Val > Expr_Value (Type_High_Bound (Time_Span))
+                     then
+                        Error_Pragma_Arg
+                          ("main task relative deadline is out of range", Arg1);
+                     end if;
+                  end;
+               end if;
+
+               Set_Main_Deadline
+                    (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
 
             --  Tasks
 
             elsif Nkind (P) = N_Task_Definition then
-               null;
+               Arg := Get_Pragma_Arg (Arg1);
+
+               --  The expression must be analyzed in the special manner
+               --  described in "Handling of Default and Per-Object
+               --  Expressions" in sem.ads.
+
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
 
             --  Anything else is incorrect
 
@@ -12445,29 +12519,67 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
-            --  The expression must be analyzed in the special manner described
-            --  in "Handling of Default Expressions" in sem.ads.
+            if Nkind (P) = N_Subprogram_Body then
+               Check_In_Main_Program;
 
-            Arg := Get_Pragma_Arg (Arg1);
-            Preanalyze_Spec_Expression (Arg, Any_Integer);
+               Arg := Get_Pragma_Arg (Arg1);
+               Analyze_And_Resolve (Arg, Any_Integer);
 
-            if not Is_Static_Expression (Arg) then
-               Check_Restriction (Static_Storage_Size, Arg);
-            end if;
+               --  Must be static
 
-            if Nkind (P) /= N_Task_Definition then
-               Pragma_Misplaced;
-               return;
+               if not Is_Static_Expression (Arg) then
+                  Flag_Non_Static_Expr
+                    ("main task relative deadline is not static!", Arg);
+                  raise Pragma_Exit;
 
-            else
-               if Has_Storage_Size_Pragma (P) then
-                  Error_Pragma ("duplicate pragma% not allowed");
+               --  If constraint error, then we already signalled an error
+
+               elsif Raises_Constraint_Error (Arg) then
+                  null;
+
+               --  Otherwise check in range
+
                else
-                  Set_Has_Storage_Size_Pragma (P, True);
+                  declare
+                     Size : constant Entity_Id := RTE (RE_Storage_Count);
+
+                     Val : constant Uint := Expr_Value (Arg);
+
+                  begin
+                     if Val < Expr_Value (Type_Low_Bound (Size))
+                          or else
+                        Val > Expr_Value (Type_High_Bound (Size))
+                     then
+                        Error_Pragma_Arg
+                          ("main task relative deadline is out of range", Arg1);
+                     end if;
+                  end;
                end if;
 
-               Record_Rep_Item (Defining_Identifier (Parent (P)), N);
-               --  ???  exp_ch9 should use this!
+               Set_Main_Stack_Size
+                    (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
+
+            --  Tasks
+
+            elsif Nkind (P) = N_Task_Definition then
+               Arg := Get_Pragma_Arg (Arg1);
+
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Storage_Count));
+
+            --  Anything else is incorrect
+
+            else
+               Pragma_Misplaced;
+            end if;
+
+            if Has_Relative_Deadline_Pragma (P) then
+               Error_Pragma ("duplicate pragma% not allowed");
+            else
+               Set_Has_Relative_Deadline_Pragma (P, True);
+
+               if Nkind (P) = N_Task_Definition then
+                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
+               end if;
             end if;
          end Storage_Size;
 
@@ -12835,7 +12947,7 @@ package body Sem_Prag is
          --  pragma Task_Dispatching_Policy (policy_IDENTIFIER);
 
          when Pragma_Task_Dispatching_Policy => declare
-            DP : Character;
+            DP : Name_Id;
 
          begin
             Check_Ada_83_Warning;
@@ -12843,7 +12955,8 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Is_Task_Dispatching_Policy (Arg1);
             Check_Valid_Configuration_Pragma;
-            DP := Chars (Get_Pragma_Arg (Arg1));
+            
+            DP:= Chars (Get_Pragma_Arg (Arg1));
 
             if Task_Dispatching_Policy /= No_Name
               and then Task_Dispatching_Policy /= DP

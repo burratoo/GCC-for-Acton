@@ -29,13 +29,11 @@ with Casing;   use Casing;
 with Fname;    use Fname;
 with Gnatvsn;  use Gnatvsn;
 with Hostparm;
-with Namet;    use Namet;
 with Opt;      use Opt;
 with Osint;    use Osint;
 with Osint.B;  use Osint.B;
 with Output;   use Output;
 with Rident;   use Rident;
-with Table;    use Table;
 with Targparm; use Targparm;
 with Types;    use Types;
 
@@ -88,20 +86,21 @@ package body Bindgen is
      Table_Increment      => 200,
      Table_Name           => "IS_Pragma_Settings");
 
-   --  This table assembles the Priority_Specific_Dispatching pragma
-   --  information from all the units in the partition. Note that Bcheck has
-   --  already checked that the information is consistent across units.
-   --  The entries in this table are the upper case first character of the
-   --  policy name, e.g. 'F' for FIFO_Within_Priorities.
+   ----------------------------
+   -- Scheduler_Agents Table --
+   ----------------------------
 
-   package PSD_Pragma_Settings is new Table.Table (
-     Table_Component_Type => Character,
-     Table_Index_Type     => Int,
-     Table_Low_Bound      => 0,
-     Table_Initial        => 100,
-     Table_Increment      => 200,
-     Table_Name           => "PSD_Pragma_Settings");
+   --  Table to record each scheduler agent and their associated priorities.
+   --  Used to form create calls to scheduler agents.
 
+   package Scheduler_Agents is new Table.Table
+     (Table_Component_Type => Specific_Dispatching_Record,
+      Table_Index_Type     => Natural,
+      Table_Low_Bound      => System.Any_Priority'First,
+      Table_Initial        => 10,
+      Table_Increment      => 10,
+      Table_Name           => "Scheduler_Agents");
+   
    ----------------------
    -- Run-Time Globals --
    ----------------------
@@ -109,15 +108,10 @@ package body Bindgen is
    --  This section documents the global variables that set from the
    --  generated binder file.
 
-   --     Main_Priority                 : Integer;
-   --     Time_Slice_Value              : Integer;
    --     Heap_Size                     : Natural;
    --     WC_Encoding                   : Character;
    --     Locking_Policy                : Character;
    --     Queuing_Policy                : Character;
-   --     Task_Dispatching_Policy       : Character;
-   --     Priority_Specific_Dispatching : System.Address;
-   --     Num_Specific_Dispatching      : Integer;
    --     Restrictions                  : System.Address;
    --     Interrupt_States              : System.Address;
    --     Num_Interrupt_States          : Integer;
@@ -127,16 +121,6 @@ package body Bindgen is
    --     Detect_Blocking               : Integer;
    --     Default_Stack_Size            : Integer;
    --     Leap_Seconds_Support          : Integer;
-   --     Main_CPU                      : Integer;
-
-   --  Main_Priority is the priority value set by pragma Priority in the main
-   --  program. If no such pragma is present, the value is -1.
-
-   --  Time_Slice_Value is the time slice value set by pragma Time_Slice in the
-   --  main program, or by the use of a -Tnnn parameter for the binder (if both
-   --  are present, the binder value overrides). The value is in milliseconds.
-   --  A value of zero indicates that time slicing should be suppressed. If no
-   --  pragma is present, and no -T switch was used, the value is -1.
 
    --  Heap_Size is the heap to use for memory allocations set by use of a
    --  -Hnn parameter for the binder or by the GNAT$NO_MALLOC_64 logical.
@@ -155,25 +139,6 @@ package body Bindgen is
    --  partition. If a queuing policy was specified, the value is the upper
    --  case first character of the queuing policy name for example, 'F' for
    --  FIFO_Queuing.
-
-   --  Task_Dispatching_Policy is a space if no task dispatching policy was
-   --  specified for the partition. If a task dispatching policy was specified,
-   --  the value is the upper case first character of the policy name, e.g. 'F'
-   --  for FIFO_Within_Priorities.
-
-   --  Priority_Specific_Dispatching is the address of a string used to store
-   --  the task dispatching policy specified for the different priorities in
-   --  the partition. The length of this string is determined by the last
-   --  priority for which such a pragma applies (the string will be a null
-   --  string if no specific dispatching policies were used). If pragma were
-   --  present, the entries apply to the priorities in sequence from the first
-   --  priority. The value stored is the upper case first character of the
-   --  policy name, or 'F' (for FIFO_Within_Priorities) as the default value
-   --  for those priority ranges not specified.
-
-   --  Num_Specific_Dispatching is the length of the
-   --  Priority_Specific_Dispatching string. It will be set to zero if no
-   --  Priority_Specific_Dispatching pragmas are present.
 
    --  Restrictions is the address of a null-terminated string specifying the
    --  restrictions information for the partition. The format is identical to
@@ -215,9 +180,6 @@ package body Bindgen is
    --  Leap_Seconds_Support denotes whether leap seconds have been enabled or
    --  disabled. A value of zero indicates that leap seconds are turned "off",
    --  while a value of one signifies "on" status.
-
-   --  Main_CPU is the processor set by pragma CPU in the main program. If no
-   --  such pragma is present, the value is -1.
 
    -----------------------
    -- Local Subprograms --
@@ -319,8 +281,9 @@ package body Bindgen is
    procedure Set_Name_Buffer;
    --  Set the value stored in positions 1 .. Name_Len of the Name_Buffer
 
-   procedure Set_PSD_Pragma_Table;
-   --  Initializes contents of PSD_Pragma_Settings table from ALI table
+   procedure Set_Scheduler_Agent_Table;
+   --  Generates the Scheduler_Agents table from the data in the
+   --  Specific_Dispatching table.
 
    procedure Set_String (S : String);
    --  Sets characters of given string in Statement_Buffer, starting at the
@@ -433,49 +396,12 @@ package body Bindgen is
                Set_String ("E");
                Set_Unit_Number (Unum);
 
-               case VM_Target is
-                  when No_VM | JVM_Target =>
-                     Set_String (" : Boolean; pragma Import (Ada, ");
-                  when CLI_Target =>
-                     Set_String (" : Boolean; pragma Import (CIL, ");
-               end case;
+               Set_String (" : Boolean; pragma Import (Ada, ");
 
                Set_String ("E");
                Set_Unit_Number (Unum);
                Set_String (", """);
                Get_Name_String (U.Uname);
-
-               --  In the case of JGNAT we need to emit an Import name that
-               --  includes the class name (using '$' separators in the case
-               --  of a child unit name).
-
-               if VM_Target /= No_VM then
-                  for J in 1 .. Name_Len - 2 loop
-                     if VM_Target = CLI_Target
-                       or else Name_Buffer (J) /= '.'
-                     then
-                        Set_Char (Name_Buffer (J));
-                     else
-                        Set_String ("$");
-                     end if;
-                  end loop;
-
-                  if VM_Target /= CLI_Target or else U.Unit_Kind = 's' then
-                     Set_String (".");
-                  else
-                     Set_String ("_pkg.");
-                  end if;
-
-                  --  If the unit name is very long, then split the
-                  --  Import link name across lines using "&" (occurs
-                  --  in some C2 tests).
-
-                  if 2 * Name_Len + 60 > Hostparm.Max_Line_Length then
-                     Set_String (""" &");
-                     Write_Statement_Buffer;
-                     Set_String ("         """);
-                  end if;
-               end if;
 
                Set_Unit_Name;
                Set_String ("_E"");");
@@ -486,46 +412,12 @@ package body Bindgen is
 
       Write_Statement_Buffer;
 
-      --  If the standard library is suppressed, then the only global variables
-      --  that might be needed (by the Ravenscar profile) are the priority and
-      --  the processor for the environment task.
-
+      --  Currently in Acton we suppress the standard library. Nothing needs to
+      --  be stored in global variables.
+      
       if Suppress_Standard_Library_On_Target then
-         if Main_Priority /= No_Main_Priority then
-            WBI ("      Main_Priority : Integer;");
-            WBI ("      pragma Import (C, Main_Priority," &
-                 " ""__gl_main_priority"");");
-            WBI ("");
-         end if;
-
-         if Main_CPU /= No_Main_CPU then
-            WBI ("      Main_CPU : Integer;");
-            WBI ("      pragma Import (C, Main_CPU," &
-                 " ""__gl_main_cpu"");");
-            WBI ("");
-         end if;
-
          WBI ("   begin");
-
-         if Main_Priority /= No_Main_Priority then
-            Set_String ("      Main_Priority := ");
-            Set_Int    (Main_Priority);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-         if Main_CPU /= No_Main_CPU then
-            Set_String ("      Main_CPU := ");
-            Set_Int    (Main_CPU);
-            Set_Char   (';');
-            Write_Statement_Buffer;
-         end if;
-
-         if Main_Priority = No_Main_Priority
-           and then Main_CPU = No_Main_CPU
-         then
-            WBI ("      null;");
-         end if;
+         WBI ("      null;");
 
       --  Normal case (standard library not suppressed). Set all global values
       --  used by the run time.
@@ -673,19 +565,6 @@ package body Bindgen is
          Set_Char   (';');
          Write_Statement_Buffer;
 
-         Set_String ("      Time_Slice_Value := ");
-
-         if Task_Dispatching_Policy_Specified = 'F'
-           and then ALIs.Table (ALIs.First).Time_Slice_Value = -1
-         then
-            Set_Int (0);
-         else
-            Set_Int (ALIs.Table (ALIs.First).Time_Slice_Value);
-         end if;
-
-         Set_Char   (';');
-         Write_Statement_Buffer;
-
          Set_String ("      WC_Encoding := '");
          Set_Char   (Get_WC_Encoding);
 
@@ -702,20 +581,7 @@ package body Bindgen is
          Set_String ("';");
          Write_Statement_Buffer;
 
-         Set_String ("      Task_Dispatching_Policy := '");
-         Set_Char   (Task_Dispatching_Policy_Specified);
-         Set_String ("';");
-         Write_Statement_Buffer;
-
          Gen_Restrictions_Ada;
-
-         WBI ("      Priority_Specific_Dispatching :=");
-         WBI ("        Local_Priority_Specific_Dispatching'Address;");
-
-         Set_String ("      Num_Specific_Dispatching := ");
-         Set_Int (PSD_Pragma_Settings.Last + 1);
-         Set_Char (';');
-         Write_Statement_Buffer;
 
          Set_String ("      Main_CPU := ");
          Set_Int    (Main_CPU);
@@ -1087,14 +953,7 @@ package body Bindgen is
 
          WBI ("");
 
-         if ALIs.Table (ALIs.First).Main_Program = Func then
-            WBI ("      Result : Integer;");
-            WBI ("");
-            WBI ("      function Ada_Main_Program return Integer;");
-
-         else
-            WBI ("      procedure Ada_Main_Program;");
-         end if;
+         WBI ("      procedure Ada_Main_Program;");
 
          Set_String ("      pragma Import (Ada, Ada_Main_Program, """);
          Get_Name_String (Units.Table (First_Unit_Entry).Uname);
@@ -1111,7 +970,33 @@ package body Bindgen is
             WBI ("");
          end if;
       end if;
-
+      
+      --  For the above reasons we call the scheduler agents' initialise
+      --  procedure through a pragma Import with the procedure's link name.
+      
+      for J in Unique_Dispatching_Policies.First
+                 .. Unique_Dispatching_Policies.Last 
+      loop
+         declare
+            Policy_Str : String := Get_Name_String 
+                                (Unique_Dispatching_Policies.Table (J));
+         begin
+            Set_String ("      procedure Create_Scheduler_Agent_");
+            Set_String (Policy_Str);
+            Set_String (";");
+            Write_Statement_Buffer;
+            
+            Set_String ("      pragma Import (Ada, Create_Scheduler_Agent_");
+            Set_String (Policy_Str);
+            Set_String (", ""__acton_scheduler_agent_");
+            Set_String (Policy_Str);
+            Set_String (""");");
+            Write_Statement_Buffer;
+         end;
+         
+         WBI ("");
+      end loop;
+                  
       --  Generate a reference to Ada_Main_Program_Name. This symbol is
       --  not referenced elsewhere in the generated program, but is needed
       --  by the debugger (that's why it is generated in the first place).
@@ -1129,41 +1014,23 @@ package body Bindgen is
          WBI ("      pragma Volatile (Ensure_Reference);");
          WBI ("");
       end if;
+      
+      --  Generate OTCR for the main task.
+      
+      WBI ("      Main_Task_OTCR : aliased Oak.Oak_Task.Oak_Task;");
+      
+      --  And now the OTCRs for the Scheduler Agents.
+
+      for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
+         Set_String ("      Scheduler_Agent_");
+         Set_Int (Int (J));
+         Set_String (" : aliased Oak.Oak_Task.Oak_Task;");
+         Write_Statement_Buffer;
+      end loop;
+      
+      WBI ("");
 
       WBI ("   begin");
-
-      --  Acquire command line arguments if present on target
-
-      if Command_Line_Args_On_Target then
-         WBI ("      gnat_argc := argc;");
-         WBI ("      gnat_argv := argv;");
-         WBI ("      gnat_envp := envp;");
-         WBI ("");
-
-      --  If configurable run time and no command line args, then nothing
-      --  needs to be done since the gnat_argc/argv/envp variables are
-      --  suppressed in this case.
-
-      elsif Configurable_Run_Time_On_Target then
-         null;
-
-      --  Otherwise set dummy values (to be filled in by some other unit?)
-
-      else
-         WBI ("      gnat_argc := 0;");
-         WBI ("      gnat_argv := System.Null_Address;");
-         WBI ("      gnat_envp := System.Null_Address;");
-      end if;
-
-      if Opt.Default_Exit_Status /= 0
-        and then Bind_Main_Program
-        and then not Configurable_Run_Time_Mode
-      then
-         Set_String ("      Set_Exit_Status (");
-         Set_Int (Opt.Default_Exit_Status);
-         Set_String (");");
-         Write_Statement_Buffer;
-      end if;
 
       if Dynamic_Stack_Measurement then
          Set_String ("      Initialize_Stack_Analysis (");
@@ -1187,12 +1054,64 @@ package body Bindgen is
 
       if not No_Main_Subprogram then
          WBI ("      Break_Start;");
-
-         if ALIs.Table (ALIs.First).Main_Program = Proc then
-            WBI ("      Ada_Main_Program;");
+         WBI ("");
+         
+         for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
+            Set_String ("      Create_Scheduler_Agent_");
+            Set_String (Get_Name_String 
+                          (Scheduler_Agents.Table (J).Dispatching_Policy));
+            Set_String (" (Scheduler_Agent_");
+            Set_Int (Int (J));
+            Set_String ("'Access, ");
+            Set_Int (Scheduler_Agents.Table (J).First_Priority);
+            Set_String (", ");
+            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
+            Set_String (");");
+            Write_Statement_Buffer;
+         end loop;
+         
+         --  Initalise main task call
+         WBI ("      Initialise_Main_Task");
+         WBI ("        (Main_Task_OTCR'Access,");
+         
+         --  Set the stack size of the main task
+         if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
+            WBI ("         Oak.Processor_Support_Package." &
+                 "Call_Stack.Main_Task_Call_Stack_Size,");
          else
-            WBI ("      Result := Ada_Main_Program;");
+            Set_String ("         ");
+            Set_Int (ALIs.Table (ALIs.First).Main_Stack_Size);
+            Set_String (", ");
+            Write_Statement_Buffer;
          end if;
+         
+         --  Set the name of the main task.
+         WBI ("         Main Task,");
+  
+         --  Set the priority of the main task       
+         if ALIs.Table (ALIs.First).Main_Priority = No_Main_Priority then
+            WBI ("         System.Default_Priority,");
+         else
+            Set_String ("         ");
+            Set_Int (ALIs.Table (ALIs.First).Main_Priority);
+            Set_String (",");
+            Write_Statement_Buffer;
+         end if;
+         
+         --  Set the relative deadline of the main task.
+         Set_String ("         ");
+         Set_Int (ALIs.Table (ALIs.First).Main_Deadline);
+         Set_String (",");
+         Write_Statement_Buffer;
+         
+         --  Set Cycle_Period
+         Set_String ("         ");
+         Set_Int (ALIs.Table (ALIs.First).Main_Cycle_Period);
+         Set_String (",");
+         Write_Statement_Buffer;
+         
+         --  Set the Address of the main task's run-loop
+         WBI ("         Ada_Main_Program'Address);");
       end if;
 
       --  Adafinal call is skipped if no finalization
@@ -1219,18 +1138,6 @@ package body Bindgen is
 
       if not Cumulative_Restrictions.Set (No_Finalization) then
          WBI ("      Finalize;");
-      end if;
-
-      --  Return result
-
-      if Exit_Status_Supported_On_Target then
-         if No_Main_Subprogram
-           or else ALIs.Table (ALIs.First).Main_Program = Proc
-         then
-            WBI ("      return (gnat_exit_status);");
-         else
-            WBI ("      return (Result);");
-         end if;
       end if;
 
       WBI ("   end;");
@@ -1510,10 +1417,10 @@ package body Bindgen is
 
       Set_IS_Pragma_Table;
 
-      --  Acquire settings for Priority_Specific_Dispatching pragma
+      --  Acquire Scheduler Agents
 
-      Set_PSD_Pragma_Table;
-
+      Set_Scheduler_Agent_Table;
+      
       --  Override Ada_Bind_File and Bind_Main_Program for VMs since JGNAT only
       --  supports Ada code, and the main program is already generated by the
       --  compiler.
@@ -1546,11 +1453,7 @@ package body Bindgen is
 
       Check_System_Restrictions_Used;
 
-      if Ada_Bind_File then
-         Gen_Output_File_Ada (Filename);
-      else
-         Gen_Output_File_C (Filename);
-      end if;
+      Gen_Output_File_Ada (Filename);
    end Gen_Output_File;
 
    -------------------------
@@ -1628,6 +1531,12 @@ package body Bindgen is
             WBI ("with System.Standard_Library;");
          end if;
       end if;
+      
+      --  Generate with of Oak.Oak_Task so that we can reference 
+      --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
+      --  agents OTCR.
+      
+      WBI ("with Oak.Oak_Task;");
 
       WBI ("package " & Ada_Main & " is");
       WBI ("   pragma Warnings (Off);");
@@ -1635,46 +1544,6 @@ package body Bindgen is
       --  Main program case
 
       if Bind_Main_Program then
-         if VM_Target = No_VM then
-
-            --  Generate argc/argv stuff unless suppressed
-
-            if Command_Line_Args_On_Target
-              or not Configurable_Run_Time_On_Target
-            then
-               WBI ("");
-               WBI ("   gnat_argc : Integer;");
-               WBI ("   gnat_argv : System.Address;");
-               WBI ("   gnat_envp : System.Address;");
-
-               --  If the standard library is not suppressed, these variables
-               --  are in the run-time data area for easy run time access.
-
-               if not Suppress_Standard_Library_On_Target then
-                  WBI ("");
-                  WBI ("   pragma Import (C, gnat_argc);");
-                  WBI ("   pragma Import (C, gnat_argv);");
-                  WBI ("   pragma Import (C, gnat_envp);");
-               end if;
-            end if;
-
-            --  Define exit status. Again in normal mode, this is in the
-            --  run-time library, and is initialized there, but in the
-            --  configurable runtime case, the variable is declared and
-            --  initialized in this file.
-
-            WBI ("");
-
-            if Configurable_Run_Time_Mode then
-               if Exit_Status_Supported_On_Target then
-                  WBI ("   gnat_exit_status : Integer := 0;");
-               end if;
-
-            else
-               WBI ("   gnat_exit_status : Integer;");
-               WBI ("   pragma Import (C, gnat_exit_status);");
-            end if;
-         end if;
 
          --  Generate the GNAT_Version and Ada_Main_Program_Name info only for
          --  the main program. Otherwise, it can lead under some circumstances
@@ -1693,13 +1562,8 @@ package body Bindgen is
          Set_String ("   Ada_Main_Program_Name : constant String := """);
          Get_Name_String (Units.Table (First_Unit_Entry).Uname);
 
-         if VM_Target = No_VM then
-            Set_Main_Program_Name;
-            Set_String (""" & ASCII.NUL;");
-         else
-            Set_String (Name_Buffer (1 .. Name_Len - 2) & """;");
-         end if;
-
+         Set_Main_Program_Name;
+         Set_String (""" & ASCII.NUL;");
          Write_Statement_Buffer;
 
          WBI
@@ -1747,37 +1611,9 @@ package body Bindgen is
 
          WBI ("");
 
-         if Exit_Status_Supported_On_Target then
-            Set_String ("   function ");
-         else
-            Set_String ("   procedure ");
-         end if;
-
+         Set_String ("   procedure ");
          Set_String (Get_Main_Name);
-
-         --  Generate argument list if present
-
-         if Command_Line_Args_On_Target then
-            Write_Statement_Buffer;
-            WBI ("     (argc : Integer;");
-            WBI ("      argv : System.Address;");
-            Set_String
-                ("      envp : System.Address)");
-
-            if Exit_Status_Supported_On_Target then
-               Write_Statement_Buffer;
-               WBI ("      return Integer;");
-            else
-               Write_Statement_Buffer (";");
-            end if;
-
-         else
-            if Exit_Status_Supported_On_Target then
-               Write_Statement_Buffer (" return Integer;");
-            else
-               Write_Statement_Buffer (";");
-            end if;
-         end if;
+         Write_Statement_Buffer (";");
 
          WBI ("   pragma Export (C, " & Get_Main_Name & ", """ &
            Get_Main_Name & """);");
@@ -1792,8 +1628,10 @@ package body Bindgen is
       WBI ("end " & Ada_Main & ";");
       Close_Binder_Output;
 
+      --
       --  Prepare to write body
-
+      --  
+      
       Create_Binder_Output (Filename, 'b', Bfileb);
 
       --  We always compile the binder file in Ada 95 mode so that we properly
@@ -1854,33 +1692,6 @@ package body Bindgen is
                """system__standard_library__adafinal"");");
             WBI ("");
          end if;
-      end if;
-
-      if not Suppress_Standard_Library_On_Target then
-
-         --  Generate Priority_Specific_Dispatching pragma string
-
-         Set_String
-           ("   Local_Priority_Specific_Dispatching : constant String := """);
-
-         for J in 0 .. PSD_Pragma_Settings.Last loop
-            Set_Char (PSD_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-
-         --  Generate Interrupt_State pragma string
-
-         Set_String ("   Local_Interrupt_States : constant String := """);
-
-         for J in 0 .. IS_Pragma_Settings.Last loop
-            Set_Char (IS_Pragma_Settings.Table (J));
-         end loop;
-
-         Set_String (""";");
-         Write_Statement_Buffer;
-         WBI ("");
       end if;
 
       Gen_Adainit_Ada;
@@ -2397,32 +2208,59 @@ package body Bindgen is
       end loop;
    end Set_Name_Buffer;
 
-   -------------------------
-   -- Set_PSD_Pragma_Table --
-   -------------------------
+   -------------------------------
+   -- Set_Scheduler_Agent_Table --
+   -------------------------------
 
-   procedure Set_PSD_Pragma_Table is
+   procedure Set_Scheduler_Agent_Table is
+      Priority_Table : array (Int (System.Any_Priority'First) ..
+                              Int (System.Any_Priority'Last)) of 
+                         Name_Id := 
+                           (others => Unique_Dispatching_Policies.Table
+                             (Unique_Dispatching_Policies.First));
+      --  Array containing an entry per priority consisting of Name_Id
+
+      Policy         : Name_Id;
+      First_Priority : Nat;
+      SDR            : Specific_Dispatching_Record;
+      
    begin
-      for F in ALIs.First .. ALIs.Last loop
-         for K in ALIs.Table (F).First_Specific_Dispatching ..
-                  ALIs.Table (F).Last_Specific_Dispatching
-         loop
-            declare
-               DTK : Specific_Dispatching_Record
-                       renames Specific_Dispatching.Table (K);
-
-            begin
-               while PSD_Pragma_Settings.Last < DTK.Last_Priority loop
-                  PSD_Pragma_Settings.Append ('F');
-               end loop;
-
-               for Prio in DTK.First_Priority .. DTK.Last_Priority loop
-                  PSD_Pragma_Settings.Table (Prio) := DTK.Dispatching_Policy;
-               end loop;
-            end;
-         end loop;
+      for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
+         declare
+            SDTJ : Specific_Dispatching_Record
+                     renames Specific_Dispatching.Table (J);
+         begin
+            for P in SDTJ.First_Priority .. SDTJ.Last_Priority loop
+               Priority_Table (P) := SDTJ.Dispatching_Policy;
+            end loop;
+         end;
       end loop;
-   end Set_PSD_Pragma_Table;
+
+      --  For each continuous section of the Priority_Table that uses the same
+      --  dispatching policy, record a new scheduler agent in the Scheduler
+      --  Agent table.
+      First_Priority := Priority_Table'First;
+      Policy         := Priority_Table (First_Priority);
+      for P in Priority_Table'Range loop
+         if Policy /= Priority_Table (P) then
+            SDR := (Dispatching_Policy => Policy,
+                    First_Priority     => First_Priority,
+                    Last_Priority      => P - 1,
+                    PSD_Pragma_Line    => 0);
+            Scheduler_Agents.Append (SDR);
+            First_Priority := P;
+            Policy := Priority_Table (P);
+         end if;
+      end loop;
+      
+      --  Add the last scheduler agent
+      
+      SDR := (Dispatching_Policy => Policy,
+              First_Priority     => First_Priority,
+              Last_Priority      => Priority_Table'Last,
+              PSD_Pragma_Line    => 0);
+      Scheduler_Agents.Append (SDR);
+   end Set_Scheduler_Agent_Table;              
 
    ----------------
    -- Set_String --

@@ -116,7 +116,8 @@ package Lib.Writ is
    --  -- M  Main Program --
    --  ---------------------
 
-   --    M type [priority] [T=time-slice] [AB] [C=cpu] W=?
+   --    M type [priority] [T=time-slice] [AB] [C=cpu] [P=cycle-period]
+   --      [D=deadline] [S=stack-size] W=?
 
    --      This line appears only if the main unit for this file is suitable
    --      for use as a main program. The parameters are:
@@ -155,6 +156,24 @@ package Lib.Writ is
    --          corresponding unit to set the main task affinity. It is an
    --          unsigned decimal integer.
 
+   --        P=cycle-period
+
+   --          Present only if there was a valid pragma Cycle_Period in the
+   --          corresponding unit to set the main task's cycle period. It is
+   --          an unsigned decimal integer.
+
+   --        D=deadline
+
+   --          Present only if there was a valid pragma Relative_Deadline in
+   --          the corresponding unit to set the main task's relative deadline.
+   --          It is an unsigned decimal integer.
+
+   --        S=stack-size
+
+   --          Present only if there was a valid pragma Storage_Size in the
+   --          corresponding unit to set the main task's stack size. It is
+   --          an unsigned decimal integer.
+
    --        W=?
 
    --          This parameter indicates the wide character encoding method used
@@ -162,7 +181,7 @@ package Lib.Writ is
    --          single character used in the -gnatW? switch. This is used to
    --          provide the default wide-character encoding for Wide_Text_IO
    --          files.
-
+   
    --  -----------------
    --  -- A  Argument --
    --  -----------------

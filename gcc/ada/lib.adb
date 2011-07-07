@@ -143,10 +143,25 @@ package body Lib is
       return Units.Table (U).Main_CPU;
    end Main_CPU;
 
+   function Main_Cycle_Period (U : Unit_Number_Type) return Int is
+   begin
+      return Units.Table (U).Main_Cycle_Period;
+   end Main_Cycle_Period;
+
+   function Main_Deadline (U : Unit_Number_Type) return Int is
+   begin
+      return Units.Table (U).Main_Deadline;
+   end Main_Deadline;
+
    function Main_Priority (U : Unit_Number_Type) return Int is
    begin
       return Units.Table (U).Main_Priority;
    end Main_Priority;
+
+   function Main_Stack_Size (U : Unit_Number_Type) return Int is
+   begin
+      return Units.Table (U).Main_Stack_Size;
+   end Main_Stack_Size;
 
    function Munit_Index (U : Unit_Number_Type) return Nat is
    begin
@@ -241,10 +256,25 @@ package body Lib is
       Units.Table (U).Main_CPU := P;
    end Set_Main_CPU;
 
+   procedure Set_Main_Cycle_Period (U : Unit_Number_Type; P : Int) is
+   begin
+      Units.Table (U).Main_Cycle_Period := P;
+   end Set_Main_Cycle_Period;
+
+   procedure Set_Main_Deadline (U : Unit_Number_Type; P : Int) is
+   begin
+      Units.Table (U).Main_Deadline := P;
+   end Set_Main_Deadline;
+
    procedure Set_Main_Priority (U : Unit_Number_Type; P : Int) is
    begin
       Units.Table (U).Main_Priority := P;
    end Set_Main_Priority;
+
+   procedure Set_Main_Stack_Size (U : Unit_Number_Type; P : Int) is
+   begin
+      Units.Table (U).Main_Stack_Size := P;
+   end Set_Main_Stack_Size;
 
    procedure Set_OA_Setting (U : Unit_Number_Type; C : Character) is
    begin
