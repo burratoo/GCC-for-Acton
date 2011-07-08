@@ -818,6 +818,13 @@ begin
          Free (Text);
       end if;
 
+      --  Add Oak.Core to the ALI list to ensure that it is loaded as it
+      --  is not called by the user.
+
+      Name_Buffer (1 .. 12) := "oak-core.ali";
+      Name_Len              := 12;
+      Add_ALI_File_To_List;
+
       --  We need to add Acton.Scheduler_Agent and its decendents to the ALI
       --  list as the scheduler agents are created and inserted into the kernel
       --  run-time in the generated binder file and are not referenced at all

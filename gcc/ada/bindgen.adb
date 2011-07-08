@@ -953,6 +953,12 @@ package body Bindgen is
 
          WBI ("");
 
+         WBI ("      pragma Import (Ada, Initialise_Oak," &
+               " ""__oak_initialise"");");
+         WBI ("      pragma Import (Ada, Start_Oak, ""__oak_start"");");
+
+         WBI ("");
+
          WBI ("      procedure Ada_Main_Program;");
 
          Set_String ("      pragma Import (Ada, Ada_Main_Program, """);
@@ -1055,6 +1061,7 @@ package body Bindgen is
       if not No_Main_Subprogram then
          WBI ("      Break_Start;");
          WBI ("");
+         WBI ("      Initialise_Oak;");
 
          for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
             Set_String ("      Create_Scheduler_Agent_");
@@ -1112,6 +1119,9 @@ package body Bindgen is
 
          --  Set the Address of the main task's run-loop
          WBI ("         Ada_Main_Program'Address);");
+         
+         --  Start Oak
+         WBI ("         Start_Oak;");
       end if;
 
       --  Adafinal call is skipped if no finalization
