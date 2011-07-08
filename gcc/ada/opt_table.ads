@@ -41,7 +41,9 @@
 --  This specific package handles option for the Table to remove an elaboration
 --  circuilarity.
 
-package Opt.Table is
+with Types; use Types;
+
+package Opt_Table is
 
    Table_Factor : Int := 1;
    --  GNAT
@@ -50,4 +52,4 @@ package Opt.Table is
    --  is the value in Alloc, used as the Table_Initial parameter value,
    --  multiplied by the factor given here. The default value is used if no
    --  -gnatT switch appears.
-end Opt.Table;
+end Opt_Table;

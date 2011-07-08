@@ -23,14 +23,15 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Debug;    use Debug;
-with Lib;      use Lib;
-with Osint;    use Osint;
-with Opt;      use Opt;
-with Prepcomp; use Prepcomp;
-with Validsw;  use Validsw;
-with Sem_Warn; use Sem_Warn;
-with Stylesw;  use Stylesw;
+with Debug;     use Debug;
+with Lib;       use Lib;
+with Osint;     use Osint;
+with Opt;       use Opt;
+with Opt_Table; use Opt_Table;
+with Prepcomp;  use Prepcomp;
+with Validsw;   use Validsw;
+with Sem_Warn;  use Sem_Warn;
+with Stylesw;   use Stylesw;
 
 with System.Strings;
 with System.WCh_Con; use System.WCh_Con;
