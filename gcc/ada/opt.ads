@@ -40,7 +40,7 @@
 
 with Hostparm; use Hostparm;
 with Types;    use Types;
-limited with Namet;
+with Namet;
 
 pragma Warnings (Off);
 --  This package is used also by gnatcoll
@@ -1233,14 +1233,6 @@ package Opt is
    --  This flag is set True if back annotation of representation information
    --  is to be suppressed. This is set if neither -gnatt or -gnatR0-3 is set.
    --  This avoids unnecessary time being spent on back annotation.
-
-   Table_Factor : Int := 1;
-   --  GNAT
-   --  Factor by which all initial table sizes set in Alloc are multiplied.
-   --  Used in Table to calculate initial table sizes (the initial table size
-   --  is the value in Alloc, used as the Table_Initial parameter value,
-   --  multiplied by the factor given here. The default value is used if no
-   --  -gnatT switch appears.
 
    Tagged_Type_Expansion : Boolean := True;
    --  GNAT

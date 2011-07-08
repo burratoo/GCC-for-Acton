@@ -453,7 +453,7 @@ package body Sinput.L is
                   Unit                => No_Unit,
                   Time_Stamp          => Osint.Current_Source_File_Stamp);
 
-            Alloc_Line_Tables (S, Opt.Table_Factor * Alloc.Lines_Initial);
+            Alloc_Line_Tables (S, Opt.Table.Table_Factor * Alloc.Lines_Initial);
             S.Lines_Table (1) := Lo;
          end;
 

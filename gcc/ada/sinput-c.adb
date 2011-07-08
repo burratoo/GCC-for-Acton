@@ -24,6 +24,7 @@
 ------------------------------------------------------------------------------
 
 with Opt;    use Opt;
+with Opt.Table;
 with System; use System;
 
 with Ada.Unchecked_Conversion;
@@ -198,7 +199,7 @@ package body Sinput.C is
                Unit                => No_Unit,
                Time_Stamp          => Empty_Time_Stamp);
 
-         Alloc_Line_Tables (S, Opt.Table_Factor * Alloc.Lines_Initial);
+         Alloc_Line_Tables (S, Opt.Table.Table_Factor * Alloc.Lines_Initial);
          S.Lines_Table (1) := Lo;
       end;
 
