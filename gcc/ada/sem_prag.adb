@@ -12131,7 +12131,8 @@ package body Sem_Prag is
                         Val > Expr_Value (Type_High_Bound (Time_Span))
                      then
                         Error_Pragma_Arg
-                          ("main task relative deadline is out of range", Arg1);
+                          ("main task relative deadline is out of range",
+                           Arg1);
                      end if;
                   end;
                end if;
@@ -12551,7 +12552,8 @@ package body Sem_Prag is
                         Val > Expr_Value (Type_High_Bound (Size))
                      then
                         Error_Pragma_Arg
-                          ("main task relative deadline is out of range", Arg1);
+                          ("main task relative deadline is out of range",
+                           Arg1);
                      end if;
                   end;
                end if;
@@ -12955,8 +12957,8 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Is_Task_Dispatching_Policy (Arg1);
             Check_Valid_Configuration_Pragma;
-            
-            DP:= Chars (Get_Pragma_Arg (Arg1));
+
+            DP := Chars (Get_Pragma_Arg (Arg1));
 
             if Task_Dispatching_Policy /= No_Name
               and then Task_Dispatching_Policy /= DP

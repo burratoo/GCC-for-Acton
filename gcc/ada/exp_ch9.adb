@@ -10362,7 +10362,7 @@ package body Exp_Ch9 is
    --  _Cycle_Period parameter to the call to Create_Task.
 
    --  The _Phase field is present only if a _Phase pragma appears in the
-   --  task definition. The expression captures the argument that was 
+   --  task definition. The expression captures the argument that was
    --  present in the pragma, and is used to provide the _Phase parameter
    --   to the call to Create_Task.
 
@@ -10493,9 +10493,8 @@ package body Exp_Ch9 is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present     => True,
-                 Subtype_Indication  => Make_Subtype_Indication (Loc,
-                   Subtype_Mark => New_Occurrence_Of
-                     (RTE (RE_Oak_Task), Loc)))));
+                 Subtype_Indication  =>
+                   New_Reference_To (RTE (RE_Oak_Task), Loc))));
 
       end if;
 
@@ -12574,7 +12573,7 @@ package body Exp_Ch9 is
 
       --  Oak Task Handler
       Append_To (Args,
-		Make_Attribute_Reference (Loc,
+        Make_Attribute_Reference (Loc,
                 Prefix         =>
                   Make_Selected_Component (Loc,
                     Prefix        => Make_Identifier (Loc, Name_uInit),
@@ -12682,25 +12681,27 @@ package body Exp_Ch9 is
            New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
       end if;
 
-      --  Cycle_Period parameter. Set to Time_Span_Last unless there is a
+      --  Cycle_Period parameter. Set to Time_Span_Zerp unless there is a
       --  Cycle_Period pragma,in which case we take the value from the pragma.
 
       if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
-         Make_Selected_Component (Loc,
-           Prefix        => Make_Identifier (Loc, Name_uInit),
-           Selector_Name => Make_Identifier (Loc, Name_uCycle_Period));
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uCycle_Period)));
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Time_Span_Last), Loc));
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
       end if;
 
       --  Phase parameter. Set to Time_Span_Zero unless there is a
       --  Phase pragma,in which case we take the value from the pragma.
 
       if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
-         Make_Selected_Component (Loc,
-           Prefix        => Make_Identifier (Loc, Name_uInit),
-           Selector_Name => Make_Identifier (Loc, Name_uPhase));
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uPhase)));
       else
          Append_To (Args,
            New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
@@ -12756,7 +12757,7 @@ package body Exp_Ch9 is
                    Prefix =>
                      New_Occurrence_Of (Body_Proc, Loc),
                    Attribute_Name => Name_Unrestricted_Access))));
-	  end;
+      end;
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
 
@@ -13036,7 +13037,7 @@ package body Exp_Ch9 is
 
    function Trivial_Accept_OK return Boolean is
    begin
-      case Opt.Task_Dispatching_Policy is
+         --  case Opt.Task_Dispatching_Policy is
 
          --  If we have the default task dispatching policy in effect, we can
          --  definitely do the optimization (one way of looking at this is to
@@ -13046,23 +13047,24 @@ package body Exp_Ch9 is
          --  (i.e. the default dispatching policy) reorders the queue to be the
          --  same as just before the call.
 
-         when ' ' =>
-            return True;
+      --   when ' ' =>
+      --      return True;
 
          --  FIFO_Within_Priorities certainly does not permit this
          --  optimization since the Rendezvous is a scheduling action that may
          --  require some other task to be run.
 
-         when 'F' =>
-            return False;
+      --    when 'F' =>
+      --       return False;
 
          --  For now, disallow the optimization for all other policies. This
          --  may be over-conservative, but it is certainly not incorrect.
 
-         when others =>
-            return False;
+      --    when others =>
+      --       return False;
 
-      end case;
+      --  end case;
+      return False;
    end Trivial_Accept_OK;
 
 end Exp_Ch9;

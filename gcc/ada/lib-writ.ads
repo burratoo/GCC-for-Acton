@@ -257,7 +257,7 @@ package Lib.Writ is
    --              the unit makes use of the secondary stack facilities).
    --
    --         Ts   A valid Task_Dispatching_Policy pragma applies to all
-   --              the units in this file, where s is the string of the 
+   --              the units in this file, where s is the string of the
    --              corresponding policy name.
    --
    --         UA  Unreserve_All_Interrupts pragma was processed in one or

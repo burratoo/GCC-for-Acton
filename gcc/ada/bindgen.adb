@@ -978,7 +978,7 @@ package body Bindgen is
                  .. Unique_Dispatching_Policies.Last
       loop
          declare
-            Policy_Str : String := Get_Name_String 
+            Policy_Str : String := Get_Name_String
                                 (Unique_Dispatching_Policies.Table (J));
          begin
             Set_String ("      procedure Create_Scheduler_Agent_");
@@ -1016,9 +1016,9 @@ package body Bindgen is
       end if;
 
       --  Generate OTCR for the main task.
-      
+
       WBI ("      Main_Task_OTCR : aliased Oak.Oak_Task.Oak_Task;");
-      
+
       --  And now the OTCRs for the Scheduler Agents.
 
       for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
@@ -1058,7 +1058,7 @@ package body Bindgen is
 
          for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
             Set_String ("      Create_Scheduler_Agent_");
-            Set_String (Get_Name_String 
+            Set_String (Get_Name_String
                           (Scheduler_Agents.Table (J).Dispatching_Policy));
             Set_String (" (Scheduler_Agent_");
             Set_Int (Int (J));
@@ -1088,7 +1088,7 @@ package body Bindgen is
          --  Set the name of the main task.
          WBI ("         Main Task,");
 
-         --  Set the priority of the main task       
+         --  Set the priority of the main task
          if ALIs.Table (ALIs.First).Main_Priority = No_Main_Priority then
             WBI ("         System.Default_Priority,");
          else
@@ -1532,7 +1532,7 @@ package body Bindgen is
          end if;
       end if;
 
-      --  Generate with of Oak.Oak_Task so that we can reference 
+      --  Generate with of Oak.Oak_Task so that we can reference
       --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
       --  agents OTCR.
 
@@ -2215,7 +2215,7 @@ package body Bindgen is
    procedure Set_Scheduler_Agent_Table is
       Priority_Table : array (Int (System.Any_Priority'First) ..
                               Int (System.Any_Priority'Last)) of
-                         Name_Id := 
+                         Name_Id :=
                            (others => Unique_Dispatching_Policies.Table
                              (Unique_Dispatching_Policies.First));
       --  Array containing an entry per priority consisting of Name_Id
@@ -2254,7 +2254,7 @@ package body Bindgen is
       end loop;
 
       --  Add the last scheduler agent
-      
+
       SDR := (Dispatching_Policy => Policy,
               First_Priority     => First_Priority,
               Last_Priority      => Priority_Table'Last,

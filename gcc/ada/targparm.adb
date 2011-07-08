@@ -423,8 +423,8 @@ package body Targparm is
                                    "pragma Task_Dispatching_Policy ("
          then
             P := P + 32;
-			
-			Name_Len := 0;
+
+            Name_Len := 0;
             while System_Text (P) in 'A' .. 'Z'
                     or else
                   System_Text (P) in 'a' .. 'z'

@@ -514,7 +514,7 @@ procedure Gnatbind is
       for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
          Is_Present := False;
          Policy := Specific_Dispatching.Table (J).Dispatching_Policy;
-         for K in Unique_Dispatching_Policies.First .. 
+         for K in Unique_Dispatching_Policies.First ..
                    Unique_Dispatching_Policies.Last loop
             if Policy = Unique_Dispatching_Policies.Table (K) then
                Is_Present := True;
@@ -836,7 +836,7 @@ begin
          for J in Unique_Dispatching_Policies.First ..
                     Unique_Dispatching_Policies.Last loop
             Name_Len := Scheduler_Agent_ALI_Name_Length;
-            Add_Str_To_Name_Buffer 
+            Add_Str_To_Name_Buffer
               (Get_Name_String (Unique_Dispatching_Policies.Table (J)));
             Add_Str_To_Name_Buffer (".ali");
             Add_ALI_File_To_List;

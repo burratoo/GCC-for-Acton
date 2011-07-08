@@ -40,7 +40,7 @@
 
 with Hostparm; use Hostparm;
 with Types;    use Types;
-with Namet;    use Namet;
+limited with Namet;
 
 pragma Warnings (Off);
 --  This package is used also by gnatcoll
@@ -1249,7 +1249,7 @@ package Opt is
    --  types and dispatching calls, assuming the underlying target supports
    --  it (e.g. in the JVM case).
 
-   Task_Dispatching_Policy : Name_Id := No_Name;
+   Task_Dispatching_Policy : Namet.Name_Id := Namet.No_Name;
    --  GNAT, GNATBIND
    --  Set to No_Name for the default case (no task dispatching policy
    --  specified). Reset to the Name_Id of task dispatching policy name

@@ -666,7 +666,7 @@ package body Lib.Load is
               Main_CPU          => Default_Main_CPU,
               Main_Cycle_Period => Default_Main_Cycle_Period,
               Main_Deadline     => Default_Main_Deadline,
-              Main_Stack_Size   => Default_Main_Stack_Size,              
+              Main_Stack_Size   => Default_Main_Stack_Size,
               Munit_Index       => 0,
               Serial_Number     => 0,
               Source_Index      => Src_Ind,

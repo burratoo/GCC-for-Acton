@@ -284,7 +284,7 @@ package body Bcheck is
 
                begin
                   for A2 in A1 + 1 .. ALIs.Last loop
-                     if ALIs.Table (A2).Task_Dispatching_Policy /= Name_Id
+                     if ALIs.Table (A2).Task_Dispatching_Policy /= No_Name
                           and then
                         ALIs.Table (A2).Task_Dispatching_Policy /= Policy
                      then

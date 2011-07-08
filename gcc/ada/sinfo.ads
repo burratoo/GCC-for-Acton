@@ -1148,7 +1148,7 @@ package Sinfo is
    --    flag the presence of a CPU pragma in the declaration sequence (public
    --    or private in the task case).
 
-   --  Has_Pragma_Cycle_Period (Flag10-Sem)
+   --  Has_Pragma_Cycle_Period (Flag16-Sem)
    --    A flag present in N_Subprogram_Body and N_Task_Definition nodes to
    --    flag the presence of a pragma Cycle_Period.
 
@@ -1187,9 +1187,9 @@ package Sinfo is
    --    enclosing type. Such a self-reference can only appear in default-
    --    initialized aggregate for a record type.
 
-   --  Has_Storage_Size_Pragma (Flag5-Sem)
-   --    A flag present in an N_Task_Definition node to flag the presence of a
-   --    Storage_Size pragma.
+   --  Has_Storage_Size_Pragma (flag18-Sem)
+   --    A flag present in N_Subprogram_Body and N_Task_Definition node to
+   --    flag the presence of a Storage_Size pragma.
 
    --  Has_Task_Info_Pragma (Flag7-Sem)
    --    A flag present in an N_Task_Definition node to flag the presence of a
@@ -4583,7 +4583,8 @@ package Sinfo is
       --  Was_Originally_Stub (Flag13-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
-      --  Has_Pragma_Cycle_Period (Flag10)
+      --  Has_Pragma_Cycle_Period (Flag16-Sem)
+      --  Has_Storage_Size_Pragma (Flag18-Sem)
 
       ------------------------------
       -- Parameterized Expression --
@@ -5063,13 +5064,13 @@ package Sinfo is
       --  Private_Declarations (List3) (set to No_List if no private part)
       --  End_Label (Node4)
       --  Has_Pragma_Priority (Flag6-Sem)
-      --  Has_Storage_Size_Pragma (Flag5-Sem)
+      --  Has_Storage_Size_Pragma (Flag18-Sem)
       --  Has_Task_Info_Pragma (Flag7-Sem)
       --  Has_Task_Name_Pragma (Flag8-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
-      --  Has_Pragma_Cycle_Period (Flag10)
-      --  Has_Pragma_Phase (Flag11)
+      --  Has_Pragma_Cycle_Period (Flag16-Sem)
+      --  Has_Pragma_Phase (Flag11-Sem)
 
       --------------------
       -- 9.1  Task Item --
@@ -8427,7 +8428,7 @@ package Sinfo is
      (N : Node_Id) return Boolean;    -- Flag14
 
    function Has_Pragma_Cycle_Period
-     (N : Node_Id) return Boolean;    -- Flag10
+     (N : Node_Id) return Boolean;    -- Flag16
 
    function Has_Pragma_Phase
      (N : Node_Id) return Boolean;    -- Flag11
@@ -8448,7 +8449,7 @@ package Sinfo is
      (N : Node_Id) return Boolean;    -- Flag13
 
    function Has_Storage_Size_Pragma
-     (N : Node_Id) return Boolean;    -- Flag5
+     (N : Node_Id) return Boolean;    -- Flag18
 
    function Has_Task_Info_Pragma
      (N : Node_Id) return Boolean;    -- Flag7
@@ -9396,7 +9397,7 @@ package Sinfo is
      (N : Node_Id; Val : Boolean := True);    -- Flag14
 
    procedure Set_Has_Pragma_Cycle_Period
-     (N : Node_Id; Val : Boolean := True);    -- Flag10
+     (N : Node_Id; Val : Boolean := True);    -- Flag16
 
    procedure Set_Has_Pragma_Phase
      (N : Node_Id; Val : Boolean := True);    -- Flag11
@@ -9417,7 +9418,7 @@ package Sinfo is
      (N : Node_Id; Val : Boolean := True);    -- Flag13
 
    procedure Set_Has_Storage_Size_Pragma
-     (N : Node_Id; Val : Boolean := True);    -- Flag5
+     (N : Node_Id; Val : Boolean := True);    -- Flag18
 
    procedure Set_Has_Task_Info_Pragma
      (N : Node_Id; Val : Boolean := True);    -- Flag7

@@ -1479,14 +1479,13 @@ package body Sinfo is
       pragma Assert (False
         or else NT (N).Nkind = N_Subprogram_Body
         or else NT (N).Nkind = N_Task_Definition);
-      return Flag10 (N);
+      return Flag16 (N);
    end Has_Pragma_Cycle_Period;
 
    function Has_Pragma_Phase
      (N : Node_Id) return Boolean is
    begin
       pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body
         or else NT (N).Nkind = N_Task_Definition);
       return Flag11 (N);
    end Has_Pragma_Phase;
@@ -1543,8 +1542,9 @@ package body Sinfo is
       (N : Node_Id) return Boolean is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body
         or else NT (N).Nkind = N_Task_Definition);
-      return Flag5 (N);
+      return Flag18 (N);
    end Has_Storage_Size_Pragma;
 
    function Has_Task_Info_Pragma
@@ -4511,6 +4511,23 @@ package body Sinfo is
       Set_Flag14 (N, Val);
    end Set_Has_Pragma_CPU;
 
+   procedure Set_Has_Pragma_Cycle_Period
+      (N : Node_Id; Val : Boolean := True) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body
+        or else NT (N).Nkind = N_Task_Definition);
+      Set_Flag16 (N, Val);
+   end Set_Has_Pragma_Cycle_Period;
+
+   procedure Set_Has_Pragma_Phase
+      (N : Node_Id; Val : Boolean := True) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Task_Definition);
+      Set_Flag11 (N, Val);
+   end Set_Has_Pragma_Phase;
+
    procedure Set_Has_Pragma_Priority
       (N : Node_Id; Val : Boolean := True) is
    begin
@@ -4563,8 +4580,9 @@ package body Sinfo is
       (N : Node_Id; Val : Boolean := True) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body
         or else NT (N).Nkind = N_Task_Definition);
-      Set_Flag5 (N, Val);
+      Set_Flag18 (N, Val);
    end Set_Has_Storage_Size_Pragma;
 
    procedure Set_Has_Task_Info_Pragma

@@ -1193,7 +1193,7 @@ package body Lib.Writ is
       for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
          Write_Info_Initiate ('S');
          Write_Info_Char (' ');
-         Write_Info_Str 
+         Write_Info_Str
            (Get_Name_String
              (Specific_Dispatching.Table (J).Dispatching_Policy));
          Write_Info_Char (' ');
