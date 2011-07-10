@@ -2965,10 +2965,6 @@ else
   ENABLE_LIBADA=yes
 fi
 
-if test "${ENABLE_LIBADA}" != "yes" ; then
-  noconfigdirs="$noconfigdirs gnattools"
-fi
-
 # Check whether --enable-libssp was given.
 if test "${enable_libssp+set}" = set; then :
   enableval=$enable_libssp; ENABLE_LIBSSP=$enableval

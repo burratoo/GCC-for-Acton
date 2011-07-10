@@ -42512,7 +42512,7 @@ all-stage4-libcpp: maybe-all-stage4-intl
 all-stageprofile-libcpp: maybe-all-stageprofile-intl
 all-stagefeedback-libcpp: maybe-all-stagefeedback-intl
 all-fixincludes: maybe-all-libiberty
-all-gnattools: maybe-all-target-libada
+all-gnattools: maybe-all-gcc
 all-lto-plugin: maybe-all-libiberty
 
 all-stage1-lto-plugin: maybe-all-stage1-libiberty
