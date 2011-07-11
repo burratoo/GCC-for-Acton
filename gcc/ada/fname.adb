@@ -176,14 +176,6 @@ package body Fname is
          return True;
       end if;
 
-      --  Check against the unkrunched name
-
-      for J in 1 .. Num_Entries loop
-         if Name_Buffer (1 .. PUL (J)) =  Predef_Unkr_Name(1 .. PUL (J)) then
-            return True;
-         end if;
-      end loop;
-
       --  Otherwise check against special list, first padding to 8 characters
 
       while Name_Len < 8 loop
@@ -193,6 +185,21 @@ package body Fname is
 
       for J in 1 .. Num_Entries loop
          if Name_Buffer (1 .. 8) = Predef_Names (J) then
+            return True;
+         end if;
+      end loop;
+
+      --  Check against the unkrunched name
+
+      while Name_Len < 22 loop
+         Name_Len := Name_Len + 1;
+         Name_Buffer (Name_Len) := ' ';
+      end loop;
+
+      for J in 1 .. Num_Entries loop
+         if Name_Buffer (1 .. PUL (J)) =
+                    Predef_Unkr_Name (J)(1 .. PUL (J))
+         then
             return True;
          end if;
       end loop;
