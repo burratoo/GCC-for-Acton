@@ -54,7 +54,6 @@ package body Stylesw is
 
    GNAT_Style    : constant String := Default_Style &
                      "d" &  -- check no DOS line terminators
-                     "I" &  -- check mode IN
                      "S" &  -- check separate lines after THEN or ELSE
                      "u" &  -- check no unnecessary blank lines
                      "x";   -- check extra parentheses around conditionals
