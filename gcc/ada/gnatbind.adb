@@ -833,7 +833,7 @@ begin
 
       Add_Scheduler_Agent_ALIs : declare
       begin
-         Name_Buffer (1 .. Scheduler_Agent_ALI_Name_Length)
+         Name_Buffer (1 .. Scheduler_Agent_ALI_Name_Length + 3)
            := "acton-scheduler_agent.ali";
          Name_Len := Scheduler_Agent_ALI_Name_Length + 3;
          Add_ALI_File_To_List;
