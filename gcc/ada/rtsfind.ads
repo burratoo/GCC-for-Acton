@@ -401,16 +401,16 @@ package Rtsfind is
 
       --  Children of Oak
 
-      Oak_Oak_Task,
       Oak_Memory,
-
-      --  Children of Oak.Oak_Task
-
-      Oak_Oak_Task_Data_Access,
+      Oak_Oak_Task,
 
       --  Children of Oak.Memory
 
-      Oak_Memory_Call_Stack);
+      Oak_Memory_Call_Stack,
+
+      --  Children of Oak.Oak_Task
+
+      Oak_Oak_Task_Data_Access);
 
    subtype Ada_Child is RTU_Id
      range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -485,6 +485,20 @@ package Rtsfind is
      range System_Tasking_Async_Delays_Enqueue_Calendar ..
        System_Tasking_Async_Delays_Enqueue_RT;
    --  Range of values for children of System.Tasking.Async_Delays
+
+   subtype ARPART_Child is RTU_Id
+      range ARPART_Tasks .. ARPART_Tasks;
+   --  Range of values of children of ARPART
+
+   subtype Oak_Child is RTU_Id
+      range Oak_Memory .. Oak_Oak_Task_Data_Access;
+   --  Range of values of children of Oak
+
+   subtype Oak_Memory_Child is Oak_Child
+      range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
+
+   subtype Oak_Oak_Task_Child is Oak_Child
+      range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Data_Access;
 
    --------------------------
    -- Runtime Entity Table --

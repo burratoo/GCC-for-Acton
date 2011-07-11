@@ -343,6 +343,21 @@ package body Rtsfind is
          if U_Id in System_Tasking_Async_Delays_Child then
             Name_Buffer (28) := '.';
          end if;
+
+      elsif U_Id in ARPART_Child then
+         Name_Buffer (7) := '.';
+
+      elsif U_Id in Oak_Child then
+         Name_Buffer (4) := '.';
+
+         if U_Id in Oak_Memory_Child then
+            Name_Buffer (11) := '.';
+         end if;
+
+         if U_Id in Oak_Oak_Task_Child then
+            Name_Buffer (13) := '.';
+         end if;
+
       end if;
 
       --  Add %s at end for spec
