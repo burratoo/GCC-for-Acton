@@ -92,8 +92,6 @@ procedure Gnatbind is
    --  Table to record the sources in the closure, to avoid duplications. Used
    --  only with switch -R.
 
-   Scheduler_Agent_ALI_Name_Length : constant := 22;
-
    function Gnatbind_Supports_Auto_Init return Boolean;
    --  Indicates if automatic initialization of elaboration procedure
    --  through the constructor mechanism is possible on the platform.
@@ -832,17 +830,21 @@ begin
       --  add them here.
 
       Add_Scheduler_Agent_ALIs : declare
+         Base_ALI_Str : constant String := "acton-scheduler_agent";
+         Base_ALI_Str_Length : constant := 21;
       begin
-         Name_Buffer (1 .. Scheduler_Agent_ALI_Name_Length + 3)
-           := "acton-scheduler_agent.ali";
-         Name_Len := Scheduler_Agent_ALI_Name_Length + 3;
+         Name_Buffer (1 .. Base_ALI_Str_Length) := Base_ALI_Str;
+         Name_Len := Base_ALI_Str_Length;
+         Add_Str_To_Name_Buffer (".ali");
          Add_ALI_File_To_List;
 
          Process_Unique_Dispatching_Policies;
 
          for J in Unique_Dispatching_Policies.First ..
                     Unique_Dispatching_Policies.Last loop
-            Name_Len := Scheduler_Agent_ALI_Name_Length;
+            Name_Buffer (1 .. Base_ALI_Str_Length) := Base_ALI_Str;
+            Name_Len := Base_ALI_Str_Length;
+            Add_Char_To_Name_Buffer ('-');
             Add_Str_To_Name_Buffer
               (Get_Name_String (Unique_Dispatching_Policies.Table (J)));
             Add_Str_To_Name_Buffer (".ali");
