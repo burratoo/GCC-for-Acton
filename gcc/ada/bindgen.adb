@@ -1542,11 +1542,13 @@ package body Bindgen is
          end if;
       end if;
 
-      --  Generate with of Oak.Oak_Task so that we can reference
+      --  Generate "with Oak.Oak_Task" so that we can reference
       --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
-      --  agents OTCR.
+      --  agents OTCR. This only happens when we bind the main program. 
 
-      WBI ("with Oak.Oak_Task;");
+      if Bind_Main_Program then
+         WBI ("with Oak.Oak_Task;");
+      end if;
 
       WBI ("package " & Ada_Main & " is");
       WBI ("   pragma Warnings (Off);");
