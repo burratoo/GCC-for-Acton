@@ -385,51 +385,55 @@ package body Fname.UF is
                      end if;
                   end loop;
 
-                  --  Execute possible crunch on constructed name. The krunch
-                  --  operation excludes any extension that may be present.
+                  --  Execute crunch on constructed name if it is longer than
+                  --  the maximum file length. The krunch operation excludes
+                  --  any extension that may be present.
 
-                  J := Name_Len;
-                  while J > 1 loop
-                     exit when Name_Buffer (J) = '.';
-                     J := J - 1;
-                  end loop;
+                  if Int (Name_Len) > Maximum_File_Name_Length then
+                     J := Name_Len;
+                     while J > 1 loop
+                        exit when Name_Buffer (J) = '.';
+                        J := J - 1;
+                     end loop;
 
-                  --  Case of extension present
+                     --  Case of extension present
 
-                  if J > 1 then
-                     declare
-                        Ext : constant String := Name_Buffer (J .. Name_Len);
+                     if J > 1 then
+                        declare
+                           Ext : constant String :=
+                              Name_Buffer (J .. Name_Len);
 
-                     begin
-                        --  Remove extension
+                        begin
+                           --  Remove extension
 
-                        Name_Len := J - 1;
+                           Name_Len := J - 1;
 
-                        --  Krunch what's left
+                           --  Krunch what's left
 
+                           Krunch
+                             (Name_Buffer,
+                              Name_Len,
+                              Integer (Maximum_File_Name_Length),
+                              Debug_Flag_4,
+                              OpenVMS_On_Target);
+
+                           --  Replace extension
+
+                           Name_Buffer
+                             (Name_Len + 1 .. Name_Len + Ext'Length) := Ext;
+                           Name_Len := Name_Len + Ext'Length;
+                        end;
+
+                     --  Case of no extension present, straight krunch on
+                     --  the entire file name.
+
+                     else
                         Krunch
                           (Name_Buffer,
                            Name_Len,
                            Integer (Maximum_File_Name_Length),
-                           Debug_Flag_4,
-                           OpenVMS_On_Target);
-
-                        --  Replace extension
-
-                        Name_Buffer
-                          (Name_Len + 1 .. Name_Len + Ext'Length) := Ext;
-                        Name_Len := Name_Len + Ext'Length;
-                     end;
-
-                  --  Case of no extension present, straight krunch on
-                  --  the entire file name.
-
-                  else
-                     Krunch
-                       (Name_Buffer,
-                        Name_Len,
-                        Integer (Maximum_File_Name_Length),
-                        Debug_Flag_4);
+                           Debug_Flag_4);
+                     end if;
                   end if;
 
                   Fnam := Name_Find;
