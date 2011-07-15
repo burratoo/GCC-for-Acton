@@ -12540,7 +12540,7 @@ package body Sem_Prag is
                         Val > Expr_Value (Type_High_Bound (Size))
                      then
                         Error_Pragma_Arg
-                          ("main task relative deadline is out of range",
+                          ("main task storage_size is out of range",
                            Arg1);
                      end if;
                   end;
@@ -12562,10 +12562,10 @@ package body Sem_Prag is
                Pragma_Misplaced;
             end if;
 
-            if Has_Relative_Deadline_Pragma (P) then
+            if Has_Storage_Size_Pragma (P) then
                Error_Pragma ("duplicate pragma% not allowed");
             else
-               Set_Has_Relative_Deadline_Pragma (P, True);
+               Set_Has_Storage_Size_Pragma (P, True);
 
                if Nkind (P) = N_Task_Definition then
                   Record_Rep_Item (Defining_Identifier (Parent (P)), N);
