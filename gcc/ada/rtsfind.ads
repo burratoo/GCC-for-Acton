@@ -497,6 +497,9 @@ package Rtsfind is
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
 
+   subtype Oak_Processor_Support_Package_Child
+      range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
+
    subtype Oak_Oak_Task_Child is Oak_Child
       range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Data_Access;
 
@@ -1696,8 +1699,14 @@ package Rtsfind is
 
      RE_Complete_Activation,             -- ARPART.Tasks
      RE_Complete_Task,                   -- ARAPRT.Tasks
+
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
-     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access,
+     RE_Unspecified_Call_Stack_Size      -- Oak.Memory.Call_Stack
+     RE_Minimum_Call_Stack_Size
+      -- Oak.Processor_Support_Package.Call_Stack
+     
+     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
+ 
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
 
@@ -2915,7 +2924,12 @@ package Rtsfind is
 
      RE_Complete_Activation              => ARPART_Tasks,
      RE_Complete_Task                    => ARPART_Tasks,
+
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
+     RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
+     RE_Minimum_Call_Stack_Size          =>
+       Oak_Processor_Support_Package_Call_Stack,
+
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);

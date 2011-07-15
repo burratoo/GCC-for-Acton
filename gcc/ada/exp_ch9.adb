@@ -10289,9 +10289,9 @@ package body Exp_Ch9 is
    --  Storage_Size). If the value of the pragma Storage_Size is static, then
    --  the variable is initialized with this value:
 
-   --    taskZ : Size_Type := Unspecified_Size;
+   --    taskZ : Storage_Count := Unspecified_Size;
    --  or
-   --    taskZ : Size_Type := Size_Type (size_expression);
+   --    taskZ : Storage_Count := Storage_Count (size_expression);
 
    --  Note: No variable is needed to hold the task relative deadline since
    --  its value would never be static because the parameter is of a private
@@ -10304,7 +10304,8 @@ package body Exp_Ch9 is
    --      _OTCR              : Oak_Task;
    --      entry_family       : array (bounds) of Void;
    --      _Priority          : Integer         := priority_expression;
-   --      _Size              : Size_Type       := Size_Type (size_expression);
+   --      _Size              : Storage_Count   
+   --                               := Storage_Count (size_expression);
    --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
    --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
    --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase; 
@@ -10447,9 +10448,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
+             Object_Definition => 
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
@@ -10460,8 +10462,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
-             Expression => New_Reference_To (RTE (RE_Unspecified_Size), Loc));
+             Object_Definition =>
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
+             Expression =>
+               New_Reference_To (RTE (RE_Unspecified_Call_Stack_Size), Loc));
       end if;
 
       Insert_After (Elab_Decl, Size_Decl);
@@ -10621,11 +10625,11 @@ package body Exp_Ch9 is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
-                 Subtype_Indication => New_Reference_To (RTE (RE_Size_Type),
+                 Subtype_Indication => New_Reference_To (RTE (RE_Storage_Count),
                                                          Loc)),
 
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (

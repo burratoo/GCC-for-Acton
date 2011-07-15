@@ -12565,11 +12565,28 @@ package body Sem_Prag is
             if Has_Storage_Size_Pragma (P) then
                Error_Pragma ("duplicate pragma% not allowed");
             else
-               Set_Has_Storage_Size_Pragma (P, True);
+               declare
+                  Val      : constant Uint := Expr_Value (Arg);
+                  Min_Size : constant Uint := Expr_Value ( 
+                                              RTE (RE_Minimum_Call_Stack_Size));
+               begin
+                  if Is_Static_Expression (Arg) then
+                     if Val < Min_Size then
+                        Error_Msg_N ("specified storage size of & bytes is " &
+                          "smaller than than " &
+                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", Arg);
+                        Error_Msg_N ("storage size has been set to " &
+                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", Arg);
+                        Fold_Uint (Arg, Min_Size, True);
+                     end if;
+                  end if;
 
-               if Nkind (P) = N_Task_Definition then
-                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
-               end if;
+                  Set_Has_Storage_Size_Pragma (P, True);
+
+                  if Nkind (P) = N_Task_Definition then
+                     Record_Rep_Item (Defining_Identifier (Parent (P)), N);
+                  end if;
+               end;
             end if;
          end Storage_Size;
 
