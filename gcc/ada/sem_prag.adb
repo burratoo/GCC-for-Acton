@@ -11541,18 +11541,6 @@ package body Sem_Prag is
                Set_Main_Priority
                     (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
 
-               --  Load an arbitrary entity from System.Tasking to make sure
-               --  this package is implicitly with'ed, since we need to have
-               --  the tasking run-time active for the pragma Priority to have
-               --  any effect.
-
-               declare
-                  Discard : Entity_Id;
-                  pragma Warnings (Off, Discard);
-               begin
-                  Discard := RTE (RE_Task_List);
-               end;
-
             --  Task or Protected, must be of type Integer
 
             elsif Nkind_In (P, N_Protected_Definition, N_Task_Definition) then

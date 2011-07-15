@@ -1462,7 +1462,6 @@ package Rtsfind is
      RE_Self,                            -- System.Tasking
 
      RE_Master_Id,                       -- System.Tasking
-     RE_Unspecified_Priority,            -- System.Tasking
 
      RE_Activation_Chain,                -- System.Tasking
      RE_Activation_Chain_Access,         -- System.Tasking
@@ -1699,7 +1698,9 @@ package Rtsfind is
      RE_Complete_Task,                   -- ARAPRT.Tasks
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access,
-     RE_Oak_Task);                       -- Oak.Oak_Task
+     RE_Oak_Task,                        -- Oak.Oak_Task
+     RE_Unspecified_Priority);           -- Oak.Oak_Task
+
 
    --  The following declarations build a table that is indexed by the RTE
    --  function to determine the unit containing the given entity. This table
@@ -2643,7 +2644,6 @@ package Rtsfind is
      RE_Self                             => System_Tasking,
 
      RE_Master_Id                        => System_Tasking,
-     RE_Unspecified_Priority             => System_Tasking,
 
      RE_Activation_Chain                 => System_Tasking,
      RE_Activation_Chain_Access          => System_Tasking,
@@ -2917,7 +2917,8 @@ package Rtsfind is
      RE_Complete_Task                    => ARPART_Tasks,
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
-     RE_Oak_Task                         => Oak_Oak_Task);
+     RE_Oak_Task                         => Oak_Oak_Task,
+     RE_Unspecified_Priority             => Oak_Oak_Task);
 
    --------------------------------
    -- Configurable Run-Time Mode --

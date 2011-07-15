@@ -10194,15 +10194,6 @@ package body Exp_Ch9 is
    --  discriminant that is present to provide an easy reference point for
    --  discriminant references inside the body (see Exp_Ch2.Expand_Name).
 
-   --  Note on relationship to GNARLI definition. In the GNARLI definition,
-   --  task body procedures have a profile (Arg : System.Address). That is
-   --  needed because GNARLI has to use the same access-to-subprogram type
-   --  for all task types. We depend here on knowing that in GNAT, passing
-   --  an address argument by value is identical to passing a record value
-   --  by access (in either case a single pointer is passed), so even though
-   --  this procedure has the wrong profile. In fact it's all OK, since the
-   --  callings sequence is identical.
-
    procedure Expand_N_Task_Body (N : Node_Id) is
       Loc   : constant Source_Ptr := Sloc (N);
       Ttyp  : constant Entity_Id  := Corresponding_Spec (N);
@@ -12724,11 +12715,8 @@ package body Exp_Ch9 is
       --  end if;
 
       --  Run_Loop parameter. This is a pointer to the task body procedure. The
-      --  required value is obtained by taking 'Unrestricted_Access of the task
-      --  body procedure and converting it (with an unchecked conversion) to
-      --  the type required by the task kernel. For further details, see the
-      --  description of Expand_N_Task_Body. We use 'Unrestricted_Access rather
-      --  than 'Address in order to avoid creating trampolines.
+      --  required value is obtained by taking 'Address of the task
+      --  body procedure.
 
       declare
          Body_Proc    : constant Node_Id := Get_Task_Body_Procedure (Ttyp);
@@ -12749,14 +12737,10 @@ package body Exp_Ch9 is
          Append_Freeze_Action (Task_Rec, Ref);
 
          Append_To (Args,
-           Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-             Make_Qualified_Expression (Loc,
-               Subtype_Mark => New_Reference_To (Subp_Ptr_Typ, Loc),
-               Expression   =>
-                 Make_Attribute_Reference (Loc,
-                   Prefix =>
-                     New_Occurrence_Of (Body_Proc, Loc),
-                   Attribute_Name => Name_Unrestricted_Access))));
+           Make_Attribute_Reference (Loc,
+             Prefix =>
+               New_Occurrence_Of (Body_Proc, Loc),
+             Attribute_Name => Name_Address));
       end;
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
