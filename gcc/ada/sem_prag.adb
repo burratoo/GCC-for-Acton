@@ -11541,18 +11541,6 @@ package body Sem_Prag is
                Set_Main_Priority
                     (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
 
-               --  Load an arbitrary entity from System.Tasking to make sure
-               --  this package is implicitly with'ed, since we need to have
-               --  the tasking run-time active for the pragma Priority to have
-               --  any effect.
-
-               declare
-                  Discard : Entity_Id;
-                  pragma Warnings (Off, Discard);
-               begin
-                  Discard := RTE (RE_Task_List);
-               end;
-
             --  Task or Protected, must be of type Integer
 
             elsif Nkind_In (P, N_Protected_Definition, N_Task_Definition) then
@@ -12547,12 +12535,12 @@ package body Sem_Prag is
                      Val : constant Uint := Expr_Value (Arg);
 
                   begin
-                     if Val < Expr_Value (Type_Low_Bound (Size))
+                     if Val < 0
                           or else
                         Val > Expr_Value (Type_High_Bound (Size))
                      then
                         Error_Pragma_Arg
-                          ("main task relative deadline is out of range",
+                          ("main task storage_size is out of range",
                            Arg1);
                      end if;
                   end;
@@ -12566,7 +12554,7 @@ package body Sem_Prag is
             elsif Nkind (P) = N_Task_Definition then
                Arg := Get_Pragma_Arg (Arg1);
 
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Storage_Count));
+               Preanalyze_Spec_Expression (Arg, Any_Integer);
 
             --  Anything else is incorrect
 
@@ -12574,10 +12562,32 @@ package body Sem_Prag is
                Pragma_Misplaced;
             end if;
 
-            if Has_Relative_Deadline_Pragma (P) then
+            if Has_Storage_Size_Pragma (P) then
                Error_Pragma ("duplicate pragma% not allowed");
             else
-               Set_Has_Relative_Deadline_Pragma (P, True);
+               if Is_Static_Expression (Arg) then
+                  declare
+                     Val  : constant Uint := Expr_Value (Arg);
+                     Size : constant Entity_Id := RTE (RE_Call_Stack_Size);
+
+                     Min_Size : constant Uint := Expr_Value
+                                                      (Type_Low_Bound (Size));
+                  begin
+                     if Val < Min_Size then
+                        Error_Msg_Uint_1 := Val;
+                        Error_Msg_N ("?!!specified storage size of ^" &
+                          " bytes is smaller than than " &
+                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", N);
+                        Error_Msg_N ("\\storage size has been set to " &
+                         "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", N);
+                        Fold_Uint (Arg, Min_Size, True);
+                     end if;
+                  end;
+               else
+                  Check_Restriction (Static_Storage_Size, Arg);
+               end if;
+
+               Set_Has_Storage_Size_Pragma (P, True);
 
                if Nkind (P) = N_Task_Definition then
                   Record_Rep_Item (Defining_Identifier (Parent (P)), N);

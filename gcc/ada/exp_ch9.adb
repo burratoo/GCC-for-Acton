@@ -10194,15 +10194,6 @@ package body Exp_Ch9 is
    --  discriminant that is present to provide an easy reference point for
    --  discriminant references inside the body (see Exp_Ch2.Expand_Name).
 
-   --  Note on relationship to GNARLI definition. In the GNARLI definition,
-   --  task body procedures have a profile (Arg : System.Address). That is
-   --  needed because GNARLI has to use the same access-to-subprogram type
-   --  for all task types. We depend here on knowing that in GNAT, passing
-   --  an address argument by value is identical to passing a record value
-   --  by access (in either case a single pointer is passed), so even though
-   --  this procedure has the wrong profile. In fact it's all OK, since the
-   --  callings sequence is identical.
-
    procedure Expand_N_Task_Body (N : Node_Id) is
       Loc   : constant Source_Ptr := Sloc (N);
       Ttyp  : constant Entity_Id  := Corresponding_Spec (N);
@@ -10298,9 +10289,9 @@ package body Exp_Ch9 is
    --  Storage_Size). If the value of the pragma Storage_Size is static, then
    --  the variable is initialized with this value:
 
-   --    taskZ : Size_Type := Unspecified_Size;
+   --    taskZ : Storage_Count := Unspecified_Size;
    --  or
-   --    taskZ : Size_Type := Size_Type (size_expression);
+   --    taskZ : Storage_Count := Storage_Count (size_expression);
 
    --  Note: No variable is needed to hold the task relative deadline since
    --  its value would never be static because the parameter is of a private
@@ -10313,7 +10304,8 @@ package body Exp_Ch9 is
    --      _OTCR              : Oak_Task;
    --      entry_family       : array (bounds) of Void;
    --      _Priority          : Integer         := priority_expression;
-   --      _Size              : Size_Type       := Size_Type (size_expression);
+   --      _Size              : Storage_Count
+   --                               := Storage_Count (size_expression);
    --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
    --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
    --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase; 
@@ -10456,9 +10448,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
+             Object_Definition =>
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
@@ -10469,8 +10462,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
-             Expression => New_Reference_To (RTE (RE_Unspecified_Size), Loc));
+             Object_Definition =>
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
+             Expression =>
+               New_Reference_To (RTE (RE_Unspecified_Call_Stack_Size), Loc));
       end if;
 
       Insert_After (Elab_Decl, Size_Decl);
@@ -10630,11 +10625,12 @@ package body Exp_Ch9 is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
-                 Subtype_Indication => New_Reference_To (RTE (RE_Size_Type),
-                                                         Loc)),
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Storage_Count),
+                                     Loc)),
 
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
@@ -12724,11 +12720,8 @@ package body Exp_Ch9 is
       --  end if;
 
       --  Run_Loop parameter. This is a pointer to the task body procedure. The
-      --  required value is obtained by taking 'Unrestricted_Access of the task
-      --  body procedure and converting it (with an unchecked conversion) to
-      --  the type required by the task kernel. For further details, see the
-      --  description of Expand_N_Task_Body. We use 'Unrestricted_Access rather
-      --  than 'Address in order to avoid creating trampolines.
+      --  required value is obtained by taking 'Address of the task
+      --  body procedure.
 
       declare
          Body_Proc    : constant Node_Id := Get_Task_Body_Procedure (Ttyp);
@@ -12749,14 +12742,10 @@ package body Exp_Ch9 is
          Append_Freeze_Action (Task_Rec, Ref);
 
          Append_To (Args,
-           Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-             Make_Qualified_Expression (Loc,
-               Subtype_Mark => New_Reference_To (Subp_Ptr_Typ, Loc),
-               Expression   =>
-                 Make_Attribute_Reference (Loc,
-                   Prefix =>
-                     New_Occurrence_Of (Body_Proc, Loc),
-                   Attribute_Name => Name_Unrestricted_Access))));
+           Make_Attribute_Reference (Loc,
+             Prefix =>
+               New_Occurrence_Of (Body_Proc, Loc),
+             Attribute_Name => Name_Address));
       end;
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
