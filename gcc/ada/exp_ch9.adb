@@ -10304,7 +10304,7 @@ package body Exp_Ch9 is
    --      _OTCR              : Oak_Task;
    --      entry_family       : array (bounds) of Void;
    --      _Priority          : Integer         := priority_expression;
-   --      _Size              : Storage_Count   
+   --      _Size              : Storage_Count
    --                               := Storage_Count (size_expression);
    --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
    --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
@@ -10448,7 +10448,7 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => 
+             Object_Definition =>
                New_Reference_To (RTE (RE_Storage_Count), Loc),
              Expression =>
                Convert_To (RTE (RE_Storage_Count),
@@ -10625,8 +10625,9 @@ package body Exp_Ch9 is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
-                 Subtype_Indication => New_Reference_To (RTE (RE_Storage_Count),
-                                                         Loc)),
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Storage_Count),
+                                     Loc)),
 
              Expression =>
                Convert_To (RTE (RE_Storage_Count),

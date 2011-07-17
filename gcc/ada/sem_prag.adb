@@ -12535,7 +12535,7 @@ package body Sem_Prag is
                      Val : constant Uint := Expr_Value (Arg);
 
                   begin
-                     if Val < Expr_Value (Type_Low_Bound (Size))
+                     if Val < 0
                           or else
                         Val > Expr_Value (Type_High_Bound (Size))
                      then
@@ -12554,7 +12554,7 @@ package body Sem_Prag is
             elsif Nkind (P) = N_Task_Definition then
                Arg := Get_Pragma_Arg (Arg1);
 
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Storage_Count));
+               Preanalyze_Spec_Expression (Arg, Any_Integer);
 
             --  Anything else is incorrect
 
@@ -12565,28 +12565,33 @@ package body Sem_Prag is
             if Has_Storage_Size_Pragma (P) then
                Error_Pragma ("duplicate pragma% not allowed");
             else
-               declare
-                  Val      : constant Uint := Expr_Value (Arg);
-                  Min_Size : constant Uint := Expr_Value ( 
-                                              RTE (RE_Minimum_Call_Stack_Size));
-               begin
-                  if Is_Static_Expression (Arg) then
+               if Is_Static_Expression (Arg) then
+                  declare
+                     Val  : constant Uint := Expr_Value (Arg);
+                     Size : constant Entity_Id := RTE (RE_Call_Stack_Size);
+
+                     Min_Size : constant Uint := Expr_Value
+                                                      (Type_Low_Bound (Size));
+                  begin
                      if Val < Min_Size then
-                        Error_Msg_N ("specified storage size of & bytes is " &
-                          "smaller than than " &
-                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", Arg);
-                        Error_Msg_N ("storage size has been set to " &
-                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", Arg);
+                        Error_Msg_Uint_1 := Val;
+                        Error_Msg_N ("?!!specified storage size of ^" &
+                          " bytes is smaller than than " &
+                          "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", N);
+                        Error_Msg_N ("\\storage size has been set to " &
+                         "Oak.Memory.Call_Stack.Minimum_Call_Stack_Size", N);
                         Fold_Uint (Arg, Min_Size, True);
                      end if;
-                  end if;
+                  end;
+               else
+                  Check_Restriction (Static_Storage_Size, Arg);
+               end if;
 
-                  Set_Has_Storage_Size_Pragma (P, True);
+               Set_Has_Storage_Size_Pragma (P, True);
 
-                  if Nkind (P) = N_Task_Definition then
-                     Record_Rep_Item (Defining_Identifier (Parent (P)), N);
-                  end if;
-               end;
+               if Nkind (P) = N_Task_Definition then
+                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
+               end if;
             end if;
          end Storage_Size;
 
