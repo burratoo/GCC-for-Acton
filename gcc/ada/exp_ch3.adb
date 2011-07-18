@@ -2836,19 +2836,19 @@ package body Exp_Ch3 is
             --  In the case of the restricted run time the OTCR has already
             --  been preallocated.
 
-            --  if Restricted_Profile then
-            --   Append_To (Statement_List,
-            --     Make_Assignment_Statement (Loc,
-            --       Name => Make_Selected_Component (Loc,
-            --         Prefix        => Make_Identifier (Loc, Name_uInit),
-            --         Selector_Name => Make_Identifier (Loc, Name_uTask_Id)),
-            --       Expression => Make_Attribute_Reference (Loc,
-            --         Prefix =>
-            --           Make_Selected_Component (Loc,
-            --             Prefix        => Make_Identifier (Loc, Name_uInit),
-            --             Selector_Name => Make_Identifier (Loc, Name_uATCB)),
-            --         Attribute_Name => Name_Unchecked_Access)));
-            --  end if;
+            if Restricted_Profile then
+             Append_To (Statement_List,
+               Make_Assignment_Statement (Loc,
+                 Name => Make_Selected_Component (Loc,
+                   Prefix        => Make_Identifier (Loc, Name_uInit),
+                   Selector_Name => Make_Identifier (Loc, Name_uTask_Handler)),
+                 Expression => Make_Attribute_Reference (Loc,
+                   Prefix =>
+                     Make_Selected_Component (Loc,
+                       Prefix        => Make_Identifier (Loc, Name_uInit),
+                       Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
+                   Attribute_Name => Name_Unchecked_Access)));
+            end if;
 
             Append_To (Statement_List, Make_Task_Create_Call (Rec_Type));
 

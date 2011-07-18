@@ -12568,12 +12568,10 @@ package body Exp_Ch9 is
       --  Oak Task Handler
 
       Append_To (Args,
-        Make_Attribute_Reference (Loc,
-                Prefix         =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => Make_Identifier (Loc, Name_uInit),
-                    Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
-                Attribute_Name => Name_Unchecked_Access));
+         Make_Selected_Component (Loc,
+           Prefix        => Make_Identifier (Loc, Name_uInit),
+           Selector_Name => Make_Identifier (
+                              Loc, Name_uTask_Handler)));
 
       --  If the stack has been preallocated by the expander then
       --  pass its address. Otherwise, pass a null address.
