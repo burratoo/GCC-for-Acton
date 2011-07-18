@@ -12576,17 +12576,18 @@ package body Exp_Ch9 is
       --  If the stack has been preallocated by the expander then
       --  pass its address. Otherwise, pass a null address.
 
-      if Preallocated_Stacks_On_Target then
+      if Restricted_Profile and then Preallocated_Stacks_On_Target then
          Append_To (Args,
            Make_Attribute_Reference (Loc,
              Prefix         =>
                Make_Selected_Component (Loc,
                  Prefix        => Make_Identifier (Loc, Name_uInit),
                  Selector_Name => Make_Identifier (Loc, Name_uStack)),
-             Attribute_Name => Name_Unchecked_Access));
+             Attribute_Name => Name_Address));
 
       else
-         Append_To (Args, Make_Null (Loc));
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Null_Address), Loc));
       end if;
 
       --  Size parameter. If no Storage_Size pragma is present, then
