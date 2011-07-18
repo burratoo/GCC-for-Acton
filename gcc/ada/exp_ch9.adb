@@ -10210,16 +10210,6 @@ package body Exp_Ch9 is
       Install_Private_Data_Declarations
         (Loc, Task_Body_Procedure (Ttyp), Ttyp, N, Declarations (N));
 
-      --  Add a call to Abort_Undefer at the very beginning of the task
-      --  body since this body is called with abort still deferred.
-
-      if Abort_Allowed then
-         Call := Build_Runtime_Call (Loc, RE_Abort_Undefer);
-         Insert_Before
-           (First (Statements (Handled_Statement_Sequence (N))), Call);
-         Analyze (Call);
-      end if;
-
       --  The statement part has already been protected with an at_end and
       --  cleanup actions. The call to Complete_Activation must be placed
       --  at the head of the sequence of statements of that block. The
@@ -10227,11 +10217,7 @@ package body Exp_Ch9 is
       --  the first real statement is accessible from the First_Real_Statement
       --  field (which was set for exactly this purpose).
 
-      if Restricted_Profile then
-         Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
-      else
-         Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
-      end if;
+      Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
 
       Insert_Before
         (First_Real_Statement (Handled_Statement_Sequence (N)), Call);
@@ -10476,6 +10462,16 @@ package body Exp_Ch9 is
 
       --  Fill in the component declarations
 
+      Append_To (Cdecls,
+        Make_Component_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uTask_Handler),
+          Component_Definition =>
+            Make_Component_Definition (Loc,
+              Aliased_Present    => False,
+              Subtype_Indication => New_Reference_To (
+                                      RTE (RE_Oak_Task_Handler), Loc))));
+
       --  Declare static OTCR (that is, created by the expander) if we are
       --  using the Restricted run time.
 
@@ -10663,8 +10659,10 @@ package body Exp_Ch9 is
       --  present. If we are using a restricted run time this component will
       --  not be added (deadlines are not allowed by the Ravenscar profile).
 
-      if not Restricted_Profile
-        and then Present (Taskdef)
+      --  if not Restricted_Profile
+      --    and then Present (Taskdef)
+      --    and then Has_Relative_Deadline_Pragma (Taskdef)
+      if Present (Taskdef)
         and then Has_Relative_Deadline_Pragma (Taskdef)
       then
          Append_To (Cdecls,
@@ -12568,6 +12566,7 @@ package body Exp_Ch9 is
       Args := New_List;
 
       --  Oak Task Handler
+
       Append_To (Args,
         Make_Attribute_Reference (Loc,
                 Prefix         =>
@@ -12576,25 +12575,20 @@ package body Exp_Ch9 is
                     Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
                 Attribute_Name => Name_Unchecked_Access));
 
-      --  Optional Stack parameter
+      --  If the stack has been preallocated by the expander then
+      --  pass its address. Otherwise, pass a null address.
 
-      if Restricted_Profile then
+      if Preallocated_Stacks_On_Target then
+         Append_To (Args,
+           Make_Attribute_Reference (Loc,
+             Prefix         =>
+               Make_Selected_Component (Loc,
+                 Prefix        => Make_Identifier (Loc, Name_uInit),
+                 Selector_Name => Make_Identifier (Loc, Name_uStack)),
+             Attribute_Name => Name_Unchecked_Access));
 
-         --  If the stack has been preallocated by the expander then
-         --  pass its address. Otherwise, pass a null address.
-
-         if Preallocated_Stacks_On_Target then
-            Append_To (Args,
-              Make_Attribute_Reference (Loc,
-                Prefix         =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => Make_Identifier (Loc, Name_uInit),
-                    Selector_Name => Make_Identifier (Loc, Name_uStack)),
-                Attribute_Name => Name_Address));
-
-         else
-            Append_To (Args, Make_Null (Loc));
-         end if;
+      else
+         Append_To (Args, Make_Null (Loc));
       end if;
 
       --  Size parameter. If no Storage_Size pragma is present, then
@@ -12755,24 +12749,7 @@ package body Exp_Ch9 is
           Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
           Attribute_Name => Name_Unchecked_Access));
 
-      --  Build_Entry_Names generation flag. When set to true, the runtime
-      --  will allocate an array to hold the string names of task entries.
-
-      if not Restricted_Profile then
-         if Has_Entries (Ttyp)
-           and then Entry_Names_OK
-         then
-            Append_To (Args, New_Reference_To (Standard_True, Loc));
-         else
-            Append_To (Args, New_Reference_To (Standard_False, Loc));
-         end if;
-      end if;
-
-      if Restricted_Profile then
-         Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
-      else
-         Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
-      end if;
+      Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
 
       return
         Make_Procedure_Call_Statement (Loc,

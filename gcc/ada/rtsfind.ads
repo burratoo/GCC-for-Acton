@@ -1705,6 +1705,7 @@ package Rtsfind is
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
 
      RE_Oak_Task,                        -- Oak.Oak_Task
+     RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
 
    --  The following declarations build a table that is indexed by the RTE
@@ -2927,6 +2928,7 @@ package Rtsfind is
 
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
      RE_Oak_Task                         => Oak_Oak_Task,
+     RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);
 
    --------------------------------
