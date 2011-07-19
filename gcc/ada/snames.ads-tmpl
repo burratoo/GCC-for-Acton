@@ -175,6 +175,7 @@ package Snames is
    Name_uTags                          : constant Name_Id := N + $;
    Name_uTask                          : constant Name_Id := N + $;
    Name_uTask_Id                       : constant Name_Id := N + $;
+   Name_uTask_Handler                  : constant Name_Id := N + $;
    Name_uTask_Info                     : constant Name_Id := N + $;
    Name_uTask_Name                     : constant Name_Id := N + $;
    Name_uTrace_Sp                      : constant Name_Id := N + $;
