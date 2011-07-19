@@ -953,8 +953,14 @@ package body Bindgen is
 
          WBI ("");
 
+         WBI ("      procedure Initialise_Oak;");
+
          WBI ("      pragma Import (Ada, Initialise_Oak," &
                " ""__oak_initialise"");");
+
+         WBI ("");
+
+         WBI ("      procedure Start_Oak;");
          WBI ("      pragma Import (Ada, Start_Oak, ""__oak_start"");");
 
          WBI ("");
@@ -989,8 +995,11 @@ package body Bindgen is
          begin
             Set_String ("      procedure Create_Scheduler_Agent_");
             Set_String (Policy_Str);
-            Set_String (";");
+            Set_String (" (");
             Write_Statement_Buffer;
+            WBI ("        Agent        : Oak.Oak_Task.Oak_Task_Handler;");
+            WBI ("        Min_Priority : System.Priority;");
+            WBI ("        Max_Priority : System.Priority);");
 
             Set_String ("      pragma Import (Ada, Create_Scheduler_Agent_");
             Set_String (Policy_Str);
@@ -1069,7 +1078,7 @@ package body Bindgen is
                           (Scheduler_Agents.Table (J).Dispatching_Policy));
             Set_String (" (Scheduler_Agent_");
             Set_Int (Int (J));
-            Set_String ("'Access, ");
+            Set_String ("'Unchecked_Access, ");
             Set_Int (Scheduler_Agents.Table (J).First_Priority);
             Set_String (", ");
             Set_Int (Scheduler_Agents.Table (J).Last_Priority);
@@ -1078,7 +1087,7 @@ package body Bindgen is
          end loop;
 
          --  Initalise main task call
-         WBI ("      Initialise_Main_Task");
+         WBI ("      Oak.Oak_Task.Data_Access.Initialise_Main_Task");
          WBI ("        (Main_Task_OTCR'Access,");
 
          --  Set the stack size of the main task
@@ -1093,7 +1102,7 @@ package body Bindgen is
          end if;
 
          --  Set the name of the main task.
-         WBI ("         Main Task,");
+         WBI ("         ""Main Task"",");
 
          --  Set the priority of the main task
          if ALIs.Table (ALIs.First).Main_Priority = No_Main_Priority then
@@ -1119,9 +1128,9 @@ package body Bindgen is
 
          --  Set the Address of the main task's run-loop
          WBI ("         Ada_Main_Program'Address);");
-         
+
          --  Start Oak
-         WBI ("         Start_Oak;");
+         WBI ("      Start_Oak;");
       end if;
 
       --  Adafinal call is skipped if no finalization
@@ -1150,7 +1159,7 @@ package body Bindgen is
          WBI ("      Finalize;");
       end if;
 
-      WBI ("   end;");
+      WBI ("   end main;");
    end Gen_Main_Ada;
 
    ------------------------------
@@ -1544,7 +1553,7 @@ package body Bindgen is
 
       --  Generate "with Oak.Oak_Task" so that we can reference
       --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
-      --  agents OTCR. This only happens when we bind the main program. 
+      --  agents OTCR. This only happens when we bind the main program.
 
       if Bind_Main_Program then
          WBI ("with Oak.Oak_Task;");
@@ -1683,6 +1692,13 @@ package body Bindgen is
       then
          WBI ("");
          WBI ("with System.Restrictions;");
+      end if;
+
+      if Bind_Main_Program then
+         WBI ("with Ada.Real_Time;");
+         WBI ("with Oak.Oak_Task.Data_Access;");
+         WBI ("with Oak.Processor_Support_Package.Call_Stack;");
+         WBI ("with System.Storage_Elements;");
       end if;
 
       WBI ("");
