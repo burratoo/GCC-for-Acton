@@ -12716,30 +12716,11 @@ package body Exp_Ch9 is
       --  required value is obtained by taking 'Address of the task
       --  body procedure.
 
-      declare
-         Body_Proc    : constant Node_Id := Get_Task_Body_Procedure (Ttyp);
-         Subp_Ptr_Typ : constant Node_Id :=
-                          Create_Itype (E_Access_Subprogram_Type, Tdec);
-         Ref          : constant Node_Id := Make_Itype_Reference (Loc);
-
-      begin
-         Set_Directly_Designated_Type (Subp_Ptr_Typ, Body_Proc);
-         Set_Etype (Subp_Ptr_Typ, Subp_Ptr_Typ);
-
-         --  Be sure to freeze a reference to the access-to-subprogram type,
-         --  otherwise gigi will complain that it's in the wrong scope, because
-         --  it's actually inside the init procedure for the record type that
-         --  corresponds to the task type.
-
-         Set_Itype (Ref, Subp_Ptr_Typ);
-         Append_Freeze_Action (Task_Rec, Ref);
-
-         Append_To (Args,
-           Make_Attribute_Reference (Loc,
-             Prefix =>
-               New_Occurrence_Of (Body_Proc, Loc),
-             Attribute_Name => Name_Address));
-      end;
+      Append_To (Args,
+        Make_Attribute_Reference (Loc,
+          Prefix         =>
+            New_Occurrence_Of (Get_Task_Body_Procedure (Ttyp), Loc),
+          Attribute_Name => Name_Address));
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
 
