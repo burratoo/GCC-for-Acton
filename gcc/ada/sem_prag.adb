@@ -7249,6 +7249,13 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
+            Arg := Get_Pragma_Arg (Arg1);
+
+            --  The expression must be analyzed in the special manner described
+            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+
+            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
             --  Subprogram case
 
             if Nkind (P) = N_Subprogram_Body then
@@ -7257,13 +7264,7 @@ package body Sem_Prag is
             --  Tasks
 
             elsif Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+               null;
 
             --  Anything else is incorrect
 
