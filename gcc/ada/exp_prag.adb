@@ -810,17 +810,9 @@ package body Exp_Prag is
          Rewrite
            (N,
             Make_Procedure_Call_Statement (Loc,
-              Name => New_Reference_To (RTE (RE_Set_Deadline), Loc),
-              Parameter_Associations => New_List (
-                Unchecked_Convert_To (RTE (RO_RT_Time),
-                  Make_Op_Add (Loc,
-                    Left_Opnd  =>
-                      Make_Function_Call (Loc,
-                        New_Reference_To (RTE (RO_RT_To_Duration), Loc),
-                        New_List (Make_Function_Call (Loc,
-                          New_Reference_To (RTE (RE_Clock), Loc)))),
-                    Right_Opnd  =>
-                      Unchecked_Convert_To (Standard_Duration, Arg1 (N)))))));
+              Name => New_Reference_To
+                        (RTE (RE_Change_Relative_Deadline), Loc),
+              Parameter_Associations => New_List (Arg1 (N))));
 
          Analyze (N);
       end if;
