@@ -137,18 +137,6 @@ package ALI is
       --  parameter was found, or no M line was present. Not set if 'M' appears
       --  in Ignore_Lines.
 
-      Main_Cycle_Period : Int;
-      --  Indicates cycle period value if Main_Program field indicates that
-      --  this can be a main program. A value of 0 (No_Main_Cycle_Period)
-      --  indicates that no paramater was found, or no M line was present.
-      --  Not set if 'M' appears in Ingore_Lines.
-
-      Main_Deadline : Int;
-      --  Indicates the relative deadline period value if Main_Program field
-      --  indicates that this can be a main program. A value of 0
-      --  (No_Main_Deadline)indicates that no paramater was found, or no M line
-      --  was present. Not set if 'M' appears in Ingore_Lines.
-
       Main_Stack_Size : Int;
       --  Indicates stack size value if Main_Program field indicates that
       --  this can be a main program. A value of -1 (No_Main_Stack_Size)
@@ -233,8 +221,6 @@ package ALI is
    end record;
 
    No_Main_CPU          : constant Int := -1;
-   No_Main_Cycle_Period : constant Int := 0;
-   No_Main_Deadline     : constant Int := 0;
    No_Main_Priority     : constant Int := -1;
    No_Main_Stack_Size   : constant Int := -1;
 

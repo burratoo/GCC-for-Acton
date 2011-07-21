@@ -116,8 +116,7 @@ package Lib.Writ is
    --  -- M  Main Program --
    --  ---------------------
 
-   --    M type [priority] [T=time-slice] [AB] [C=cpu] [P=cycle-period]
-   --      [D=deadline] [S=stack-size] W=?
+   --    M type [priority] [T=time-slice] [AB] [C=cpu] [S=stack-size] W=?
 
    --      This line appears only if the main unit for this file is suitable
    --      for use as a main program. The parameters are:
@@ -155,18 +154,6 @@ package Lib.Writ is
    --          Present only if there was a valid pragma CPU in the
    --          corresponding unit to set the main task affinity. It is an
    --          unsigned decimal integer.
-
-   --        P=cycle-period
-
-   --          Present only if there was a valid pragma Cycle_Period in the
-   --          corresponding unit to set the main task's cycle period. It is
-   --          an unsigned decimal integer.
-
-   --        D=deadline
-
-   --          Present only if there was a valid pragma Relative_Deadline in
-   --          the corresponding unit to set the main task's relative deadline.
-   --          It is an unsigned decimal integer.
 
    --        S=stack-size
 

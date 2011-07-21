@@ -363,20 +363,6 @@ package Lib is
    --      that the default affinity is to be used (and is also used for
    --      entries that do not correspond to possible main programs).
 
-   --    Main_Cycle_Period
-   --      This field is used to indicate the cycle period of a possible
-   --      main program, as set by a pragma Cycle_Period. A value of 0
-   --      indicates that the default cycle period is to be used (and is
-   --      also used for entries that do not correspond to possible main
-   --      programs).
-
-   --    Main_Deadline
-   --      This field is used to indicate the deadline of a possible
-   --      main program, as set by a pragma Relative_Deadline. A value
-   --      of 0 indicates that the default relative deadline is to be used
-   --      (and is also used for entries that do not correspond to
-   --      possible main programs).
-
    --    Main_Stack_Size
    --      This field is used to indicate the stack size of a possible
    --      main program, as set by a pragma Storage_Size. A value of -1
@@ -422,9 +408,8 @@ package Lib is
    Default_Main_CPU : constant Int := -1;
    --  Value used in Main_CPU field to indicate default main affinity
 
-   Default_Main_Cycle_Period : constant Int := 0;
-   Default_Main_Deadline     : constant Int := 0;
    Default_Main_Stack_Size   : constant Int := -1;
+   --  Value used in Main_stack_Size field to indicate default main stack size
 
    function Cunit             (U : Unit_Number_Type) return Node_Id;
    function Cunit_Entity      (U : Unit_Number_Type) return Entity_Id;
@@ -440,8 +425,6 @@ package Lib is
    function Is_Compiler_Unit  (U : Unit_Number_Type) return Boolean;
    function Loading           (U : Unit_Number_Type) return Boolean;
    function Main_CPU          (U : Unit_Number_Type) return Int;
-   function Main_Cycle_Period (U : Unit_Number_Type) return Int;
-   function Main_Deadline     (U : Unit_Number_Type) return Int;
    function Main_Priority     (U : Unit_Number_Type) return Int;
    function Main_Stack_Size   (U : Unit_Number_Type) return Int;
    function Munit_Index       (U : Unit_Number_Type) return Nat;
@@ -463,8 +446,6 @@ package Lib is
    procedure Set_Ident_String      (U : Unit_Number_Type; N : Node_Id);
    procedure Set_Loading           (U : Unit_Number_Type; B : Boolean := True);
    procedure Set_Main_CPU          (U : Unit_Number_Type; P : Int);
-   procedure Set_Main_Cycle_Period (U : Unit_Number_Type; P : Int);
-   procedure Set_Main_Deadline     (U : Unit_Number_Type; P : Int);
    procedure Set_Main_Priority     (U : Unit_Number_Type; P : Int);
    procedure Set_Main_Stack_Size   (U : Unit_Number_Type; P : Int);
    procedure Set_OA_Setting        (U : Unit_Number_Type; C : Character);
@@ -707,8 +688,6 @@ private
    pragma Inline (Increment_Serial_Number);
    pragma Inline (Loading);
    pragma Inline (Main_CPU);
-   pragma Inline (Main_Cycle_Period);
-   pragma Inline (Main_Deadline);
    pragma Inline (Main_Priority);
    pragma Inline (Main_Stack_Size);
    pragma Inline (Munit_Index);
@@ -721,8 +700,6 @@ private
    pragma Inline (Set_Has_RACW);
    pragma Inline (Set_Loading);
    pragma Inline (Set_Main_CPU);
-   pragma Inline (Set_Main_Cycle_Period);
-   pragma Inline (Set_Main_Deadline);
    pragma Inline (Set_Main_Priority);
    pragma Inline (Set_Main_Stack_Size);
    pragma Inline (Set_OA_Setting);
@@ -743,8 +720,6 @@ private
       Ident_String      : Node_Id;
       Main_Priority     : Int;
       Main_CPU          : Int;
-      Main_Cycle_Period : Int;
-      Main_Deadline     : Int;
       Main_Stack_Size   : Int;
       Serial_Number     : Nat;
       Version           : Word;
@@ -775,23 +750,21 @@ private
       Ident_String      at 32 range 0 .. 31;
       Main_Priority     at 36 range 0 .. 31;
       Main_CPU          at 40 range 0 .. 31;
-      Main_Cycle_Period at 44 range 0 .. 31;
-      Main_Deadline     at 48 range 0 .. 31;
-      Main_Stack_Size   at 52 range 0 .. 31;
-      Serial_Number     at 56 range 0 .. 31;
-      Version           at 60 range 0 .. 31;
-      Error_Location    at 64 range 0 .. 31;
-      Fatal_Error       at 68 range 0 ..  7;
-      Generate_Code     at 69 range 0 ..  7;
-      Has_RACW          at 70 range 0 ..  7;
-      Dynamic_Elab      at 71 range 0 ..  7;
-      Is_Compiler_Unit  at 72 range 0 ..  7;
-      OA_Setting        at 73 range 0 ..  7;
-      Loading           at 74 range 0 ..  7;
-      Has_Allocator     at 75 range 0 ..  7;
+      Main_Stack_Size   at 44 range 0 .. 31;
+      Serial_Number     at 48 range 0 .. 31;
+      Version           at 52 range 0 .. 31;
+      Error_Location    at 56 range 0 .. 31;
+      Fatal_Error       at 60 range 0 ..  7;
+      Generate_Code     at 61 range 0 ..  7;
+      Has_RACW          at 62 range 0 ..  7;
+      Dynamic_Elab      at 63 range 0 ..  7;
+      Is_Compiler_Unit  at 64 range 0 ..  7;
+      OA_Setting        at 65 range 0 ..  7;
+      Loading           at 66 range 0 ..  7;
+      Has_Allocator     at 67 range 0 ..  7;
    end record;
 
-   for Unit_Record'Size use 76 * 8;
+   for Unit_Record'Size use 68 * 8;
    --  This ensures that we did not leave out any fields
 
    package Units is new Table.Table (

@@ -143,16 +143,6 @@ package body Lib is
       return Units.Table (U).Main_CPU;
    end Main_CPU;
 
-   function Main_Cycle_Period (U : Unit_Number_Type) return Int is
-   begin
-      return Units.Table (U).Main_Cycle_Period;
-   end Main_Cycle_Period;
-
-   function Main_Deadline (U : Unit_Number_Type) return Int is
-   begin
-      return Units.Table (U).Main_Deadline;
-   end Main_Deadline;
-
    function Main_Priority (U : Unit_Number_Type) return Int is
    begin
       return Units.Table (U).Main_Priority;
@@ -255,16 +245,6 @@ package body Lib is
    begin
       Units.Table (U).Main_CPU := P;
    end Set_Main_CPU;
-
-   procedure Set_Main_Cycle_Period (U : Unit_Number_Type; P : Int) is
-   begin
-      Units.Table (U).Main_Cycle_Period := P;
-   end Set_Main_Cycle_Period;
-
-   procedure Set_Main_Deadline (U : Unit_Number_Type; P : Int) is
-   begin
-      Units.Table (U).Main_Deadline := P;
-   end Set_Main_Deadline;
 
    procedure Set_Main_Priority (U : Unit_Number_Type; P : Int) is
    begin
