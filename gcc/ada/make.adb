@@ -4630,7 +4630,7 @@ package body Make is
                Make_Failed ("only stand-alone libraries may be bound");
             end if;
 
-            --  Add the default search directories to be able to find libgnat
+            --  Add the default search directories to be able to find libacton
 
             Osint.Add_Default_Search_Dirs;
 

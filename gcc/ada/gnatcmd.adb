@@ -968,7 +968,7 @@ procedure GNATCmd is
 
    begin
       --  Add the default search directories, to be able to find
-      --  libgnat in call to MLib.Utl.Lib_Directory.
+      --  libacton in call to MLib.Utl.Lib_Directory.
 
       Add_Default_Search_Dirs;
 
@@ -984,17 +984,14 @@ procedure GNATCmd is
 
       if Libraries_Present then
 
-         --  Add -L<lib_dir> -lgnarl -lgnat -Wl,-rpath,<lib_dir>
+         --  Add -L<lib_dir> -lacton -Wl,-rpath,<lib_dir>
 
          Last_Switches.Increment_Last;
          Last_Switches.Table (Last_Switches.Last) :=
            new String'("-L" & MLib.Utl.Lib_Directory);
          Last_Switches.Increment_Last;
          Last_Switches.Table (Last_Switches.Last) :=
-           new String'("-lgnarl");
-         Last_Switches.Increment_Last;
-         Last_Switches.Table (Last_Switches.Last) :=
-           new String'("-lgnat");
+           new String'("-lacton");
 
          --  If Path_Option is not null, create the switch ("-Wl,-rpath," or
          --  equivalent) with all the library dirs plus the standard GNAT

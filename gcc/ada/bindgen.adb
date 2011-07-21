@@ -1155,7 +1155,7 @@ package body Bindgen is
    ------------------------------
 
    procedure Gen_Object_Files_Options is
-      Lgnat : Natural;
+      Lacton : Natural;
       --  This keeps track of the position in the sorted set of entries
       --  in the Linker_Options table of where the first entry from an
       --  internal file appears.
@@ -1250,25 +1250,6 @@ package body Bindgen is
                   Write_Str (Name_Buffer (1 .. Name_Len));
                   Write_Eol;
                end if;
-
-               --  Don't link with the shared library on VMS if an internal
-               --  filename object is seen. Multiply defined symbols will
-               --  result.
-
-               if OpenVMS_On_Target
-                 and then Is_Internal_File_Name
-                  (ALIs.Table
-                   (Units.Table (Elab_Order.Table (E)).My_ALI).Sfile)
-               then
-                  --  Special case for g-trasym.obj (not included in libgnat)
-
-                  Get_Name_String (ALIs.Table
-                            (Units.Table (Elab_Order.Table (E)).My_ALI).Sfile);
-
-                  if Name_Buffer (1 .. 8) /= "g-trasym" then
-                     Opt.Shared_Libgnat := False;
-                  end if;
-               end if;
             end if;
          end if;
       end loop;
@@ -1322,18 +1303,18 @@ package body Bindgen is
          Lt_Linker_Option'Access);
 
       --  Write user linker options, i.e. the set of linker options that come
-      --  from all files other than GNAT internal files, Lgnat is left set to
-      --  point to the first entry from a GNAT internal file, or past the end
-      --  of the entries if there are no internal files.
+      --  from all files other than GNAT/Acton internal files, Lacton is left
+      --  set to point to the first entry from a GNAT internal file, or past
+      --  the end of the entries if there are no internal files.
 
-      Lgnat := Linker_Options.Last + 1;
+      Lacton := Linker_Options.Last + 1;
 
       for J in 1 .. Linker_Options.Last loop
          if not Linker_Options.Table (J).Internal_File then
             Get_Name_String (Linker_Options.Table (J).Name);
             Write_Linker_Option;
          else
-            Lgnat := J;
+            Lacton := J;
             exit;
          end if;
       end loop;
@@ -1351,7 +1332,7 @@ package body Bindgen is
       if not (Opt.No_Run_Time_Mode or else Opt.No_Stdlib) then
          Name_Len := 0;
 
-         if Opt.Shared_Libgnat then
+         if Opt.Shared_Libacton then
             Add_Str_To_Name_Buffer ("-shared");
          else
             Add_Str_To_Name_Buffer ("-static");
@@ -1361,36 +1342,12 @@ package body Bindgen is
 
          Write_Info_Ada_C ("   --   ", "", Name_Buffer (1 .. Name_Len));
 
-         if With_DECGNAT then
-            Name_Len := 0;
-
-            if Opt.Shared_Libgnat then
-               Add_Str_To_Name_Buffer (Shared_Lib ("decgnat"));
-            else
-               Add_Str_To_Name_Buffer ("-ldecgnat");
-            end if;
-
-            Write_Linker_Option;
-         end if;
-
-         if With_GNARL then
-            Name_Len := 0;
-
-            if Opt.Shared_Libgnat then
-               Add_Str_To_Name_Buffer (Shared_Lib ("gnarl"));
-            else
-               Add_Str_To_Name_Buffer ("-lgnarl");
-            end if;
-
-            Write_Linker_Option;
-         end if;
-
          Name_Len := 0;
 
-         if Opt.Shared_Libgnat then
-            Add_Str_To_Name_Buffer (Shared_Lib ("gnat"));
+         if Opt.Shared_Libacton then
+            Add_Str_To_Name_Buffer (Shared_Lib ("acton"));
          else
-            Add_Str_To_Name_Buffer ("-lgnat");
+            Add_Str_To_Name_Buffer ("-lacton");
          end if;
 
          Write_Linker_Option;
@@ -1398,7 +1355,7 @@ package body Bindgen is
 
       --  Write linker options from all internal files
 
-      for J in Lgnat .. Linker_Options.Last loop
+      for J in Lacton .. Linker_Options.Last loop
          Get_Name_String (Linker_Options.Table (J).Name);
          Write_Linker_Option;
       end loop;

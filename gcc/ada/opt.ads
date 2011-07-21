@@ -1154,11 +1154,11 @@ package Opt is
    --  Set to True for GNAT SETUP: the Project Manager creates non existing
    --  object, library and exec directories.
 
-   Shared_Libgnat : Boolean;
+   Shared_Libacton : Boolean;
    --  GNATBIND
-   --  Set to True if a shared libgnat is requested by using the -shared option
-   --  for GNATBIND and to False when using the -static option. The value of
-   --  this flag is set by Gnatbind.Scan_Bind_Arg.
+   --  Set to True if a shared libacton is requested by using the -shared
+   --  option for GNATBIND and to False when using the -static option. The
+   --  value of this flag is set by Gnatbind.Scan_Bind_Arg.
 
    Short_Circuit_And_Or : Boolean := False;
    --  GNAT

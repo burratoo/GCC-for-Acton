@@ -1135,9 +1135,7 @@ procedure Gnatlink is
                   Linker_Options.Table (Linker_Options.Last) :=
                     new String'(Next_Line (Nfirst .. Nlast));
 
-               elsif Next_Line (Nfirst .. Nlast) = "-ldecgnat"
-                 or else Next_Line (Nfirst .. Nlast) = "-lgnarl"
-                 or else Next_Line (Nfirst .. Nlast) = "-lgnat"
+               elsif Next_Line (Nfirst .. Nlast) = "-lacton"
                  or else Next_Line
                      (1 .. Natural'Min (Nlast, 8 + Library_Version'Length)) =
                        Shared_Lib ("gnarl")
@@ -1254,7 +1252,7 @@ procedure Gnatlink is
                                        end if;
 
                                        --  If we have found a "lib" subdir in
-                                       --  the path to libgnat, the possible
+                                       --  the path to libacton, the possible
                                        --  shared libgcc of interest by default
                                        --  is in libgcc_subdir at the same
                                        --  level.

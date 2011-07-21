@@ -621,7 +621,7 @@ package body MLib.Utl is
    -------------------
 
    function Lib_Directory return String is
-      Libgnat : constant String := Tgt.Libgnat;
+      Libacton : constant String := Tgt.Libacton;
 
    begin
       --  If procedure Specify_Adalib_Dir has been called, used the specified
@@ -631,13 +631,13 @@ package body MLib.Utl is
          return Adalib_Path.all;
       end if;
 
-      Name_Len := Libgnat'Length;
-      Name_Buffer (1 .. Name_Len) := Libgnat;
+      Name_Len := Libacton'Length;
+      Name_Buffer (1 .. Name_Len) := Libacton;
       Get_Name_String (Osint.Find_File (Name_Enter, Osint.Library));
 
-      --  Remove libgnat.a
+      --  Remove libacton.a
 
-      return Name_Buffer (1 .. Name_Len - Libgnat'Length);
+      return Name_Buffer (1 .. Name_Len - Libacton'Length);
    end Lib_Directory;
 
    ------------------------

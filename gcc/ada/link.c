@@ -59,8 +59,8 @@
 /*  be set to the null string if the system does not support dynamic        */
 /*  loading of libraries.                                                   */
 
-/*  shared_libgnat_default gives the system dependent link method that      */
-/*  be used by default for linking libgnat (shared or static)               */
+/*  shared_libacton_default gives the system dependent link method that     */
+/*  be used by default for linking libacton (shared or static)              */
 
 /*  shared_libgcc_default gives the system dependent link method that       */
 /*  be used by default for linking libgcc (shared or static)                */
@@ -94,7 +94,7 @@ const char *__gnat_object_file_option = "-Wl,-input,";
 const char *__gnat_run_path_option = "-Wl,-rpath,";
 int __gnat_link_max = 10000;
 unsigned char __gnat_objlist_file_supported = 1;
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 unsigned char __gnat_using_gnu_linker = 0;
 const char *__gnat_object_library_extension = ".a";
@@ -106,7 +106,7 @@ const char *__gnat_object_file_option = "-Wl,-objectlist,";
 const char *__gnat_run_path_option = "-Wl,-rpath,";
 int __gnat_link_max = 5000;
 unsigned char __gnat_objlist_file_supported = 1;
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 unsigned char __gnat_using_gnu_linker = 0;
 const char *__gnat_object_library_extension = ".a";
@@ -126,7 +126,7 @@ const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "";
 int __gnat_link_max = 30000;
 unsigned char __gnat_objlist_file_supported = 1;
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 unsigned char __gnat_using_gnu_linker = 1;
 const char *__gnat_object_library_extension = ".a";
@@ -138,7 +138,7 @@ const char *__gnat_object_file_option = "-Wl,-c,";
 const char *__gnat_run_path_option = "-Wl,+b,";
 int __gnat_link_max = 5000;
 unsigned char __gnat_objlist_file_supported = 1;
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 unsigned char __gnat_using_gnu_linker = 0;
 const char *__gnat_object_library_extension = ".a";
@@ -150,7 +150,7 @@ const char *__gnat_object_file_option = "-Wl,-f,";
 const char *__gnat_run_path_option = "";
 int __gnat_link_max = 15000;
 const unsigned char __gnat_objlist_file_supported = 1;
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 unsigned char __gnat_using_gnu_linker = 0;
 const char *__gnat_object_library_extension = ".a";
@@ -160,7 +160,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (VMS)
 const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 2147483647;
 unsigned char __gnat_objlist_file_supported = 0;
@@ -172,7 +172,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (sun)
 const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "-Wl,-R";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 2147483647;
 unsigned char __gnat_objlist_file_supported = 0;
@@ -190,7 +190,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (__FreeBSD__)
 const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "-Wl,-rpath,";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 8192;
 unsigned char __gnat_objlist_file_supported = 1;
@@ -202,7 +202,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (__APPLE__)
 const char *__gnat_object_file_option = "-Wl,-filelist,";
 const char *__gnat_run_path_option = "-Wl,-rpath,";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = SHARED;
 int __gnat_link_max = 262144;
 unsigned char __gnat_objlist_file_supported = 1;
@@ -214,7 +214,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (linux) || defined(__GLIBC__)
 const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "-Wl,-rpath,";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 8192;
 unsigned char __gnat_objlist_file_supported = 1;
@@ -230,7 +230,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
 #elif defined (__svr4__) && defined (i386)
 const char *__gnat_object_file_option = "";
 const char *__gnat_run_path_option = "";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 2147483647;
 unsigned char __gnat_objlist_file_supported = 0;
@@ -245,7 +245,7 @@ const char *__gnat_default_libgcc_subdir = "lib";
     is supported, the shared library default is STATIC.  */
 const char *__gnat_run_path_option = "";
 const char *__gnat_object_file_option = "";
-char __gnat_shared_libgnat_default = STATIC;
+char __gnat_shared_libacton_default = STATIC;
 char __gnat_shared_libgcc_default = STATIC;
 int __gnat_link_max = 2147483647;
 unsigned char __gnat_objlist_file_supported = 0;
