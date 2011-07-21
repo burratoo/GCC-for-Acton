@@ -1088,7 +1088,7 @@ package body Bindgen is
 
          --  Initalise main task call
          WBI ("      Oak.Oak_Task.Data_Access.Initialise_Main_Task");
-         WBI ("        (Main_Task_OTCR'Access,");
+         WBI ("        (Main_Task_OTCR'Unchecked_Access,");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
