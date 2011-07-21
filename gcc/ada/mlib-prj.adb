@@ -1539,12 +1539,12 @@ package body MLib.Prj is
 
          Process_Imported_Libraries;
 
-         --  Link with libgnat and possibly libgnarl
+         --  Link with libacton
 
          Opts.Increment_Last;
          Opts.Table (Opts.Last) := new String'("-L" & Lib_Directory);
 
-         --  If Path Option is supported, add libgnat directory path name to
+         --  If Path Option is supported, add libacton directory path name to
          --  Rpath.
 
          if Path_Option /= null then
@@ -1575,47 +1575,20 @@ package body MLib.Prj is
             end;
          end if;
 
-         if Libgnarl_Needed = Yes then
-            Opts.Increment_Last;
-
-            if The_Build_Mode = Static then
-               Opts.Table (Opts.Last) := new String'("-lgnarl");
-            else
-               Opts.Table (Opts.Last) := new String'(Shared_Lib ("gnarl"));
-            end if;
-         end if;
-
          if Gtrasymobj_Needed then
             Opts.Increment_Last;
             Opts.Table (Opts.Last) :=
               new String'(Lib_Directory & "/g-trasym.obj");
          end if;
 
-         if Libdecgnat_Needed then
-            Opts.Increment_Last;
-
-            Opts.Table (Opts.Last) :=
-              new String'("-L" & Lib_Directory & "/../declib");
-
-            Opts.Increment_Last;
-
-            if The_Build_Mode = Static then
-               Opts.Table (Opts.Last) := new String'("-ldecgnat");
-            else
-               Opts.Table (Opts.Last) := new String'(Shared_Lib ("decgnat"));
-            end if;
-         end if;
-
-         Opts.Increment_Last;
-
          if The_Build_Mode = Static then
-            Opts.Table (Opts.Last) := new String'("-lgnat");
+            Opts.Table (Opts.Last) := new String'("-lacton");
          else
-            Opts.Table (Opts.Last) := new String'(Shared_Lib ("gnat"));
+            Opts.Table (Opts.Last) := new String'(Shared_Lib ("acton"));
          end if;
 
          --  If Path Option is supported, add the necessary switch with the
-         --  content of Rpath. As Rpath contains at least libgnat directory
+         --  content of Rpath. As Rpath contains at least libacton directory
          --  path name, it is guaranteed that it is not null.
 
          if Path_Option /= null then
@@ -2403,30 +2376,20 @@ package body MLib.Prj is
             --  Ignore -static and -shared, since -shared will be used
             --  in any case.
 
-            --  Ignore -lgnat, -lgnarl and -ldecgnat as they will be added
-            --  later, because they are also needed for non Stand-Alone shared
-            --  libraries.
+            --  Ignore -lacton as it be added later, because they are also
+            --  needed for non Stand-Alone shared libraries.
 
             --  Also ignore the shared libraries which are :
 
             --  UNIX / Windows    VMS
-            --  -lgnat-<version>  -lgnat_<version>  (7 + version'length chars)
-            --  -lgnarl-<version> -lgnarl_<version> (8 + version'length chars)
+            --  -lacton-<version> -lacton_<version>  (8 + version'length chars)
 
             if Next_Line (1 .. Nlast) /= "-static" and then
                Next_Line (1 .. Nlast) /= "-shared" and then
-               Next_Line (1 .. Nlast) /= "-ldecgnat" and then
-               Next_Line (1 .. Nlast) /= "-lgnarl" and then
-               Next_Line (1 .. Nlast) /= "-lgnat" and then
-               Next_Line
-                 (1 .. Natural'Min (Nlast, 10 + Library_Version'Length)) /=
-                   Shared_Lib ("decgnat") and then
+               Next_Line (1 .. Nlast) /= "-lacton" and then
                Next_Line
                  (1 .. Natural'Min (Nlast, 8 + Library_Version'Length)) /=
-                   Shared_Lib ("gnarl") and then
-               Next_Line
-                 (1 .. Natural'Min (Nlast, 7 + Library_Version'Length)) /=
-                   Shared_Lib ("gnat")
+                   Shared_Lib ("acton")
             then
                if Next_Line (1) /= '-' then
 

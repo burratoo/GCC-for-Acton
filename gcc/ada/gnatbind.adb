@@ -428,12 +428,12 @@ procedure Gnatbind is
          --  -static
 
          elsif Argv (2 .. Argv'Last) = "static" then
-            Opt.Shared_Libgnat := False;
+            Opt.Shared_Libacton := False;
 
          --  -shared
 
          elsif Argv (2 .. Argv'Last) = "shared" then
-            Opt.Shared_Libgnat := True;
+            Opt.Shared_Libacton := True;
 
          --  -F=mapping_file
 
@@ -549,22 +549,22 @@ procedure Gnatbind is
 
 begin
 
-   --  Set default for Shared_Libgnat option
+   --  Set default for Shared_Libacton option
 
    declare
-      Shared_Libgnat_Default : Character;
+      Shared_Libacton_Default : Character;
       pragma Import
-        (C, Shared_Libgnat_Default, "__gnat_shared_libgnat_default");
+        (C, Shared_Libacton_Default, "__gnat_shared_libacton_default");
 
       SHARED : constant Character := 'H';
       STATIC : constant Character := 'T';
 
    begin
       pragma Assert
-        (Shared_Libgnat_Default = SHARED
+        (Shared_Libacton_Default = SHARED
          or else
-        Shared_Libgnat_Default = STATIC);
-      Shared_Libgnat := (Shared_Libgnat_Default = SHARED);
+        Shared_Libacton_Default = STATIC);
+      Shared_Libacton := (Shared_Libacton_Default = SHARED);
    end;
 
    --  Scan the switches and arguments

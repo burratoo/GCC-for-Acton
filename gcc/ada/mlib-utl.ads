@@ -56,7 +56,7 @@ package MLib.Utl is
    --  Osint.Program_Name updated accordingly in the body.
 
    function Lib_Directory return String;
-   --  Return the directory containing libgnat
+   --  Return the directory containing libacton
 
    procedure Specify_Adalib_Dir (Path : String);
    --  Specify the path of the GNAT adalib directory, to be returned by

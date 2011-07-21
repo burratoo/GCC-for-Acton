@@ -64,8 +64,8 @@ package MLib.Tgt is
    --  gcc option to create a dynamic library.
    --  For Unix, returns "-shared", for Windows returns "-mdll".
 
-   function Libgnat return String;
-   --  System dependent static GNAT library
+   function Libacton return String;
+   --  System dependent static Acton library
 
    function Archive_Ext return  String;
    --  System dependent static library extension, without leading dot.
@@ -235,8 +235,8 @@ private
    function Is_Archive_Ext_Default (Ext : String) return Boolean;
    Is_Archive_Ext_Ptr : Is_Ext_Function := Is_Archive_Ext_Default'Access;
 
-   function Libgnat_Default return String;
-   Libgnat_Ptr : String_Function := Libgnat_Default'Access;
+   function Libacton_Default return String;
+   Libacton_Ptr : String_Function := Libacton_Default'Access;
 
    function Library_Exists_For_Default
      (Project : Project_Id;
