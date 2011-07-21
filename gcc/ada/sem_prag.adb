@@ -7249,58 +7249,22 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
+            Arg := Get_Pragma_Arg (Arg1);
+
+            --  The expression must be analyzed in the special manner described
+            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+
+            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
             --  Subprogram case
 
             if Nkind (P) = N_Subprogram_Body then
                Check_In_Main_Program;
 
-               Arg := Get_Pragma_Arg (Arg1);
-               Analyze_And_Resolve (Arg, Any_Integer);
-
-               --  Must be static
-
-               if not Is_Static_Expression (Arg) then
-                  Flag_Non_Static_Expr
-                    ("main task cycle period is not static!", Arg);
-                  raise Pragma_Exit;
-
-               --  If constraint error, then we already signalled an error
-
-               elsif Raises_Constraint_Error (Arg) then
-                  null;
-
-               --  Otherwise check in range
-
-               else
-                  declare
-                     Time_Span : constant Entity_Id := RTE (RE_Time_Span);
-
-                     Val : constant Uint := Expr_Value (Arg);
-
-                  begin
-                     if Val < 0
-                          or else
-                        Val > Expr_Value (Type_High_Bound (Time_Span))
-                     then
-                        Error_Pragma_Arg
-                          ("main task cycle period is out of range", Arg1);
-                     end if;
-                  end;
-               end if;
-
-               Set_Main_Cycle_Period
-                    (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
-
             --  Tasks
 
             elsif Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+               null;
 
             --  Anything else is incorrect
 
@@ -12087,57 +12051,22 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
+            Arg := Get_Pragma_Arg (Arg1);
+
+            --  The expression must be analyzed in the special manner described
+            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+
+            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
+            --  Subprogram case
+
             if Nkind (P) = N_Subprogram_Body then
                Check_In_Main_Program;
-
-               Arg := Get_Pragma_Arg (Arg1);
-               Analyze_And_Resolve (Arg, Any_Integer);
-
-               --  Must be static
-
-               if not Is_Static_Expression (Arg) then
-                  Flag_Non_Static_Expr
-                    ("main task relative deadline is not static!", Arg);
-                  raise Pragma_Exit;
-
-               --  If constraint error, then we already signalled an error
-
-               elsif Raises_Constraint_Error (Arg) then
-                  null;
-
-               --  Otherwise check in range
-
-               else
-                  declare
-                     Time_Span : constant Entity_Id := RTE (RE_Time_Span);
-
-                     Val : constant Uint := Expr_Value (Arg);
-
-                  begin
-                     if Val < 0
-                          or else
-                        Val > Expr_Value (Type_High_Bound (Time_Span))
-                     then
-                        Error_Pragma_Arg
-                          ("main task relative deadline is out of range",
-                           Arg1);
-                     end if;
-                  end;
-               end if;
-
-               Set_Main_Deadline
-                    (Current_Sem_Unit, UI_To_Int (Expr_Value (Arg)));
 
             --  Tasks
 
             elsif Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+               null;
 
             --  Anything else is incorrect
 

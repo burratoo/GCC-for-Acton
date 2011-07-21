@@ -87,8 +87,6 @@ package body Lib.Writ is
          Loading           => False,
          Main_Priority     => Default_Main_Priority,
          Main_CPU          => Default_Main_CPU,
-         Main_Cycle_Period => Default_Main_Cycle_Period,
-         Main_Deadline     => Default_Main_Deadline,
          Main_Stack_Size   => Default_Main_Stack_Size,
          Munit_Index       => 0,
          Serial_Number     => 0,
@@ -147,8 +145,6 @@ package body Lib.Writ is
         Loading           => False,
         Main_Priority     => Default_Main_Priority,
         Main_CPU          => Default_Main_CPU,
-        Main_Cycle_Period => Default_Main_Cycle_Period,
-        Main_Deadline     => Default_Main_Deadline,
         Main_Stack_Size   => Default_Main_Stack_Size,
         Munit_Index       => 0,
         Serial_Number     => 0,
@@ -942,16 +938,6 @@ package body Lib.Writ is
             if Main_CPU (Main_Unit) /= Default_Main_CPU then
                Write_Info_Str (" C=");
                Write_Info_Nat (Main_CPU (Main_Unit));
-            end if;
-
-            if Main_Cycle_Period (Main_Unit) /= Default_Main_Cycle_Period then
-               Write_Info_Str (" P=");
-               Write_Info_Nat (Main_Cycle_Period (Main_Unit));
-            end if;
-
-            if Main_Deadline (Main_Unit) /= Default_Main_Deadline then
-               Write_Info_Str (" D=");
-               Write_Info_Nat (Main_Deadline (Main_Unit));
             end if;
 
             if Main_Stack_Size (Main_Unit) /= Default_Main_Stack_Size then

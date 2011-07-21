@@ -1695,6 +1695,8 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Change_Cycle_Period,             -- ARPART.Tasks
+     RE_Change_Relative_Deadline,        -- ARPART.Tasks
      RE_Complete_Activation,             -- ARPART.Tasks
      RE_Complete_Task,                   -- ARAPRT.Tasks
 
@@ -2919,6 +2921,8 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Change_Cycle_Period              => ARPART_Tasks,
+     RE_Change_Relative_Deadline         => ARPART_Tasks,
      RE_Complete_Activation              => ARPART_Tasks,
      RE_Complete_Task                    => ARPART_Tasks,
 

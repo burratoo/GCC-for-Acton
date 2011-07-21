@@ -1114,18 +1114,6 @@ package body Bindgen is
             Write_Statement_Buffer;
          end if;
 
-         --  Set the relative deadline of the main task.
-         Set_String ("         ");
-         Set_Int (ALIs.Table (ALIs.First).Main_Deadline);
-         Set_String (",");
-         Write_Statement_Buffer;
-
-         --  Set Cycle_Period
-         Set_String ("         ");
-         Set_Int (ALIs.Table (ALIs.First).Main_Cycle_Period);
-         Set_String (",");
-         Write_Statement_Buffer;
-
          --  Set the Address of the main task's run-loop
          WBI ("         Ada_Main_Program'Address);");
 
