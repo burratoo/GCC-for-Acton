@@ -1088,7 +1088,7 @@ package body Bindgen is
 
          --  Initalise main task call
          WBI ("      Oak.Oak_Task.Data_Access.Initialise_Main_Task");
-         WBI ("        (Main_Task_OTCR'Access,");
+         WBI ("        (Main_Task_OTCR'Unchecked_Access,");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
@@ -1113,18 +1113,6 @@ package body Bindgen is
             Set_String (",");
             Write_Statement_Buffer;
          end if;
-
-         --  Set the relative deadline of the main task.
-         Set_String ("         ");
-         Set_Int (ALIs.Table (ALIs.First).Main_Deadline);
-         Set_String (",");
-         Write_Statement_Buffer;
-
-         --  Set Cycle_Period
-         Set_String ("         ");
-         Set_Int (ALIs.Table (ALIs.First).Main_Cycle_Period);
-         Set_String (",");
-         Write_Statement_Buffer;
 
          --  Set the Address of the main task's run-loop
          WBI ("         Ada_Main_Program'Address);");

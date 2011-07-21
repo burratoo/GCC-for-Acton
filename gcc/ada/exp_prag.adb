@@ -64,6 +64,7 @@ package body Exp_Prag is
    procedure Expand_Pragma_Abort_Defer             (N : Node_Id);
    procedure Expand_Pragma_Check                   (N : Node_Id);
    procedure Expand_Pragma_Common_Object           (N : Node_Id);
+   procedure Expand_Pragma_Cycle_Period            (N : Node_Id);
    procedure Expand_Pragma_Import_Or_Interface     (N : Node_Id);
    procedure Expand_Pragma_Import_Export_Exception (N : Node_Id);
    procedure Expand_Pragma_Inspection_Point        (N : Node_Id);
@@ -170,6 +171,9 @@ package body Exp_Prag is
 
             when Pragma_Common_Object =>
                Expand_Pragma_Common_Object (N);
+
+            when Pragma_Cycle_Period =>
+               Expand_Pragma_Cycle_Period (N);
 
             when Pragma_Export_Exception =>
                Expand_Pragma_Import_Export_Exception (N);
@@ -504,6 +508,31 @@ package body Exp_Prag is
 
    end Expand_Pragma_Common_Object;
 
+   --------------------------------
+   -- Expand_Pragma_Cycle_Period --
+   --------------------------------
+
+   procedure Expand_Pragma_Cycle_Period (N : Node_Id) is
+      P    : constant Node_Id    := Parent (N);
+      Loc  : constant Source_Ptr := Sloc (N);
+
+   begin
+      --  Expand the pragma only in the case of the main subprogram. For tasks
+      --  the expansion is done in exp_ch9. Generates a call to
+      --  ARPART.Tasks.Change_Cycle_Period.
+
+      if Nkind (P) = N_Subprogram_Body then
+         Rewrite
+           (N,
+            Make_Procedure_Call_Statement (Loc,
+              Name => New_Reference_To
+                        (RTE (RE_Change_Cycle_Period), Loc),
+              Parameter_Associations => New_List (Arg1 (N))));
+
+         Analyze (N);
+      end if;
+   end Expand_Pragma_Cycle_Period;
+
    ---------------------------------------
    -- Expand_Pragma_Import_Or_Interface --
    ---------------------------------------
@@ -801,26 +830,16 @@ package body Exp_Prag is
 
    begin
       --  Expand the pragma only in the case of the main subprogram. For tasks
-      --  the expansion is done in exp_ch9. Generate a call to Set_Deadline
-      --  at Clock plus the relative deadline specified in the pragma. Time
-      --  values are translated into Duration to allow for non-private
-      --  addition operation.
+      --  the expansion is done in exp_ch9. Generate a call to
+      --  ARPART.Tasks.Change_Relative_Deadline.
 
       if Nkind (P) = N_Subprogram_Body then
          Rewrite
            (N,
             Make_Procedure_Call_Statement (Loc,
-              Name => New_Reference_To (RTE (RE_Set_Deadline), Loc),
-              Parameter_Associations => New_List (
-                Unchecked_Convert_To (RTE (RO_RT_Time),
-                  Make_Op_Add (Loc,
-                    Left_Opnd  =>
-                      Make_Function_Call (Loc,
-                        New_Reference_To (RTE (RO_RT_To_Duration), Loc),
-                        New_List (Make_Function_Call (Loc,
-                          New_Reference_To (RTE (RE_Clock), Loc)))),
-                    Right_Opnd  =>
-                      Unchecked_Convert_To (Standard_Duration, Arg1 (N)))))));
+              Name => New_Reference_To
+                        (RTE (RE_Change_Relative_Deadline), Loc),
+              Parameter_Associations => New_List (Arg1 (N))));
 
          Analyze (N);
       end if;

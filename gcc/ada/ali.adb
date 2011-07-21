@@ -819,8 +819,6 @@ package body ALI is
         Locking_Policy             => ' ',
         Main_Priority              => No_Main_Priority,
         Main_CPU                   => No_Main_CPU,
-        Main_Cycle_Period          => No_Main_Cycle_Period,
-        Main_Deadline              => No_Main_Deadline,
         Main_Stack_Size            => No_Main_Stack_Size,
         Main_Program               => None,
         No_Object                  => False,
@@ -927,22 +925,6 @@ package body ALI is
                   P := P + 1;
                   Checkc ('=');
                   ALIs.Table (Id).Main_CPU := Get_Nat;
-               end if;
-
-               Skip_Space;
-
-               if Nextc = 'P' then
-                  P := P + 1;
-                  Checkc ('=');
-                  ALIs.Table (Id).Main_Cycle_Period := Get_Nat;
-               end if;
-
-               Skip_Space;
-
-               if Nextc = 'D' then
-                  P := P + 1;
-                  Checkc ('=');
-                  ALIs.Table (Id).Main_Deadline := Get_Nat;
                end if;
 
                Skip_Space;
