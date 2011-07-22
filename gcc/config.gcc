@@ -488,6 +488,9 @@ tm_defines="$tm_defines LIBC_GLIBC=1 LIBC_UCLIBC=2 LIBC_BIONIC=3"
 
 # Common parts for widely ported systems.
 case ${target} in
+*-*-acton*)
+  # tm_file="${tm_file} acton.h"
+  ;;
 *-*-darwin*)
   tmake_file="t-darwin ${cpu_type}/t-darwin"
   tm_file="${tm_file} darwin.h"
@@ -2000,6 +2003,12 @@ picochip-*)
 #	tmake_file="${tmake_file} rs6000/t-fprules rs6000/t-fprules-fpbit "
 #	extra_headers=
 #	;;
+powerpc-*-acton*)
+	tm_file="${tm_file} dbxelf.h elfos.h freebsd-spec.h newlib-stdint.h rs6000/sysv4.h rs6000/eabi.h rs6000/e500.h rs6000/eabispe.h acton.h"
+	extra_options="${extra_options} rs6000/sysv4.opt"
+	tmake_file="rs6000/t-spe rs6000/t-ppccomm"
+	use_gcc_stdint=wrap
+	;;
 powerpc-*-darwin*)
 	extra_options="${extra_options} rs6000/darwin.opt"
 	extra_parts="crt2.o"
