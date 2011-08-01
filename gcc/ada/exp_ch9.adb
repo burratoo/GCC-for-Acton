@@ -12673,7 +12673,7 @@ package body Exp_Ch9 is
       --  Cycle_Period parameter. Set to Time_Span_Zerp unless there is a
       --  Cycle_Period pragma,in which case we take the value from the pragma.
 
-      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+      if Present (Tdef) and then Has_Pragma_Cycle_Period (Tdef) then
          Append_To (Args,
            Make_Selected_Component (Loc,
              Prefix        => Make_Identifier (Loc, Name_uInit),
@@ -12686,7 +12686,7 @@ package body Exp_Ch9 is
       --  Phase parameter. Set to Time_Span_Zero unless there is a
       --  Phase pragma,in which case we take the value from the pragma.
 
-      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+      if Present (Tdef) and then Has_Pragma_Phase (Tdef) then
          Append_To (Args,
            Make_Selected_Component (Loc,
              Prefix        => Make_Identifier (Loc, Name_uInit),
