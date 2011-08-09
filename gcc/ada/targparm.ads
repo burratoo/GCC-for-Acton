@@ -82,6 +82,13 @@ with Types;  use Types;
 
 package Targparm is
 
+   --------------
+   -- Priority --
+   --------------
+
+   System_Max_Priority : Natural := 255;
+   System_Min_Priority : Natural := 0;
+
    ---------------------------
    -- Configuration Pragmas --
    ---------------------------

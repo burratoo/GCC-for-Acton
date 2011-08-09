@@ -96,7 +96,7 @@ package body Bindgen is
    package Scheduler_Agents is new Table.Table
      (Table_Component_Type => Specific_Dispatching_Record,
       Table_Index_Type     => Natural,
-      Table_Low_Bound      => System.Any_Priority'First,
+      Table_Low_Bound      => 1,
       Table_Initial        => 10,
       Table_Increment      => 10,
       Table_Name           => "Scheduler_Agents");
@@ -2186,8 +2186,8 @@ package body Bindgen is
    -------------------------------
 
    procedure Set_Scheduler_Agent_Table is
-      Priority_Table : array (Int (System.Any_Priority'First) ..
-                              Int (System.Any_Priority'Last)) of
+      Priority_Table : array (Int (System_Min_Priority) ..
+                              Int (System_Max_Priority)) of
                          Name_Id :=
                            (others => Unique_Dispatching_Policies.Table
                              (Unique_Dispatching_Policies.First));
