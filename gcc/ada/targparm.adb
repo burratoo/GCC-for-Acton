@@ -223,6 +223,60 @@ package body Targparm is
             P := P + 26;
             goto Line_Loop_Continue;
 
+         --  Get Min and Max Priorities
+
+         elsif System_Text (P .. P + 50) =
+           "   subtype Any_Priority       is Integer      range" then
+            P := P + 51;
+            declare
+               Priority   : Natural;
+               ASCII_Zero : constant := 48;
+            begin
+               while System_Text (P) in ' ' loop
+                  P := P + 1;
+               end loop;
+
+               Priority := 0;
+               while System_Text (P) in '0' .. '9' loop
+                  Priority := 10 * Priority +
+                           Character'Pos (System_Text (P)) - ASCII_Zero;
+                  P := P + 1;
+               end loop;
+
+               if System_Text (P) = ' ' then
+                  System_Min_Priority := Priority;
+               else
+                  Set_Standard_Error;
+                  Write_Line
+                   ("incorrectly formatted Any_Priority range in system.ads");
+                  Set_Standard_Output;
+                  Fatal := True;
+               end if;
+
+               while System_Text (P) in ' ' or System_Text (P) in '.' loop
+                  P := P + 1;
+               end loop;
+
+               Priority := 0;
+
+               while System_Text (P) in '0' .. '9' loop
+                  Priority := 10 * Priority +
+                           Character'Pos (System_Text (P)) - ASCII_Zero;
+                  P := P + 1;
+               end loop;
+
+               if System_Text (P) = ';' then
+                  System_Max_Priority := Priority;
+               else
+                  Set_Standard_Error;
+                  Write_Line
+                   ("incorrectly formatted Any_Priority range in system.ads");
+                  Set_Standard_Output;
+                  Fatal := True;
+               end if;
+            end;
+            goto Line_Loop_Continue;
+
          --  Test for pragma Profile (Ravenscar);
 
          elsif System_Text (P .. P + 26) =
