@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -476,7 +476,7 @@ procedure Gnatbind is
    end Scan_Bind_Arg;
 
    procedure Check_Version_And_Help is
-      new Check_Version_And_Help_G (Bindusg.Display);
+     new Check_Version_And_Help_G (Bindusg.Display);
 
    -----------------------------------------
    -- Process_Unique_Dispatching_Policies --
@@ -548,7 +548,6 @@ procedure Gnatbind is
 --  Start of processing for Gnatbind
 
 begin
-
    --  Set default for Shared_Libacton option
 
    declare
@@ -641,21 +640,11 @@ begin
       Check_Extensions : declare
          Length : constant Natural := Output_File_Name'Length;
          Last   : constant Natural := Output_File_Name'Last;
-
       begin
-         if Ada_Bind_File then
-            if Length <= 4
-              or else Output_File_Name (Last - 3 .. Last) /= ".adb"
-            then
-               Fail ("output file name should have .adb extension");
-            end if;
-
-         else
-            if Length <= 2
-              or else Output_File_Name (Last - 1 .. Last) /= ".c"
-            then
-               Fail ("output file name should have .c extension");
-            end if;
+         if Length <= 4
+           or else Output_File_Name (Last - 3 .. Last) /= ".adb"
+         then
+            Fail ("output file name should have .adb extension");
          end if;
       end Check_Extensions;
    end if;
@@ -986,9 +975,8 @@ begin
                   -- Put_In_Sources --
                   --------------------
 
-                  function Put_In_Sources (S : File_Name_Type)
-                                           return Boolean
-                  is
+                  function Put_In_Sources
+                    (S : File_Name_Type) return Boolean is
                   begin
                      for J in 1 .. Closure_Sources.Last loop
                         if Closure_Sources.Table (J) = S then
@@ -1088,5 +1076,4 @@ begin
 
       null;
    end if;
-
 end Gnatbind;
