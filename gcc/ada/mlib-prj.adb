@@ -1554,7 +1554,8 @@ package body MLib.Prj is
          Opts.Increment_Last;
          Opts.Table (Opts.Last) := new String'("-L" & Lib_Directory);
 
-         --  If Path Option supported, add libacton directory path name to Rpath
+         --  If Path Option supported, add libacton directory path name to
+         --  Rpath
 
          if Path_Option /= null then
             declare

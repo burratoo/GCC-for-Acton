@@ -1359,7 +1359,6 @@ package Rtsfind is
      RE_Storage_Count,                   -- System.Storage_Elements
      RE_Integer_Address,                 -- System.Storage_Elements
      RE_Storage_Array,                   -- System.Storage_Elements
-     RE_Storage_Count,                   -- System.Storage_Elements
      RE_Storage_Offset,                  -- System.Storage_Elements
      RE_To_Address,                      -- System.Storage_Elements
 
@@ -2554,7 +2553,6 @@ package Rtsfind is
      RE_Storage_Count                    => System_Storage_Elements,
      RE_Integer_Address                  => System_Storage_Elements,
      RE_Storage_Array                    => System_Storage_Elements,
-     RE_Storage_Count                    => System_Storage_Elements,
      RE_Storage_Offset                   => System_Storage_Elements,
      RE_To_Address                       => System_Storage_Elements,
 

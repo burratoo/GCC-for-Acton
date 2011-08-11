@@ -2122,7 +2122,25 @@ package body Bindgen is
       if not CodePeer_Mode then
          if not Suppress_Standard_Library_On_Target then
 
-            --  Generate Priority_Specific_Dispatching pragma string
+            --  Generate Interrupt_State pragma string
+
+            Set_String ("   Local_Interrupt_States : constant String := """);
+
+            for J in 0 .. IS_Pragma_Settings.Last loop
+               Set_Char (IS_Pragma_Settings.Table (J));
+            end loop;
+
+            Set_String (""";");
+            Write_Statement_Buffer;
+            WBI ("");
+         end if;
+
+         --  The B.1 (39) implementation advice says that the adainit/adafinal
+         --  routines should be idempotent. Generate a flag to ensure that.
+
+         WBI ("   Is_Elaborated : Boolean := False;");
+         WBI ("");
+      end if;
 
       --  Generate the adafinal routine unless there is no finalization to do
 

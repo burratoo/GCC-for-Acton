@@ -2872,7 +2872,8 @@ package body Exp_Ch3 is
                    Name       =>
                      Make_Selected_Component (Loc,
                        Prefix        => Make_Identifier (Loc, Name_uInit),
-                       Selector_Name => Make_Identifier (Loc, Name_uTask_Handler)),
+                       Selector_Name => Make_Identifier (Loc, 
+                                                         Name_uTask_Handler)),
                    Expression =>
                      Make_Attribute_Reference (Loc,
                        Prefix         =>
