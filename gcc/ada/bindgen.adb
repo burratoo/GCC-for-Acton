@@ -1393,27 +1393,56 @@ package body Bindgen is
 
          WBI ("");
 
-         WBI ("      procedure Initialise_Oak;");
+         WBI ("   procedure Initialise_Oak;");
 
-         WBI ("      pragma Import (Ada, Initialise_Oak," &
+         WBI ("   pragma Import (Ada, Initialise_Oak," &
                " ""__oak_initialise"");");
 
          WBI ("");
 
-         WBI ("      procedure Start_Oak;");
-         WBI ("      pragma Import (Ada, Start_Oak, ""__oak_start"");");
+         WBI ("   procedure Start_Oak;");
+         WBI ("   pragma Import (Ada, Start_Oak, ""__oak_start"");");
 
          WBI ("");
 
-         WBI ("      procedure Ada_Main_Program;");
+         WBI ("   procedure Ada_Main_Program;");
 
-         Set_String ("      pragma Import (Ada, Ada_Main_Program, """);
+         Set_String ("   pragma Import (Ada, Ada_Main_Program, """);
          Get_Name_String (Units.Table (First_Unit_Entry).Uname);
          Set_Main_Program_Name;
          Set_String (""");");
 
          Write_Statement_Buffer;
          WBI ("");
+
+         --  For the above reasons we call the scheduler agents' initialise
+         --  procedure through a pragma Import with the procedure's link name.
+   
+         for J in Unique_Dispatching_Policies.First
+                    .. Unique_Dispatching_Policies.Last
+         loop
+            declare
+               Policy_Str : String := Get_Name_String
+                                   (Unique_Dispatching_Policies.Table (J));
+            begin
+               Set_String ("   procedure Create_Scheduler_Agent_");
+               Set_String (Policy_Str);
+               Set_String (" (");
+               Write_Statement_Buffer;
+               WBI ("     Agent        : Oak.Oak_Task.Oak_Task_Handler;");
+               WBI ("     Min_Priority : System.Any_Priority;");
+               WBI ("     Max_Priority : System.Any_Priority);");
+   
+               Set_String ("   pragma Import (Ada, Create_Scheduler_Agent_");
+               Set_String (Policy_Str);
+               Set_String (", ""__acton_scheduler_agent_");
+               Set_String (Policy_Str);
+               Set_String (""");");
+               Write_Statement_Buffer;
+            end;
+
+            WBI ("");
+         end loop;
 
          --  For CodePeer, declare a wrapper for the user-defined main program
 
@@ -1466,35 +1495,6 @@ package body Bindgen is
             WBI ("");
          end if;
       end if;
-
-      --  For the above reasons we call the scheduler agents' initialise
-      --  procedure through a pragma Import with the procedure's link name.
-
-      for J in Unique_Dispatching_Policies.First
-                 .. Unique_Dispatching_Policies.Last
-      loop
-         declare
-            Policy_Str : String := Get_Name_String
-                                (Unique_Dispatching_Policies.Table (J));
-         begin
-            Set_String ("      procedure Create_Scheduler_Agent_");
-            Set_String (Policy_Str);
-            Set_String (" (");
-            Write_Statement_Buffer;
-            WBI ("        Agent        : Oak.Oak_Task.Oak_Task_Handler;");
-            WBI ("        Min_Priority : System.Priority;");
-            WBI ("        Max_Priority : System.Priority);");
-
-            Set_String ("      pragma Import (Ada, Create_Scheduler_Agent_");
-            Set_String (Policy_Str);
-            Set_String (", ""__acton_scheduler_agent_");
-            Set_String (Policy_Str);
-            Set_String (""");");
-            Write_Statement_Buffer;
-         end;
-
-         WBI ("");
-      end loop;
 
       --  Generate a reference to Ada_Main_Program_Name. This symbol is
       --  not referenced elsewhere in the generated program, but is needed
