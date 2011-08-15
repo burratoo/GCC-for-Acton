@@ -1513,10 +1513,6 @@ package body Bindgen is
          WBI ("");
       end if;
 
-      --  Generate OTCR for the main task.
-
-      WBI ("      Main_Task_OTCR : aliased Oak.Oak_Task.Oak_Task;");
-
       --  And now the OTCRs for the Scheduler Agents.
 
       for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
