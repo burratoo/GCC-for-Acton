@@ -1417,7 +1417,7 @@ package body Bindgen is
 
          --  For the above reasons we call the scheduler agents' initialise
          --  procedure through a pragma Import with the procedure's link name.
-   
+
          for J in Unique_Dispatching_Policies.First
                     .. Unique_Dispatching_Policies.Last
          loop
@@ -1432,7 +1432,7 @@ package body Bindgen is
                WBI ("     Agent        : Oak.Oak_Task.Oak_Task_Handler;");
                WBI ("     Min_Priority : System.Any_Priority;");
                WBI ("     Max_Priority : System.Any_Priority);");
-   
+
                Set_String ("   pragma Import (Ada, Create_Scheduler_Agent_");
                Set_String (Policy_Str);
                Set_String (", ""__acton_scheduler_agent_");
@@ -1567,11 +1567,10 @@ package body Bindgen is
 
          --  Initalise main task call
          WBI ("      Oak.Oak_Task.Data_Access.Initialise_Main_Task");
-         WBI ("        (Main_Task_OTCR'Unchecked_Access,");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
-            WBI ("         Oak.Processor_Support_Package." &
+            WBI ("         (Oak.Processor_Support_Package." &
                  "Call_Stack.Main_Task_Call_Stack_Size,");
          else
             Set_String ("         ");
