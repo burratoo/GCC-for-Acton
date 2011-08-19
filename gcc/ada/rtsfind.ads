@@ -1692,7 +1692,6 @@ package Rtsfind is
      RE_Restricted_Terminated,           -- System.Tasking.Restricted.Stages
 
      RE_Abort_Tasks,                     -- System.Tasking.Stages
-     RE_Activate_Tasks,                  -- System.Tasking.Stages
      RE_Create_Task,                     -- System.Tasking.Stages
      RE_Free_Task,                       -- System.Tasking.Stages
      RE_Expunge_Unactivated_Tasks,       -- System.Tasking.Stages
@@ -1700,6 +1699,7 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Activate_Tasks,                  -- ARPART.Tasks
      RE_Change_Cycle_Period,             -- ARPART.Tasks
      RE_Change_Relative_Deadline,        -- ARPART.Tasks
      RE_Complete_Activation,             -- ARPART.Tasks
@@ -2923,7 +2923,6 @@ package Rtsfind is
      RE_Restricted_Terminated            => System_Tasking_Restricted_Stages,
 
      RE_Abort_Tasks                      => System_Tasking_Stages,
-     RE_Activate_Tasks                   => System_Tasking_Stages,
      RE_Create_Task                      => System_Tasking_Stages,
      RE_Free_Task                        => System_Tasking_Stages,
      RE_Expunge_Unactivated_Tasks        => System_Tasking_Stages,
@@ -2931,6 +2930,7 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Activate_Tasks                   => ARPART_Tasks,
      RE_Change_Cycle_Period              => ARPART_Tasks,
      RE_Change_Relative_Deadline         => ARPART_Tasks,
      RE_Complete_Activation              => ARPART_Tasks,
