@@ -1490,7 +1490,16 @@ package body Exp_Ch3 is
 
       Args := New_List (Convert_Concurrent (First_Arg, Typ));
 
+      --  In the tasks case, add _Master as the value of the _Master parameter
+      --  and _Chain as the value of the _Chain parameter. At the outer level,
+      --  these will be variables holding the corresponding values obtained
+      --  from GNARL. At inner levels, they will be the parameters passed down
+      --  through the outer routines.
+      --
+      --  Note that here we have removed _Master temporarily.
+
       if Has_Task (Full_Type) then
+         Append_To (Args, Make_Identifier (Loc, Name_uChain));
 
          --  Ada 2005 (AI-287): In case of default initialized components
          --  with tasks, we generate a null string actual parameter.
@@ -1990,6 +1999,7 @@ package body Exp_Ch3 is
          First_Discr_Param := Next (First (Parameters));
 
          if Has_Task (Rec_Type) then
+            Append_To (Args, Make_Identifier (Loc, Name_uChain));
             Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
             First_Discr_Param := Next (Next (Next (First_Discr_Param)));
          end if;
@@ -4586,6 +4596,18 @@ package body Exp_Ch3 is
          Init_After := Make_Shared_Var_Procs (N);
       end if;
 
+      --  If tasks being declared, make sure we have an activation chain
+      --  defined for the tasks (has no effect if we already have one), and
+      --  also that a Master variable is established and that the appropriate
+      --  enclosing construct is established as a task master.
+
+		--  Note that Master has been temporarily removed.
+		
+      if Has_Task (Typ) then
+         Build_Activation_Chain_Entity (N);
+         --  Build_Master_Entity (Def_Id);
+      end if;
+
       --  Default initialization required, and no expression present
 
       if No (Expr) then
@@ -7139,13 +7161,22 @@ package body Exp_Ch3 is
           Out_Present => True,
           Parameter_Type => New_Reference_To (Typ, Loc)));
 
-      --  For task record value, or type that contains tasks, add one more
+      --  For task record value, or type that contains tasks, add two more
       --  formals, Task_Name : String.
       --  We also add these parameters for the task record type case.
 
       if Has_Task (Typ)
         or else (Is_Record_Type (Typ) and then Is_Task_Record_Type (Typ))
       then
+         Append_To (Formals,
+           Make_Parameter_Specification (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uChain),
+             In_Present => True,
+             Out_Present => True,
+             Parameter_Type =>
+               New_Reference_To (RTE (RE_Activation_Chain), Loc)));
+
          Append_To (Formals,
            Make_Parameter_Specification (Loc,
              Defining_Identifier =>
