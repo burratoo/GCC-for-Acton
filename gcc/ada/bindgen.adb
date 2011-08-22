@@ -50,14 +50,6 @@ package body Bindgen is
    Last : Natural := 0;
    --  Last location in Statement_Buffer currently set
 
-   With_DECGNAT : Boolean := False;
-   --  Flag which indicates whether the program uses the DECGNAT library
-   --  (presence of the unit DEC).
-
-   With_GNARL : Boolean := False;
-   --  Flag which indicates whether the program uses the GNARL library
-   --  (presence of the unit System.OS_Interface)
-
    Num_Elab_Calls : Nat := 0;
    --  Number of generated calls to elaboration routines
 
@@ -1393,8 +1385,12 @@ package body Bindgen is
 
          WBI ("");
 
-         WBI ("   procedure Initialise_Oak;");
+         WBI ("   procedure Initialise_Acton;");
+         WBI ("   pragma Import (Ada, Initialise_Acton, " &
+               """actoninit"");");
+         WBI ("");
 
+         WBI ("   procedure Initialise_Oak;");
          WBI ("   pragma Import (Ada, Initialise_Oak," &
                " ""__oak_initialise"");");
 
@@ -1443,6 +1439,13 @@ package body Bindgen is
 
             WBI ("");
          end loop;
+
+         WBI ("   procedure Main_Task is");
+         WBI ("   begin");
+         WBI ("      " & Ada_Init_Name.all & ";");
+         WBI ("      Ada_Main_Program;");
+         WBI ("   end Main_Task;");
+         WBI ("");
 
          --  For CodePeer, declare a wrapper for the user-defined main program
 
@@ -1546,7 +1549,7 @@ package body Bindgen is
          end if;
       end if;
 
-      WBI ("      " & Ada_Init_Name.all & ";");
+      WBI ("      Initialise_Acton;");
 
       if not No_Main_Subprogram then
          WBI ("      Initialise_Oak;");
@@ -1593,7 +1596,7 @@ package body Bindgen is
          end if;
 
          --  Set the Address of the main task's run-loop
-         WBI ("         Ada_Main_Program'Address);");
+         WBI ("         Main_Task'Address);");
 
          --  Start Oak
          WBI ("      Start_Oak;");
@@ -2553,24 +2556,7 @@ package body Bindgen is
 
    procedure Resolve_Binder_Options is
    begin
-      for E in Elab_Order.First .. Elab_Order.Last loop
-         Get_Name_String (Units.Table (Elab_Order.Table (E)).Uname);
-
-         --  This is not a perfect approach, but is the current protocol
-         --  between the run-time and the binder to indicate that tasking is
-         --  used: system.os_interface should always be used by any tasking
-         --  application.
-
-         if Name_Buffer (1 .. 19) = "system.os_interface" then
-            With_GNARL := True;
-         end if;
-
-         --  Ditto for declib and the "dec" package
-
-         if OpenVMS_On_Target and then Name_Buffer (1 .. 5) = "dec%s" then
-            With_DECGNAT := True;
-         end if;
-      end loop;
+      null;
    end Resolve_Binder_Options;
 
    -----------------
