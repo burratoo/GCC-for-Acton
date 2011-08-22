@@ -4051,11 +4051,7 @@ package body Exp_Ch9 is
       end if;
 
       if Present (Chain) then
-         if Restricted_Profile then
-            Name := New_Reference_To (RTE (RE_Activate_Restricted_Tasks), Loc);
-         else
-            Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
-         end if;
+         Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
 
          Call :=
            Make_Procedure_Call_Statement (Loc,
@@ -10311,6 +10307,17 @@ package body Exp_Ch9 is
           Declarations               => Declarations (N),
           Handled_Statement_Sequence => Handled_Statement_Sequence (N));
 
+      --  If the task contains generic instantiations, cleanup actions are
+      --  delayed until after instantiation. Transfer the activation chain to
+      --  the subprogram, to insure that the activation call is properly
+      --  generated. It the task body contains inner tasks, indicate that the
+      --  subprogram is a task master.
+
+      if Delay_Cleanups (Ttyp) then
+         Set_Activation_Chain_Entity (New_N, Activation_Chain_Entity (N));
+         --  Set_Is_Task_Master  (New_N, Is_Task_Master (N));
+      end if;
+
       Rewrite (N, New_N);
       Analyze (N);
 
@@ -12814,6 +12821,11 @@ package body Exp_Ch9 is
           Prefix         =>
             New_Occurrence_Of (Get_Task_Body_Procedure (Ttyp), Loc),
           Attribute_Name => Name_Address));
+
+      --  Chain parameter. This is a reference to the _Chain parameter of
+      --  the initialization procedure.
+
+      Append_To (Args, Make_Identifier (Loc, Name_uChain));
 
       --  Elaborated parameter. This is an access to the elaboration Boolean
 

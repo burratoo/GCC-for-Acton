@@ -1468,8 +1468,6 @@ package Rtsfind is
 
      RE_Master_Id,                       -- System.Tasking
 
-     RE_Activation_Chain,                -- System.Tasking
-     RE_Activation_Chain_Access,         -- System.Tasking
      RE_Storage_Size,                    -- System.Tasking
 
      RE_Unspecified_CPU,                 -- System.Tasking
@@ -1692,7 +1690,6 @@ package Rtsfind is
      RE_Restricted_Terminated,           -- System.Tasking.Restricted.Stages
 
      RE_Abort_Tasks,                     -- System.Tasking.Stages
-     RE_Activate_Tasks,                  -- System.Tasking.Stages
      RE_Create_Task,                     -- System.Tasking.Stages
      RE_Free_Task,                       -- System.Tasking.Stages
      RE_Expunge_Unactivated_Tasks,       -- System.Tasking.Stages
@@ -1700,6 +1697,7 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Activate_Tasks,                  -- ARPART.Tasks
      RE_Change_Cycle_Period,             -- ARPART.Tasks
      RE_Change_Relative_Deadline,        -- ARPART.Tasks
      RE_Complete_Activation,             -- ARPART.Tasks
@@ -1711,6 +1709,8 @@ package Rtsfind is
 
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
 
+     RE_Activation_Chain,                -- Oak.Oak_Task
+     RE_Activation_Chain_Access,         -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
@@ -2662,8 +2662,6 @@ package Rtsfind is
 
      RE_Master_Id                        => System_Tasking,
 
-     RE_Activation_Chain                 => System_Tasking,
-     RE_Activation_Chain_Access          => System_Tasking,
      RE_Storage_Size                     => System_Tasking,
 
      RE_Unspecified_CPU                  => System_Tasking,
@@ -2923,7 +2921,6 @@ package Rtsfind is
      RE_Restricted_Terminated            => System_Tasking_Restricted_Stages,
 
      RE_Abort_Tasks                      => System_Tasking_Stages,
-     RE_Activate_Tasks                   => System_Tasking_Stages,
      RE_Create_Task                      => System_Tasking_Stages,
      RE_Free_Task                        => System_Tasking_Stages,
      RE_Expunge_Unactivated_Tasks        => System_Tasking_Stages,
@@ -2931,6 +2928,7 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Activate_Tasks                   => ARPART_Tasks,
      RE_Change_Cycle_Period              => ARPART_Tasks,
      RE_Change_Relative_Deadline         => ARPART_Tasks,
      RE_Complete_Activation              => ARPART_Tasks,
@@ -2941,6 +2939,9 @@ package Rtsfind is
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
+
+     RE_Activation_Chain                 => Oak_Oak_Task,
+     RE_Activation_Chain_Access          => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);
