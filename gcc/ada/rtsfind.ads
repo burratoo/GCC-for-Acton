@@ -1468,8 +1468,6 @@ package Rtsfind is
 
      RE_Master_Id,                       -- System.Tasking
 
-     RE_Activation_Chain,                -- System.Tasking
-     RE_Activation_Chain_Access,         -- System.Tasking
      RE_Storage_Size,                    -- System.Tasking
 
      RE_Unspecified_CPU,                 -- System.Tasking
@@ -1711,6 +1709,8 @@ package Rtsfind is
 
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
 
+     RE_Activation_Chain,                -- Oak.Oak_Task
+     RE_Activation_Chain_Access,         -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
@@ -2662,8 +2662,6 @@ package Rtsfind is
 
      RE_Master_Id                        => System_Tasking,
 
-     RE_Activation_Chain                 => System_Tasking,
-     RE_Activation_Chain_Access          => System_Tasking,
      RE_Storage_Size                     => System_Tasking,
 
      RE_Unspecified_CPU                  => System_Tasking,
@@ -2941,6 +2939,9 @@ package Rtsfind is
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
+
+     RE_Activation_Chain                 => Oak_Oak_Task,
+     RE_Activation_Chain_Access          => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);

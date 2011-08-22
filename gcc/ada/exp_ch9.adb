@@ -4051,11 +4051,7 @@ package body Exp_Ch9 is
       end if;
 
       if Present (Chain) then
-         if Restricted_Profile then
-            Name := New_Reference_To (RTE (RE_Activate_Restricted_Tasks), Loc);
-         else
-            Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
-         end if;
+         Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
 
          Call :=
            Make_Procedure_Call_Statement (Loc,

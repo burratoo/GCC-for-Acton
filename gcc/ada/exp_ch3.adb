@@ -2882,7 +2882,7 @@ package body Exp_Ch3 is
                    Name       =>
                      Make_Selected_Component (Loc,
                        Prefix        => Make_Identifier (Loc, Name_uInit),
-                       Selector_Name => Make_Identifier (Loc, 
+                       Selector_Name => Make_Identifier (Loc,
                                                          Name_uTask_Handler)),
                    Expression =>
                      Make_Attribute_Reference (Loc,
@@ -4601,8 +4601,8 @@ package body Exp_Ch3 is
       --  also that a Master variable is established and that the appropriate
       --  enclosing construct is established as a task master.
 
-		--  Note that Master has been temporarily removed.
-		
+      --  Note that Master has been temporarily removed.
+
       if Has_Task (Typ) then
          Build_Activation_Chain_Entity (N);
          --  Build_Master_Entity (Def_Id);
