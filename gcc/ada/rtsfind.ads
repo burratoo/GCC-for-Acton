@@ -1686,7 +1686,6 @@ package Rtsfind is
      RE_Activate_Restricted_Tasks,       -- System.Tasking.Restricted.Stages
      RE_Complete_Restricted_Activation,  -- System.Tasking.Restricted.Stages
      RE_Create_Restricted_Task,          -- System.Tasking.Restricted.Stages
-     RE_Complete_Restricted_Task,        -- System.Tasking.Restricted.Stages
      RE_Restricted_Terminated,           -- System.Tasking.Restricted.Stages
 
      RE_Abort_Tasks,                     -- System.Tasking.Stages
@@ -1701,7 +1700,6 @@ package Rtsfind is
      RE_Change_Cycle_Period,             -- ARPART.Tasks
      RE_Change_Relative_Deadline,        -- ARPART.Tasks
      RE_Complete_Activation,             -- ARPART.Tasks
-     RE_Complete_Task,                   -- ARAPRT.Tasks
 
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
@@ -1711,6 +1709,7 @@ package Rtsfind is
 
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
+     RE_Complete_Task,                   -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
@@ -2917,7 +2916,6 @@ package Rtsfind is
      RE_Activate_Restricted_Tasks        => System_Tasking_Restricted_Stages,
      RE_Complete_Restricted_Activation   => System_Tasking_Restricted_Stages,
      RE_Create_Restricted_Task           => System_Tasking_Restricted_Stages,
-     RE_Complete_Restricted_Task         => System_Tasking_Restricted_Stages,
      RE_Restricted_Terminated            => System_Tasking_Restricted_Stages,
 
      RE_Abort_Tasks                      => System_Tasking_Stages,
@@ -2932,7 +2930,6 @@ package Rtsfind is
      RE_Change_Cycle_Period              => ARPART_Tasks,
      RE_Change_Relative_Deadline         => ARPART_Tasks,
      RE_Complete_Activation              => ARPART_Tasks,
-     RE_Complete_Task                    => ARPART_Tasks,
 
      RE_Call_Stack_Size                  => Oak_Memory_Call_Stack,
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
@@ -2942,6 +2939,7 @@ package Rtsfind is
 
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
+     RE_Complete_Task                    => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);
