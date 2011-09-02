@@ -504,12 +504,8 @@ package body Exp_Ch7 is
 
    begin
       if Is_Task_Body then
-         if Restricted_Profile then
-            Append_To (Stmts,
-              Build_Runtime_Call (Loc, RE_Complete_Restricted_Task));
-         else
-            Append_To (Stmts, Build_Runtime_Call (Loc, RE_Complete_Task));
-         end if;
+         Append_To (Stmts,
+           Build_Runtime_Call (Loc, RE_Complete_Task));
 
       elsif Is_Master then
          if Restriction_Active (No_Task_Hierarchy) = False then
