@@ -1700,6 +1700,7 @@ package Rtsfind is
      RE_Change_Cycle_Period,             -- ARPART.Tasks
      RE_Change_Relative_Deadline,        -- ARPART.Tasks
      RE_Complete_Activation,             -- ARPART.Tasks
+     RE_Complete_Task,                   -- ARPART.Tasks
 
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
@@ -1709,7 +1710,6 @@ package Rtsfind is
 
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
-     RE_Complete_Task,                   -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
@@ -2930,6 +2930,7 @@ package Rtsfind is
      RE_Change_Cycle_Period              => ARPART_Tasks,
      RE_Change_Relative_Deadline         => ARPART_Tasks,
      RE_Complete_Activation              => ARPART_Tasks,
+     RE_Complete_Task                    => ARPART_Tasks,
 
      RE_Call_Stack_Size                  => Oak_Memory_Call_Stack,
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
@@ -2939,7 +2940,6 @@ package Rtsfind is
 
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
-     RE_Complete_Task                    => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);
