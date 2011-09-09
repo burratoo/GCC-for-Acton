@@ -12822,6 +12822,14 @@ package body Exp_Ch9 is
             New_Occurrence_Of (Get_Task_Body_Procedure (Ttyp), Loc),
           Attribute_Name => Name_Address));
 
+      --  Task value record parameter.
+
+      Append_To (Args,
+        Make_Attribute_Reference (Loc,
+          Prefix => Make_Identifier (Loc, Name_uInit),
+          Attribute_Name => Name_Address));
+
+
       --  Chain parameter. This is a reference to the _Chain parameter of
       --  the initialization procedure.
 
