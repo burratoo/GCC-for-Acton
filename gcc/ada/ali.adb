@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -55,6 +55,8 @@ package body ALI is
       'X'    => True,   -- xref
       'S'    => True,   -- specific dispatching
       'Y'    => True,   -- limited_with
+      'C'    => True,   -- SCO information
+      'F'    => True,   -- ALFA information
       others => False);
 
    --------------------
@@ -112,7 +114,7 @@ package body ALI is
       Normalize_Scalars_Specified          := False;
       Queuing_Policy_Specified             := ' ';
       Static_Elaboration_Model_Used        := False;
-      Task_Dispatching_Policy_Specified    := ' ';
+      Task_Dispatching_Policy_Specified    := No_Name;
       Unreserve_All_Interrupts_Specified   := False;
       Zero_Cost_Exceptions_Specified       := False;
    end Initialize_ALI;
@@ -817,8 +819,9 @@ package body ALI is
         Last_Specific_Dispatching  => Specific_Dispatching.Last,
         Last_Unit                  => No_Unit_Id,
         Locking_Policy             => ' ',
-        Main_Priority              => -1,
-        Main_CPU                   => -1,
+        Main_Priority              => No_Main_Priority,
+        Main_CPU                   => No_Main_CPU,
+        Main_Stack_Size            => No_Main_Stack_Size,
         Main_Program               => None,
         No_Object                  => False,
         Normalize_Scalars          => False,
@@ -827,7 +830,7 @@ package body ALI is
         Restrictions               => No_Restrictions,
         SAL_Interface              => False,
         Sfile                      => No_File,
-        Task_Dispatching_Policy    => ' ',
+        Task_Dispatching_Policy    => No_Name,
         Time_Slice_Value           => -1,
         Allocator_In_Body          => False,
         WC_Encoding                => 'b',
@@ -928,9 +931,18 @@ package body ALI is
 
                Skip_Space;
 
+               if Nextc = 'S' then
+                  P := P + 1;
+                  Checkc ('=');
+                  ALIs.Table (Id).Main_Stack_Size := Get_Nat;
+               end if;
+
+               Skip_Space;
+
                Checkc ('W');
                Checkc ('=');
                ALIs.Table (Id).WC_Encoding := Getc;
+
             end if;
 
             Skip_Eol;
@@ -1091,7 +1103,7 @@ package body ALI is
             --  Processing for Tx
 
             elsif C = 'T' then
-               Task_Dispatching_Policy_Specified := Getc;
+               Task_Dispatching_Policy_Specified := Get_Name;
                ALIs.Table (Id).Task_Dispatching_Policy :=
                  Task_Dispatching_Policy_Specified;
 
@@ -1362,7 +1374,7 @@ package body ALI is
 
          else
             declare
-               Policy     : Character;
+               Policy     : Name_Id;
                First_Prio : Nat;
                Last_Prio  : Nat;
                Line_No    : Nat;
@@ -1371,7 +1383,7 @@ package body ALI is
                Checkc (' ');
                Skip_Space;
 
-               Policy := Getc;
+               Policy := Get_Name;
                Skip_Space;
                First_Prio := Get_Nat;
                Last_Prio := Get_Nat;
@@ -1441,6 +1453,7 @@ package body ALI is
             UL.Body_Needed_For_SAL      := False;
             UL.Elaborate_Body_Desirable := False;
             UL.Optimize_Alignment       := 'O';
+            UL.Has_Finalizer            := False;
 
             if Debug_Flag_U then
                Write_Str (" ----> reading unit ");
@@ -1626,12 +1639,14 @@ package body ALI is
                   Fatal_Error_Ignore;
                end if;
 
-            --  PR/PU/PK parameters
+            --  PF/PR/PU/PK parameters
 
             elsif C = 'P' then
                C := Getc;
 
-               if C = 'R' then
+               if C = 'F' then
+                  Units.Table (Units.Last).Has_Finalizer := True;
+               elsif C = 'R' then
                   Units.Table (Units.Last).Preelab := True;
                elsif C = 'U' then
                   Units.Table (Units.Last).Pure := True;
@@ -2436,9 +2451,10 @@ package body ALI is
 
       --  Here after dealing with xref sections
 
-      if C /= EOF and then C /= 'X' then
-         Fatal_Error;
-      end if;
+      --  Ignore remaining lines, which belong to an additional section of the
+      --  ALI file not considered here (like SCO or ALFA).
+
+      Check_Unknown_Line;
 
       return Id;
 

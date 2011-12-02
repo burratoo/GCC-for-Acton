@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -38,6 +38,9 @@ with Table;
 with Types; use Types;
 
 package Lib is
+
+   type Unit_Ref_Table is array (Pos range <>) of Unit_Number_Type;
+   --  Type to hold list of indirect references to unit number table
 
    type Compiler_State_Type is (Parsing, Analyzing);
    Compiler_State : Compiler_State_Type;
@@ -363,6 +366,13 @@ package Lib is
    --      that the default affinity is to be used (and is also used for
    --      entries that do not correspond to possible main programs).
 
+   --    Main_Stack_Size
+   --      This field is used to indicate the stack size of a possible
+   --      main program, as set by a pragma Storage_Size. A value of -1
+   --      indicates that the default stack size is to be used (and is
+   --      also used for entries that do not correspond to possible main
+   --      programs).
+
    --    Has_Allocator
    --      This flag is set if a subprogram unit has an allocator after the
    --      BEGIN (it is used to set the AB flag in the M ALI line).
@@ -401,43 +411,48 @@ package Lib is
    Default_Main_CPU : constant Int := -1;
    --  Value used in Main_CPU field to indicate default main affinity
 
-   function Cunit            (U : Unit_Number_Type) return Node_Id;
-   function Cunit_Entity     (U : Unit_Number_Type) return Entity_Id;
-   function Dependency_Num   (U : Unit_Number_Type) return Nat;
-   function Dynamic_Elab     (U : Unit_Number_Type) return Boolean;
-   function Error_Location   (U : Unit_Number_Type) return Source_Ptr;
-   function Expected_Unit    (U : Unit_Number_Type) return Unit_Name_Type;
-   function Fatal_Error      (U : Unit_Number_Type) return Boolean;
-   function Generate_Code    (U : Unit_Number_Type) return Boolean;
-   function Ident_String     (U : Unit_Number_Type) return Node_Id;
-   function Has_Allocator    (U : Unit_Number_Type) return Boolean;
-   function Has_RACW         (U : Unit_Number_Type) return Boolean;
-   function Is_Compiler_Unit (U : Unit_Number_Type) return Boolean;
-   function Loading          (U : Unit_Number_Type) return Boolean;
-   function Main_CPU         (U : Unit_Number_Type) return Int;
-   function Main_Priority    (U : Unit_Number_Type) return Int;
-   function Munit_Index      (U : Unit_Number_Type) return Nat;
-   function OA_Setting       (U : Unit_Number_Type) return Character;
-   function Source_Index     (U : Unit_Number_Type) return Source_File_Index;
-   function Unit_File_Name   (U : Unit_Number_Type) return File_Name_Type;
-   function Unit_Name        (U : Unit_Number_Type) return Unit_Name_Type;
+   Default_Main_Stack_Size   : constant Int := -1;
+   --  Value used in Main_stack_Size field to indicate default main stack size
+
+   function Cunit             (U : Unit_Number_Type) return Node_Id;
+   function Cunit_Entity      (U : Unit_Number_Type) return Entity_Id;
+   function Dependency_Num    (U : Unit_Number_Type) return Nat;
+   function Dynamic_Elab      (U : Unit_Number_Type) return Boolean;
+   function Error_Location    (U : Unit_Number_Type) return Source_Ptr;
+   function Expected_Unit     (U : Unit_Number_Type) return Unit_Name_Type;
+   function Fatal_Error       (U : Unit_Number_Type) return Boolean;
+   function Generate_Code     (U : Unit_Number_Type) return Boolean;
+   function Ident_String      (U : Unit_Number_Type) return Node_Id;
+   function Has_Allocator     (U : Unit_Number_Type) return Boolean;
+   function Has_RACW          (U : Unit_Number_Type) return Boolean;
+   function Is_Compiler_Unit  (U : Unit_Number_Type) return Boolean;
+   function Loading           (U : Unit_Number_Type) return Boolean;
+   function Main_CPU          (U : Unit_Number_Type) return Int;
+   function Main_Priority     (U : Unit_Number_Type) return Int;
+   function Main_Stack_Size   (U : Unit_Number_Type) return Int;
+   function Munit_Index       (U : Unit_Number_Type) return Nat;
+   function OA_Setting        (U : Unit_Number_Type) return Character;
+   function Source_Index      (U : Unit_Number_Type) return Source_File_Index;
+   function Unit_File_Name    (U : Unit_Number_Type) return File_Name_Type;
+   function Unit_Name         (U : Unit_Number_Type) return Unit_Name_Type;
    --  Get value of named field from given units table entry
 
-   procedure Set_Cunit            (U : Unit_Number_Type; N : Node_Id);
-   procedure Set_Cunit_Entity     (U : Unit_Number_Type; E : Entity_Id);
-   procedure Set_Dynamic_Elab     (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Error_Location   (U : Unit_Number_Type; W : Source_Ptr);
-   procedure Set_Fatal_Error      (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Generate_Code    (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Has_RACW         (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Has_Allocator    (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Is_Compiler_Unit (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Ident_String     (U : Unit_Number_Type; N : Node_Id);
-   procedure Set_Loading          (U : Unit_Number_Type; B : Boolean := True);
-   procedure Set_Main_CPU         (U : Unit_Number_Type; P : Int);
-   procedure Set_Main_Priority    (U : Unit_Number_Type; P : Int);
-   procedure Set_OA_Setting       (U : Unit_Number_Type; C : Character);
-   procedure Set_Unit_Name        (U : Unit_Number_Type; N : Unit_Name_Type);
+   procedure Set_Cunit             (U : Unit_Number_Type; N : Node_Id);
+   procedure Set_Cunit_Entity      (U : Unit_Number_Type; E : Entity_Id);
+   procedure Set_Dynamic_Elab      (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Error_Location    (U : Unit_Number_Type; W : Source_Ptr);
+   procedure Set_Fatal_Error       (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Generate_Code     (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Has_RACW          (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Has_Allocator     (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Is_Compiler_Unit  (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Ident_String      (U : Unit_Number_Type; N : Node_Id);
+   procedure Set_Loading           (U : Unit_Number_Type; B : Boolean := True);
+   procedure Set_Main_CPU          (U : Unit_Number_Type; P : Int);
+   procedure Set_Main_Priority     (U : Unit_Number_Type; P : Int);
+   procedure Set_Main_Stack_Size   (U : Unit_Number_Type; P : Int);
+   procedure Set_OA_Setting        (U : Unit_Number_Type; C : Character);
+   procedure Set_Unit_Name         (U : Unit_Number_Type; N : Unit_Name_Type);
    --  Set value of named field for given units table entry. Note that we
    --  do not have an entry for each possible field, since some of the fields
    --  can only be set by specialized interfaces (defined below).
@@ -550,6 +565,12 @@ package Lib is
    --  otherwise. The result is undefined if S1 and S2 are not in the same
    --  extended unit. Note: this routine will not give reliable results if
    --  called after Sprint has been called with -gnatD set.
+
+   function Exact_Source_Name (Loc : Source_Ptr) return String;
+   --  Return name of entity at location Loc exactly as written in the source.
+   --  this includes copying the wide character encodings exactly as they were
+   --  used in the source, so the caller must be aware of the possibility of
+   --  such encodings.
 
    function Compilation_Switches_Last return Nat;
    --  Return the count of stored compilation switches
@@ -677,6 +698,7 @@ private
    pragma Inline (Loading);
    pragma Inline (Main_CPU);
    pragma Inline (Main_Priority);
+   pragma Inline (Main_Stack_Size);
    pragma Inline (Munit_Index);
    pragma Inline (OA_Setting);
    pragma Inline (Set_Cunit);
@@ -688,6 +710,7 @@ private
    pragma Inline (Set_Loading);
    pragma Inline (Set_Main_CPU);
    pragma Inline (Set_Main_Priority);
+   pragma Inline (Set_Main_Stack_Size);
    pragma Inline (Set_OA_Setting);
    pragma Inline (Set_Unit_Name);
    pragma Inline (Source_Index);
@@ -695,28 +718,29 @@ private
    pragma Inline (Unit_Name);
 
    type Unit_Record is record
-      Unit_File_Name   : File_Name_Type;
-      Unit_Name        : Unit_Name_Type;
-      Munit_Index      : Nat;
-      Expected_Unit    : Unit_Name_Type;
-      Source_Index     : Source_File_Index;
-      Cunit            : Node_Id;
-      Cunit_Entity     : Entity_Id;
-      Dependency_Num   : Int;
-      Ident_String     : Node_Id;
-      Main_Priority    : Int;
-      Main_CPU         : Int;
-      Serial_Number    : Nat;
-      Version          : Word;
-      Error_Location   : Source_Ptr;
-      Fatal_Error      : Boolean;
-      Generate_Code    : Boolean;
-      Has_RACW         : Boolean;
-      Is_Compiler_Unit : Boolean;
-      Dynamic_Elab     : Boolean;
-      Loading          : Boolean;
-      Has_Allocator    : Boolean;
-      OA_Setting       : Character;
+      Unit_File_Name    : File_Name_Type;
+      Unit_Name         : Unit_Name_Type;
+      Munit_Index       : Nat;
+      Expected_Unit     : Unit_Name_Type;
+      Source_Index      : Source_File_Index;
+      Cunit             : Node_Id;
+      Cunit_Entity      : Entity_Id;
+      Dependency_Num    : Int;
+      Ident_String      : Node_Id;
+      Main_Priority     : Int;
+      Main_CPU          : Int;
+      Main_Stack_Size   : Int;
+      Serial_Number     : Nat;
+      Version           : Word;
+      Error_Location    : Source_Ptr;
+      Fatal_Error       : Boolean;
+      Generate_Code     : Boolean;
+      Has_RACW          : Boolean;
+      Is_Compiler_Unit  : Boolean;
+      Dynamic_Elab      : Boolean;
+      Loading           : Boolean;
+      Has_Allocator     : Boolean;
+      OA_Setting        : Character;
    end record;
 
    --  The following representation clause ensures that the above record
@@ -724,31 +748,32 @@ private
    --  written by Tree_Gen, we do not write uninitialized values to the file.
 
    for Unit_Record use record
-      Unit_File_Name   at  0 range 0 .. 31;
-      Unit_Name        at  4 range 0 .. 31;
-      Munit_Index      at  8 range 0 .. 31;
-      Expected_Unit    at 12 range 0 .. 31;
-      Source_Index     at 16 range 0 .. 31;
-      Cunit            at 20 range 0 .. 31;
-      Cunit_Entity     at 24 range 0 .. 31;
-      Dependency_Num   at 28 range 0 .. 31;
-      Ident_String     at 32 range 0 .. 31;
-      Main_Priority    at 36 range 0 .. 31;
-      Main_CPU         at 40 range 0 .. 31;
-      Serial_Number    at 44 range 0 .. 31;
-      Version          at 48 range 0 .. 31;
-      Error_Location   at 52 range 0 .. 31;
-      Fatal_Error      at 56 range 0 ..  7;
-      Generate_Code    at 57 range 0 ..  7;
-      Has_RACW         at 58 range 0 ..  7;
-      Dynamic_Elab     at 59 range 0 ..  7;
-      Is_Compiler_Unit at 60 range 0 ..  7;
-      OA_Setting       at 61 range 0 ..  7;
-      Loading          at 62 range 0 ..  7;
-      Has_Allocator    at 63 range 0 ..  7;
+      Unit_File_Name    at  0 range 0 .. 31;
+      Unit_Name         at  4 range 0 .. 31;
+      Munit_Index       at  8 range 0 .. 31;
+      Expected_Unit     at 12 range 0 .. 31;
+      Source_Index      at 16 range 0 .. 31;
+      Cunit             at 20 range 0 .. 31;
+      Cunit_Entity      at 24 range 0 .. 31;
+      Dependency_Num    at 28 range 0 .. 31;
+      Ident_String      at 32 range 0 .. 31;
+      Main_Priority     at 36 range 0 .. 31;
+      Main_CPU          at 40 range 0 .. 31;
+      Main_Stack_Size   at 44 range 0 .. 31;
+      Serial_Number     at 48 range 0 .. 31;
+      Version           at 52 range 0 .. 31;
+      Error_Location    at 56 range 0 .. 31;
+      Fatal_Error       at 60 range 0 ..  7;
+      Generate_Code     at 61 range 0 ..  7;
+      Has_RACW          at 62 range 0 ..  7;
+      Dynamic_Elab      at 63 range 0 ..  7;
+      Is_Compiler_Unit  at 64 range 0 ..  7;
+      OA_Setting        at 65 range 0 ..  7;
+      Loading           at 66 range 0 ..  7;
+      Has_Allocator     at 67 range 0 ..  7;
    end record;
 
-   for Unit_Record'Size use 64 * 8;
+   for Unit_Record'Size use 68 * 8;
    --  This ensures that we did not leave out any fields
 
    package Units is new Table.Table (
@@ -815,9 +840,6 @@ private
    --  This is set from Sloc (Enode) by Load only in the case where this Sloc
    --  is in the main source file. This ensures that not found messages and
    --  circular dependency messages reference the original with in this source.
-
-   type Unit_Ref_Table is array (Pos range <>) of Unit_Number_Type;
-   --  Type to hold list of indirect references to unit number table
 
    type Load_Stack_Entry is record
       Unit_Number : Unit_Number_Type;

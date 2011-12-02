@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -106,6 +106,13 @@ procedure Gnatbind is
 
    function Is_Cross_Compiler return Boolean;
    --  Returns True iff this is a cross-compiler
+
+   procedure Process_Unique_Dispatching_Policies;
+   --  Generates the Unique_Dispatching_Policies table from the data in the
+   --  Specific_Dispatching table.
+
+   procedure Add_ALI_File_To_List;
+   --  Adds the ALI in the Name_Buffer to the ALI list.
 
    ---------------------------------
    -- Gnatbind_Supports_Auto_Init --
@@ -421,12 +428,12 @@ procedure Gnatbind is
          --  -static
 
          elsif Argv (2 .. Argv'Last) = "static" then
-            Opt.Shared_Libgnat := False;
+            Opt.Shared_Libacton := False;
 
          --  -shared
 
          elsif Argv (2 .. Argv'Last) = "shared" then
-            Opt.Shared_Libgnat := True;
+            Opt.Shared_Libacton := True;
 
          --  -F=mapping_file
 
@@ -469,28 +476,94 @@ procedure Gnatbind is
    end Scan_Bind_Arg;
 
    procedure Check_Version_And_Help is
-      new Check_Version_And_Help_G (Bindusg.Display);
+     new Check_Version_And_Help_G (Bindusg.Display);
+
+   -----------------------------------------
+   -- Process_Unique_Dispatching_Policies --
+   -----------------------------------------
+
+   procedure Process_Unique_Dispatching_Policies is
+      Policy     : Name_Id;
+      Is_Present : Boolean;
+   begin
+
+      --  Add the Task_Dispatching_Policy if it exists. Otherwise it will be
+      --  set to No_Name.
+      Policy := Task_Dispatching_Policy;
+
+      --  We add FIFO_Within_Priorities since it is the default case
+      --  if the programmer does not specify a policy for every priority or
+      --  if they do not specify any priority. It is also done since we need to
+      --  know which ALIs we need before we carry out the consistency checks,
+      --  which is required before we can start using the priority ranges
+      --  given by Specific_Dispatching table.
+
+      if Policy = No_Name then
+         Name_Buffer (1 .. 22) := "fifo_within_priorities";
+         Name_Len              := 22;
+         Policy                := Name_Find;
+      end if;
+
+      Unique_Dispatching_Policies.Append (Policy);
+
+      --  Loop through the Specific_Dispatching table and add each new unique
+      --  policy to the Unique_Dispatching_Policies table.
+
+      for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
+         Is_Present := False;
+         Policy := Specific_Dispatching.Table (J).Dispatching_Policy;
+         for K in Unique_Dispatching_Policies.First ..
+                   Unique_Dispatching_Policies.Last loop
+            if Policy = Unique_Dispatching_Policies.Table (K) then
+               Is_Present := True;
+            end if;
+         end loop;
+
+         if not Is_Present then
+            Unique_Dispatching_Policies.Append (Policy);
+         end if;
+      end loop;
+   end Process_Unique_Dispatching_Policies;
+
+   --------------------------
+   -- Add_ALI_File_To_List --
+   --------------------------
+
+   procedure Add_ALI_File_To_List is
+      Id : ALI_Id;
+      pragma Warnings (Off, Id);
+   begin
+      Std_Lib_File := Name_Find;
+      Text := Read_Library_Info (Std_Lib_File, True);
+      Id :=
+        Scan_ALI
+          (F             => Std_Lib_File,
+           T             => Text,
+           Ignore_ED     => False,
+           Err           => False,
+           Ignore_Errors => Debug_Flag_I);
+      Free (Text);
+   end Add_ALI_File_To_List;
 
 --  Start of processing for Gnatbind
 
 begin
-
-   --  Set default for Shared_Libgnat option
+   --  Set default for Shared_Libacton option
 
    declare
-      Shared_Libgnat_Default : Character;
+      Shared_Libacton_Default : Character;
       pragma Import
-        (C, Shared_Libgnat_Default, "__gnat_shared_libgnat_default");
+        (C, Shared_Libacton_Default, "__gnat_shared_libacton_default");
 
       SHARED : constant Character := 'H';
       STATIC : constant Character := 'T';
 
    begin
       pragma Assert
-        (Shared_Libgnat_Default = SHARED
+        (Shared_Libacton_Default = SHARED
          or else
-        Shared_Libgnat_Default = STATIC);
-      Shared_Libgnat := (Shared_Libgnat_Default = SHARED);
+        Shared_Libacton_Default = STATIC);
+      Shared_Libacton := (Shared_Libacton_Default = SHARED);
    end;
 
    --  Scan the switches and arguments
@@ -567,21 +640,11 @@ begin
       Check_Extensions : declare
          Length : constant Natural := Output_File_Name'Length;
          Last   : constant Natural := Output_File_Name'Last;
-
       begin
-         if Ada_Bind_File then
-            if Length <= 4
-              or else Output_File_Name (Last - 3 .. Last) /= ".adb"
-            then
-               Fail ("output file name should have .adb extension");
-            end if;
-
-         else
-            if Length <= 2
-              or else Output_File_Name (Last - 1 .. Last) /= ".c"
-            then
-               Fail ("output file name should have .c extension");
-            end if;
+         if Length <= 4
+           or else Output_File_Name (Last - 3 .. Last) /= ".adb"
+         then
+            Fail ("output file name should have .adb extension");
          end if;
       end Check_Extensions;
    end if;
@@ -742,6 +805,42 @@ begin
          Free (Text);
       end if;
 
+      --  Add Oak.Core to the ALI list to ensure that it is loaded as it
+      --  is not called by the user.
+
+      Name_Buffer (1 .. 12) := "oak-core.ali";
+      Name_Len              := 12;
+      Add_ALI_File_To_List;
+
+      --  We need to add Acton.Scheduler_Agent and its decendents to the ALI
+      --  list as the scheduler agents are created and inserted into the kernel
+      --  run-time in the generated binder file and are not referenced at all
+      --  in the user's program or within the rest of Acton. Thus we need to
+      --  add them here.
+
+      Add_Scheduler_Agent_ALIs : declare
+         Base_ALI_Str : constant String := "acton-scheduler_agent";
+         Base_ALI_Str_Length : constant := 21;
+      begin
+         Name_Buffer (1 .. Base_ALI_Str_Length) := Base_ALI_Str;
+         Name_Len := Base_ALI_Str_Length;
+         Add_Str_To_Name_Buffer (".ali");
+         Add_ALI_File_To_List;
+
+         Process_Unique_Dispatching_Policies;
+
+         for J in Unique_Dispatching_Policies.First ..
+                    Unique_Dispatching_Policies.Last loop
+            Name_Buffer (1 .. Base_ALI_Str_Length) := Base_ALI_Str;
+            Name_Len := Base_ALI_Str_Length;
+            Add_Char_To_Name_Buffer ('-');
+            Add_Str_To_Name_Buffer
+              (Get_Name_String (Unique_Dispatching_Policies.Table (J)));
+            Add_Str_To_Name_Buffer (".ali");
+            Add_ALI_File_To_List;
+         end loop;
+      end Add_Scheduler_Agent_ALIs;
+
       --  Load ALIs for all dependent units
 
       for Index in ALIs.First .. ALIs.Last loop
@@ -876,9 +975,8 @@ begin
                   -- Put_In_Sources --
                   --------------------
 
-                  function Put_In_Sources (S : File_Name_Type)
-                                           return Boolean
-                  is
+                  function Put_In_Sources
+                    (S : File_Name_Type) return Boolean is
                   begin
                      for J in 1 .. Closure_Sources.Last loop
                         if Closure_Sources.Table (J) = S then
@@ -978,5 +1076,4 @@ begin
 
       null;
    end if;
-
 end Gnatbind;

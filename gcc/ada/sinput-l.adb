@@ -32,6 +32,7 @@ with Fname;    use Fname;
 with Hostparm;
 with Lib;      use Lib;
 with Opt;      use Opt;
+with Opt_Table;
 with Osint;    use Osint;
 with Output;   use Output;
 with Prep;     use Prep;
@@ -453,7 +454,8 @@ package body Sinput.L is
                   Unit                => No_Unit,
                   Time_Stamp          => Osint.Current_Source_File_Stamp);
 
-            Alloc_Line_Tables (S, Opt.Table_Factor * Alloc.Lines_Initial);
+            Alloc_Line_Tables (S, Opt_Table.Table_Factor
+                                    * Alloc.Lines_Initial);
             S.Lines_Table (1) := Lo;
          end;
 

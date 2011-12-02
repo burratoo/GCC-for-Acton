@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -116,7 +116,7 @@ package Lib.Writ is
    --  -- M  Main Program --
    --  ---------------------
 
-   --    M type [priority] [T=time-slice] [AB] [C=cpu] W=?
+   --    M type [priority] [T=time-slice] [AB] [C=cpu] [S=stack-size] W=?
 
    --      This line appears only if the main unit for this file is suitable
    --      for use as a main program. The parameters are:
@@ -154,6 +154,12 @@ package Lib.Writ is
    --          Present only if there was a valid pragma CPU in the
    --          corresponding unit to set the main task affinity. It is an
    --          unsigned decimal integer.
+
+   --        S=stack-size
+
+   --          Present only if there was a valid pragma Storage_Size in the
+   --          corresponding unit to set the main task's stack size. It is
+   --          an unsigned decimal integer.
 
    --        W=?
 
@@ -237,10 +243,9 @@ package Lib.Writ is
    --         SS   This unit references System.Secondary_Stack (that is,
    --              the unit makes use of the secondary stack facilities).
    --
-   --         Tx   A valid Task_Dispatching_Policy pragma applies to all
-   --              the units in this file, where x is the first character
-   --              (upper case) of the corresponding policy name (e.g. 'F'
-   --              for FIFO_Within_Priorities).
+   --         Ts   A valid Task_Dispatching_Policy pragma applies to all
+   --              the units in this file, where s is the string of the
+   --              corresponding policy name.
    --
    --         UA  Unreserve_All_Interrupts pragma was processed in one or
    --             more units in this file
@@ -387,8 +392,8 @@ package Lib.Writ is
    --      pragma. There is one line for each separate pragma, and if no such
    --      pragmas are used, then no S lines are present.
 
-   --      The policy_identifier is the first character (upper case) of the
-   --      corresponding policy name (e.g. 'F' for FIFO_Within_Priorities).
+   --      The policy_identifier is the string of the policy name
+   --      (e.g. FIFO_Within_Priorities).
 
    --      The first_priority and last_priority fields define the range of
    --      priorities to which the specified dispatching policy apply.
@@ -496,6 +501,8 @@ package Lib.Writ is
    --         OT   Optimize_Alignment (Time) is the default setting for all
    --              units in this file. All files in the partition that specify
    --              a default must specify the same default.
+   --
+   --         PF  The unit has a library-level (package) finalizer
    --
    --         PK  Unit is package, rather than a subprogram
    --
@@ -710,6 +717,13 @@ package Lib.Writ is
    --  reference data. See the spec of Par_SCO for full details of the format.
 
    ----------------------
+   -- ALFA Information --
+   ----------------------
+
+   --  The ALFA information follows the SCO information. See the spec of Alfa
+   --  for full details of the format.
+
+   ----------------------
    -- Global Variables --
    ----------------------
 
@@ -744,7 +758,7 @@ package Lib.Writ is
    --  at compile time when we can.
 
    type Specific_Dispatching_Entry is record
-      Dispatching_Policy : Character;
+      Dispatching_Policy : Name_Id;
       --  First character (upper case) of the corresponding policy name
 
       First_Priority     : Nat;

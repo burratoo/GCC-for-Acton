@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -169,6 +169,19 @@ package body Exp_Ch9 is
    --  are evaluated before the call is queued. E is the entry in question,
    --  and Decl is the enclosing synchronized type declaration at whose
    --  freeze point the generated body is analyzed.
+
+   function Build_Renamed_Formal_Declaration
+     (New_F          : Entity_Id;
+      Formal         : Entity_Id;
+      Comp           : Entity_Id;
+      Renamed_Formal : Node_Id) return Node_Id;
+   --  Create a renaming declaration for a formal, within a protected entry
+   --  body or an accept body. The renamed object is a component of the
+   --  parameter block that is a parameter in the entry call.
+
+   --  In Ada2012,  If the formal is an incomplete tagged type, the renaming
+   --  does not dereference the corresponding component to prevent an illegal
+   --  use of the incomplete type (AI05-0151).
 
    procedure Build_Wrapper_Bodies
      (Loc : Source_Ptr;
@@ -341,8 +354,10 @@ package body Exp_Ch9 is
       Actuals  : out List_Id;
       Formals  : out List_Id);
    --  Given a dispatching call, extract the entity of the name of the call,
-   --  its object parameter, its actual parameters and the formal parameters
-   --  of the overridden interface-level version.
+   --  its actual dispatching object, its actual parameters and the formal
+   --  parameters of the overridden interface-level version. If the type of
+   --  the dispatching object is an access type then an explicit dereference
+   --  is returned in Object.
 
    procedure Extract_Entry
      (N       : Node_Id;
@@ -635,10 +650,11 @@ package body Exp_Ch9 is
       --  The name of the formal that holds the address of the parameter block
       --  for the call.
 
-      Comp   : Entity_Id;
-      Decl   : Node_Id;
-      Formal : Entity_Id;
-      New_F  : Entity_Id;
+      Comp            : Entity_Id;
+      Decl            : Node_Id;
+      Formal          : Entity_Id;
+      New_F           : Entity_Id;
+      Renamed_Formal  : Node_Id;
 
    begin
       Formal := First_Formal (Ent);
@@ -665,18 +681,16 @@ package body Exp_Ch9 is
 
          Set_Actual_Subtype (New_F, Actual_Subtype (Formal));
 
+         Renamed_Formal :=
+           Make_Selected_Component (Loc,
+             Prefix        =>
+               Unchecked_Convert_To (Entry_Parameters_Type (Ent),
+                 Make_Identifier (Loc, Chars (Ptr))),
+             Selector_Name => New_Reference_To (Comp, Loc));
+
          Decl :=
-           Make_Object_Renaming_Declaration (Loc,
-           Defining_Identifier => New_F,
-           Subtype_Mark =>
-             New_Reference_To (Etype (Formal), Loc),
-           Name =>
-             Make_Explicit_Dereference (Loc,
-               Make_Selected_Component (Loc,
-                 Prefix        =>
-                   Unchecked_Convert_To (Entry_Parameters_Type (Ent),
-                     Make_Identifier (Loc, Chars (Ptr))),
-                 Selector_Name => New_Reference_To (Comp, Loc))));
+           Build_Renamed_Formal_Declaration
+             (New_F, Formal, Comp, Renamed_Formal);
 
          Append (Decl, Decls);
          Set_Renamed_Object (Formal, New_F);
@@ -731,8 +745,8 @@ package body Exp_Ch9 is
             Obj_Ptr,
           Type_Definition =>
             Make_Access_To_Object_Definition (Loc,
-          Subtype_Indication =>
-            New_Reference_To (Rec_Typ, Loc)));
+              Subtype_Indication =>
+                New_Reference_To (Rec_Typ, Loc)));
       Set_Debug_Info_Needed (Defining_Identifier (Decl));
       Prepend_To (Decls, Decl);
    end Add_Object_Pointer;
@@ -907,10 +921,12 @@ package body Exp_Ch9 is
       Ent : Entity_Id;
       Pid : Node_Id) return Node_Id
    is
-      Loc         : constant Source_Ptr := Sloc (N);
-      Func_Id     : constant Entity_Id  := Barrier_Function (Ent);
       Ent_Formals : constant Node_Id    := Entry_Body_Formal_Part (N);
+      Cond        : constant Node_Id    := Condition (Ent_Formals);
+      Loc         : constant Source_Ptr := Sloc (Cond);
+      Func_Id     : constant Entity_Id  := Barrier_Function (Ent);
       Op_Decls    : constant List_Id    := New_List;
+      Stmt        : Node_Id;
       Func_Body   : Node_Id;
 
    begin
@@ -918,8 +934,32 @@ package body Exp_Ch9 is
       --  for the discriminals and privals and finally a declaration for the
       --  entry family index (if applicable).
 
-      Install_Private_Data_Declarations
-        (Loc, Func_Id, Pid, N, Op_Decls, True, Ekind (Ent) = E_Entry_Family);
+      Install_Private_Data_Declarations (Sloc (N),
+         Spec_Id  => Func_Id,
+         Conc_Typ => Pid,
+         Body_Nod => N,
+         Decls    => Op_Decls,
+         Barrier  => True,
+         Family   => Ekind (Ent) = E_Entry_Family);
+
+      --  If compiling with -fpreserve-control-flow, make sure we insert an
+      --  IF statement so that the back-end knows to generate a conditional
+      --  branch instruction, even if the condition is just the name of a
+      --  boolean object.
+
+      if Opt.Suppress_Control_Flow_Optimizations then
+         Stmt := Make_Implicit_If_Statement (Cond,
+                   Condition       => Cond,
+                   Then_Statements => New_List (
+                     Make_Simple_Return_Statement (Loc,
+                       New_Occurrence_Of (Standard_True, Loc))),
+                   Else_Statements => New_List (
+                     Make_Simple_Return_Statement (Loc,
+                       New_Occurrence_Of (Standard_False, Loc))));
+
+      else
+         Stmt := Make_Simple_Return_Statement (Loc, Cond);
+      end if;
 
       --  Note: the condition in the barrier function needs to be properly
       --  processed for the C/Fortran boolean possibility, but this happens
@@ -933,9 +973,7 @@ package body Exp_Ch9 is
           Declarations => Op_Decls,
           Handled_Statement_Sequence =>
             Make_Handled_Sequence_Of_Statements (Loc,
-              Statements => New_List (
-                Make_Simple_Return_Statement (Loc,
-                  Expression => Condition (Ent_Formals)))));
+              Statements => New_List (Stmt)));
       Set_Is_Entry_Barrier_Function (Func_Body);
 
       return Func_Body;
@@ -1025,7 +1063,7 @@ package body Exp_Ch9 is
       --     for the task body.
 
       --  In fact the discriminals b) are used in the renaming declarations
-      --  for e). See details in  einfo (Handling of Discriminants).
+      --  for e). See details in einfo (Handling of Discriminants).
 
       if Present (Discriminant_Specifications (N)) then
          Dlist := New_List;
@@ -1170,10 +1208,6 @@ package body Exp_Ch9 is
       function Build_Set_Entry_Name_Call (Arg3 : Node_Id) return Node_Id;
       --  Generate the call to the runtime routine Set_Entry_Name with actuals
       --  _init._task_id or _init._object, Inn and Arg3.
-
-      function Find_Protection_Type (Conc_Typ : Entity_Id) return Entity_Id;
-      --  Given a protected type or its corresponding record, find the type of
-      --  field _object.
 
       procedure Increment_Index (Stmts : List_Id);
       --  Generate the following and add it to Stmts
@@ -1352,34 +1386,6 @@ package body Exp_Ch9 is
                New_Reference_To (Index, Loc),             --  Inn
                Arg3));                                    --  Val
       end Build_Set_Entry_Name_Call;
-
-      --------------------------
-      -- Find_Protection_Type --
-      --------------------------
-
-      function Find_Protection_Type (Conc_Typ : Entity_Id) return Entity_Id is
-         Comp : Entity_Id;
-         Typ  : Entity_Id := Conc_Typ;
-
-      begin
-         if Is_Concurrent_Type (Typ) then
-            Typ := Corresponding_Record_Type (Typ);
-         end if;
-
-         Comp := First_Component (Typ);
-         while Present (Comp) loop
-            if Chars (Comp) = Name_uObject then
-               return Base_Type (Etype (Comp));
-            end if;
-
-            Next_Component (Comp);
-         end loop;
-
-         --  The corresponding record of a protected type should always have an
-         --  _object field.
-
-         raise Program_Error;
-      end Find_Protection_Type;
 
       ---------------------
       -- Increment_Index --
@@ -1574,6 +1580,46 @@ package body Exp_Ch9 is
       return Rec_Nam;
    end Build_Parameter_Block;
 
+   --------------------------------------
+   -- Build_Renamed_Formal_Declaration --
+   --------------------------------------
+
+   function Build_Renamed_Formal_Declaration
+     (New_F          : Entity_Id;
+      Formal         : Entity_Id;
+      Comp           : Entity_Id;
+      Renamed_Formal : Node_Id) return Node_Id
+   is
+      Loc  : constant Source_Ptr := Sloc (New_F);
+      Decl : Node_Id;
+
+   begin
+      --  If the formal is a tagged incomplete type, it is already passed
+      --  by reference, so it is sufficient to rename the pointer component
+      --  that corresponds to the actual. Otherwise we need to dereference
+      --  the pointer component to obtain the actual.
+
+      if Is_Incomplete_Type (Etype (Formal))
+        and then Is_Tagged_Type (Etype (Formal))
+      then
+         Decl :=
+           Make_Object_Renaming_Declaration (Loc,
+             Defining_Identifier => New_F,
+             Subtype_Mark        => New_Reference_To (Etype (Comp), Loc),
+             Name                => Renamed_Formal);
+
+      else
+         Decl :=
+           Make_Object_Renaming_Declaration (Loc,
+             Defining_Identifier => New_F,
+             Subtype_Mark        => New_Reference_To (Etype (Formal), Loc),
+             Name                =>
+               Make_Explicit_Dereference (Loc, Renamed_Formal));
+      end if;
+
+      return Decl;
+   end Build_Renamed_Formal_Declaration;
+
    -----------------------
    -- Build_PPC_Wrapper --
    -----------------------
@@ -1614,7 +1660,7 @@ package body Exp_Ch9 is
          P : Node_Id;
 
       begin
-         P := Spec_PPC_List (E);
+         P := Spec_PPC_List (Contract (E));
          if No (P) then
             return;
          end if;
@@ -3742,6 +3788,27 @@ package body Exp_Ch9 is
                       Attribute_Name => Name_Unchecked_Access,
                     Prefix =>
                       New_Reference_To (Defining_Identifier (N_Node), Loc)));
+
+               --  If it is a VM_By_Copy_Actual, copy it to a new variable
+
+               elsif Is_VM_By_Copy_Actual (Actual) then
+                  N_Node :=
+                    Make_Object_Declaration (Loc,
+                      Defining_Identifier => Make_Temporary (Loc, 'J'),
+                      Aliased_Present     => True,
+                      Object_Definition   =>
+                        New_Reference_To (Etype (Formal), Loc),
+                      Expression => New_Copy_Tree (Actual));
+                  Set_Assignment_OK (N_Node);
+
+                  Append (N_Node, Decls);
+
+                  Append_To (Plist,
+                    Make_Attribute_Reference (Loc,
+                      Attribute_Name => Name_Unchecked_Access,
+                    Prefix =>
+                      New_Reference_To (Defining_Identifier (N_Node), Loc)));
+
                else
                   --  Interface class-wide formal
 
@@ -3893,7 +3960,8 @@ package body Exp_Ch9 is
 
             Set_Assignment_OK (Actual);
             while Present (Actual) loop
-               if Is_By_Copy_Type (Etype (Actual))
+               if (Is_By_Copy_Type (Etype (Actual))
+                     or else Is_VM_By_Copy_Actual (Actual))
                  and then Ekind (Formal) /= E_In_Parameter
                then
                   N_Node :=
@@ -3983,11 +4051,7 @@ package body Exp_Ch9 is
       end if;
 
       if Present (Chain) then
-         if Restricted_Profile then
-            Name := New_Reference_To (RTE (RE_Activate_Restricted_Tasks), Loc);
-         else
-            Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
-         end if;
+         Name := New_Reference_To (RTE (RE_Activate_Tasks), Loc);
 
          Call :=
            Make_Procedure_Call_Statement (Loc,
@@ -4963,10 +5027,11 @@ package body Exp_Ch9 is
            and then Present (Handled_Statement_Sequence (N))
          then
             declare
-               Comp   : Entity_Id;
-               Decl   : Node_Id;
-               Formal : Entity_Id;
-               New_F  : Entity_Id;
+               Comp           : Entity_Id;
+               Decl           : Node_Id;
+               Formal         : Entity_Id;
+               New_F          : Entity_Id;
+               Renamed_Formal : Node_Id;
 
             begin
                Push_Scope (Ent);
@@ -4995,21 +5060,18 @@ package body Exp_Ch9 is
 
                   Set_Actual_Subtype (New_F, Actual_Subtype (Formal));
 
+                  Renamed_Formal :=
+                     Make_Selected_Component (Loc,
+                       Prefix        =>
+                         Unchecked_Convert_To (
+                           Entry_Parameters_Type (Ent),
+                           New_Reference_To (Ann, Loc)),
+                       Selector_Name =>
+                         New_Reference_To (Comp, Loc));
+
                   Decl :=
-                    Make_Object_Renaming_Declaration (Loc,
-                      Defining_Identifier =>
-                        New_F,
-                      Subtype_Mark =>
-                        New_Reference_To (Etype (Formal), Loc),
-                      Name =>
-                        Make_Explicit_Dereference (Loc,
-                          Make_Selected_Component (Loc,
-                            Prefix =>
-                              Unchecked_Convert_To (
-                                Entry_Parameters_Type (Ent),
-                                New_Reference_To (Ann, Loc)),
-                            Selector_Name =>
-                              New_Reference_To (Comp, Loc))));
+                    Build_Renamed_Formal_Declaration
+                      (New_F, Formal, Comp, Renamed_Formal);
 
                   if No (Declarations (N)) then
                      Set_Declarations (N, New_List);
@@ -5066,6 +5128,12 @@ package body Exp_Ch9 is
 
       Insert_After (N, Decl1);
       Analyze (Decl1);
+
+      --  Associate the access to subprogram with its original access to
+      --  protected subprogram type. Needed by the backend to know that this
+      --  type corresponds with an access to protected subprogram type.
+
+      Set_Original_Access_Type (D_T2, T);
 
       --  Create Equivalent_Type, a record with two components for an access to
       --  object and an access to subprogram.
@@ -5800,6 +5868,9 @@ package body Exp_Ch9 is
       T   : Entity_Id;  --  Additional status flag
 
    begin
+      Process_Statements_For_Controlled_Objects (Trig);
+      Process_Statements_For_Controlled_Objects (Abrt);
+
       Blk_Ent := Make_Temporary (Loc, 'A');
       Ecall   := Triggering_Statement (Trig);
 
@@ -6752,6 +6823,8 @@ package body Exp_Ch9 is
       S : Entity_Id;  --  Primitive operation slot
 
    begin
+      Process_Statements_For_Controlled_Objects (N);
+
       if Ada_Version >= Ada_2005
         and then Nkind (Blk) = N_Procedure_Call_Statement
       then
@@ -7258,7 +7331,6 @@ package body Exp_Ch9 is
                  Subtype_Indication => New_Reference_To (Rec_Ent, Loc)));
 
          Insert_After (Last_Decl, Decl);
-         Last_Decl := Decl;
       end if;
    end Expand_N_Entry_Declaration;
 
@@ -7365,9 +7437,6 @@ package body Exp_Ch9 is
       Num_Entries  : Natural := 0;
       Op_Body      : Node_Id;
       Op_Id        : Entity_Id;
-
-      Chain        : Entity_Id := Empty;
-      --  Finalization chain that may be attached to new body
 
       function Build_Dispatching_Subprogram_Body
         (N        : Node_Id;
@@ -7492,25 +7561,6 @@ package body Exp_Ch9 is
                then
                   New_Op_Body :=
                     Build_Unprotected_Subprogram_Body (Op_Body, Pid);
-
-                  --  Propagate the finalization chain to the new body. In the
-                  --  unlikely event that the subprogram contains a declaration
-                  --  or allocator for an object that requires finalization,
-                  --  the corresponding chain is created when analyzing the
-                  --  body, and attached to its entity. This entity is not
-                  --  further elaborated, and so the chain properly belongs to
-                  --  the newly created subprogram body.
-
-                  Chain :=
-                    Finalization_Chain_Entity (Defining_Entity (Op_Body));
-
-                  if Present (Chain) then
-                     Set_Finalization_Chain_Entity
-                       (Protected_Body_Subprogram
-                         (Corresponding_Spec (Op_Body)), Chain);
-                     Set_Analyzed
-                         (Handled_Statement_Sequence (New_Op_Body), False);
-                  end if;
 
                   Insert_After (Current_Node, New_Op_Body);
                   Current_Node := New_Op_Body;
@@ -8143,7 +8193,7 @@ package body Exp_Ch9 is
             Set_Protected_Body_Subprogram
               (Defining_Unit_Name (Specification (Comp)),
                Defining_Unit_Name (Specification (Sub)));
-               Check_Inlining (Defining_Unit_Name (Specification (Comp)));
+            Check_Inlining (Defining_Unit_Name (Specification (Comp)));
 
             --  Make the protected version of the subprogram available for
             --  expansion of external calls.
@@ -8689,14 +8739,39 @@ package body Exp_Ch9 is
          --      (Ada.Tags.Tag (Concval),
          --       <interface dispatch table position of Ename>)
 
-         Prepend_To (Params,
-           Make_Function_Call (Loc,
-             Name =>
-               New_Reference_To (RTE (RE_Get_Offset_Index), Loc),
+         if Tagged_Type_Expansion then
+            Prepend_To (Params,
+              Make_Function_Call (Loc,
+                Name => New_Reference_To (RTE (RE_Get_Offset_Index), Loc),
+                Parameter_Associations => New_List (
+                  Unchecked_Convert_To (RTE (RE_Tag), Concval),
+                  Make_Integer_Literal (Loc, DT_Position (Entity (Ename))))));
 
-             Parameter_Associations => New_List (
-               Unchecked_Convert_To (RTE (RE_Tag), Concval),
-               Make_Integer_Literal (Loc, DT_Position (Entity (Ename))))));
+         --  VM targets
+
+         else
+            Prepend_To (Params,
+              Make_Function_Call (Loc,
+                Name => New_Reference_To (RTE (RE_Get_Offset_Index), Loc),
+
+                Parameter_Associations => New_List (
+
+                  --  Obj_Typ
+
+                  Make_Attribute_Reference (Loc,
+                    Prefix         => Concval,
+                    Attribute_Name => Name_Tag),
+
+                  --  Tag_Typ
+
+                  Make_Attribute_Reference (Loc,
+                    Prefix         => New_Reference_To (Etype (Concval), Loc),
+                    Attribute_Name => Name_Tag),
+
+                  --  Position
+
+                  Make_Integer_Literal (Loc, DT_Position (Entity (Ename))))));
+         end if;
 
          --  Specific actuals for protected to XXX requeue
 
@@ -9586,6 +9661,8 @@ package body Exp_Ch9 is
    --  Start of processing for Expand_N_Selective_Accept
 
    begin
+      Process_Statements_For_Controlled_Objects (N);
+
       --  First insert some declarations before the select. The first is:
 
       --    Ann : Address
@@ -9605,6 +9682,7 @@ package body Exp_Ch9 is
 
       Alt := First (Alts);
       while Present (Alt) loop
+         Process_Statements_For_Controlled_Objects (Alt);
 
          if Nkind (Alt) = N_Accept_Alternative then
             Add_Accept (Alt);
@@ -10175,7 +10253,7 @@ package body Exp_Ch9 is
    --    begin
    --       Abort_Undefer.all;
    --       <declarations>
-   --       System.Task_Stages.Complete_Activation;
+   --       OTCR.Tasks.Complete_Activation;
    --       <statements>
    --    at end
    --       _clean;
@@ -10194,15 +10272,6 @@ package body Exp_Ch9 is
    --  discriminant that is present to provide an easy reference point for
    --  discriminant references inside the body (see Exp_Ch2.Expand_Name).
 
-   --  Note on relationship to GNARLI definition. In the GNARLI definition,
-   --  task body procedures have a profile (Arg : System.Address). That is
-   --  needed because GNARLI has to use the same access-to-subprogram type
-   --  for all task types. We depend here on knowing that in GNAT, passing
-   --  an address argument by value is identical to passing a record value
-   --  by access (in either case a single pointer is passed), so even though
-   --  this procedure has the wrong profile. In fact it's all OK, since the
-   --  callings sequence is identical.
-
    procedure Expand_N_Task_Body (N : Node_Id) is
       Loc   : constant Source_Ptr := Sloc (N);
       Ttyp  : constant Entity_Id  := Corresponding_Spec (N);
@@ -10219,16 +10288,6 @@ package body Exp_Ch9 is
       Install_Private_Data_Declarations
         (Loc, Task_Body_Procedure (Ttyp), Ttyp, N, Declarations (N));
 
-      --  Add a call to Abort_Undefer at the very beginning of the task
-      --  body since this body is called with abort still deferred.
-
-      if Abort_Allowed then
-         Call := Build_Runtime_Call (Loc, RE_Abort_Undefer);
-         Insert_Before
-           (First (Statements (Handled_Statement_Sequence (N))), Call);
-         Analyze (Call);
-      end if;
-
       --  The statement part has already been protected with an at_end and
       --  cleanup actions. The call to Complete_Activation must be placed
       --  at the head of the sequence of statements of that block. The
@@ -10236,11 +10295,7 @@ package body Exp_Ch9 is
       --  the first real statement is accessible from the First_Real_Statement
       --  field (which was set for exactly this purpose).
 
-      if Restricted_Profile then
-         Call := Build_Runtime_Call (Loc, RE_Complete_Restricted_Activation);
-      else
-         Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
-      end if;
+      Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
 
       Insert_Before
         (First_Real_Statement (Handled_Statement_Sequence (N)), Call);
@@ -10260,7 +10315,7 @@ package body Exp_Ch9 is
 
       if Delay_Cleanups (Ttyp) then
          Set_Activation_Chain_Entity (New_N, Activation_Chain_Entity (N));
-         Set_Is_Task_Master  (New_N, Is_Task_Master (N));
+         --  Set_Is_Task_Master  (New_N, Is_Task_Master (N));
       end if;
 
       Rewrite (N, New_N);
@@ -10309,9 +10364,9 @@ package body Exp_Ch9 is
    --  Storage_Size). If the value of the pragma Storage_Size is static, then
    --  the variable is initialized with this value:
 
-   --    taskZ : Size_Type := Unspecified_Size;
+   --    taskZ : Storage_Count := Unspecified_Size;
    --  or
-   --    taskZ : Size_Type := Size_Type (size_expression);
+   --    taskZ : Storage_Count := Storage_Count (size_expression);
 
    --  Note: No variable is needed to hold the task relative deadline since
    --  its value would never be static because the parameter is of a private
@@ -10321,12 +10376,14 @@ package body Exp_Ch9 is
    --  values of this task. The general form of this type declaration is
 
    --    type taskV (discriminants) is record
-   --      _Task_Id     : Task_Id;
-   --      entry_family : array (bounds) of Void;
-   --      _Priority    : Integer         := priority_expression;
-   --      _Size        : Size_Type       := Size_Type (size_expression);
-   --      _Task_Info   : Task_Info_Type  := task_info_expression;
-   --      _CPU         : Integer         := cpu_range_expression;
+   --      _OTCR              : Oak_Task;
+   --      entry_family       : array (bounds) of Void;
+   --      _Priority          : Integer         := priority_expression;
+   --      _Size              : Storage_Count
+   --                               := Storage_Count (size_expression);
+   --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
+   --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
+   --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase; 
    --    end record;
 
    --  The discriminants are present only if the corresponding task type has
@@ -10355,20 +10412,26 @@ package body Exp_Ch9 is
    --  argument that was present in the pragma, and is used to provide the Size
    --  parameter to the call to Create_Task.
 
-   --  The _Task_Info field is present only if a Task_Info pragma appears in
-   --  the task definition. The expression captures the argument that was
-   --  present in the pragma, and is used to provide the Task_Image parameter
-   --  to the call to Create_Task.
-
-   --  The _CPU field is present only if a CPU pragma appears in the task
+   --  The _CPU field is currently not being used.
+   --  (The _CPU field is present only if a CPU pragma appears in the task
    --  definition. The expression captures the argument that was present in
    --  the pragma, and is used to provide the CPU parameter to the call to
-   --  Create_Task.
+   --  Create_Task.)
 
    --  The _Relative_Deadline field is present only if a Relative_Deadline
    --  pragma appears in the task definition. The expression captures the
    --  argument that was present in the pragma, and is used to provide the
    --  Relative_Deadline parameter to the call to Create_Task.
+
+   --  The _Cycle_Period field is present only if a _Cycle_Period
+   --  pragma appears in the task definition. The expression captures the
+   --  argument that was present in the pragma, and is used to provide the
+   --  _Cycle_Period parameter to the call to Create_Task.
+
+   --  The _Phase field is present only if a _Phase pragma appears in the
+   --  task definition. The expression captures the argument that was
+   --  present in the pragma, and is used to provide the _Phase parameter
+   --   to the call to Create_Task.
 
    --  When a task is declared, an instance of the task value record is
    --  created. The elaboration of this declaration creates the correct bounds
@@ -10460,9 +10523,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
+             Object_Definition =>
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
@@ -10473,8 +10537,10 @@ package body Exp_Ch9 is
          Size_Decl :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Storage_Size_Variable (Tasktyp),
-             Object_Definition => New_Reference_To (RTE (RE_Size_Type), Loc),
-             Expression => New_Reference_To (RTE (RE_Unspecified_Size), Loc));
+             Object_Definition =>
+               New_Reference_To (RTE (RE_Storage_Count), Loc),
+             Expression =>
+               New_Reference_To (RTE (RE_Unspecified_Call_Stack_Size), Loc));
       end if;
 
       Insert_After (Elab_Decl, Size_Decl);
@@ -10483,38 +10549,32 @@ package body Exp_Ch9 is
       --  done last, since the corresponding record initialization procedure
       --  will reference the previously created entities.
 
-      --  Fill in the component declarations -- first the _Task_Id field
+      --  Fill in the component declarations
 
       Append_To (Cdecls,
         Make_Component_Declaration (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uTask_Id),
+            Make_Defining_Identifier (Loc, Name_uTask_Handler),
           Component_Definition =>
             Make_Component_Definition (Loc,
               Aliased_Present    => False,
-              Subtype_Indication => New_Reference_To (RTE (RO_ST_Task_Id),
-                                    Loc))));
+              Subtype_Indication => New_Reference_To (
+                                      RTE (RE_Oak_Task_Handler), Loc))));
 
-      --  Declare static ATCB (that is, created by the expander) if we are
+      --  Declare static OTCR (that is, created by the expander) if we are
       --  using the Restricted run time.
 
       if Restricted_Profile then
          Append_To (Cdecls,
            Make_Component_Declaration (Loc,
              Defining_Identifier  =>
-               Make_Defining_Identifier (Loc, Name_uATCB),
+               Make_Defining_Identifier (Loc, Name_uOTCR),
 
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present     => True,
-                 Subtype_Indication  => Make_Subtype_Indication (Loc,
-                   Subtype_Mark => New_Occurrence_Of
-                     (RTE (RE_Ada_Task_Control_Block), Loc),
-
-                   Constraint   =>
-                     Make_Index_Or_Discriminant_Constraint (Loc,
-                       Constraints =>
-                         New_List (Make_Integer_Literal (Loc, 0)))))));
+                 Subtype_Indication  =>
+                   New_Reference_To (RTE (RE_Oak_Task), Loc))));
 
       end if;
 
@@ -10650,11 +10710,12 @@ package body Exp_Ch9 is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
-                 Subtype_Indication => New_Reference_To (RTE (RE_Size_Type),
-                                                         Loc)),
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Storage_Count),
+                                     Loc)),
 
              Expression =>
-               Convert_To (RTE (RE_Size_Type),
+               Convert_To (RTE (RE_Storage_Count),
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
@@ -10662,54 +10723,35 @@ package body Exp_Ch9 is
                          (Taskdef, Name_Storage_Size))))))));
       end if;
 
-      --  Add the _Task_Info component if a Task_Info pragma is present
-
-      if Present (Taskdef) and then Has_Task_Info_Pragma (Taskdef) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uTask_Info),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Task_Info_Type), Loc)),
-
-             Expression => New_Copy (
-               Expression (First (
-                 Pragma_Argument_Associations (
-                   Find_Task_Or_Protected_Pragma
-                     (Taskdef, Name_Task_Info)))))));
-      end if;
-
       --  Add the _CPU component if a CPU pragma is present
 
-      if Present (Taskdef) and then Has_Pragma_CPU (Taskdef) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uCPU),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_CPU_Range), Loc)),
-
-             Expression => New_Copy (
-               Expression (First (
-                 Pragma_Argument_Associations (
-                   Find_Task_Or_Protected_Pragma
-                     (Taskdef, Name_CPU)))))));
-      end if;
+      --  if Present (Taskdef) and then Has_Pragma_CPU (Taskdef) then
+      --     Append_To (Cdecls,
+      --       Make_Component_Declaration (Loc,
+      --         Defining_Identifier =>
+      --           Make_Defining_Identifier (Loc, Name_uCPU),
+      --
+      --         Component_Definition =>
+      --           Make_Component_Definition (Loc,
+      --             Aliased_Present    => False,
+      --             Subtype_Indication =>
+      --               New_Reference_To (RTE (RE_CPU_Range), Loc)),
+      --
+      --         Expression => New_Copy (
+      --           Expression (First (
+      --             Pragma_Argument_Associations (
+      --               Find_Task_Or_Protected_Pragma
+      --                 (Taskdef, Name_CPU)))))));
+      --  end if;
 
       --  Add the _Relative_Deadline component if a Relative_Deadline pragma is
       --  present. If we are using a restricted run time this component will
       --  not be added (deadlines are not allowed by the Ravenscar profile).
 
-      if not Restricted_Profile
-        and then Present (Taskdef)
+      --  if not Restricted_Profile
+      --    and then Present (Taskdef)
+      --    and then Has_Relative_Deadline_Pragma (Taskdef)
+      if Present (Taskdef)
         and then Has_Relative_Deadline_Pragma (Taskdef)
       then
          Append_To (Cdecls,
@@ -10730,6 +10772,52 @@ package body Exp_Ch9 is
                      Pragma_Argument_Associations (
                        Find_Task_Or_Protected_Pragma
                          (Taskdef, Name_Relative_Deadline))))))));
+      end if;
+
+      --  Add the _Cycle_Period component if a Cycle_Period pragma is present
+
+      if Present (Taskdef) and then Has_Pragma_Cycle_Period (Taskdef) then
+         Append_To (Cdecls,
+           Make_Component_Declaration (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uCycle_Period),
+
+             Component_Definition =>
+               Make_Component_Definition (Loc,
+                 Aliased_Present    => False,
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Time_Span), Loc)),
+
+             Expression =>
+               Convert_To (RTE (RE_Time_Span),
+                 Relocate_Node (
+                   Expression (First (
+                     Pragma_Argument_Associations (
+                       Find_Task_Or_Protected_Pragma
+                         (Taskdef, Name_Cycle_Period))))))));
+      end if;
+
+      --  Add the _Phase component if a Phase pragma is present
+
+      if Present (Taskdef) and then Has_Pragma_Phase (Taskdef) then
+         Append_To (Cdecls,
+           Make_Component_Declaration (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uPhase),
+
+             Component_Definition =>
+               Make_Component_Definition (Loc,
+                 Aliased_Present    => False,
+                 Subtype_Indication =>
+                   New_Reference_To (RTE (RE_Time_Span), Loc)),
+
+             Expression =>
+               Convert_To (RTE (RE_Time_Span),
+                 Relocate_Node (
+                   Expression (First (
+                     Pragma_Argument_Associations (
+                       Find_Task_Or_Protected_Pragma
+                         (Taskdef, Name_Phase))))))));
       end if;
 
       Insert_After (Size_Decl, Rec_Decl);
@@ -10797,7 +10885,7 @@ package body Exp_Ch9 is
          Ent := First_Entity (Tasktyp);
          while Present (Ent) loop
             if Ekind_In (Ent, E_Entry, E_Entry_Family)
-              and then Present (Spec_PPC_List (Ent))
+              and then Present (Spec_PPC_List (Contract (Ent)))
             then
                Build_PPC_Wrapper (Ent, N);
             end if;
@@ -10872,7 +10960,7 @@ package body Exp_Ch9 is
    --              Ada.Tags.Get_Tagged_Kind (Ada.Tags.Tag (<object>));
    --       M  : Integer :=...;
    --       P  : Parameters := (Param1 .. ParamN);
-   --       S  : Iteger;
+   --       S  : Integer;
 
    --    begin
    --       if K = Ada.Tags.TK_Limited_Tagged then
@@ -10960,6 +11048,9 @@ package body Exp_Ch9 is
       if Restriction_Active (No_Select_Statements) then
          return;
       end if;
+
+      Process_Statements_For_Controlled_Objects (Entry_Call_Alternative (N));
+      Process_Statements_For_Controlled_Objects (Delay_Alternative (N));
 
       --  The arguments in the call may require dynamic allocation, and the
       --  call statement may have been transformed into a block. The block
@@ -11480,6 +11571,14 @@ package body Exp_Ch9 is
 
       if Present (Original_Node (Object)) then
          Object := Original_Node (Object);
+      end if;
+
+      --  If the type of the dispatching object is an access type then return
+      --  an explicit dereference.
+
+      if Is_Access_Type (Etype (Object)) then
+         Object := Make_Explicit_Dereference (Sloc (N), Object);
+         Analyze (Object);
       end if;
    end Extract_Dispatching_Call;
 
@@ -12566,39 +12665,29 @@ package body Exp_Ch9 is
 
       Args := New_List;
 
-      --  Priority parameter. Set to Unspecified_Priority unless there is a
-      --  priority pragma, in which case we take the value from the pragma.
+      --  Oak Task Handler
 
-      if Present (Tdef) and then Has_Pragma_Priority (Tdef) then
+      Append_To (Args,
+         Make_Selected_Component (Loc,
+           Prefix        => Make_Identifier (Loc, Name_uInit),
+           Selector_Name => Make_Identifier (
+                              Loc, Name_uTask_Handler)));
+
+      --  If the stack has been preallocated by the expander then
+      --  pass its address. Otherwise, pass a null address.
+
+      if Restricted_Profile and then Preallocated_Stacks_On_Target then
          Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
+           Make_Attribute_Reference (Loc,
+             Prefix         =>
+               Make_Selected_Component (Loc,
+                 Prefix        => Make_Identifier (Loc, Name_uInit),
+                 Selector_Name => Make_Identifier (Loc, Name_uStack)),
+             Attribute_Name => Name_Address));
+
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
-      end if;
-
-      --  Optional Stack parameter
-
-      if Restricted_Profile then
-
-         --  If the stack has been preallocated by the expander then
-         --  pass its address. Otherwise, pass a null address.
-
-         if Preallocated_Stacks_On_Target then
-            Append_To (Args,
-              Make_Attribute_Reference (Loc,
-                Prefix         =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => Make_Identifier (Loc, Name_uInit),
-                    Selector_Name => Make_Identifier (Loc, Name_uStack)),
-                Attribute_Name => Name_Address));
-
-         else
-            Append_To (Args,
-              New_Reference_To (RTE (RE_Null_Address), Loc));
-         end if;
+           New_Reference_To (RTE (RE_Null_Address), Loc));
       end if;
 
       --  Size parameter. If no Storage_Size pragma is present, then
@@ -12621,166 +12710,7 @@ package body Exp_Ch9 is
            New_Reference_To (Storage_Size_Variable (Ttyp), Loc));
       end if;
 
-      --  Task_Info parameter. Set to Unspecified_Task_Info unless there is a
-      --  Task_Info pragma, in which case we take the value from the pragma.
-
-      if Present (Tdef)
-        and then Has_Task_Info_Pragma (Tdef)
-      then
-         Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uTask_Info)));
-
-      else
-         Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_Task_Info), Loc));
-      end if;
-
-      --  CPU parameter. Set to Unspecified_CPU unless there is a CPU pragma,
-      --  in which case we take the value from the pragma. The parameter is
-      --  passed as an Integer because in the case of unspecified CPU the
-      --  value is not in the range of CPU_Range.
-
-      if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
-         Append_To (Args,
-           Convert_To (Standard_Integer,
-             Make_Selected_Component (Loc,
-               Prefix        => Make_Identifier (Loc, Name_uInit),
-               Selector_Name => Make_Identifier (Loc, Name_uCPU))));
-
-      else
-         Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
-      end if;
-
-      if not Restricted_Profile then
-
-         --  Deadline parameter. If no Relative_Deadline pragma is present,
-         --  then the deadline is Time_Span_Zero. If a pragma is present, then
-         --  the deadline is taken from the _Relative_Deadline field of the
-         --  task value record, which was set from the pragma value. Note that
-         --  this parameter must not be generated for the restricted profiles
-         --  since Ravenscar does not allow deadlines.
-
-         --  Case where pragma Relative_Deadline applies: use given value
-
-         if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
-            Append_To (Args,
-              Make_Selected_Component (Loc,
-                Prefix        =>
-                  Make_Identifier (Loc, Name_uInit),
-                Selector_Name =>
-                  Make_Identifier (Loc, Name_uRelative_Deadline)));
-
-         --  No pragma Relative_Deadline apply to the task
-
-         else
-            Append_To (Args,
-              New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
-         end if;
-
-         --  Number of entries. This is an expression of the form:
-
-         --    n + _Init.a'Length + _Init.a'B'Length + ...
-
-         --  where a,b... are the entry family names for the task definition
-
-         Ecount :=
-           Build_Entry_Count_Expression
-             (Ttyp,
-              Component_Items
-                (Component_List
-                   (Type_Definition
-                      (Parent (Corresponding_Record_Type (Ttyp))))),
-              Loc);
-         Append_To (Args, Ecount);
-
-         --  Master parameter. This is a reference to the _Master parameter of
-         --  the initialization procedure, except in the case of the pragma
-         --  Restrictions (No_Task_Hierarchy) where the value is fixed to
-         --  System.Tasking.Library_Task_Level.
-
-         if Restriction_Active (No_Task_Hierarchy) = False then
-            Append_To (Args, Make_Identifier (Loc, Name_uMaster));
-         else
-            Append_To (Args,
-              New_Occurrence_Of (RTE (RE_Library_Task_Level), Loc));
-         end if;
-      end if;
-
-      --  State parameter. This is a pointer to the task body procedure. The
-      --  required value is obtained by taking 'Unrestricted_Access of the task
-      --  body procedure and converting it (with an unchecked conversion) to
-      --  the type required by the task kernel. For further details, see the
-      --  description of Expand_N_Task_Body. We use 'Unrestricted_Access rather
-      --  than 'Address in order to avoid creating trampolines.
-
-      declare
-         Body_Proc    : constant Node_Id := Get_Task_Body_Procedure (Ttyp);
-         Subp_Ptr_Typ : constant Node_Id :=
-                          Create_Itype (E_Access_Subprogram_Type, Tdec);
-         Ref          : constant Node_Id := Make_Itype_Reference (Loc);
-
-      begin
-         Set_Directly_Designated_Type (Subp_Ptr_Typ, Body_Proc);
-         Set_Etype (Subp_Ptr_Typ, Subp_Ptr_Typ);
-
-         --  Be sure to freeze a reference to the access-to-subprogram type,
-         --  otherwise gigi will complain that it's in the wrong scope, because
-         --  it's actually inside the init procedure for the record type that
-         --  corresponds to the task type.
-
-         --  This processing is causing a crash in the .NET/JVM back ends that
-         --  is not yet understood, so skip it in these cases ???
-
-         if VM_Target = No_VM then
-            Set_Itype (Ref, Subp_Ptr_Typ);
-            Append_Freeze_Action (Task_Rec, Ref);
-
-            Append_To (Args,
-              Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-                Make_Qualified_Expression (Loc,
-                  Subtype_Mark => New_Reference_To (Subp_Ptr_Typ, Loc),
-                  Expression   =>
-                    Make_Attribute_Reference (Loc,
-                      Prefix =>
-                        New_Occurrence_Of (Body_Proc, Loc),
-                      Attribute_Name => Name_Unrestricted_Access))));
-
-         --  For the .NET/JVM cases revert to the original code below ???
-
-         else
-            Append_To (Args,
-              Unchecked_Convert_To (RTE (RE_Task_Procedure_Access),
-                Make_Attribute_Reference (Loc,
-                  Prefix =>
-                    New_Occurrence_Of (Body_Proc, Loc),
-                  Attribute_Name => Name_Address)));
-         end if;
-      end;
-
-      --  Discriminants parameter. This is just the address of the task
-      --  value record itself (which contains the discriminant values
-
-      Append_To (Args,
-        Make_Attribute_Reference (Loc,
-          Prefix => Make_Identifier (Loc, Name_uInit),
-          Attribute_Name => Name_Address));
-
-      --  Elaborated parameter. This is an access to the elaboration Boolean
-
-      Append_To (Args,
-        Make_Attribute_Reference (Loc,
-          Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
-          Attribute_Name => Name_Unchecked_Access));
-
-      --  Chain parameter. This is a reference to the _Chain parameter of
-      --  the initialization procedure.
-
-      Append_To (Args, Make_Identifier (Loc, Name_uChain));
-
-      --  Task name parameter. Take this from the _Task_Id parameter to the
+      --  Task name parameter. Take this from the _Task_Name parameter to the
       --  init call unless there is a Task_Name pragma, in which case we take
       --  the value from the pragma.
 
@@ -12801,32 +12731,118 @@ package body Exp_Ch9 is
          Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
       end if;
 
-      --  Created_Task parameter. This is the _Task_Id field of the task
-      --  record value
+      --  Priority parameter. Set to Unspecified_Priority unless there is a
+      --  priority pragma, in which case we take the value from the pragma.
+
+      if Present (Tdef) and then Has_Pragma_Priority (Tdef) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
+      end if;
+
+      --  Deadline parameter. If no Relative_Deadline pragma is present,
+      --  then the deadline is Time_Span_Zero. If a pragma is present, then
+      --  the deadline is taken from the _Relative_Deadline field of the
+      --  task value record, which was set from the pragma value. Note that
+      --  this parameter must not be generated for the restricted profiles
+      --  since Ravenscar does not allow deadlines.
+
+      --  Note that we let it here because we can.
+
+      --  Case where pragma Relative_Deadline applies: use given value
+
+      if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        =>
+               Make_Identifier (Loc, Name_uInit),
+             Selector_Name =>
+               Make_Identifier (Loc, Name_uRelative_Deadline)));
+
+      --  No pragma Relative_Deadline apply to the task
+
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+      end if;
+
+      --  Cycle_Period parameter. Set to Time_Span_Zerp unless there is a
+      --  Cycle_Period pragma,in which case we take the value from the pragma.
+
+      if Present (Tdef) and then Has_Pragma_Cycle_Period (Tdef) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uCycle_Period)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+      end if;
+
+      --  Phase parameter. Set to Time_Span_Zero unless there is a
+      --  Phase pragma,in which case we take the value from the pragma.
+
+      if Present (Tdef) and then Has_Pragma_Phase (Tdef) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uPhase)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+      end if;
+
+      --  CPU parameter. Set to Unspecified_CPU unless there is a CPU pragma,
+      --  in which case we take the value from the pragma. The parameter is
+      --  passed as an Integer because in the case of unspecified CPU the
+      --  value is not in the range of CPU_Range.
+
+      --  if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+      --     Append_To (Args,
+      --       Convert_To (Standard_Integer,
+      --         Make_Selected_Component (Loc,
+      --           Prefix        => Make_Identifier (Loc, Name_uInit),
+      --           Selector_Name => Make_Identifier (Loc, Name_uCPU))));
+      --  else
+      --     Append_To (Args,
+      --       New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
+      --  end if;
+
+      --  Run_Loop parameter. This is a pointer to the task body procedure. The
+      --  required value is obtained by taking 'Address of the task
+      --  body procedure.
 
       Append_To (Args,
-        Make_Selected_Component (Loc,
-          Prefix        => Make_Identifier (Loc, Name_uInit),
-          Selector_Name => Make_Identifier (Loc, Name_uTask_Id)));
+        Make_Attribute_Reference (Loc,
+          Prefix         =>
+            New_Occurrence_Of (Get_Task_Body_Procedure (Ttyp), Loc),
+          Attribute_Name => Name_Address));
 
-      --  Build_Entry_Names generation flag. When set to true, the runtime
-      --  will allocate an array to hold the string names of task entries.
+      --  Task value record parameter.
 
-      if not Restricted_Profile then
-         if Has_Entries (Ttyp)
-           and then Entry_Names_OK
-         then
-            Append_To (Args, New_Reference_To (Standard_True, Loc));
-         else
-            Append_To (Args, New_Reference_To (Standard_False, Loc));
-         end if;
-      end if;
+      Append_To (Args,
+        Make_Attribute_Reference (Loc,
+          Prefix => Make_Identifier (Loc, Name_uInit),
+          Attribute_Name => Name_Address));
 
-      if Restricted_Profile then
-         Name := New_Reference_To (RTE (RE_Create_Restricted_Task), Loc);
-      else
-         Name := New_Reference_To (RTE (RE_Create_Task), Loc);
-      end if;
+
+      --  Chain parameter. This is a reference to the _Chain parameter of
+      --  the initialization procedure.
+
+      Append_To (Args, Make_Identifier (Loc, Name_uChain));
+
+      --  Elaborated parameter. This is an access to the elaboration Boolean
+
+      Append_To (Args,
+        Make_Attribute_Reference (Loc,
+          Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
+          Attribute_Name => Name_Unchecked_Access));
+
+      Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
 
       return
         Make_Procedure_Call_Statement (Loc,
@@ -13080,7 +13096,7 @@ package body Exp_Ch9 is
 
    function Trivial_Accept_OK return Boolean is
    begin
-      case Opt.Task_Dispatching_Policy is
+         --  case Opt.Task_Dispatching_Policy is
 
          --  If we have the default task dispatching policy in effect, we can
          --  definitely do the optimization (one way of looking at this is to
@@ -13090,23 +13106,24 @@ package body Exp_Ch9 is
          --  (i.e. the default dispatching policy) reorders the queue to be the
          --  same as just before the call.
 
-         when ' ' =>
-            return True;
+      --   when ' ' =>
+      --      return True;
 
          --  FIFO_Within_Priorities certainly does not permit this
          --  optimization since the Rendezvous is a scheduling action that may
          --  require some other task to be run.
 
-         when 'F' =>
-            return False;
+      --    when 'F' =>
+      --       return False;
 
          --  For now, disallow the optimization for all other policies. This
          --  may be over-conservative, but it is certainly not incorrect.
 
-         when others =>
-            return False;
+      --    when others =>
+      --       return False;
 
-      end case;
+      --  end case;
+      return False;
    end Trivial_Accept_OK;
 
 end Exp_Ch9;

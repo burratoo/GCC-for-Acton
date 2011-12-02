@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -32,6 +32,7 @@ with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Lib.Util; use Lib.Util;
 with Lib.Xref; use Lib.Xref;
+               use Lib.Xref.ALFA;
 with Nlists;   use Nlists;
 with Gnatvsn;  use Gnatvsn;
 with Opt;      use Opt;
@@ -70,28 +71,29 @@ package body Lib.Writ is
    begin
       Units.Increment_Last;
       Units.Table (Units.Last) :=
-        (Unit_File_Name   => File_Name (S),
-         Unit_Name        => No_Unit_Name,
-         Expected_Unit    => No_Unit_Name,
-         Source_Index     => S,
-         Cunit            => Empty,
-         Cunit_Entity     => Empty,
-         Dependency_Num   => 0,
-         Dynamic_Elab     => False,
-         Fatal_Error      => False,
-         Generate_Code    => False,
-         Has_Allocator    => False,
-         Has_RACW         => False,
-         Is_Compiler_Unit => False,
-         Ident_String     => Empty,
-         Loading          => False,
-         Main_Priority    => -1,
-         Main_CPU         => -1,
-         Munit_Index      => 0,
-         Serial_Number    => 0,
-         Version          => 0,
-         Error_Location   => No_Location,
-         OA_Setting       => 'O');
+        (Unit_File_Name    => File_Name (S),
+         Unit_Name         => No_Unit_Name,
+         Expected_Unit     => No_Unit_Name,
+         Source_Index      => S,
+         Cunit             => Empty,
+         Cunit_Entity      => Empty,
+         Dependency_Num    => 0,
+         Dynamic_Elab      => False,
+         Fatal_Error       => False,
+         Generate_Code     => False,
+         Has_Allocator     => False,
+         Has_RACW          => False,
+         Is_Compiler_Unit  => False,
+         Ident_String      => Empty,
+         Loading           => False,
+         Main_Priority     => Default_Main_Priority,
+         Main_CPU          => Default_Main_CPU,
+         Main_Stack_Size   => Default_Main_Stack_Size,
+         Munit_Index       => 0,
+         Serial_Number     => 0,
+         Version           => 0,
+         Error_Location    => No_Location,
+         OA_Setting        => 'O');
    end Add_Preprocessing_Dependency;
 
    ------------------------------
@@ -127,28 +129,29 @@ package body Lib.Writ is
 
       Units.Increment_Last;
       Units.Table (Units.Last) := (
-        Unit_File_Name   => System_Fname,
-        Unit_Name        => System_Uname,
-        Expected_Unit    => System_Uname,
-        Source_Index     => System_Source_File_Index,
-        Cunit            => Empty,
-        Cunit_Entity     => Empty,
-        Dependency_Num   => 0,
-        Dynamic_Elab     => False,
-        Fatal_Error      => False,
-        Generate_Code    => False,
-        Has_Allocator    => False,
-        Has_RACW         => False,
-        Is_Compiler_Unit => False,
-        Ident_String     => Empty,
-        Loading          => False,
-        Main_Priority    => -1,
-        Main_CPU         => -1,
-        Munit_Index      => 0,
-        Serial_Number    => 0,
-        Version          => 0,
-        Error_Location   => No_Location,
-        OA_Setting       => 'O');
+        Unit_File_Name    => System_Fname,
+        Unit_Name         => System_Uname,
+        Expected_Unit     => System_Uname,
+        Source_Index      => System_Source_File_Index,
+        Cunit             => Empty,
+        Cunit_Entity      => Empty,
+        Dependency_Num    => 0,
+        Dynamic_Elab      => False,
+        Fatal_Error       => False,
+        Generate_Code     => False,
+        Has_Allocator     => False,
+        Has_RACW          => False,
+        Is_Compiler_Unit  => False,
+        Ident_String      => Empty,
+        Loading           => False,
+        Main_Priority     => Default_Main_Priority,
+        Main_CPU          => Default_Main_CPU,
+        Main_Stack_Size   => Default_Main_Stack_Size,
+        Munit_Index       => 0,
+        Serial_Number     => 0,
+        Version           => 0,
+        Error_Location    => No_Location,
+        OA_Setting        => 'O');
 
       --  Parse system.ads so that the checksum is set right
       --  Style checks are not applied.
@@ -459,6 +462,12 @@ package body Lib.Writ is
 
          Write_Info_Str (" O");
          Write_Info_Char (OA_Setting (Unit_Num));
+
+         if Ekind_In (Uent, E_Package, E_Package_Body)
+           and then Present (Finalizer (Uent))
+         then
+            Write_Info_Str (" PF");
+         end if;
 
          if Is_Preelaborated (Uent) then
             Write_Info_Str (" PR");
@@ -863,6 +872,13 @@ package body Lib.Writ is
          return;
       end if;
 
+      --  Generation of ALI files may be disabled, e.g. for formal verification
+      --  back-end.
+
+      if Disable_ALI_File then
+         return;
+      end if;
+
       --  Build sorted source dependency table. We do this right away, because
       --  it is referenced by Up_To_Date_ALI_File_Exists.
 
@@ -936,6 +952,11 @@ package body Lib.Writ is
             if Main_CPU (Main_Unit) /= Default_Main_CPU then
                Write_Info_Str (" C=");
                Write_Info_Nat (Main_CPU (Main_Unit));
+            end if;
+
+            if Main_Stack_Size (Main_Unit) /= Default_Main_Stack_Size then
+               Write_Info_Str (" S=");
+               Write_Info_Nat (Main_Stack_Size (Main_Unit));
             end if;
 
             Write_Info_Str (" W=");
@@ -1043,9 +1064,9 @@ package body Lib.Writ is
             Write_Info_Char (Queuing_Policy);
          end if;
 
-         if Task_Dispatching_Policy /= ' ' then
+         if Task_Dispatching_Policy /= No_Name then
             Write_Info_Str  (" T");
-            Write_Info_Char (Task_Dispatching_Policy);
+            Write_Info_Str (Get_Name_String (Task_Dispatching_Policy));
             Write_Info_Char (' ');
          end if;
       end if;
@@ -1172,7 +1193,9 @@ package body Lib.Writ is
       for J in Specific_Dispatching.First .. Specific_Dispatching.Last loop
          Write_Info_Initiate ('S');
          Write_Info_Char (' ');
-         Write_Info_Char (Specific_Dispatching.Table (J).Dispatching_Policy);
+         Write_Info_Str
+           (Get_Name_String
+             (Specific_Dispatching.Table (J).Dispatching_Policy));
          Write_Info_Char (' ');
          Write_Info_Nat (Specific_Dispatching.Table (J).First_Priority);
          Write_Info_Char (' ');
@@ -1293,12 +1316,21 @@ package body Lib.Writ is
 
       --  Output cross-references
 
-      Output_References;
+      if Opt.Xref_Active then
+         Output_References;
+      end if;
 
       --  Output SCO information if present
 
       if Generate_SCO then
          SCO_Output;
+      end if;
+
+      --  Output ALFA information if needed
+
+      if Opt.Xref_Active and then ALFA_Mode then
+         Collect_ALFA (Sdep_Table => Sdep_Table, Num_Sdep => Num_Sdep);
+         Output_ALFA;
       end if;
 
       --  Output final blank line and we are done. This final blank line is

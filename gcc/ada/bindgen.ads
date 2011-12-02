@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -24,17 +24,35 @@
 ------------------------------------------------------------------------------
 
 --  This package contains the routines to output the binder file. This is
---  an Ada or C program which contains the following:
+--  an Ada program which contains the following:
 
---     initialization for main program case
---     sequence of calls to elaboration routines in appropriate order
---     call to main program for main program case
+--     Initialization for main program case
+--     Sequence of calls to elaboration routines in appropriate order
+--     Call to main program for main program case
 
 --  See the body for exact details of the file that is generated
+
+with Namet;    use Namet;
+with Table;    use Table;
 
 package Bindgen is
 
    procedure Gen_Output_File (Filename : String);
    --  Filename is the full path name of the binder output file
+
+   ----------------------------------
+   -- Unique_Dispatching_Policies  --
+   ----------------------------------
+
+   --  Table to store each unique policy. Put here as it is shared with
+   --  gnatbinder.
+
+   package Unique_Dispatching_Policies is new Table.Table
+     (Table_Component_Type => Name_Id,
+      Table_Index_Type     => Natural,
+      Table_Low_Bound      => 1,
+      Table_Initial        => 10,
+      Table_Increment      => 10,
+      Table_Name           => "Gnatbind.Scheduler_Agents");
 
 end Bindgen;

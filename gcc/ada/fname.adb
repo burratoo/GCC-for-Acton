@@ -132,8 +132,26 @@ package body Fname is
          "sequenio",       -- Sequential_IO
          "text_io ");      -- Text_IO
 
-         Num_Entries : constant Natural :=
-                         3 + 8 * Boolean'Pos (Renamings_Included);
+      Num_Entries : constant Natural :=
+                       3 + 8 * Boolean'Pos (Renamings_Included);
+
+      subtype Str22 is String (1 .. 22);
+
+      Predef_Unkr_Name : constant array (1 .. 11) of Str22 :=
+        ("ada                   ",
+         "interface             ",
+         "system                ",
+         "calendar              ",
+         "machine_code          ",
+         "unchecked_conversion  ",
+         "unchecked_deallocation",
+         "direct_io             ",
+         "io_exceptions         ",
+         "sequential_io         ",
+         "text_io               ");
+
+      PUL : constant array (1 .. 11) of Natural :=
+        (3, 9, 6, 8, 12, 20, 22, 9, 13, 13, 7);
 
    begin
       --  Remove extension (if present)
@@ -142,14 +160,9 @@ package body Fname is
          Name_Len := Name_Len - 4;
       end if;
 
-      --  Definitely false if longer than 12 characters (8.3)
-
-      if Name_Len > 8 then
-         return False;
-
       --  Definitely predefined if prefix is a- i- or s- followed by letter
 
-      elsif Name_Len >=  3
+      if Name_Len >=  3
         and then Name_Buffer (2) = '-'
         and then (Name_Buffer (1) = 'a'
                     or else
@@ -172,6 +185,21 @@ package body Fname is
 
       for J in 1 .. Num_Entries loop
          if Name_Buffer (1 .. 8) = Predef_Names (J) then
+            return True;
+         end if;
+      end loop;
+
+      --  Check against the unkrunched name
+
+      while Name_Len < 22 loop
+         Name_Len := Name_Len + 1;
+         Name_Buffer (Name_Len) := ' ';
+      end loop;
+
+      for J in 1 .. Num_Entries loop
+         if Name_Buffer (1 .. PUL (J)) =
+                    Predef_Unkr_Name (J)(1 .. PUL (J))
+         then
             return True;
          end if;
       end loop;

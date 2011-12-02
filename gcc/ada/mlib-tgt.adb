@@ -295,22 +295,22 @@ package body MLib.Tgt is
    end Is_Archive_Ext_Default;
 
    -------------
-   -- Libgnat --
+   -- Libacton --
    -------------
 
-   function Libgnat return String is
+   function Libacton return String is
    begin
-      return Libgnat_Ptr.all;
-   end Libgnat;
+      return Libacton_Ptr.all;
+   end Libacton;
 
    ---------------------
-   -- Libgnat_Default --
+   -- Libacton_Default --
    ---------------------
 
-   function Libgnat_Default return String is
+   function Libacton_Default return String is
    begin
-      return "libgnat.a";
-   end Libgnat_Default;
+      return "libacton.a";
+   end Libacton_Default;
 
    ------------------------
    -- Library_Exists_For --

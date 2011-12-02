@@ -29,11 +29,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Debug;   use Debug;
-with Opt;     use Opt;
-with Output;  use Output;
-with System;  use System;
-with Tree_IO; use Tree_IO;
+with Debug;         use Debug;
+with Opt_Table;     use Opt_Table;
+with Output;        use Output;
+with System;        use System;
+with Tree_IO;       use Tree_IO;
 
 with System.Memory; use System.Memory;
 
