@@ -23,6 +23,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Casing;   use Casing;
 with Checks;   use Checks;
@@ -159,6 +160,76 @@ package body Exp_Util is
    --  Flag For_Package should be set when the list comes from a package spec
    --  or body. Flag Nested_Constructs should be set when any nested packages
    --  declared in L must be processed.
+
+   -------------------------------------
+   -- Activate_Atomic_Synchronization --
+   -------------------------------------
+
+   procedure Activate_Atomic_Synchronization (N : Node_Id) is
+      Msg_Node : Node_Id;
+
+   begin
+      case Nkind (Parent (N)) is
+
+         --  Check for cases of appearing in the prefix of a construct where
+         --  we don't need atomic synchronization for this kind of usage.
+
+         when
+              --  Nothing to do if we are the prefix of an attribute, since we
+              --  do not want an atomic sync operation for things like 'Size.
+
+              N_Attribute_Reference |
+
+              --  The N_Reference node is like an attribute
+
+              N_Reference           |
+
+              --  Nothing to do for a reference to a component (or components)
+              --  of a composite object. Only reads and updates of the object
+              --  as a whole require atomic synchronization (RM C.6 (15)).
+
+              N_Indexed_Component   |
+              N_Selected_Component  |
+              N_Slice               =>
+
+            --  For all the above cases, nothing to do if we are the prefix
+
+            if Prefix (Parent (N)) = N then
+               return;
+            end if;
+
+         when others => null;
+      end case;
+
+      --  Go ahead and set the flag
+
+      Set_Atomic_Sync_Required (N);
+
+      --  Generate info message if requested
+
+      if Warn_On_Atomic_Synchronization then
+         case Nkind (N) is
+            when N_Identifier =>
+               Msg_Node := N;
+
+            when N_Selected_Component | N_Expanded_Name =>
+               Msg_Node := Selector_Name (N);
+
+            when N_Explicit_Dereference | N_Indexed_Component =>
+               Msg_Node := Empty;
+
+            when others =>
+               pragma Assert (False);
+               return;
+         end case;
+
+         if Present (Msg_Node) then
+            Error_Msg_N ("?info: atomic synchronization set for &", Msg_Node);
+         else
+            Error_Msg_N ("?info: atomic synchronization set", N);
+         end if;
+      end if;
+   end Activate_Atomic_Synchronization;
 
    ----------------------
    -- Adjust_Condition --
@@ -327,10 +398,14 @@ package body Exp_Util is
      (N           : Node_Id;
       Is_Allocate : Boolean)
    is
-      Expr      : constant Node_Id   := Expression (N);
-      Ptr_Typ   : constant Entity_Id := Etype (Expr);
-      Desig_Typ : constant Entity_Id :=
-                    Available_View (Designated_Type (Ptr_Typ));
+      Desig_Typ    : Entity_Id;
+      Expr         : Node_Id;
+      Pool_Id      : Entity_Id;
+      Proc_To_Call : Node_Id := Empty;
+      Ptr_Typ      : Entity_Id;
+
+      function Find_Finalize_Address (Typ : Entity_Id) return Entity_Id;
+      --  Locate TSS primitive Finalize_Address in type Typ
 
       function Find_Object (E : Node_Id) return Node_Id;
       --  Given an arbitrary expression of an allocator, try to find an object
@@ -339,6 +414,77 @@ package body Exp_Util is
       function Is_Allocate_Deallocate_Proc (Subp : Entity_Id) return Boolean;
       --  Determine whether subprogram Subp denotes a custom allocate or
       --  deallocate.
+
+      ---------------------------
+      -- Find_Finalize_Address --
+      ---------------------------
+
+      function Find_Finalize_Address (Typ : Entity_Id) return Entity_Id is
+         Utyp : Entity_Id := Typ;
+
+      begin
+         --  Handle protected class-wide or task class-wide types
+
+         if Is_Class_Wide_Type (Utyp) then
+            if Is_Concurrent_Type (Root_Type (Utyp)) then
+               Utyp := Root_Type (Utyp);
+
+            elsif Is_Private_Type (Root_Type (Utyp))
+              and then Present (Full_View (Root_Type (Utyp)))
+              and then Is_Concurrent_Type (Full_View (Root_Type (Utyp)))
+            then
+               Utyp := Full_View (Root_Type (Utyp));
+            end if;
+         end if;
+
+         --  Handle private types
+
+         if Is_Private_Type (Utyp)
+           and then Present (Full_View (Utyp))
+         then
+            Utyp := Full_View (Utyp);
+         end if;
+
+         --  Handle protected and task types
+
+         if Is_Concurrent_Type (Utyp)
+           and then Present (Corresponding_Record_Type (Utyp))
+         then
+            Utyp := Corresponding_Record_Type (Utyp);
+         end if;
+
+         Utyp := Underlying_Type (Base_Type (Utyp));
+
+         --  Deal with non-tagged derivation of private views. If the parent is
+         --  now known to be protected, the finalization routine is the one
+         --  defined on the corresponding record of the ancestor (corresponding
+         --  records do not automatically inherit operations, but maybe they
+         --  should???)
+
+         if Is_Untagged_Derivation (Typ) then
+            if Is_Protected_Type (Typ) then
+               Utyp := Corresponding_Record_Type (Root_Type (Base_Type (Typ)));
+            else
+               Utyp := Underlying_Type (Root_Type (Base_Type (Typ)));
+
+               if Is_Protected_Type (Utyp) then
+                  Utyp := Corresponding_Record_Type (Utyp);
+               end if;
+            end if;
+         end if;
+
+         --  If the underlying_type is a subtype, we are dealing with the
+         --  completion of a private type. We need to access the base type and
+         --  generate a conversion to it.
+
+         if Utyp /= Base_Type (Utyp) then
+            pragma Assert (Is_Private_Type (Typ));
+
+            Utyp := Base_Type (Utyp);
+         end if;
+
+         return TSS (Utyp, TSS_Finalize_Address);
+      end Find_Finalize_Address;
 
       -----------------
       -- Find_Object --
@@ -375,8 +521,7 @@ package body Exp_Util is
       function Is_Allocate_Deallocate_Proc (Subp : Entity_Id) return Boolean is
       begin
          --  Look for a subprogram body with only one statement which is a
-         --  call to one of the Allocate / Deallocate routines in package
-         --  Ada.Finalization.Heap_Management.
+         --  call to Allocate_Any_Controlled / Deallocate_Any_Controlled.
 
          if Ekind (Subp) = E_Procedure
            and then Nkind (Parent (Parent (Subp))) = N_Subprogram_Body
@@ -394,8 +539,8 @@ package body Exp_Util is
                   Proc := Entity (Name (First (Statements (HSS))));
 
                   return
-                    Is_RTE (Proc, RE_Allocate)
-                      or else Is_RTE (Proc, RE_Deallocate);
+                    Is_RTE (Proc, RE_Allocate_Any_Controlled)
+                      or else Is_RTE (Proc, RE_Deallocate_Any_Controlled);
                end if;
             end;
          end if;
@@ -406,18 +551,124 @@ package body Exp_Util is
    --  Start of processing for Build_Allocate_Deallocate_Proc
 
    begin
-      --  The allocation / deallocation of a non-controlled object does not
-      --  need the machinery created by this routine.
+      --  Do not perform this expansion in Alfa mode because it is not
+      --  necessary.
 
-      if not Needs_Finalization (Desig_Typ) then
+      if Alfa_Mode then
+         return;
+      end if;
+
+      --  Obtain the attributes of the allocation / deallocation
+
+      if Nkind (N) = N_Free_Statement then
+         Expr := Expression (N);
+         Ptr_Typ := Base_Type (Etype (Expr));
+         Proc_To_Call := Procedure_To_Call (N);
+
+      else
+         if Nkind (N) = N_Object_Declaration then
+            Expr := Expression (N);
+         else
+            Expr := N;
+         end if;
+
+         --  In certain cases an allocator with a qualified expression may
+         --  be relocated and used as the initialization expression of a
+         --  temporary:
+
+         --    before:
+         --       Obj : Ptr_Typ := new Desig_Typ'(...);
+
+         --    after:
+         --       Tmp : Ptr_Typ := new Desig_Typ'(...);
+         --       Obj : Ptr_Typ := Tmp;
+
+         --  Since the allocator is always marked as analyzed to avoid infinite
+         --  expansion, it will never be processed by this routine given that
+         --  the designated type needs finalization actions. Detect this case
+         --  and complete the expansion of the allocator.
+
+         if Nkind (Expr) = N_Identifier
+           and then Nkind (Parent (Entity (Expr))) = N_Object_Declaration
+           and then Nkind (Expression (Parent (Entity (Expr)))) = N_Allocator
+         then
+            Build_Allocate_Deallocate_Proc (Parent (Entity (Expr)), True);
+            return;
+         end if;
+
+         --  The allocator may have been rewritten into something else in which
+         --  case the expansion performed by this routine does not apply.
+
+         if Nkind (Expr) /= N_Allocator then
+            return;
+         end if;
+
+         Ptr_Typ := Base_Type (Etype (Expr));
+         Proc_To_Call := Procedure_To_Call (Expr);
+      end if;
+
+      Pool_Id := Associated_Storage_Pool (Ptr_Typ);
+      Desig_Typ := Available_View (Designated_Type (Ptr_Typ));
+
+      --  Handle concurrent types
+
+      if Is_Concurrent_Type (Desig_Typ)
+        and then Present (Corresponding_Record_Type (Desig_Typ))
+      then
+         Desig_Typ := Corresponding_Record_Type (Desig_Typ);
+      end if;
+
+      --  Do not process allocations / deallocations without a pool
+
+      if No (Pool_Id) then
          return;
 
-      --  The allocator or free statement has already been expanded and already
-      --  has a custom Allocate / Deallocate routine.
+      --  Do not process allocations on / deallocations from the secondary
+      --  stack.
+
+      elsif Is_RTE (Pool_Id, RE_SS_Pool) then
+         return;
+
+      --  Do not replicate the machinery if the allocator / free has already
+      --  been expanded and has a custom Allocate / Deallocate.
+
+      elsif Present (Proc_To_Call)
+        and then Is_Allocate_Deallocate_Proc (Proc_To_Call)
+      then
+         return;
+      end if;
+
+      if Needs_Finalization (Desig_Typ) then
+
+         --  Certain run-time configurations and targets do not provide support
+         --  for controlled types.
+
+         if Restriction_Active (No_Finalization) then
+            return;
+
+         --  Do nothing if the access type may never allocate / deallocate
+         --  objects.
+
+         elsif No_Pool_Assigned (Ptr_Typ) then
+            return;
+
+         --  Access-to-controlled types are not supported on .NET/JVM since
+         --  these targets cannot support pools and address arithmetic.
+
+         elsif VM_Target /= No_VM then
+            return;
+         end if;
+
+         --  The allocation / deallocation of a controlled object must be
+         --  chained on / detached from a finalization master.
+
+         pragma Assert (Present (Finalization_Master (Ptr_Typ)));
+
+      --  The only other kind of allocation / deallocation supported by this
+      --  routine is on / from a subpool.
 
       elsif Nkind (Expr) = N_Allocator
-        and then Present (Procedure_To_Call (Expr))
-        and then Is_Allocate_Deallocate_Proc (Procedure_To_Call (Expr))
+        and then No (Subpool_Handle_Name (Expr))
       then
          return;
       end if;
@@ -430,137 +681,224 @@ package body Exp_Util is
          Size_Id : constant Entity_Id := Make_Temporary (Loc, 'S');
 
          Actuals      : List_Id;
-         Collect_Act  : Node_Id;
-         Collect_Id   : Entity_Id;
-         Collect_Typ  : Entity_Id;
+         Fin_Addr_Id  : Entity_Id;
+         Fin_Mas_Act  : Node_Id;
+         Fin_Mas_Id   : Entity_Id;
          Proc_To_Call : Entity_Id;
+         Subpool      : Node_Id := Empty;
 
       begin
-         --  When dealing with an access subtype, use the collection of the
-         --  base type.
+         --  Step 1: Construct all the actuals for the call to library routine
+         --  Allocate_Any_Controlled / Deallocate_Any_Controlled.
 
-         if Ekind (Ptr_Typ) = E_Access_Subtype then
-            Collect_Typ := Base_Type (Ptr_Typ);
+         --  a) Storage pool
+
+         Actuals := New_List (New_Reference_To (Pool_Id, Loc));
+
+         if Is_Allocate then
+
+            --  b) Subpool
+
+            if Nkind (Expr) = N_Allocator then
+               Subpool := Subpool_Handle_Name (Expr);
+            end if;
+
+            if Present (Subpool) then
+               Append_To (Actuals, New_Reference_To (Entity (Subpool), Loc));
+            else
+               Append_To (Actuals, Make_Null (Loc));
+            end if;
+
+            --  c) Finalization master
+
+            if Needs_Finalization (Desig_Typ) then
+               Fin_Mas_Id  := Finalization_Master (Ptr_Typ);
+               Fin_Mas_Act := New_Reference_To (Fin_Mas_Id, Loc);
+
+               --  Handle the case where the master is actually a pointer to a
+               --  master. This case arises in build-in-place functions.
+
+               if Is_Access_Type (Etype (Fin_Mas_Id)) then
+                  Append_To (Actuals, Fin_Mas_Act);
+               else
+                  Append_To (Actuals,
+                    Make_Attribute_Reference (Loc,
+                      Prefix         => Fin_Mas_Act,
+                      Attribute_Name => Name_Unrestricted_Access));
+               end if;
+            else
+               Append_To (Actuals, Make_Null (Loc));
+            end if;
+
+            --  d) Finalize_Address
+
+            --  Primitive Finalize_Address is never generated in CodePeer mode
+            --  since it contains an Unchecked_Conversion.
+
+            if Needs_Finalization (Desig_Typ)
+              and then not CodePeer_Mode
+            then
+               Fin_Addr_Id := Find_Finalize_Address (Desig_Typ);
+               pragma Assert (Present (Fin_Addr_Id));
+
+               Append_To (Actuals,
+                 Make_Attribute_Reference (Loc,
+                   Prefix         => New_Reference_To (Fin_Addr_Id, Loc),
+                   Attribute_Name => Name_Unrestricted_Access));
+            else
+               Append_To (Actuals, Make_Null (Loc));
+            end if;
+         end if;
+
+         --  e) Address
+         --  f) Storage_Size
+         --  g) Alignment
+
+         Append_To (Actuals, New_Reference_To (Addr_Id, Loc));
+         Append_To (Actuals, New_Reference_To (Size_Id, Loc));
+
+         if Is_Allocate or else not Is_Class_Wide_Type (Desig_Typ) then
+            Append_To (Actuals, New_Reference_To (Alig_Id, Loc));
+
+         --  For deallocation of class wide types we obtain the value of
+         --  alignment from the Type Specific Record of the deallocated object.
+         --  This is needed because the frontend expansion of class-wide types
+         --  into equivalent types confuses the backend.
+
          else
-            Collect_Typ := Ptr_Typ;
+            --  Generate:
+            --     Obj.all'Alignment
+
+            --  ... because 'Alignment applied to class-wide types is expanded
+            --  into the code that reads the value of alignment from the TSD
+            --  (see Expand_N_Attribute_Reference)
+
+            Append_To (Actuals,
+              Unchecked_Convert_To (RTE (RE_Storage_Offset),
+                Make_Attribute_Reference (Loc,
+                  Prefix         =>
+                    Make_Explicit_Dereference (Loc, Relocate_Node (Expr)),
+                  Attribute_Name => Name_Alignment)));
          end if;
 
-         Collect_Id  := Associated_Collection (Collect_Typ);
-         Collect_Act := New_Reference_To (Collect_Id, Loc);
-
-         --  Handle the case where the collection is actually a pointer to a
-         --  collection. This case arises in build-in-place functions.
-
-         if Is_Access_Type (Etype (Collect_Id)) then
-            Collect_Act :=
-              Make_Explicit_Dereference (Loc,
-                Prefix => Collect_Act);
-         end if;
-
-         --  Create the actuals for the call to Allocate / Deallocate
-
-         Actuals := New_List (
-           Collect_Act,
-           New_Reference_To (Addr_Id, Loc),
-           New_Reference_To (Size_Id, Loc),
-           New_Reference_To (Alig_Id, Loc));
+         --  h) Is_Controlled
 
          --  Generate a run-time check to determine whether a class-wide object
          --  is truly controlled.
 
-         if Is_Class_Wide_Type (Desig_Typ)
-           or else Is_Generic_Actual_Type (Desig_Typ)
-         then
-            declare
-               Flag_Id   : constant Entity_Id := Make_Temporary (Loc, 'F');
-               Flag_Expr : Node_Id;
-               Param     : Node_Id;
-               Temp      : Node_Id;
+         if Needs_Finalization (Desig_Typ) then
+            if Is_Class_Wide_Type (Desig_Typ)
+              or else Is_Generic_Actual_Type (Desig_Typ)
+            then
+               declare
+                  Flag_Id   : constant Entity_Id := Make_Temporary (Loc, 'F');
+                  Flag_Expr : Node_Id;
+                  Param     : Node_Id;
+                  Temp      : Node_Id;
 
-            begin
-               if Is_Allocate then
-                  Temp := Find_Object (Expression (Expr));
-               else
-                  Temp := Expr;
-               end if;
-
-               --  Processing for generic actuals
-
-               if Is_Generic_Actual_Type (Desig_Typ) then
-                  Flag_Expr :=
-                    New_Reference_To (Boolean_Literals
-                      (Needs_Finalization (Base_Type (Desig_Typ))), Loc);
-
-               --  Processing for subtype indications
-
-               elsif Nkind (Temp) in N_Has_Entity
-                 and then Is_Type (Entity (Temp))
-               then
-                  Flag_Expr :=
-                    New_Reference_To (Boolean_Literals
-                      (Needs_Finalization (Entity (Temp))), Loc);
-
-               --  Generate a runtime check to test the controlled state of an
-               --  object for the purposes of allocation / deallocation.
-
-               else
-                  --  The following case arises when allocating through an
-                  --  interface class-wide type, generate:
-                  --
-                  --    Temp.all
-
-                  if Is_RTE (Etype (Temp), RE_Tag_Ptr) then
-                     Param :=
-                       Make_Explicit_Dereference (Loc,
-                         Prefix =>
-                           Relocate_Node (Temp));
-
-                  --  Generate:
-                  --    Temp'Tag
-
+               begin
+                  if Is_Allocate then
+                     Temp := Find_Object (Expression (Expr));
                   else
-                     Param :=
-                       Make_Attribute_Reference (Loc,
-                         Prefix =>
-                           Relocate_Node (Temp),
-                         Attribute_Name => Name_Tag);
+                     Temp := Expr;
                   end if;
 
-                  --  Generate:
-                  --    Needs_Finalization (Param)
+                  --  Processing for generic actuals
 
-                  Flag_Expr :=
-                    Make_Function_Call (Loc,
-                      Name =>
-                        New_Reference_To (RTE (RE_Needs_Finalization), Loc),
-                      Parameter_Associations => New_List (Param));
-               end if;
+                  if Is_Generic_Actual_Type (Desig_Typ) then
+                     Flag_Expr :=
+                       New_Reference_To (Boolean_Literals
+                         (Needs_Finalization (Base_Type (Desig_Typ))), Loc);
 
-               --  Create the temporary which represents the finalization state
-               --  of the expression. Generate:
-               --
-               --    F : constant Boolean := <Flag_Expr>;
+                  --  Processing for subtype indications
 
-               Insert_Action (N,
-                 Make_Object_Declaration (Loc,
-                   Defining_Identifier => Flag_Id,
-                   Constant_Present => True,
-                   Object_Definition =>
-                     New_Reference_To (Standard_Boolean, Loc),
-                   Expression => Flag_Expr));
+                  elsif Nkind (Temp) in N_Has_Entity
+                    and then Is_Type (Entity (Temp))
+                  then
+                     Flag_Expr :=
+                       New_Reference_To (Boolean_Literals
+                         (Needs_Finalization (Entity (Temp))), Loc);
 
-               --  The flag acts as the fifth actual
+                  --  Generate a runtime check to test the controlled state of
+                  --  an object for the purposes of allocation / deallocation.
 
-               Append_To (Actuals, New_Reference_To (Flag_Id, Loc));
-            end;
+                  else
+                     --  The following case arises when allocating through an
+                     --  interface class-wide type, generate:
+                     --
+                     --    Temp.all
+
+                     if Is_RTE (Etype (Temp), RE_Tag_Ptr) then
+                        Param :=
+                          Make_Explicit_Dereference (Loc,
+                            Prefix =>
+                              Relocate_Node (Temp));
+
+                     --  Generate:
+                     --    Temp'Tag
+
+                     else
+                        Param :=
+                          Make_Attribute_Reference (Loc,
+                            Prefix =>
+                              Relocate_Node (Temp),
+                            Attribute_Name => Name_Tag);
+                     end if;
+
+                     --  Generate:
+                     --    Needs_Finalization (<Param>)
+
+                     Flag_Expr :=
+                       Make_Function_Call (Loc,
+                         Name =>
+                           New_Reference_To (RTE (RE_Needs_Finalization), Loc),
+                         Parameter_Associations => New_List (Param));
+                  end if;
+
+                  --  Create the temporary which represents the finalization
+                  --  state of the expression. Generate:
+                  --
+                  --    F : constant Boolean := <Flag_Expr>;
+
+                  Insert_Action (N,
+                    Make_Object_Declaration (Loc,
+                      Defining_Identifier => Flag_Id,
+                      Constant_Present => True,
+                      Object_Definition =>
+                        New_Reference_To (Standard_Boolean, Loc),
+                      Expression => Flag_Expr));
+
+                  --  The flag acts as the last actual
+
+                  Append_To (Actuals, New_Reference_To (Flag_Id, Loc));
+               end;
+
+            --  The object is statically known to be controlled
+
+            else
+               Append_To (Actuals, New_Reference_To (Standard_True, Loc));
+            end if;
+
+         else
+            Append_To (Actuals, New_Reference_To (Standard_False, Loc));
          end if;
+
+         --  i) On_Subpool
+
+         if Is_Allocate then
+            Append_To (Actuals,
+              New_Reference_To (Boolean_Literals (Present (Subpool)), Loc));
+         end if;
+
+         --  Step 2: Build a wrapper Allocate / Deallocate which internally
+         --  calls Allocate_Any_Controlled / Deallocate_Any_Controlled.
 
          --  Select the proper routine to call
 
          if Is_Allocate then
-            Proc_To_Call := RTE (RE_Allocate);
+            Proc_To_Call := RTE (RE_Allocate_Any_Controlled);
          else
-            Proc_To_Call := RTE (RE_Deallocate);
+            Proc_To_Call := RTE (RE_Deallocate_Any_Controlled);
          end if;
 
          --  Create a custom Allocate / Deallocate routine which has identical
@@ -579,8 +917,7 @@ package body Exp_Util is
                   --  P : Root_Storage_Pool
 
                    Make_Parameter_Specification (Loc,
-                     Defining_Identifier =>
-                       Make_Temporary (Loc, 'P'),
+                     Defining_Identifier => Make_Temporary (Loc, 'P'),
                      Parameter_Type =>
                        New_Reference_To (RTE (RE_Root_Storage_Pool), Loc)),
 
@@ -588,22 +925,22 @@ package body Exp_Util is
 
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Addr_Id,
-                     Out_Present => Is_Allocate,
-                     Parameter_Type =>
+                     Out_Present         => Is_Allocate,
+                     Parameter_Type      =>
                        New_Reference_To (RTE (RE_Address), Loc)),
 
                   --  S : Storage_Count
 
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Size_Id,
-                     Parameter_Type =>
+                     Parameter_Type      =>
                        New_Reference_To (RTE (RE_Storage_Count), Loc)),
 
                   --  L : Storage_Count
 
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Alig_Id,
-                     Parameter_Type =>
+                     Parameter_Type      =>
                        New_Reference_To (RTE (RE_Storage_Count), Loc)))),
 
              Declarations => No_List,
@@ -611,13 +948,8 @@ package body Exp_Util is
              Handled_Statement_Sequence =>
                Make_Handled_Sequence_Of_Statements (Loc,
                  Statements => New_List (
-
-                  --  Allocate / Deallocate
-                  --    (<Ptr_Typ collection>, A, S, L[, F]);
-
                    Make_Procedure_Call_Statement (Loc,
-                     Name =>
-                       New_Reference_To (Proc_To_Call, Loc),
+                     Name => New_Reference_To (Proc_To_Call, Loc),
                      Parameter_Associations => Actuals)))));
 
          --  The newly generated Allocate / Deallocate becomes the default
@@ -1283,9 +1615,6 @@ package body Exp_Util is
 
       if Ekind (Typ) in Protected_Kind then
          if Has_Entries (Typ)
-           or else Has_Interrupt_Handler (Typ)
-           or else (Has_Attach_Handler (Typ)
-                      and then not Restricted_Profile)
 
             --  A protected type without entries that covers an interface and
             --  overrides the abstract routines with protected procedures is
@@ -1295,12 +1624,16 @@ package body Exp_Util is
             --  node to recognize this case.
 
            or else Present (Interface_List (Parent (Typ)))
+           or else
+             (((Has_Attach_Handler (Typ) and then not Restricted_Profile)
+                 or else Has_Interrupt_Handler (Typ))
+               and then not Restriction_Active (No_Dynamic_Attachment))
          then
             if Abort_Allowed
               or else Restriction_Active (No_Entry_Queue) = False
               or else Number_Entries (Typ) > 1
               or else (Has_Attach_Handler (Typ)
-                         and then not Restricted_Profile)
+                        and then not Restricted_Profile)
             then
                Pkg_Id := System_Tasking_Protected_Objects_Entries;
             else
@@ -1327,10 +1660,8 @@ package body Exp_Util is
 
       if Act_ST = Etype (Exp) then
          return;
-
       else
-         Rewrite (Exp,
-           Convert_To (Act_ST, Relocate_Node (Exp)));
+         Rewrite (Exp, Convert_To (Act_ST, Relocate_Node (Exp)));
          Analyze_And_Resolve (Exp, Act_ST);
       end if;
    end Convert_To_Actual_Subtype;
@@ -1411,7 +1742,6 @@ package body Exp_Util is
       Name_Req : Boolean := False) return Node_Id
    is
       New_Exp : Node_Id;
-
    begin
       Remove_Side_Effects (Exp, Name_Req);
       New_Exp := New_Copy_Tree (Exp);
@@ -1451,6 +1781,100 @@ package body Exp_Util is
           and then not Restriction_Active (No_Implicit_Heap_Allocations)
           and then not Restriction_Active (No_Local_Allocators);
    end Entry_Names_OK;
+
+   -------------------
+   -- Evaluate_Name --
+   -------------------
+
+   procedure Evaluate_Name (Nam : Node_Id) is
+      K : constant Node_Kind := Nkind (Nam);
+
+   begin
+      --  For an explicit dereference, we simply force the evaluation of the
+      --  name expression. The dereference provides a value that is the address
+      --  for the renamed object, and it is precisely this value that we want
+      --  to preserve.
+
+      if K = N_Explicit_Dereference then
+         Force_Evaluation (Prefix (Nam));
+
+      --  For a selected component, we simply evaluate the prefix
+
+      elsif K = N_Selected_Component then
+         Evaluate_Name (Prefix (Nam));
+
+      --  For an indexed component, or an attribute reference, we evaluate the
+      --  prefix, which is itself a name, recursively, and then force the
+      --  evaluation of all the subscripts (or attribute expressions).
+
+      elsif Nkind_In (K, N_Indexed_Component, N_Attribute_Reference) then
+         Evaluate_Name (Prefix (Nam));
+
+         declare
+            E : Node_Id;
+
+         begin
+            E := First (Expressions (Nam));
+            while Present (E) loop
+               Force_Evaluation (E);
+
+               if Original_Node (E) /= E then
+                  Set_Do_Range_Check (E, Do_Range_Check (Original_Node (E)));
+               end if;
+
+               Next (E);
+            end loop;
+         end;
+
+      --  For a slice, we evaluate the prefix, as for the indexed component
+      --  case and then, if there is a range present, either directly or as the
+      --  constraint of a discrete subtype indication, we evaluate the two
+      --  bounds of this range.
+
+      elsif K = N_Slice then
+         Evaluate_Name (Prefix (Nam));
+
+         declare
+            DR     : constant Node_Id := Discrete_Range (Nam);
+            Constr : Node_Id;
+            Rexpr  : Node_Id;
+
+         begin
+            if Nkind (DR) = N_Range then
+               Force_Evaluation (Low_Bound (DR));
+               Force_Evaluation (High_Bound (DR));
+
+            elsif Nkind (DR) = N_Subtype_Indication then
+               Constr := Constraint (DR);
+
+               if Nkind (Constr) = N_Range_Constraint then
+                  Rexpr := Range_Expression (Constr);
+
+                  Force_Evaluation (Low_Bound (Rexpr));
+                  Force_Evaluation (High_Bound (Rexpr));
+               end if;
+            end if;
+         end;
+
+      --  For a type conversion, the expression of the conversion must be the
+      --  name of an object, and we simply need to evaluate this name.
+
+      elsif K = N_Type_Conversion then
+         Evaluate_Name (Expression (Nam));
+
+      --  For a function call, we evaluate the call
+
+      elsif K = N_Function_Call then
+         Force_Evaluation (Nam);
+
+      --  The remaining cases are direct name, operator symbol and character
+      --  literal. In all these cases, we do nothing, since we want to
+      --  reevaluate each time the renamed object is used.
+
+      else
+         return;
+      end if;
+   end Evaluate_Name;
 
    ---------------------
    -- Evolve_And_Then --
@@ -1684,11 +2108,11 @@ package body Exp_Util is
       then
          null;
 
-      --  In Ada95 nothing to be done if the type of the expression is limited,
+      --  In Ada 95 nothing to be done if the type of the expression is limited
       --  because in this case the expression cannot be copied, and its use can
       --  only be by reference.
 
-      --  In Ada2005, the context can be an object declaration whose expression
+      --  In Ada 2005 the context can be an object declaration whose expression
       --  is a function that returns in place. If the nominal subtype has
       --  unknown discriminants, the call still provides constraints on the
       --  object, and we have to create an actual subtype from it.
@@ -2105,6 +2529,15 @@ package body Exp_Util is
    begin
       if Is_Concurrent_Type (Typ) then
          Typ := Corresponding_Record_Type (Typ);
+      end if;
+
+      --  Since restriction violations are not considered serious errors, the
+      --  expander remains active, but may leave the corresponding record type
+      --  malformed. In such cases, component _object is not available so do
+      --  not look for it.
+
+      if not Analyzed (Typ) then
+         return Empty;
       end if;
 
       Comp := First_Component (Typ);
@@ -3028,6 +3461,11 @@ package body Exp_Util is
                N_Task_Body_Stub                         |
                N_Task_Type_Declaration                  |
 
+               --  Use clauses can appear in lists of declarations
+
+               N_Use_Package_Clause                     |
+               N_Use_Type_Clause                        |
+
                --  Freeze entity behaves like a declaration or statement
 
                N_Freeze_Entity
@@ -3241,6 +3679,7 @@ package body Exp_Util is
                N_Formal_Ordinary_Fixed_Point_Definition |
                N_Formal_Package_Declaration             |
                N_Formal_Private_Type_Definition         |
+               N_Formal_Incomplete_Type_Definition      |
                N_Formal_Signed_Integer_Type_Definition  |
                N_Function_Call                          |
                N_Function_Specification                 |
@@ -3328,8 +3767,6 @@ package body Exp_Util is
                N_Unconstrained_Array_Definition         |
                N_Unused_At_End                          |
                N_Unused_At_Start                        |
-               N_Use_Package_Clause                     |
-               N_Use_Type_Clause                        |
                N_Variant                                |
                N_Variant_Part                           |
                N_Validate_Unchecked_Conversion          |
@@ -3504,11 +3941,9 @@ package body Exp_Util is
      (Decl     : Node_Id;
       Rel_Node : Node_Id) return Boolean
    is
-      Obj_Id   : constant Entity_Id := Defining_Identifier (Decl);
-      Obj_Typ  : constant Entity_Id := Base_Type (Etype (Obj_Id));
-      Desig    : Entity_Id := Obj_Typ;
-      Has_Rens : Boolean   := True;
-      Ren_Obj  : Entity_Id;
+      Obj_Id  : constant Entity_Id := Defining_Identifier (Decl);
+      Obj_Typ : constant Entity_Id := Base_Type (Etype (Obj_Id));
+      Desig   : Entity_Id := Obj_Typ;
 
       function Initialized_By_Access (Trans_Id : Entity_Id) return Boolean;
       --  Determine whether transient object Trans_Id is initialized either
@@ -3522,14 +3957,22 @@ package body Exp_Util is
       --  value 1 and BIPaccess is not null. This case creates an aliasing
       --  between the returned value and the value denoted by BIPaccess.
 
+      function Is_Aliased
+        (Trans_Id   : Entity_Id;
+         First_Stmt : Node_Id) return Boolean;
+      --  Determine whether transient object Trans_Id has been renamed or
+      --  aliased through 'reference in the statement list starting from
+      --  First_Stmt.
+
       function Is_Allocated (Trans_Id : Entity_Id) return Boolean;
       --  Determine whether transient object Trans_Id is allocated on the heap
 
-      function Is_Renamed
+      function Is_Iterated_Container
         (Trans_Id   : Entity_Id;
          First_Stmt : Node_Id) return Boolean;
-      --  Determine whether transient object Trans_Id has been renamed in the
-      --  statement list starting from First_Stmt.
+      --  Determine whether transient object Trans_Id denotes a container which
+      --  is in the process of being iterated in the statement list starting
+      --  from First_Stmt.
 
       ---------------------------
       -- Initialized_By_Access --
@@ -3630,95 +4073,94 @@ package body Exp_Util is
          return False;
       end Initialized_By_Aliased_BIP_Func_Call;
 
-      ------------------
-      -- Is_Allocated --
-      ------------------
-
-      function Is_Allocated (Trans_Id : Entity_Id) return Boolean is
-         Expr : constant Node_Id := Expression (Parent (Trans_Id));
-
-      begin
-         return
-           Is_Access_Type (Etype (Trans_Id))
-             and then Present (Expr)
-             and then Nkind (Expr) = N_Allocator;
-      end Is_Allocated;
-
       ----------------
-      -- Is_Renamed --
+      -- Is_Aliased --
       ----------------
 
-      function Is_Renamed
+      function Is_Aliased
         (Trans_Id   : Entity_Id;
          First_Stmt : Node_Id) return Boolean
       is
-         Stmt : Node_Id;
-
-         function Extract_Renamed_Object
-           (Ren_Decl : Node_Id) return Entity_Id;
+         function Find_Renamed_Object (Ren_Decl : Node_Id) return Entity_Id;
          --  Given an object renaming declaration, retrieve the entity of the
          --  renamed name. Return Empty if the renamed name is anything other
          --  than a variable or a constant.
 
-         ----------------------------
-         -- Extract_Renamed_Object --
-         ----------------------------
+         -------------------------
+         -- Find_Renamed_Object --
+         -------------------------
 
-         function Extract_Renamed_Object
-           (Ren_Decl : Node_Id) return Entity_Id
-         is
-            Change  : Boolean;
-            Ren_Obj : Node_Id;
+         function Find_Renamed_Object (Ren_Decl : Node_Id) return Entity_Id is
+            Ren_Obj : Node_Id := Empty;
+
+            function Find_Object (N : Node_Id) return Traverse_Result;
+            --  Try to detect an object which is either a constant or a
+            --  variable.
+
+            -----------------
+            -- Find_Object --
+            -----------------
+
+            function Find_Object (N : Node_Id) return Traverse_Result is
+            begin
+               --  Stop the search once a constant or a variable has been
+               --  detected.
+
+               if Nkind (N) = N_Identifier
+                 and then Present (Entity (N))
+                 and then Ekind_In (Entity (N), E_Constant, E_Variable)
+               then
+                  Ren_Obj := Entity (N);
+                  return Abandon;
+               end if;
+
+               return OK;
+            end Find_Object;
+
+            procedure Search is new Traverse_Proc (Find_Object);
+
+            --  Local variables
+
+            Typ : constant Entity_Id := Etype (Defining_Identifier (Ren_Decl));
+
+         --  Start of processing for Find_Renamed_Object
 
          begin
-            Change  := True;
-            Ren_Obj := Renamed_Object (Defining_Identifier (Ren_Decl));
+            --  Actions related to dispatching calls may appear as renamings of
+            --  tags. Do not process this type of renaming because it does not
+            --  use the actual value of the object.
 
-            while Change loop
-               Change := False;
-
-               if Nkind_In (Ren_Obj, N_Explicit_Dereference,
-                                     N_Indexed_Component,
-                                     N_Selected_Component)
-               then
-                  Ren_Obj := Prefix (Ren_Obj);
-                  Change := True;
-
-               elsif Nkind_In (Ren_Obj, N_Type_Conversion,
-                                        N_Unchecked_Type_Conversion)
-               then
-                  Ren_Obj := Expression (Ren_Obj);
-                  Change := True;
-               end if;
-            end loop;
-
-            if Nkind (Ren_Obj) in N_Has_Entity then
-               return Entity (Ren_Obj);
+            if not Is_RTE (Typ, RE_Tag_Ptr) then
+               Search (Name (Ren_Decl));
             end if;
 
-            return Empty;
-         end Extract_Renamed_Object;
+            return Ren_Obj;
+         end Find_Renamed_Object;
 
-      --  Start of processing for Is_Renamed
+         --  Local variables
+
+         Expr    : Node_Id;
+         Ren_Obj : Entity_Id;
+         Stmt    : Node_Id;
+
+      --  Start of processing for Is_Aliased
 
       begin
-         --  If a previous invocation of this routine has determined that a
-         --  list has no renamings, then no point in repeating the same scan.
-
-         if not Has_Rens then
-            return False;
-         end if;
-
-         --  Assume that the statement list does not have a renaming. This is a
-         --  minor optimization.
-
-         Has_Rens := False;
-
          Stmt := First_Stmt;
          while Present (Stmt) loop
-            if Nkind (Stmt) = N_Object_Renaming_Declaration then
-               Has_Rens := True;
-               Ren_Obj  := Extract_Renamed_Object (Stmt);
+            if Nkind (Stmt) = N_Object_Declaration then
+               Expr := Expression (Stmt);
+
+               if Present (Expr)
+                 and then Nkind (Expr) = N_Reference
+                 and then Nkind (Prefix (Expr)) = N_Identifier
+                 and then Entity (Prefix (Expr)) = Trans_Id
+               then
+                  return True;
+               end if;
+
+            elsif Nkind (Stmt) = N_Object_Renaming_Declaration then
+               Ren_Obj := Find_Renamed_Object (Stmt);
 
                if Present (Ren_Obj)
                  and then Ren_Obj = Trans_Id
@@ -3731,7 +4173,104 @@ package body Exp_Util is
          end loop;
 
          return False;
-      end Is_Renamed;
+      end Is_Aliased;
+
+      ------------------
+      -- Is_Allocated --
+      ------------------
+
+      function Is_Allocated (Trans_Id : Entity_Id) return Boolean is
+         Expr : constant Node_Id := Expression (Parent (Trans_Id));
+      begin
+         return
+           Is_Access_Type (Etype (Trans_Id))
+             and then Present (Expr)
+             and then Nkind (Expr) = N_Allocator;
+      end Is_Allocated;
+
+      ---------------------------
+      -- Is_Iterated_Container --
+      ---------------------------
+
+      function Is_Iterated_Container
+        (Trans_Id   : Entity_Id;
+         First_Stmt : Node_Id) return Boolean
+      is
+         Aspect : Node_Id;
+         Call   : Node_Id;
+         Iter   : Entity_Id;
+         Param  : Node_Id;
+         Stmt   : Node_Id;
+         Typ    : Entity_Id;
+
+      begin
+         --  It is not possible to iterate over containers in non-Ada 2012 code
+
+         if Ada_Version < Ada_2012 then
+            return False;
+         end if;
+
+         Typ := Etype (Trans_Id);
+
+         --  Handle access type created for secondary stack use
+
+         if Is_Access_Type (Typ) then
+            Typ := Designated_Type (Typ);
+         end if;
+
+         --  Look for aspect Default_Iterator
+
+         if Has_Aspects (Parent (Typ)) then
+            Aspect := Find_Aspect (Typ, Aspect_Default_Iterator);
+
+            if Present (Aspect) then
+               Iter := Entity (Aspect);
+
+               --  Examine the statements following the container object and
+               --  look for a call to the default iterate routine where the
+               --  first parameter is the transient. Such a call appears as:
+
+               --     It : Access_To_CW_Iterator :=
+               --            Iterate (Tran_Id.all, ...)'reference;
+
+               Stmt := First_Stmt;
+               while Present (Stmt) loop
+
+                  --  Detect an object declaration which is initialized by a
+                  --  secondary stack function call.
+
+                  if Nkind (Stmt) = N_Object_Declaration
+                    and then Present (Expression (Stmt))
+                    and then Nkind (Expression (Stmt)) = N_Reference
+                    and then Nkind (Prefix (Expression (Stmt))) =
+                               N_Function_Call
+                  then
+                     Call := Prefix (Expression (Stmt));
+
+                     --  The call must invoke the default iterate routine of
+                     --  the container and the transient object must appear as
+                     --  the first actual parameter.
+
+                     if Entity (Name (Call)) = Iter
+                       and then Present (Parameter_Associations (Call))
+                     then
+                        Param := First (Parameter_Associations (Call));
+
+                        if Nkind (Param) = N_Explicit_Dereference
+                          and then Entity (Prefix (Param)) = Trans_Id
+                        then
+                           return True;
+                        end if;
+                     end if;
+                  end if;
+
+                  Next (Stmt);
+               end loop;
+            end if;
+         end if;
+
+         return False;
+      end Is_Iterated_Container;
 
    --  Start of processing for Is_Finalizable_Transient
 
@@ -3748,32 +4287,38 @@ package body Exp_Util is
           and then Requires_Transient_Scope (Desig)
           and then Nkind (Rel_Node) /= N_Simple_Return_Statement
 
-         --  Do not consider transient objects allocated on the heap since they
-         --  are attached to a finalization collection.
+          --  Do not consider renamed or 'reference-d transient objects because
+          --  the act of renaming extends the object's lifetime.
+
+          and then not Is_Aliased (Obj_Id, Decl)
+
+          --  Do not consider transient objects allocated on the heap since
+          --  they are attached to a finalization master.
 
           and then not Is_Allocated (Obj_Id)
 
-         --  If the transient object is a pointer, check that it is not
-         --  initialized by a function which returns a pointer or acts as a
-         --  renaming of another pointer.
+          --  If the transient object is a pointer, check that it is not
+          --  initialized by a function which returns a pointer or acts as a
+          --  renaming of another pointer.
 
           and then
             (not Is_Access_Type (Obj_Typ)
                or else not Initialized_By_Access (Obj_Id))
 
-         --  Do not consider transient objects which act as indirect aliases of
-         --  build-in-place function results.
+          --  Do not consider transient objects which act as indirect aliases
+          --  of build-in-place function results.
 
           and then not Initialized_By_Aliased_BIP_Func_Call (Obj_Id)
 
-         --  Do not consider renamed transient objects because the act of
-         --  renaming extends the object's lifetime.
+          --  Do not consider conversions of tags to class-wide types
 
-          and then not Is_Renamed (Obj_Id, Decl)
+          and then not Is_Tag_To_CW_Conversion (Obj_Id)
 
-         --  Do not consider conversions of tags to class-wide types
+          --  Do not consider containers in the context of iterator loops. Such
+          --  transient objects must exist for as long as the loop is around,
+          --  otherwise any operation carried out by the iterator will fail.
 
-          and then not Is_Tag_To_CW_Conversion (Obj_Id);
+          and then not Is_Iterated_Container (Obj_Id, Decl);
    end Is_Finalizable_Transient;
 
    ---------------------------------
@@ -3942,9 +4487,14 @@ package body Exp_Util is
          return True;
       end if;
 
-      --  Case of component reference
+      --  Case of indexed component reference: test whether prefix is unaligned
 
-      if Nkind (N) = N_Selected_Component then
+      if Nkind (N) = N_Indexed_Component then
+         return Is_Possibly_Unaligned_Object (Prefix (N));
+
+      --  Case of selected component reference
+
+      elsif Nkind (N) = N_Selected_Component then
          declare
             P : constant Node_Id   := Prefix (N);
             C : constant Entity_Id := Entity (Selector_Name (N));
@@ -3954,8 +4504,7 @@ package body Exp_Util is
          begin
             --  If component reference is for an array with non-static bounds,
             --  then it is always aligned: we can only process unaligned arrays
-            --  with static bounds (more accurately bounds known at compile
-            --  time).
+            --  with static bounds (more precisely compile time known bounds).
 
             if Is_Array_Type (T)
               and then not Compile_Time_Known_Bounds (T)
@@ -4015,6 +4564,8 @@ package body Exp_Util is
             --  If the component reference is for a record that has a specified
             --  alignment, and we either know it is too small, or cannot tell,
             --  then the component may be unaligned.
+
+            --  What is the following commented out code ???
 
             --  if Known_Alignment (Etype (P))
             --    and then Alignment (Etype (P)) < Ttypes.Maximum_Alignment
@@ -5189,6 +5740,16 @@ package body Exp_Util is
       if Restriction_Active (No_Finalization) then
          return False;
 
+      --  C, C++, CIL and Java types are not considered controlled. It is
+      --  assumed that the non-Ada side will handle their clean up.
+
+      elsif Convention (T) = Convention_C
+        or else Convention (T) = Convention_CIL
+        or else Convention (T) = Convention_CPP
+        or else Convention (T) = Convention_Java
+      then
+         return False;
+
       else
          --  Class-wide types are treated as controlled because derivations
          --  from the root type can introduce controlled components.
@@ -5432,6 +5993,12 @@ package body Exp_Util is
          when N_Slice =>
             return Possible_Bit_Aligned_Component (Prefix (N));
 
+         --  For an unchecked conversion, check whether the expression may
+         --  be bit-aligned.
+
+         when N_Unchecked_Type_Conversion =>
+            return Possible_Bit_Aligned_Component (Expression (N));
+
          --  If we have none of the above, it means that we have fallen off the
          --  top testing prefixes recursively, and we now have a stand alone
          --  object, where we don't have a problem.
@@ -5483,9 +6050,17 @@ package body Exp_Util is
                  Statements => L));
       end Wrap_Statements_In_Block;
 
+      --  Local variables
+
+      Block : Node_Id;
+
    --  Start of processing for Process_Statements_For_Controlled_Objects
 
    begin
+      --  Whenever a non-handled statement list is wrapped in a block, the
+      --  block must be explicitly analyzed to redecorate all entities in the
+      --  list and ensure that a finalizer is properly built.
+
       case Nkind (N) is
          when N_Elsif_Part             |
               N_If_Statement           |
@@ -5500,8 +6075,10 @@ package body Exp_Util is
               and then Requires_Cleanup_Actions
                          (Then_Statements (N), False, False)
             then
-               Set_Then_Statements (N, New_List (
-                 Wrap_Statements_In_Block (Then_Statements (N))));
+               Block := Wrap_Statements_In_Block (Then_Statements (N));
+               Set_Then_Statements (N, New_List (Block));
+
+               Analyze (Block);
             end if;
 
             --  Check the "else statements" for conditional entry calls, if
@@ -5515,8 +6092,10 @@ package body Exp_Util is
               and then Requires_Cleanup_Actions
                          (Else_Statements (N), False, False)
             then
-               Set_Else_Statements (N, New_List (
-                 Wrap_Statements_In_Block (Else_Statements (N))));
+               Block := Wrap_Statements_In_Block (Else_Statements (N));
+               Set_Else_Statements (N, New_List (Block));
+
+               Analyze (Block);
             end if;
 
          when N_Abortable_Part             |
@@ -5532,8 +6111,10 @@ package body Exp_Util is
               and then not Are_Wrapped (Statements (N))
               and then Requires_Cleanup_Actions (Statements (N), False, False)
             then
-               Set_Statements (N, New_List (
-                 Wrap_Statements_In_Block (Statements (N))));
+               Block := Wrap_Statements_In_Block (Statements (N));
+               Set_Statements (N, New_List (Block));
+
+               Analyze (Block);
             end if;
 
          when others                       =>
@@ -5554,11 +6135,11 @@ package body Exp_Util is
       Exp_Type     : constant Entity_Id      := Etype (Exp);
       Svg_Suppress : constant Suppress_Array := Scope_Suppress;
       Def_Id       : Entity_Id;
+      E            : Node_Id;
+      New_Exp      : Node_Id;
+      Ptr_Typ_Decl : Node_Id;
       Ref_Type     : Entity_Id;
       Res          : Node_Id;
-      Ptr_Typ_Decl : Node_Id;
-      New_Exp      : Node_Id;
-      E            : Node_Id;
 
       function Side_Effect_Free (N : Node_Id) return Boolean;
       --  Determines if the tree N represents an expression that is known not
@@ -5620,30 +6201,77 @@ package body Exp_Util is
          --  We do NOT exclude dereferences of access-to-constant types because
          --  we handle them as constant view of variables.
 
-         --  Exception is an access to an entity that is a constant or an
-         --  in-parameter.
-
          elsif Nkind (Prefix (N)) = N_Explicit_Dereference
            and then Variable_Ref
          then
-            declare
-               DDT : constant Entity_Id :=
-                       Designated_Type (Etype (Prefix (Prefix (N))));
-            begin
-               return Ekind_In (DDT, E_Constant, E_In_Parameter);
-            end;
+            return False;
 
-         --  The following test is the simplest way of solving a complex
-         --  problem uncovered by BB08-010: Side effect on loop bound that
-         --  is a subcomponent of a global variable:
+         --  Note: The following test is the simplest way of solving a complex
+         --  problem uncovered by the following test (Side effect on loop bound
+         --  that is a subcomponent of a global variable:
 
-         --    If a loop bound is a subcomponent of a global variable, a
-         --    modification of that variable within the loop may incorrectly
-         --    affect the execution of the loop.
+         --    with Text_Io; use Text_Io;
+         --    procedure Tloop is
+         --      type X is
+         --        record
+         --          V : Natural := 4;
+         --          S : String (1..5) := (others => 'a');
+         --        end record;
+         --      X1 : X;
 
-         elsif not
-           (Nkind (Parent (Parent (N))) /= N_Loop_Parameter_Specification
-              or else not Within_In_Parameter (Prefix (N)))
+         --      procedure Modi;
+
+         --      generic
+         --        with procedure Action;
+         --      procedure Loop_G (Arg : X; Msg : String)
+
+         --      procedure Loop_G (Arg : X; Msg : String) is
+         --      begin
+         --        Put_Line ("begin loop_g " & Msg & " will loop till: "
+         --                  & Natural'Image (Arg.V));
+         --        for Index in 1 .. Arg.V loop
+         --          Text_Io.Put_Line
+         --            (Natural'Image (Index) & " " & Arg.S (Index));
+         --          if Index > 2 then
+         --            Modi;
+         --          end if;
+         --        end loop;
+         --        Put_Line ("end loop_g " & Msg);
+         --      end;
+
+         --      procedure Loop1 is new Loop_G (Modi);
+         --      procedure Modi is
+         --      begin
+         --        X1.V := 1;
+         --        Loop1 (X1, "from modi");
+         --      end;
+         --
+         --    begin
+         --      Loop1 (X1, "initial");
+         --    end;
+
+         --  The output of the above program should be:
+
+         --    begin loop_g initial will loop till:  4
+         --     1 a
+         --     2 a
+         --     3 a
+         --    begin loop_g from modi will loop till:  1
+         --     1 a
+         --    end loop_g from modi
+         --     4 a
+         --    begin loop_g from modi will loop till:  1
+         --     1 a
+         --    end loop_g from modi
+         --    end loop_g initial
+
+         --  If a loop bound is a subcomponent of a global variable, a
+         --  modification of that variable within the loop may incorrectly
+         --  affect the execution of the loop.
+
+         elsif Nkind (Parent (Parent (N))) = N_Loop_Parameter_Specification
+           and then Within_In_Parameter (Prefix (N))
+           and then Variable_Ref
          then
             return False;
 
@@ -5746,7 +6374,7 @@ package body Exp_Util is
 
             --  A binary operator is side effect free if and both operands are
             --  side effect free. For this purpose binary operators include
-            --  membership tests and short circuit forms
+            --  membership tests and short circuit forms.
 
             when N_Binary_Op | N_Membership_Test | N_Short_Circuit =>
                return Side_Effect_Free (Left_Opnd  (N))
@@ -5916,13 +6544,14 @@ package body Exp_Util is
 
       if not Expander_Active then
          return;
+      end if;
 
       --  Cannot generate temporaries if the invocation to remove side effects
       --  was issued too early and the type of the expression is not resolved
       --  (this happens because routines Duplicate_Subexpr_XX implicitly invoke
       --  Remove_Side_Effects).
 
-      elsif No (Exp_Type)
+      if No (Exp_Type)
         or else Ekind (Exp_Type) = E_Access_Attribute_Type
       then
          return;
@@ -6114,6 +6743,15 @@ package body Exp_Util is
       --  Otherwise we generate a reference to the value
 
       else
+         --  An expression which is in Alfa mode is considered side effect free
+         --  if the resulting value is captured by a variable or a constant.
+
+         if Alfa_Mode
+           and then Nkind (Parent (Exp)) = N_Object_Declaration
+         then
+            return;
+         end if;
+
          --  Special processing for function calls that return a limited type.
          --  We need to build a declaration that will enable build-in-place
          --  expansion of the call. This is not done if the context is already
@@ -6122,10 +6760,10 @@ package body Exp_Util is
          --  This is relevant only in Ada 2005 mode. In Ada 95 programs we have
          --  to accommodate functions returning limited objects by reference.
 
-         if Nkind (Exp) = N_Function_Call
+         if Ada_Version >= Ada_2005
+           and then Nkind (Exp) = N_Function_Call
            and then Is_Immutably_Limited_Type (Etype (Exp))
            and then Nkind (Parent (Exp)) /= N_Object_Declaration
-           and then Ada_Version >= Ada_2005
          then
             declare
                Obj  : constant Entity_Id := Make_Temporary (Loc, 'F', Exp);
@@ -6145,32 +6783,62 @@ package body Exp_Util is
             end;
          end if;
 
-         Ref_Type := Make_Temporary (Loc, 'A');
-
-         Ptr_Typ_Decl :=
-           Make_Full_Type_Declaration (Loc,
-             Defining_Identifier => Ref_Type,
-             Type_Definition =>
-               Make_Access_To_Object_Definition (Loc,
-                 All_Present => True,
-                 Subtype_Indication =>
-                   New_Reference_To (Exp_Type, Loc)));
-
-         E := Exp;
-         Insert_Action (Exp, Ptr_Typ_Decl);
-
          Def_Id := Make_Temporary (Loc, 'R', Exp);
          Set_Etype (Def_Id, Exp_Type);
 
-         Res :=
-           Make_Explicit_Dereference (Loc,
-             Prefix => New_Reference_To (Def_Id, Loc));
+         --  The regular expansion of functions with side effects involves the
+         --  generation of an access type to capture the return value found on
+         --  the secondary stack. Since Alfa (and why) cannot process access
+         --  types, use a different approach which ignores the secondary stack
+         --  and "copies" the returned object.
 
+         if Alfa_Mode then
+            Res := New_Reference_To (Def_Id, Loc);
+            Ref_Type := Exp_Type;
+
+         --  Regular expansion utilizing an access type and 'reference
+
+         else
+            Res :=
+              Make_Explicit_Dereference (Loc,
+                Prefix => New_Reference_To (Def_Id, Loc));
+
+            --  Generate:
+            --    type Ann is access all <Exp_Type>;
+
+            Ref_Type := Make_Temporary (Loc, 'A');
+
+            Ptr_Typ_Decl :=
+              Make_Full_Type_Declaration (Loc,
+                Defining_Identifier => Ref_Type,
+                Type_Definition     =>
+                  Make_Access_To_Object_Definition (Loc,
+                    All_Present        => True,
+                    Subtype_Indication =>
+                      New_Reference_To (Exp_Type, Loc)));
+
+            Insert_Action (Exp, Ptr_Typ_Decl);
+         end if;
+
+         E := Exp;
          if Nkind (E) = N_Explicit_Dereference then
             New_Exp := Relocate_Node (Prefix (E));
          else
             E := Relocate_Node (E);
-            New_Exp := Make_Reference (Loc, E);
+
+            --  Do not generate a 'reference in Alfa mode since the access type
+            --  is not created in the first place.
+
+            if Alfa_Mode then
+               New_Exp := E;
+
+            --  Otherwise generate reference, marking the value as non-null
+            --  since we know it cannot be null and we don't want a check.
+
+            else
+               New_Exp := Make_Reference (Loc, E);
+               Set_Is_Known_Non_Null (Def_Id);
+            end if;
          end if;
 
          if Is_Delayed_Aggregate (E) then
@@ -6414,29 +7082,31 @@ package body Exp_Util is
                return True;
             end if;
 
-         --  Inspect the freeze node of an access-to-controlled type and
-         --  look for a delayed finalization collection. This case arises
-         --  when the freeze actions are inserted at a later time than the
-         --  expansion of the context. Since Build_Finalizer is never called
-         --  on a single construct twice, the collection will be ultimately
-         --  left out and never finalized. This is also needed for freeze
-         --  actions of designated types themselves, since in some cases the
-         --  finalization collection is associated with a designated type's
-         --  freeze node rather than that of the access type (see handling
-         --  for freeze actions in Build_Finalization_Collection).
+         --  Inspect the freeze node of an access-to-controlled type and look
+         --  for a delayed finalization master. This case arises when the
+         --  freeze actions are inserted at a later time than the expansion of
+         --  the context. Since Build_Finalizer is never called on a single
+         --  construct twice, the master will be ultimately left out and never
+         --  finalized. This is also needed for freeze actions of designated
+         --  types themselves, since in some cases the finalization master is
+         --  associated with a designated type's freeze node rather than that
+         --  of the access type (see handling for freeze actions in
+         --  Build_Finalization_Master).
 
          elsif Nkind (Decl) = N_Freeze_Entity
            and then Present (Actions (Decl))
          then
             Typ := Entity (Decl);
 
-            if (Is_Access_Type (Typ)
+            if ((Is_Access_Type (Typ)
                   and then not Is_Access_Subprogram_Type (Typ)
                   and then Needs_Finalization
                              (Available_View (Designated_Type (Typ))))
-              or else
-               (Is_Type (Typ)
-                  and then Needs_Finalization (Typ))
+               or else
+                (Is_Type (Typ)
+                   and then Needs_Finalization (Typ)))
+              and then Requires_Cleanup_Actions
+                         (Actions (Decl), For_Package, Nested_Constructs)
             then
                return True;
             end if;

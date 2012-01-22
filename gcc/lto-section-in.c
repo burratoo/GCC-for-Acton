@@ -53,6 +53,7 @@ const char *lto_section_name[LTO_N_SECTION_TYPES] =
   "cgraph",
   "vars",
   "refs",
+  "asm",
   "jmpfuncs",
   "pureconst",
   "reference",
@@ -223,7 +224,7 @@ lto_create_simple_input_block (struct lto_file_decl_data *file_data,
     = (const struct lto_simple_header *) data;
 
   struct lto_input_block* ib_main;
-  int32_t main_offset = sizeof (struct lto_simple_header);
+  int main_offset = sizeof (struct lto_simple_header);
 
   if (!data)
     return NULL;

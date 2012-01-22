@@ -1081,11 +1081,20 @@ old_insns_match_p (int mode ATTRIBUTE_UNUSED, rtx i1, rtx i2)
   /* ??? Do not allow cross-jumping between different stack levels.  */
   p1 = find_reg_note (i1, REG_ARGS_SIZE, NULL);
   p2 = find_reg_note (i2, REG_ARGS_SIZE, NULL);
-  if (p1)
-    p1 = XEXP (p1, 0);
-  if (p2)
-    p2 = XEXP (p2, 0);
-  if (!rtx_equal_p (p1, p2))
+  if (p1 && p2)
+    {
+      p1 = XEXP (p1, 0);
+      p2 = XEXP (p2, 0);
+      if (!rtx_equal_p (p1, p2))
+        return dir_none;
+
+      /* ??? Worse, this adjustment had better be constant lest we
+         have differing incoming stack levels.  */
+      if (!frame_pointer_needed
+          && find_args_size_adjust (i1) == HOST_WIDE_INT_MIN)
+	return dir_none;
+    }
+  else if (p1 || p2)
     return dir_none;
 
   p1 = PATTERN (i1);
@@ -1479,6 +1488,16 @@ outgoing_edges_match (int mode, basic_block bb1, basic_block bb2)
   edge e1, e2;
   edge_iterator ei;
 
+  /* If we performed shrink-wrapping, edges to the EXIT_BLOCK_PTR can
+     only be distinguished for JUMP_INSNs.  The two paths may differ in
+     whether they went through the prologue.  Sibcalls are fine, we know
+     that we either didn't need or inserted an epilogue before them.  */
+  if (crtl->shrink_wrapped
+      && single_succ_p (bb1) && single_succ (bb1) == EXIT_BLOCK_PTR
+      && !JUMP_P (BB_END (bb1))
+      && !(CALL_P (BB_END (bb1)) && SIBLING_CALL_P (BB_END (bb1))))
+    return false;
+  
   /* If BB1 has only one successor, we may be looking at either an
      unconditional jump, or a fake edge to exit.  */
   if (single_succ_p (bb1)
@@ -2205,7 +2224,14 @@ try_head_merge_bb (basic_block bb)
 
   cond = get_condition (jump, &move_before, true, false);
   if (cond == NULL_RTX)
-    move_before = jump;
+    {
+#ifdef HAVE_cc0
+      if (reg_mentioned_p (cc0_rtx, jump))
+	move_before = prev_nonnote_nondebug_insn (jump);
+      else
+#endif
+	move_before = jump;
+    }
 
   for (ix = 0; ix < nedges; ix++)
     if (EDGE_SUCC (bb, ix)->dest == EXIT_BLOCK_PTR)
@@ -2367,7 +2393,14 @@ try_head_merge_bb (basic_block bb)
       jump = BB_END (final_dest_bb);
       cond = get_condition (jump, &move_before, true, false);
       if (cond == NULL_RTX)
-	move_before = jump;
+	{
+#ifdef HAVE_cc0
+	  if (reg_mentioned_p (cc0_rtx, jump))
+	    move_before = prev_nonnote_nondebug_insn (jump);
+	  else
+#endif
+	    move_before = jump;
+	}
     }
 
   do

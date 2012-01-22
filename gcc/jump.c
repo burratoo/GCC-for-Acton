@@ -29,7 +29,8 @@ along with GCC; see the file COPYING3.  If not see
    JUMP_LABEL internal field.  With this we can detect labels that
    become unused because of the deletion of all the jumps that
    formerly used them.  The JUMP_LABEL info is sometimes looked
-   at by later passes.
+   at by later passes.  For return insns, it contains either a
+   RETURN or a SIMPLE_RETURN rtx.
 
    The subroutines redirect_jump and invert_jump are used
    from other passes as well.  */
@@ -775,10 +776,10 @@ condjump_p (const_rtx insn)
     return (GET_CODE (x) == IF_THEN_ELSE
 	    && ((GET_CODE (XEXP (x, 2)) == PC
 		 && (GET_CODE (XEXP (x, 1)) == LABEL_REF
-		     || GET_CODE (XEXP (x, 1)) == RETURN))
+		     || ANY_RETURN_P (XEXP (x, 1))))
 		|| (GET_CODE (XEXP (x, 1)) == PC
 		    && (GET_CODE (XEXP (x, 2)) == LABEL_REF
-			|| GET_CODE (XEXP (x, 2)) == RETURN))));
+			|| ANY_RETURN_P (XEXP (x, 2))))));
 }
 
 /* Return nonzero if INSN is a (possibly) conditional jump inside a
@@ -807,11 +808,11 @@ condjump_in_parallel_p (const_rtx insn)
     return 0;
   if (XEXP (SET_SRC (x), 2) == pc_rtx
       && (GET_CODE (XEXP (SET_SRC (x), 1)) == LABEL_REF
-	  || GET_CODE (XEXP (SET_SRC (x), 1)) == RETURN))
+	  || ANY_RETURN_P (XEXP (SET_SRC (x), 1))))
     return 1;
   if (XEXP (SET_SRC (x), 1) == pc_rtx
       && (GET_CODE (XEXP (SET_SRC (x), 2)) == LABEL_REF
-	  || GET_CODE (XEXP (SET_SRC (x), 2)) == RETURN))
+	  || ANY_RETURN_P (XEXP (SET_SRC (x), 2))))
     return 1;
   return 0;
 }
@@ -873,8 +874,9 @@ any_condjump_p (const_rtx insn)
   a = GET_CODE (XEXP (SET_SRC (x), 1));
   b = GET_CODE (XEXP (SET_SRC (x), 2));
 
-  return ((b == PC && (a == LABEL_REF || a == RETURN))
-	  || (a == PC && (b == LABEL_REF || b == RETURN)));
+  return ((b == PC && (a == LABEL_REF || a == RETURN || a == SIMPLE_RETURN))
+	  || (a == PC
+	      && (b == LABEL_REF || b == RETURN || b == SIMPLE_RETURN)));
 }
 
 /* Return the label of a conditional jump.  */
@@ -911,6 +913,7 @@ returnjump_p_1 (rtx *loc, void *data ATTRIBUTE_UNUSED)
   switch (GET_CODE (x))
     {
     case RETURN:
+    case SIMPLE_RETURN:
     case EH_RETURN:
       return true;
 
@@ -1083,6 +1086,7 @@ mark_jump_label_1 (rtx x, rtx insn, bool in_mem, bool is_target)
       return;
 
     case RETURN:
+    case SIMPLE_RETURN:
       if (is_target)
 	{
 	  gcc_assert (JUMP_LABEL (insn) == NULL || JUMP_LABEL (insn) == x);
@@ -1405,7 +1409,7 @@ redirect_exp_1 (rtx *loc, rtx olabel, rtx nlabel, rtx insn)
   int i;
   const char *fmt;
 
-      if ((code == LABEL_REF && XEXP (x, 0) == olabel)
+  if ((code == LABEL_REF && XEXP (x, 0) == olabel)
       || x == olabel)
     {
       x = redirect_target (nlabel);
@@ -1491,7 +1495,18 @@ redirect_jump (rtx jump, rtx nlabel, int delete_unused)
 {
   rtx olabel = JUMP_LABEL (jump);
 
-  gcc_assert (nlabel != NULL_RTX);
+  if (!nlabel)
+    {
+      /* If there is no label, we are asked to redirect to the EXIT block.
+	 When before the epilogue is emitted, return/simple_return cannot be
+	 created so we return 0 immediately.  After the epilogue is emitted,
+	 we always expect a label, either a non-null label, or a
+	 return/simple_return RTX.  */
+
+      if (!epilogue_completed)
+	return 0;
+      gcc_unreachable ();
+    }
 
   if (nlabel == olabel)
     return 1;

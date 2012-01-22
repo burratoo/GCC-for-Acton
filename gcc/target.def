@@ -1,6 +1,6 @@
 /* Target hook definitions.
    Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-   2011
+   2011, 2012
    Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
@@ -305,6 +305,13 @@ section names for mergeable constant data.  Define this macro to override\n\
 the string if a different section name should be used.",
  const char *, ".rodata")
 
+/* Return the section to be used for transactional memory clone tables.  */
+DEFHOOK
+(tm_clone_table_section,
+ "Return the section that should be used for transactional memory clone\
+  tables.",
+ section *, (void), default_clone_table_section)
+
 /* Output a constructor for a symbol with a given priority.  */
 DEFHOOK
 (constructor,
@@ -456,7 +463,7 @@ DEFHOOK
 (output_addr_const_extra,
  "",
  bool, (FILE *file, rtx x),
- default_asm_output_addr_const_extra)
+ hook_bool_FILEptr_rtx_false)
 
 /* ??? The TARGET_PRINT_OPERAND* hooks are part of the asm_out struct,
    even though that is not reflected in the macro name to override their
@@ -913,6 +920,16 @@ the order of instructions is important for correctness when scheduling, but\n\
 also the latencies of operations.",
 bool, false)
 
+/* The following member value is a function that returns number
+   of operations reassociator should try to put in parallel for
+   statements of the given type.  By default 1 is used.  */
+DEFHOOK
+(reassociation_width,
+"This hook is called by tree reassociator to determine a level of\n\
+parallelism required in output calculations chain.",
+int, (unsigned int opc, enum machine_mode mode),
+hook_int_uint_mode_1)
+
 HOOK_VECTOR_END (sched)
 
 /* Functions relating to vectorization.  */
@@ -975,18 +992,13 @@ DEFHOOK
  bool, (const_tree type, bool is_packed),
  default_builtin_vector_alignment_reachable)
 
-/* Target builtin that implements vector permute.  */
+/* Return true if a vector created for vec_perm_const is valid.
+   A NULL indicates that all constants are valid permutations.  */
 DEFHOOK
-(builtin_vec_perm,
+(vec_perm_const_ok,
  "",
- tree, (tree type, tree *mask_element_type), NULL)
-
-/* Return true if a vector created for builtin_vec_perm is valid.  */
-DEFHOOK
-(builtin_vec_perm_ok,
- "",
- bool, (tree vec_type, tree mask),
- hook_bool_tree_tree_true)
+ bool, (enum machine_mode, const unsigned char *sel),
+ NULL)
 
 /* Return true if the target supports misaligned store/load of a
    specific factor denoted in the third parameter.  The last parameter
@@ -997,6 +1009,24 @@ DEFHOOK
  bool,
  (enum machine_mode mode, const_tree type, int misalignment, bool is_packed),
  default_builtin_support_vector_misalignment)
+
+/* Return the builtin decl needed to load a vector of TYPE.  */
+DEFHOOK
+(builtin_tm_load,
+ "This hook should return the built-in decl needed to load a vector of the "
+ "given type within a transaction.",
+ tree,
+ (tree),
+ default_builtin_tm_load_store)
+
+/* Return the builtin decl needed to store a vector of TYPE.  */
+DEFHOOK
+(builtin_tm_store,
+ "This hook should return the built-in decl needed to store a vector of the "
+ "given type within a transaction.",
+ tree,
+ (tree),
+ default_builtin_tm_load_store)
 
 /* Returns the preferred mode for SIMD operations for the specified
    scalar mode.  */
@@ -1015,6 +1045,14 @@ DEFHOOK
  unsigned int,
  (void),
  default_autovectorize_vector_sizes)
+
+/* Target builtin that implements vector gather operation.  */
+DEFHOOK
+(builtin_gather,
+ "",
+ tree,
+ (const_tree mem_vectype, const_tree index_type, int scale),
+ NULL)
 
 HOOK_VECTOR_END (vectorize)
 
@@ -1536,7 +1574,7 @@ DEFHOOK
 DEFHOOK
 (subset_p,
  "",
- bool, (addr_space_t superset, addr_space_t subset),
+ bool, (addr_space_t subset, addr_space_t superset),
  default_addr_space_subset_p)
 
 /* Function to convert an rtl expression from one address space to another.  */
@@ -1645,8 +1683,8 @@ DEFHOOKPOD
 DEFHOOK
 (rtx_costs,
  "",
- bool, (rtx x, int code, int outer_code, int *total, bool speed),
- hook_bool_rtx_int_int_intp_bool_false)
+ bool, (rtx x, int code, int outer_code, int opno, int *total, bool speed),
+ hook_bool_rtx_int_int_int_intp_bool_false)
 
 /* Compute the cost of X, used as an address.  Never called with
    invalid addresses.  */
@@ -1780,6 +1818,15 @@ DEFHOOK
  "",
  const char *, (const void *data, size_t sz),
  default_pch_valid_p)
+
+DEFHOOK
+(prepare_pch_save,
+ "Called before writing out a PCH file.  If the target has some\n\
+garbage-collected data that needs to be in a particular state on PCH loads,\n\
+it can use this hook to enforce that state.  Very few targets need\n\
+to do anything here.",
+ void, (void),
+ hook_void_void)
 
 /* If nonnull, this function checks whether a PCH file with the
    given set of target flags can be used.  It returns NULL if so,
@@ -2451,6 +2498,12 @@ DEFHOOK
  void, (tree type),
  hook_void_tree)
 
+DEFHOOK
+(decl_mangling_context,
+ "Return target-specific mangling context of @var{decl} or @code{NULL_TREE}.",
+ tree, (const_tree decl),
+ hook_tree_const_tree_null)
+
 HOOK_VECTOR_END (cxx)
 
 /* Functions and data for emulated TLS support.  */
@@ -2590,6 +2643,14 @@ DEFHOOK
  "",
  void, (bitmap regs),
  hook_void_bitmap)
+
+/* Fill in additional registers set up by prologue into a regset.  */
+DEFHOOK
+(set_up_by_prologue,
+ "This hook should add additional registers that are computed by the prologue\
+ to the hard regset for shrink-wrapping optimization purposes.",
+ void, (struct hard_reg_set_container *),
+ NULL)
 
 /* Determine the type of unwind info to emit for debugging.  */
 DEFHOOK

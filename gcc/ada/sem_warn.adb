@@ -211,18 +211,6 @@ package body Sem_Warn is
            ("?code statement with no outputs should usually be Volatile!", N);
          return;
       end if;
-
-      --  Check multiple code statements in a row
-
-      if Is_List_Member (N)
-        and then Present (Prev (N))
-        and then Nkind (Prev (N)) = N_Code_Statement
-      then
-         Error_Msg_F
-           ("?code statements in sequence should usually be Volatile!", N);
-         Error_Msg_F
-           ("\?(suggest using template with multiple instructions)!", N);
-      end if;
    end Check_Code_Statement;
 
    ---------------------------------
@@ -1419,7 +1407,7 @@ package body Sem_Warn is
 
                      --  Case of warning on any unread OUT parameter (note
                      --  such indications are only set if the appropriate
-                     --  warning options were set, so no need to recheck here.
+                     --  warning options were set, so no need to recheck here.)
 
                      or else
                        Referenced_As_Out_Parameter_Check_Spec (E1))
@@ -1760,14 +1748,15 @@ package body Sem_Warn is
                      SE : constant Entity_Id := Scope (E);
 
                      function Within_Postcondition return Boolean;
-                     --  Returns True iff N is within a Precondition
+                     --  Returns True iff N is within a Postcondition or
+                     --  Ensures component in a Test_Case.
 
                      --------------------------
                      -- Within_Postcondition --
                      --------------------------
 
                      function Within_Postcondition return Boolean is
-                        Nod : Node_Id;
+                        Nod, P : Node_Id;
 
                      begin
                         Nod := Parent (N);
@@ -1776,6 +1765,17 @@ package body Sem_Warn is
                              and then Pragma_Name (Nod) = Name_Postcondition
                            then
                               return True;
+
+                           elsif Present (Parent (Nod)) then
+                              P := Parent (Nod);
+
+                              if Nkind (P) = N_Pragma
+                                and then Pragma_Name (P) = Name_Test_Case
+                                and then
+                                  Nod = Get_Ensures_From_Test_Case_Pragma (P)
+                              then
+                                 return True;
+                              end if;
                            end if;
 
                            Nod := Parent (Nod);
@@ -1905,8 +1905,8 @@ package body Sem_Warn is
                      end if;
 
                      --  One more check, don't bother if we are within a
-                     --  postcondition pragma, since the expression occurs
-                     --  in a place unrelated to the actual test.
+                     --  postcondition, since the expression occurs in a
+                     --  place unrelated to the actual test.
 
                      if not Within_Postcondition then
 
@@ -3352,12 +3352,12 @@ package body Sem_Warn is
                         if Is_Elementary_Type (Etype (Act1))
                           and then Ekind (Form2) = E_In_Parameter
                         then
-                           null;  --  no real aliasing.
+                           null;  --  No real aliasing
 
                         elsif Is_Elementary_Type (Etype (Act2))
                           and then Ekind (Form2) = E_In_Parameter
                         then
-                           null;  --  ditto
+                           null;  --  Ditto
 
                         --  If the call was written in prefix notation, and
                         --  thus its prefix before rewriting was a selected
@@ -3993,39 +3993,59 @@ package body Sem_Warn is
                --  Case of assigned value never referenced
 
                if No (N) then
+                  declare
+                     LA : constant Node_Id := Last_Assignment (Ent);
 
-                  --  Don't give this for OUT and IN OUT formals, since
-                  --  clearly caller may reference the assigned value. Also
-                  --  never give such warnings for internal variables.
+                  begin
+                     --  Don't give this for OUT and IN OUT formals, since
+                     --  clearly caller may reference the assigned value. Also
+                     --  never give such warnings for internal variables.
 
-                  if Ekind (Ent) = E_Variable
-                    and then not Is_Internal_Name (Chars (Ent))
-                  then
-                     if Referenced_As_Out_Parameter (Ent) then
-                        Error_Msg_NE
-                          ("?& modified by call, but value never referenced",
-                           Last_Assignment (Ent), Ent);
-                     else
-                        Error_Msg_NE -- CODEFIX
-                          ("?useless assignment to&, value never referenced!",
-                           Last_Assignment (Ent), Ent);
+                     if Ekind (Ent) = E_Variable
+                       and then not Is_Internal_Name (Chars (Ent))
+                     then
+                        --  Give appropriate message, distinguishing between
+                        --  assignment statements and out parameters.
+
+                        if Nkind_In (Parent (LA), N_Procedure_Call_Statement,
+                                                  N_Parameter_Association)
+                        then
+                           Error_Msg_NE
+                             ("?& modified by call, but value never "
+                              & "referenced", LA, Ent);
+
+                        else
+                           Error_Msg_NE -- CODEFIX
+                             ("?useless assignment to&, value never "
+                              & "referenced!", LA, Ent);
+                        end if;
                      end if;
-                  end if;
+                  end;
 
                --  Case of assigned value overwritten
 
                else
-                  Error_Msg_Sloc := Sloc (N);
+                  declare
+                     LA : constant Node_Id := Last_Assignment (Ent);
 
-                  if Referenced_As_Out_Parameter (Ent) then
-                     Error_Msg_NE
-                       ("?& modified by call, but value overwritten #!",
-                        Last_Assignment (Ent), Ent);
-                  else
-                     Error_Msg_NE -- CODEFIX
-                       ("?useless assignment to&, value overwritten #!",
-                        Last_Assignment (Ent), Ent);
-                  end if;
+                  begin
+                     Error_Msg_Sloc := Sloc (N);
+
+                     --  Give appropriate message, distinguishing between
+                     --  assignment statements and out parameters.
+
+                     if Nkind_In (Parent (LA), N_Procedure_Call_Statement,
+                                               N_Parameter_Association)
+                     then
+                        Error_Msg_NE
+                          ("?& modified by call, but value overwritten #!",
+                           LA, Ent);
+                     else
+                        Error_Msg_NE -- CODEFIX
+                          ("?useless assignment to&, value overwritten #!",
+                           LA, Ent);
+                     end if;
+                  end;
                end if;
 
                --  Clear last assignment indication and we are done

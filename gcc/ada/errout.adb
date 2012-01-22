@@ -439,7 +439,6 @@ package body Errout is
                      Error_Msg_Internal
                        ("?in inlined body #",
                         Actual_Error_Loc, Flag_Location, Msg_Cont_Status);
-
                   else
                      Error_Msg_Internal
                        ("error in inlined body #",
@@ -453,7 +452,6 @@ package body Errout is
                      Error_Msg_Internal
                        ("?in instantiation #",
                         Actual_Error_Loc, Flag_Location, Msg_Cont_Status);
-
                   else
                      Error_Msg_Internal
                        ("instantiation error #",
@@ -616,6 +614,23 @@ package body Errout is
       Error_Msg_N (S (1 .. L), N);
       Configurable_Run_Time_Violations := Configurable_Run_Time_Violations + 1;
    end Error_Msg_CRT;
+
+   ------------------
+   -- Error_Msg_PT --
+   ------------------
+
+   procedure Error_Msg_PT (Typ : Node_Id; Subp : Node_Id) is
+   begin
+      --  Error message below needs rewording (remember comma in -gnatj
+      --  mode) ???
+
+      Error_Msg_NE
+        ("first formal of & must be of mode `OUT`, `IN OUT` or " &
+         "access-to-variable", Typ, Subp);
+      Error_Msg_N
+        ("\in order to be overridden by protected procedure or entry " &
+         "(RM 9.4(11.9/2))", Typ);
+   end Error_Msg_PT;
 
    -----------------
    -- Error_Msg_F --
@@ -1271,30 +1286,37 @@ package body Errout is
 
       Cur := First_Error_Msg;
       while Cur /= No_Error_Msg loop
-         if not Errors.Table (Cur).Deleted
-           and then Warning_Specifically_Suppressed
-                      (Errors.Table (Cur).Sptr, Errors.Table (Cur).Text)
-         then
-            Delete_Warning (Cur);
+         declare
+            CE : Error_Msg_Object renames Errors.Table (Cur);
 
-            --  If this is a continuation, delete previous messages
+         begin
+            if not CE.Deleted
+              and then
+                (Warning_Specifically_Suppressed (CE.Sptr, CE.Text)
+                   or else
+                 Warning_Specifically_Suppressed (CE.Optr, CE.Text))
+            then
+               Delete_Warning (Cur);
 
-            F := Cur;
-            while Errors.Table (F).Msg_Cont loop
-               F := Errors.Table (F).Prev;
-               Delete_Warning (F);
-            end loop;
+               --  If this is a continuation, delete previous messages
 
-            --  Delete any following continuations
+               F := Cur;
+               while Errors.Table (F).Msg_Cont loop
+                  F := Errors.Table (F).Prev;
+                  Delete_Warning (F);
+               end loop;
 
-            F := Cur;
-            loop
-               F := Errors.Table (F).Next;
-               exit when F = No_Error_Msg;
-               exit when not Errors.Table (F).Msg_Cont;
-               Delete_Warning (F);
-            end loop;
-         end if;
+               --  Delete any following continuations
+
+               F := Cur;
+               loop
+                  F := Errors.Table (F).Next;
+                  exit when F = No_Error_Msg;
+                  exit when not Errors.Table (F).Msg_Cont;
+                  Delete_Warning (F);
+               end loop;
+            end if;
+         end;
 
          Cur := Errors.Table (Cur).Next;
       end loop;
@@ -2832,10 +2854,10 @@ package body Errout is
 
       elsif Msg = "size for& too small, minimum allowed is ^" then
 
-         --  Suppress "size too small" errors in CodePeer mode, since pragma
-         --  Pack is also ignored in this configuration.
+         --  Suppress "size too small" errors in CodePeer mode and Alfa mode,
+         --  since pragma Pack is also ignored in these configurations.
 
-         if CodePeer_Mode then
+         if CodePeer_Mode or Alfa_Mode then
             return True;
 
          --  When a size is wrong for a frozen type there is no explicit size

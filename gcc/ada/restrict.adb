@@ -23,6 +23,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Casing;   use Casing;
 with Einfo;    use Einfo;
@@ -40,15 +41,32 @@ with Uname;    use Uname;
 
 package body Restrict is
 
+   Config_Cunit_Boolean_Restrictions : Save_Cunit_Boolean_Restrictions;
+   --  Save compilation unit restrictions set by config pragma files
+
    Restricted_Profile_Result : Boolean := False;
-   --  This switch memoizes the result of Restricted_Profile function
-   --  calls for improved efficiency. Its setting is valid only if
-   --  Restricted_Profile_Cached is True. Note that if this switch
-   --  is ever set True, it need never be turned off again.
+   --  This switch memoizes the result of Restricted_Profile function calls for
+   --  improved efficiency. Valid only if Restricted_Profile_Cached is True.
+   --  Note: if this switch is ever set True, it is never turned off again.
 
    Restricted_Profile_Cached : Boolean := False;
-   --  This flag is set to True if the Restricted_Profile_Result
-   --  contains the correct cached result of Restricted_Profile calls.
+   --  This flag is set to True if the Restricted_Profile_Result contains the
+   --  correct cached result of Restricted_Profile calls.
+
+   No_Specification_Of_Aspects : array (Aspect_Id) of Source_Ptr :=
+                                   (others => No_Location);
+   --  Entries in this array are set to point to a previously occuring pragma
+   --  that activates a No_Specification_Of_Aspect check.
+
+   No_Specification_Of_Aspect_Warning : array (Aspect_Id) of Boolean :=
+                                          (others => True);
+   --  An entry in this array is set False in reponse to a previous call to
+   --  Set_No_Speficiation_Of_Aspect for pragmas in the main unit that
+   --  specify Warning as False. Once set False, an entry is never reset.
+
+   No_Specification_Of_Aspect_Set : Boolean := False;
+   --  Set True if any entry of No_Specifcation_Of_Aspects has been set True.
+   --  Once set True, this is never turned off again.
 
    -----------------------
    -- Local Subprograms --
@@ -85,6 +103,17 @@ package body Restrict is
       end if;
    end Abort_Allowed;
 
+   ----------------------------------------
+   -- Add_To_Config_Boolean_Restrictions --
+   ----------------------------------------
+
+   procedure Add_To_Config_Boolean_Restrictions (R : Restriction_Id) is
+   begin
+      Config_Cunit_Boolean_Restrictions (R) := True;
+   end Add_To_Config_Boolean_Restrictions;
+   --  Add specified restriction to stored configuration boolean restrictions.
+   --  This is used for handling the special case of No_Elaboration_Code.
+
    -------------------------
    -- Check_Compiler_Unit --
    -------------------------
@@ -117,7 +146,7 @@ package body Restrict is
       Msg_Issued          : Boolean;
       Save_Error_Msg_Sloc : Source_Ptr;
    begin
-      if Force or else Comes_From_Source (N) then
+      if Force or else Comes_From_Source (Original_Node (N)) then
 
          if Restriction_Check_Required (SPARK)
            and then Is_In_Hidden_Part_In_SPARK (Sloc (N))
@@ -145,7 +174,7 @@ package body Restrict is
    begin
       pragma Assert (Msg2'Length /= 0 and then Msg2 (Msg2'First) = '\');
 
-      if Comes_From_Source (N) then
+      if Comes_From_Source (Original_Node (N)) then
 
          if Restriction_Check_Required (SPARK)
            and then Is_In_Hidden_Part_In_SPARK (Sloc (N))
@@ -167,6 +196,78 @@ package body Restrict is
          end if;
       end if;
    end Check_SPARK_Restriction;
+
+   --------------------------------
+   -- Check_No_Implicit_Aliasing --
+   --------------------------------
+
+   procedure Check_No_Implicit_Aliasing (Obj : Node_Id) is
+      E : Entity_Id;
+
+   begin
+      --  If restriction not active, nothing to check
+
+      if not Restriction_Active (No_Implicit_Aliasing) then
+         return;
+      end if;
+
+      --  If we have an entity name, check entity
+
+      if Is_Entity_Name (Obj) then
+         E := Entity (Obj);
+
+         --  Restriction applies to entities that are objects
+
+         if Is_Object (E) then
+            if Is_Aliased (E) then
+               return;
+
+            elsif Present (Renamed_Object (E)) then
+               Check_No_Implicit_Aliasing (Renamed_Object (E));
+               return;
+            end if;
+
+         --  If we don't have an object, then it's OK
+
+         else
+            return;
+         end if;
+
+      --  For selected component, check selector
+
+      elsif Nkind (Obj) = N_Selected_Component then
+         Check_No_Implicit_Aliasing (Selector_Name (Obj));
+         return;
+
+      --  Indexed component is OK if aliased components
+
+      elsif Nkind (Obj) = N_Indexed_Component then
+         if Has_Aliased_Components (Etype (Prefix (Obj)))
+           or else
+             (Is_Access_Type (Etype (Prefix (Obj)))
+               and then Has_Aliased_Components
+                          (Designated_Type (Etype (Prefix (Obj)))))
+         then
+            return;
+         end if;
+
+      --  For type conversion, check converted expression
+
+      elsif Nkind_In (Obj, N_Unchecked_Type_Conversion, N_Type_Conversion) then
+         Check_No_Implicit_Aliasing (Expression (Obj));
+         return;
+
+      --  Explicit dereference is always OK
+
+      elsif Nkind (Obj) = N_Explicit_Dereference then
+         return;
+      end if;
+
+      --  If we fall through, then we have an aliased view that does not meet
+      --  the rules for being explicitly aliased, so issue restriction msg.
+
+      Check_Restriction (No_Implicit_Aliasing, Obj);
+   end Check_No_Implicit_Aliasing;
 
    -----------------------------------------
    -- Check_Implicit_Dynamic_Code_Allowed --
@@ -375,12 +476,12 @@ package body Restrict is
    begin
       Msg_Issued := False;
 
-      --  In CodePeer and ALFA mode, we do not want to check for any
+      --  In CodePeer and Alfa mode, we do not want to check for any
       --  restriction, or set additional restrictions other than those already
       --  set in gnat1drv.adb so that we have consistency between each
       --  compilation.
 
-      if CodePeer_Mode or ALFA_Mode then
+      if CodePeer_Mode or Alfa_Mode then
          return;
       end if;
 
@@ -411,7 +512,9 @@ package body Restrict is
 
       Update_Restrictions (Restrictions);
 
-      --  If in main extended unit, update main restrictions as well
+      --  If in main extended unit, update main restrictions as well. Note
+      --  that as usual we check for Main_Unit explicitly to deal with the
+      --  case of configuration pragma files.
 
       if Current_Sem_Unit = Main_Unit
         or else In_Extended_Main_Source_Unit (N)
@@ -461,14 +564,14 @@ package body Restrict is
 
       --  Loop through entries in No_Dependence table to check each one in turn
 
-      for J in No_Dependence.First .. No_Dependence.Last loop
-         DU := No_Dependence.Table (J).Unit;
+      for J in No_Dependences.First .. No_Dependences.Last loop
+         DU := No_Dependences.Table (J).Unit;
 
          if Same_Unit (U, DU) then
             Error_Msg_Sloc := Sloc (DU);
             Error_Msg_Node_1 := DU;
 
-            if No_Dependence.Table (J).Warn then
+            if No_Dependences.Table (J).Warn then
                Error_Msg
                  ("?violation of restriction `No_Dependence '='> &`#",
                   Sloc (Err));
@@ -482,6 +585,44 @@ package body Restrict is
          end if;
       end loop;
    end Check_Restriction_No_Dependence;
+
+   --------------------------------------------------
+   -- Check_Restriction_No_Specification_Of_Aspect --
+   --------------------------------------------------
+
+   procedure Check_Restriction_No_Specification_Of_Aspect (N : Node_Id) is
+      A_Id : Aspect_Id;
+      Id   : Node_Id;
+
+   begin
+      --  Ignore call if no instances of this restriction set
+
+      if not No_Specification_Of_Aspect_Set then
+         return;
+      end if;
+
+      --  Ignore call if node N is not in the main source unit, since we only
+      --  give messages for . This avoids giving messages for aspects that are
+      --  specified in withed units.
+
+      if not In_Extended_Main_Source_Unit (N) then
+         return;
+      end if;
+
+      Id := Identifier (N);
+      A_Id := Get_Aspect_Id (Chars (Id));
+      pragma Assert (A_Id /= No_Aspect);
+
+      Error_Msg_Sloc := No_Specification_Of_Aspects (A_Id);
+
+      if Error_Msg_Sloc /= No_Location then
+         Error_Msg_Node_1 := Id;
+         Error_Msg_Warn := No_Specification_Of_Aspect_Warning (A_Id);
+         Error_Msg_N
+           ("<violation of restriction `No_Specification_Of_Aspect '='> &`#",
+            Id);
+      end if;
+   end Check_Restriction_No_Specification_Of_Aspect;
 
    --------------------------------------
    -- Check_Wide_Character_Restriction --
@@ -517,6 +658,16 @@ package body Restrict is
       for J in Cunit_Boolean_Restrictions loop
          Restrictions.Set (J) := R (J);
       end loop;
+
+      --  If No_Elaboration_Code set in configuration restrictions, and we
+      --  in the main extended source, then set it here now. This is part of
+      --  the special processing for No_Elaboration_Code.
+
+      if In_Extended_Main_Source_Unit (Cunit_Entity (Current_Sem_Unit))
+        and then Config_Cunit_Boolean_Restrictions (No_Elaboration_Code)
+      then
+         Restrictions.Set (No_Elaboration_Code) := True;
+      end if;
    end Cunit_Boolean_Restrictions_Restore;
 
    -------------------------------------
@@ -531,7 +682,6 @@ package body Restrict is
    begin
       for J in Cunit_Boolean_Restrictions loop
          R (J) := Restrictions.Set (J);
-         Restrictions.Set (J) := False;
       end loop;
 
       return R;
@@ -646,6 +796,26 @@ package body Restrict is
 
       return New_Name;
    end Process_Restriction_Synonyms;
+
+   --------------------------------------
+   -- Reset_Cunit_Boolean_Restrictions --
+   --------------------------------------
+
+   procedure Reset_Cunit_Boolean_Restrictions is
+   begin
+      for J in Cunit_Boolean_Restrictions loop
+         Restrictions.Set (J) := False;
+      end loop;
+   end Reset_Cunit_Boolean_Restrictions;
+
+   -----------------------------------------------
+   -- Restore_Config_Cunit_Boolean_Restrictions --
+   -----------------------------------------------
+
+   procedure Restore_Config_Cunit_Boolean_Restrictions is
+   begin
+      Cunit_Boolean_Restrictions_Restore (Config_Cunit_Boolean_Restrictions);
+   end Restore_Config_Cunit_Boolean_Restrictions;
 
    ------------------------
    -- Restricted_Profile --
@@ -879,6 +1049,15 @@ package body Restrict is
       end if;
    end Same_Unit;
 
+   --------------------------------------------
+   -- Save_Config_Cunit_Boolean_Restrictions --
+   --------------------------------------------
+
+   procedure Save_Config_Cunit_Boolean_Restrictions is
+   begin
+      Config_Cunit_Boolean_Restrictions := Cunit_Boolean_Restrictions_Save;
+   end Save_Config_Cunit_Boolean_Restrictions;
+
    ------------------------------
    -- Set_Hidden_Part_In_SPARK --
    ------------------------------
@@ -945,23 +1124,6 @@ package body Restrict is
       N : Node_Id)
    is
    begin
-      --  Restriction No_Elaboration_Code must be enforced on a unit by unit
-      --  basis. Hence, we avoid setting the restriction when processing an
-      --  unit which is not the main one being compiled (or its corresponding
-      --  spec). It can happen, for example, when processing an inlined body
-      --  (the package containing the inlined subprogram is analyzed,
-      --  including its pragma Restrictions).
-
-      --  This seems like a very nasty kludge??? This is not the only per unit
-      --  restriction why is this treated specially ???
-
-      if R = No_Elaboration_Code
-        and then Current_Sem_Unit /= Main_Unit
-        and then Cunit (Current_Sem_Unit) /= Library_Unit (Cunit (Main_Unit))
-      then
-         return;
-      end if;
-
       Restrictions.Set (R) := True;
 
       if Restricted_Profile_Cached and Restricted_Profile_Result then
@@ -1059,16 +1221,16 @@ package body Restrict is
    begin
       --  Loop to check for duplicate entry
 
-      for J in No_Dependence.First .. No_Dependence.Last loop
+      for J in No_Dependences.First .. No_Dependences.Last loop
 
          --  Case of entry already in table
 
-         if Same_Unit (Unit, No_Dependence.Table (J).Unit) then
+         if Same_Unit (Unit, No_Dependences.Table (J).Unit) then
 
             --  Error has precedence over warning
 
             if not Warn then
-               No_Dependence.Table (J).Warn := False;
+               No_Dependences.Table (J).Warn := False;
             end if;
 
             return;
@@ -1077,8 +1239,29 @@ package body Restrict is
 
       --  Entry is not currently in table
 
-      No_Dependence.Append ((Unit, Warn, Profile));
+      No_Dependences.Append ((Unit, Warn, Profile));
    end Set_Restriction_No_Dependence;
+
+   ------------------------------------------------
+   -- Set_Restriction_No_Specification_Of_Aspect --
+   ------------------------------------------------
+
+   procedure Set_Restriction_No_Specification_Of_Aspect
+     (N       : Node_Id;
+      Warning : Boolean)
+   is
+      A_Id : constant Aspect_Id := Get_Aspect_Id (Chars (N));
+      pragma Assert (A_Id /= No_Aspect);
+
+   begin
+      No_Specification_Of_Aspects (A_Id) := Sloc (N);
+
+      if Warning = False then
+         No_Specification_Of_Aspect_Warning (A_Id) := False;
+      end if;
+
+      No_Specification_Of_Aspect_Set := True;
+   end Set_Restriction_No_Specification_Of_Aspect;
 
    ----------------------------------
    -- Suppress_Restriction_Message --

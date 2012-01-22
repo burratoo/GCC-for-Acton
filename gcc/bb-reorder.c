@@ -1,6 +1,6 @@
 /* Basic block reordering routines for the GNU compiler.
-   Copyright (C) 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2010, 2011,
+   2012 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -181,7 +181,6 @@ static fibheapkey_t bb_to_key (basic_block);
 static bool better_edge_p (const_basic_block, const_edge, int, int, int, int, const_edge);
 static void connect_traces (int, struct trace *);
 static bool copy_bb_p (const_basic_block, int);
-static int get_uncond_jump_length (void);
 static bool push_to_next_round_p (const_basic_block, int, int, int, gcov_type);
 
 /* Check to see if bb should be pushed into the next round of trace
@@ -1193,7 +1192,7 @@ copy_bb_p (const_basic_block bb, int code_may_grow)
 
 /* Return the length of unconditional jump instruction.  */
 
-static int
+int
 get_uncond_jump_length (void)
 {
   rtx label, jump;
@@ -1315,7 +1314,9 @@ find_rarely_executed_basic_blocks_and_crossing_edges (void)
 	{
 	  bool all_same, all_diff;
 
-	  if (lp == NULL)
+	  if (lp == NULL
+	      || lp->landing_pad == NULL_RTX
+	      || !LABEL_P (lp->landing_pad))
 	    continue;
 
 	  all_same = all_diff = true;
@@ -1965,8 +1966,10 @@ insert_section_boundary_note (void)
   rtx new_note;
   int first_partition = 0;
 
-  if (flag_reorder_blocks_and_partition)
-    FOR_EACH_BB (bb)
+  if (!flag_reorder_blocks_and_partition)
+    return;
+
+  FOR_EACH_BB (bb)
     {
       if (!first_partition)
 	first_partition = BB_PARTITION (bb);
@@ -2251,6 +2254,9 @@ partition_hot_cold_basic_blocks (void)
 
   add_reg_crossing_jump_notes ();
 
+  /* Clear bb->aux fields that the above routines were using.  */
+  clear_aux_for_blocks ();
+
   VEC_free (edge, heap, crossing_edges);
 
   /* ??? FIXME: DF generates the bb info for a block immediately.
@@ -2293,7 +2299,17 @@ gate_handle_reorder_blocks (void)
 {
   if (targetm.cannot_modify_jumps_p ())
     return false;
-  return (optimize > 0);
+  /* Don't reorder blocks when optimizing for size because extra jump insns may
+     be created; also barrier may create extra padding.
+
+     More correctly we should have a block reordering mode that tried to
+     minimize the combined size of all the jumps.  This would more or less
+     automatically remove extra jumps, but would also try to use more short
+     jumps instead of long jumps.  */
+  if (!optimize_function_for_speed_p (cfun))
+    return false;
+  return (optimize > 0
+	  && (flag_reorder_blocks || flag_reorder_blocks_and_partition));
 }
 
 
@@ -2307,19 +2323,8 @@ rest_of_handle_reorder_blocks (void)
      splitting possibly introduced more crossjumping opportunities.  */
   cfg_layout_initialize (CLEANUP_EXPENSIVE);
 
-  if ((flag_reorder_blocks || flag_reorder_blocks_and_partition)
-      /* Don't reorder blocks when optimizing for size because extra jump insns may
-	 be created; also barrier may create extra padding.
-
-	 More correctly we should have a block reordering mode that tried to
-	 minimize the combined size of all the jumps.  This would more or less
-	 automatically remove extra jumps, but would also try to use more short
-	 jumps instead of long jumps.  */
-      && optimize_function_for_speed_p (cfun))
-    {
-      reorder_basic_blocks ();
-      cleanup_cfg (CLEANUP_EXPENSIVE);
-    }
+  reorder_basic_blocks ();
+  cleanup_cfg (CLEANUP_EXPENSIVE);
 
   FOR_EACH_BB (bb)
     if (bb->next_bb != EXIT_BLOCK_PTR)
@@ -2359,6 +2364,9 @@ gate_handle_partition_blocks (void)
      arises.  */
   return (flag_reorder_blocks_and_partition
           && optimize
+	  /* See gate_handle_reorder_blocks.  We should not partition if
+	     we are going to omit the reordering.  */
+	  && optimize_function_for_speed_p (cfun)
 	  && !DECL_ONE_ONLY (current_function_decl)
 	  && !user_defined_section_attribute);
 }

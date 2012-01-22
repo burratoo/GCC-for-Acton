@@ -1,7 +1,7 @@
 /* Optimize by combining instructions for GNU compiler.
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-   2011 Free Software Foundation, Inc.
+   2011, 2012 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -6010,7 +6010,7 @@ simplify_if_then_else (rtx x)
 	  && exact_log2 (nzb = nonzero_bits (from, GET_MODE (from))) >= 0)
 	{
 	  false_code = EQ;
-	  false_val = GEN_INT (trunc_int_for_mode (nzb, GET_MODE (from)));
+	  false_val = gen_int_mode (nzb, GET_MODE (from));
 	}
       else if (true_code == EQ && true_val == const0_rtx
 	       && (num_sign_bit_copies (from, GET_MODE (from))
@@ -6303,7 +6303,7 @@ simplify_set (rtx x)
   rtx *cc_use;
 
   /* (set (pc) (return)) gets written as (return).  */
-  if (GET_CODE (dest) == PC && GET_CODE (src) == RETURN)
+  if (GET_CODE (dest) == PC && ANY_RETURN_P (src))
     return src;
 
   /* Now that we know for sure which bits of SRC we are using, see if we can
@@ -6827,11 +6827,11 @@ expand_compound_operation (rtx x)
       rtx temp2 = expand_compound_operation (temp);
 
       /* Make sure this is a profitable operation.  */
-      if (rtx_cost (x, SET, optimize_this_for_speed_p)
-          > rtx_cost (temp2, SET, optimize_this_for_speed_p))
+      if (set_src_cost (x, optimize_this_for_speed_p)
+          > set_src_cost (temp2, optimize_this_for_speed_p))
        return temp2;
-      else if (rtx_cost (x, SET, optimize_this_for_speed_p)
-               > rtx_cost (temp, SET, optimize_this_for_speed_p))
+      else if (set_src_cost (x, optimize_this_for_speed_p)
+               > set_src_cost (temp, optimize_this_for_speed_p))
        return temp;
       else
        return x;
@@ -7253,8 +7253,8 @@ make_extraction (enum machine_mode mode, rtx inner, HOST_WIDE_INT pos,
 
 	  /* Prefer ZERO_EXTENSION, since it gives more information to
 	     backends.  */
-	  if (rtx_cost (temp, SET, optimize_this_for_speed_p)
-	      <= rtx_cost (temp1, SET, optimize_this_for_speed_p))
+	  if (set_src_cost (temp, optimize_this_for_speed_p)
+	      <= set_src_cost (temp1, optimize_this_for_speed_p))
 	    return temp;
 	  return temp1;
 	}
@@ -7455,8 +7455,8 @@ make_extraction (enum machine_mode mode, rtx inner, HOST_WIDE_INT pos,
 
 	  /* Prefer ZERO_EXTENSION, since it gives more information to
 	     backends.  */
-	  if (rtx_cost (temp1, SET, optimize_this_for_speed_p)
-	      < rtx_cost (temp, SET, optimize_this_for_speed_p))
+	  if (set_src_cost (temp1, optimize_this_for_speed_p)
+	      < set_src_cost (temp, optimize_this_for_speed_p))
 	    temp = temp1;
 	}
       pos_rtx = temp;
@@ -8223,8 +8223,8 @@ force_to_mode (rtx x, enum machine_mode mode, unsigned HOST_WIDE_INT mask,
 
 	      y = simplify_gen_binary (AND, GET_MODE (x),
 				       XEXP (x, 0), GEN_INT (cval));
-	      if (rtx_cost (y, SET, optimize_this_for_speed_p)
-	          < rtx_cost (x, SET, optimize_this_for_speed_p))
+	      if (set_src_cost (y, optimize_this_for_speed_p)
+	          < set_src_cost (x, optimize_this_for_speed_p))
 		x = y;
 	    }
 
@@ -9377,8 +9377,8 @@ distribute_and_simplify_rtx (rtx x, int n)
   tmp = apply_distributive_law (simplify_gen_binary (inner_code, mode,
 						     new_op0, new_op1));
   if (GET_CODE (tmp) != outer_code
-      && rtx_cost (tmp, SET, optimize_this_for_speed_p)
-         < rtx_cost (x, SET, optimize_this_for_speed_p))
+      && (set_src_cost (tmp, optimize_this_for_speed_p)
+	  < set_src_cost (x, optimize_this_for_speed_p)))
     return tmp;
 
   return NULL_RTX;
@@ -11397,9 +11397,10 @@ simplify_comparison (enum rtx_code code, rtx *pop0, rtx *pop1)
 	     later on, and then we wouldn't know whether to sign- or
 	     zero-extend.  */
 	  mode = GET_MODE (XEXP (op0, 0));
-	  if (mode != VOIDmode && GET_MODE_CLASS (mode) == MODE_INT
+	  if (GET_MODE_CLASS (mode) == MODE_INT
 	      && ! unsigned_comparison_p
-	      && val_signbit_known_clear_p (mode, const_op)
+	      && HWI_COMPUTABLE_MODE_P (mode)
+	      && trunc_int_for_mode (const_op, mode) == const_op
 	      && have_insn_for (COMPARE, mode))
 	    {
 	      op0 = XEXP (op0, 0);
@@ -11477,10 +11478,11 @@ simplify_comparison (enum rtx_code code, rtx *pop0, rtx *pop1)
 
 	case ZERO_EXTEND:
 	  mode = GET_MODE (XEXP (op0, 0));
-	  if (mode != VOIDmode && GET_MODE_CLASS (mode) == MODE_INT
+	  if (GET_MODE_CLASS (mode) == MODE_INT
 	      && (unsigned_comparison_p || equality_comparison_p)
 	      && HWI_COMPUTABLE_MODE_P (mode)
-	      && ((unsigned HOST_WIDE_INT) const_op < GET_MODE_MASK (mode))
+	      && (unsigned HOST_WIDE_INT) const_op <= GET_MODE_MASK (mode)
+	      && const_op >= 0
 	      && have_insn_for (COMPARE, mode))
 	    {
 	      op0 = XEXP (op0, 0);
@@ -13274,17 +13276,39 @@ distribute_notes (rtx notes, rtx from_insn, rtx i3, rtx i2, rtx elim_i2,
 	  break;
 
 	case REG_ARGS_SIZE:
-	  {
-	    /* ??? How to distribute between i3-i1.  Assume i3 contains the
-	       entire adjustment.  Assert i3 contains at least some adjust.  */
-	    int old_size, args_size = INTVAL (XEXP (note, 0));
-	    old_size = fixup_args_size_notes (PREV_INSN (i3), i3, args_size);
-	    gcc_assert (old_size != args_size);
-	  }
+	  /* ??? How to distribute between i3-i1.  Assume i3 contains the
+	     entire adjustment.  Assert i3 contains at least some adjust.  */
+	  if (!noop_move_p (i3))
+	    {
+	      int old_size, args_size = INTVAL (XEXP (note, 0));
+	      /* fixup_args_size_notes looks at REG_NORETURN note,
+		 so ensure the note is placed there first.  */
+	      if (CALL_P (i3))
+		{
+		  rtx *np;
+		  for (np = &next_note; *np; np = &XEXP (*np, 1))
+		    if (REG_NOTE_KIND (*np) == REG_NORETURN)
+		      {
+			rtx n = *np;
+			*np = XEXP (n, 1);
+			XEXP (n, 1) = REG_NOTES (i3);
+			REG_NOTES (i3) = n;
+			break;
+		      }
+		}
+	      old_size = fixup_args_size_notes (PREV_INSN (i3), i3, args_size);
+	      /* emit_call_1 adds for !ACCUMULATE_OUTGOING_ARGS
+		 REG_ARGS_SIZE note to all noreturn calls, allow that here.  */
+	      gcc_assert (old_size != args_size
+			  || (CALL_P (i3)
+			      && !ACCUMULATE_OUTGOING_ARGS
+			      && find_reg_note (i3, REG_NORETURN, NULL_RTX)));
+	    }
 	  break;
 
 	case REG_NORETURN:
 	case REG_SETJMP:
+	case REG_TM:
 	  /* These notes must remain with the call.  It should not be
 	     possible for both I2 and I3 to be a call.  */
 	  if (CALL_P (i3))

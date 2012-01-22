@@ -1196,10 +1196,9 @@
       results in compilation, execution, or both.</para>
 
       <para>
-	Further dependencies are necessary to create the visual output for the
-	performance tests. To create these graphs, two additional packages
-	will be needed: <command>pychart</command> and <command>Beautiful
-	Soup</command>.
+	Further dependencies are necessary to create the visual output
+	for the performance tests. To create these graphs, an
+	additional package is needed: <command>pychart</command>.
       </para>
     </section>
 
@@ -1366,7 +1365,7 @@
 	  <classname>__gnu_pbds::cc_hash_table</classname> instead of
 	  <classname>std::unordered_map</classname>, since <quote>unordered
 	  map</quote> does not necessarily mean a hash-based map as implied by
-	  the C++ library (C++0x or TR1). For example, list-based associative
+	  the C++ library (C++11 or TR1). For example, list-based associative
 	  containers, which are very useful for the construction of
 	  "multimaps," are also unordered.
 	</para>

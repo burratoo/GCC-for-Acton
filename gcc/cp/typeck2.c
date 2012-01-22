@@ -1,7 +1,7 @@
 /* Report error messages, build initializers, and perform
    some front-end optimizations for C++ compiler.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010
+   1999, 2000, 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
@@ -340,7 +340,10 @@ abstract_virtuals_error_sfinae (tree decl, tree type, tsubst_flags_t complain)
 	      type);
 
       FOR_EACH_VEC_ELT (tree, pure, ix, fn)
-	inform (input_location, "\t%+#D", fn);
+	if (! DECL_CLONED_FUNCTION_P (fn)
+	    || DECL_COMPLETE_DESTRUCTOR_P (fn))
+	  inform (input_location, "\t%+#D", fn);
+
       /* Now truncate the vector.  This leaves it non-null, so we know
 	 there are pure virtuals, but empty so we don't list them out
 	 again.  */
@@ -425,8 +428,20 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
 
     case OFFSET_TYPE:
     bad_member:
-      emit_diagnostic (diag_kind, input_location, 0,
-		       "invalid use of member (did you forget the %<&%> ?)");
+      {
+	tree member = TREE_OPERAND (value, 1);
+	if (is_overloaded_fn (member))
+	  member = get_first_fn (member);
+	if (DECL_FUNCTION_MEMBER_P (member)
+	    && ! flag_ms_extensions)
+	  emit_diagnostic (diag_kind, input_location, 0,
+			   "invalid use of member function "
+			   "(did you forget the %<()%> ?)");
+	else
+	  emit_diagnostic (diag_kind, input_location, 0,
+			   "invalid use of member "
+			   "(did you forget the %<&%> ?)");
+      }
       break;
 
     case TEMPLATE_TYPE_PARM:
@@ -450,6 +465,12 @@ cxx_incomplete_type_diagnostic (const_tree value, const_tree type,
       break;
 
     case LANG_TYPE:
+      if (type == init_list_type_node)
+	{
+	  emit_diagnostic (diag_kind, input_location, 0,
+			   "invalid use of brace-enclosed initializer list");
+	  break;
+	}
       gcc_assert (type == unknown_type_node);
       if (value && TREE_CODE (value) == COMPONENT_REF)
 	goto bad_member;
@@ -557,7 +578,15 @@ split_nonconstant_init_1 (tree dest, tree init)
 
 	      code = build2 (INIT_EXPR, inner_type, sub, value);
 	      code = build_stmt (input_location, EXPR_STMT, code);
+	      code = maybe_cleanup_point_expr_void (code);
 	      add_stmt (code);
+	      if (!TYPE_HAS_TRIVIAL_DESTRUCTOR (inner_type))
+		{
+		  code = (build_special_member_call
+			  (sub, complete_dtor_identifier, NULL, inner_type,
+			   LOOKUP_NORMAL, tf_warning_or_error));
+		  finish_eh_cleanup (code);
+		}
 
 	      num_split_elts++;
 	    }
@@ -631,7 +660,7 @@ split_nonconstant_init (tree dest, tree init)
    for static variable.  In that case, caller must emit the code.  */
 
 tree
-store_init_value (tree decl, tree init, int flags)
+store_init_value (tree decl, tree init, VEC(tree,gc)** cleanups, int flags)
 {
   tree value, type;
 
@@ -675,6 +704,8 @@ store_init_value (tree decl, tree init, int flags)
     /* Digest the specified initializer into an expression.  */
     value = digest_init_flags (type, init, flags);
 
+  value = extend_ref_init_temps (decl, value, cleanups);
+
   /* In C++0x constant expression is a semantic, not syntactic, property.
      In C++98, make sure that what we thought was a constant expression at
      template definition time is still constant.  */
@@ -687,8 +718,14 @@ store_init_value (tree decl, tree init, int flags)
       value = fold_non_dependent_expr (value);
       value = maybe_constant_init (value);
       if (DECL_DECLARED_CONSTEXPR_P (decl))
-	/* Diagnose a non-constant initializer for constexpr.  */
-	value = cxx_constant_value (value);
+	{
+	  /* Diagnose a non-constant initializer for constexpr.  */
+	  if (processing_template_decl
+	      && !require_potential_constant_expression (value))
+	    value = error_mark_node;
+	  else
+	    value = cxx_constant_value (value);
+	}
       const_init = (reduced_constant_expression_p (value)
 		    || error_operand_p (value));
       DECL_INITIALIZED_BY_CONSTANT_EXPRESSION_P (decl) = const_init;
@@ -701,7 +738,16 @@ store_init_value (tree decl, tree init, int flags)
   if (value != error_mark_node
       && (TREE_SIDE_EFFECTS (value)
 	   || ! initializer_constant_valid_p (value, TREE_TYPE (value))))
-    return split_nonconstant_init (decl, value);
+    {
+      if (TREE_CODE (type) == ARRAY_TYPE
+	  && TYPE_HAS_NONTRIVIAL_DESTRUCTOR (TREE_TYPE (type)))
+	/* For an array, we only need/want a single cleanup region rather
+	   than one per element.  */
+	return build_vec_init (decl, NULL_TREE, value, false, 1,
+			       tf_warning_or_error);
+      else
+	return split_nonconstant_init (decl, value);
+    }
   /* If the value is a constant, just put it in DECL_INITIAL.  If DECL
      is an automatic variable, the middle end will turn this into a
      dynamic initialization later.  */
@@ -780,8 +826,16 @@ check_narrowing (tree type, tree init)
     }
 
   if (!ok)
-    pedwarn (input_location, OPT_Wnarrowing, "narrowing conversion of %qE "
-	     "from %qT to %qT inside { }", init, ftype, type);
+    {
+      if (cxx_dialect >= cxx0x)
+	pedwarn (EXPR_LOC_OR_HERE (init), OPT_Wnarrowing,
+		 "narrowing conversion of %qE from %qT to %qT inside { }",
+		 init, ftype, type);
+      else
+	warning_at (EXPR_LOC_OR_HERE (init), OPT_Wnarrowing,
+		    "narrowing conversion of %qE from %qT to %qT inside { } "
+		    "is ill-formed in C++11", init, ftype, type);
+    }
 }
 
 /* Process the initializer INIT for a variable of type TYPE, emitting
@@ -806,8 +860,9 @@ digest_init_r (tree type, tree init, bool nested, int flags,
 
   /* We must strip the outermost array type when completing the type,
      because the its bounds might be incomplete at the moment.  */
-  if (!complete_type_or_else (TREE_CODE (type) == ARRAY_TYPE
-			      ? TREE_TYPE (type) : type, NULL_TREE))
+  if (!complete_type_or_maybe_complain (TREE_CODE (type) == ARRAY_TYPE
+					? TREE_TYPE (type) : type, NULL_TREE,
+					complain))
     return error_mark_node;
 
   /* Strip NON_LVALUE_EXPRs since we aren't using as an lvalue
@@ -853,7 +908,11 @@ digest_init_r (tree type, tree init, bool nested, int flags,
 		}
 	    }
 
-	  TREE_TYPE (init) = type;
+	  if (type != TREE_TYPE (init))
+	    {
+	      init = copy_node (init);
+	      TREE_TYPE (init) = type;
+	    }
 	  if (TYPE_DOMAIN (type) != 0 && TREE_CONSTANT (TYPE_SIZE (type)))
 	    {
 	      int size = TREE_INT_CST_LOW (TYPE_SIZE (type));
@@ -877,7 +936,7 @@ digest_init_r (tree type, tree init, bool nested, int flags,
     {
       tree *exp;
 
-      if (cxx_dialect != cxx98 && nested)
+      if (nested)
 	check_narrowing (type, init);
       init = convert_for_initialization (0, type, init, flags,
 					 ICR_INIT, NULL_TREE, 0,
@@ -1391,7 +1450,8 @@ build_scoped_ref (tree datum, tree basetype, tree* binfo_p)
     }
 
   *binfo_p = binfo;
-  return build_base_path (PLUS_EXPR, datum, binfo, 1);
+  return build_base_path (PLUS_EXPR, datum, binfo, 1,
+			  tf_warning_or_error);
 }
 
 /* Build a reference to an object specified by the C++ `->' operator.
@@ -1558,7 +1618,8 @@ build_m_component_ref (tree datum, tree component)
 
       /* Convert object to the correct base.  */
       if (binfo)
-	datum = build_base_path (PLUS_EXPR, datum, binfo, 1);
+	datum = build_base_path (PLUS_EXPR, datum, binfo, 1,
+				 tf_warning_or_error);
 
       /* Build an expression for "object + offset" where offset is the
 	 value stored in the pointer-to-data-member.  */
@@ -1607,7 +1668,7 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
     {
       if (complain & tf_error)
 	error ("invalid use of %<auto%>");
-      type = error_mark_node;
+      return error_mark_node;
     }
 
   if (processing_template_decl)
@@ -1671,16 +1732,10 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
      void type, creates an rvalue of the specified type, which is
      value-initialized.  */
 
-  if (parms == NULL_TREE
-      /* If there's a user-defined constructor, value-initialization is
-	 just calling the constructor, so fall through.  */
-      && !TYPE_HAS_USER_CONSTRUCTOR (type))
+  if (parms == NULL_TREE)
     {
       exp = build_value_init (type, complain);
       exp = get_target_expr_sfinae (exp, complain);
-      /* FIXME this is wrong */
-      if (literal_type_p (type))
-	TREE_CONSTANT (exp) = true;
       return exp;
     }
 

@@ -564,7 +564,7 @@ default_function_section (tree decl, enum node_frequency freq,
 /* Return the section for function DECL.
 
    If DECL is NULL_TREE, return the text section.  We can be passed
-   NULL_TREE under some circumstances by dbxout.c at least. 
+   NULL_TREE under some circumstances by dbxout.c at least.
 
    If FORCE_COLD is true, return cold function section ignoring
    the frequency info of cgraph_node.  */
@@ -1198,16 +1198,23 @@ make_decl_rtl (tree decl)
   else if (TREE_CODE (decl) != FUNCTION_DECL && DECL_REGISTER (decl))
     {
       const char *asmspec = name+1;
+      enum machine_mode mode = DECL_MODE (decl);
       reg_number = decode_reg_name (asmspec);
       /* First detect errors in declaring global registers.  */
       if (reg_number == -1)
 	error ("register name not specified for %q+D", decl);
       else if (reg_number < 0)
 	error ("invalid register name for %q+D", decl);
-      else if (TYPE_MODE (TREE_TYPE (decl)) == BLKmode)
+      else if (mode == BLKmode)
 	error ("data type of %q+D isn%'t suitable for a register",
 	       decl);
-      else if (! HARD_REGNO_MODE_OK (reg_number, TYPE_MODE (TREE_TYPE (decl))))
+      else if (!in_hard_reg_set_p (accessible_reg_set, mode, reg_number))
+	error ("the register specified for %q+D cannot be accessed"
+	       " by the current target", decl);
+      else if (!in_hard_reg_set_p (operand_reg_set, mode, reg_number))
+	error ("the register specified for %q+D is not general enough"
+	       " to be used as a register variable", decl);
+      else if (!HARD_REGNO_MODE_OK (reg_number, mode))
 	error ("register specified for %q+D isn%'t suitable for data type",
                decl);
       /* Now handle properly declared static register variables.  */
@@ -1230,7 +1237,7 @@ make_decl_rtl (tree decl)
 	     confused with that register and be eliminated.  This usage is
 	     somewhat suspect...  */
 
-	  SET_DECL_RTL (decl, gen_rtx_raw_REG (DECL_MODE (decl), reg_number));
+	  SET_DECL_RTL (decl, gen_rtx_raw_REG (mode, reg_number));
 	  ORIGINAL_REGNO (DECL_RTL (decl)) = reg_number;
 	  REG_USERVAR_P (DECL_RTL (decl)) = 1;
 
@@ -1242,7 +1249,7 @@ make_decl_rtl (tree decl)
 	      name = IDENTIFIER_POINTER (DECL_NAME (decl));
 	      ASM_DECLARE_REGISTER_GLOBAL (asm_out_file, decl, reg_number, name);
 #endif
-	      nregs = hard_regno_nregs[reg_number][DECL_MODE (decl)];
+	      nregs = hard_regno_nregs[reg_number][mode];
 	      while (nregs > 0)
 		globalize_reg (decl, reg_number + --nregs);
 	    }
@@ -1928,7 +1935,7 @@ assemble_variable (tree decl, int top_level ATTRIBUTE_UNUSED,
 
   /* Emulated TLS had better not get this far.  */
   gcc_checking_assert (targetm.have_tls || !DECL_THREAD_LOCAL_P (decl));
-              
+
   last_assemble_variable_decl = 0;
 
   /* Normally no need to say anything here for external references,
@@ -2104,11 +2111,14 @@ incorporeal_function_p (tree decl)
       const char *name;
 
       if (DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL
-	  && DECL_FUNCTION_CODE (decl) == BUILT_IN_ALLOCA)
+	  && (DECL_FUNCTION_CODE (decl) == BUILT_IN_ALLOCA
+	      || DECL_FUNCTION_CODE (decl) == BUILT_IN_ALLOCA_WITH_ALIGN))
 	return true;
 
       name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl));
-      if (is_builtin_name (name))
+      /* Atomic or sync builtins which have survived this far will be
+	 resolved externally and therefore are not incorporeal.  */
+      if (strncmp (name, "__builtin_", 10) == 0)
 	return true;
     }
   return false;
@@ -2592,6 +2602,12 @@ decode_addr_const (tree exp, struct addr_const *value)
 		     * tree_low_cst (TREE_OPERAND (target, 1), 0));
 	  target = TREE_OPERAND (target, 0);
 	}
+      else if (TREE_CODE (target) == MEM_REF
+	       && TREE_CODE (TREE_OPERAND (target, 0)) == ADDR_EXPR)
+	{
+	  offset += mem_ref_offset (target).low;
+	  target = TREE_OPERAND (TREE_OPERAND (target, 0), 0);
+	}
       else if (TREE_CODE (target) == INDIRECT_REF
 	       && TREE_CODE (TREE_OPERAND (target, 0)) == NOP_EXPR
 	       && TREE_CODE (TREE_OPERAND (TREE_OPERAND (target, 0), 0))
@@ -2845,7 +2861,7 @@ compare_constant (const tree t1, const tree t2)
 	      return 0;
 	    link2 = TREE_CHAIN (link2);
 	  }
-	
+
 	return 1;
       }
 
@@ -3112,7 +3128,7 @@ build_constant_desc (tree exp)
   SET_SYMBOL_REF_DECL (symbol, decl);
   TREE_CONSTANT_POOL_ADDRESS_P (symbol) = 1;
 
-  rtl = gen_rtx_MEM (TYPE_MODE (TREE_TYPE (exp)), symbol);
+  rtl = gen_const_mem (TYPE_MODE (TREE_TYPE (exp)), symbol);
   set_mem_attributes (rtl, exp, 1);
   set_mem_alias_set (rtl, 0);
   set_mem_alias_set (rtl, const_alias_set);
@@ -4628,9 +4644,10 @@ output_constant (tree exp, unsigned HOST_WIDE_INT size, unsigned int align)
 static unsigned HOST_WIDE_INT
 array_size_for_constructor (tree val)
 {
-  tree max_index, i;
+  tree max_index;
   unsigned HOST_WIDE_INT cnt;
   tree index, value, tmp;
+  double_int i;
 
   /* This code used to attempt to handle string constants that are not
      arrays of single-bytes, but nothing else does, so there's no point in
@@ -4652,14 +4669,15 @@ array_size_for_constructor (tree val)
 
   /* Compute the total number of array elements.  */
   tmp = TYPE_MIN_VALUE (TYPE_DOMAIN (TREE_TYPE (val)));
-  i = size_binop (MINUS_EXPR, fold_convert (sizetype, max_index),
-		  fold_convert (sizetype, tmp));
-  i = size_binop (PLUS_EXPR, i, size_one_node);
+  i = double_int_sub (tree_to_double_int (max_index), tree_to_double_int (tmp));
+  i = double_int_add (i, double_int_one);
 
   /* Multiply by the array element unit size to find number of bytes.  */
-  i = size_binop (MULT_EXPR, i, TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (val))));
+  i = double_int_mul (i, tree_to_double_int
+		           (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (val)))));
 
-  return tree_low_cst (i, 1);
+  gcc_assert (double_int_fits_in_uhwi_p (i));
+  return i.low;
 }
 
 /* Other datastructures + helpers for output_constructor.  */
@@ -5745,7 +5763,7 @@ finish_aliases_1 (void)
 	       && ! lookup_attribute ("weakref", DECL_ATTRIBUTES (p->decl)))
 	{
 	  error ("%q+D aliased to external symbol %qE",
-		 p->decl, p->target);	  
+		 p->decl, p->target);
 	  p->emitted_diags |= ALIAS_DIAG_TO_EXTERN;
 	}
     }
@@ -5776,13 +5794,10 @@ void
 assemble_alias (tree decl, tree target)
 {
   tree target_decl;
-  bool is_weakref = false;
 
   if (lookup_attribute ("weakref", DECL_ATTRIBUTES (decl)))
     {
       tree alias = DECL_ASSEMBLER_NAME (decl);
-
-      is_weakref = true;
 
       ultimate_transparent_alias_target (&target);
 
@@ -5811,7 +5826,7 @@ assemble_alias (tree decl, tree target)
 	  if (lookup_attribute ("ifunc", DECL_ATTRIBUTES (decl)))
 	    error_at (DECL_SOURCE_LOCATION (decl),
 		      "ifunc is not supported in this configuration");
-	  else	
+	  else
 	    error_at (DECL_SOURCE_LOCATION (decl),
 		      "only weak aliases are supported in this configuration");
 	  return;
@@ -5820,12 +5835,6 @@ assemble_alias (tree decl, tree target)
 #endif
     }
   TREE_USED (decl) = 1;
-
-  /* A quirk of the initial implementation of aliases required that the user
-     add "extern" to all of them.  Which is silly, but now historical.  Do
-     note that the symbol is in fact locally defined.  */
-  if (! is_weakref)
-    DECL_EXTERNAL (decl) = 0;
 
   /* Allow aliases to aliases.  */
   if (TREE_CODE (decl) == FUNCTION_DECL)
@@ -5850,11 +5859,175 @@ assemble_alias (tree decl, tree target)
     }
 }
 
+/* Record and output a table of translations from original function
+   to its transaction aware clone.  Note that tm_pure functions are
+   considered to be their own clone.  */
+
+static GTY((if_marked ("tree_map_marked_p"), param_is (struct tree_map)))
+     htab_t tm_clone_hash;
+
+void
+record_tm_clone_pair (tree o, tree n)
+{
+  struct tree_map **slot, *h;
+
+  if (tm_clone_hash == NULL)
+    tm_clone_hash = htab_create_ggc (32, tree_map_hash, tree_map_eq, 0);
+
+  h = ggc_alloc_tree_map ();
+  h->hash = htab_hash_pointer (o);
+  h->base.from = o;
+  h->to = n;
+
+  slot = (struct tree_map **)
+    htab_find_slot_with_hash (tm_clone_hash, h, h->hash, INSERT);
+  *slot = h;
+}
+
+tree
+get_tm_clone_pair (tree o)
+{
+  if (tm_clone_hash)
+    {
+      struct tree_map *h, in;
+
+      in.base.from = o;
+      in.hash = htab_hash_pointer (o);
+      h = (struct tree_map *) htab_find_with_hash (tm_clone_hash,
+						   &in, in.hash);
+      if (h)
+	return h->to;
+    }
+  return NULL_TREE;
+}
+
+typedef struct tm_alias_pair
+{
+  unsigned int uid;
+  tree from;
+  tree to;
+} tm_alias_pair;
+
+DEF_VEC_O(tm_alias_pair);
+DEF_VEC_ALLOC_O(tm_alias_pair,heap);
+
+/* Helper function for finish_tm_clone_pairs.  Dump a hash table entry
+   into a VEC in INFO.  */
+
+static int
+dump_tm_clone_to_vec (void **slot, void *info)
+{
+  struct tree_map *map = (struct tree_map *) *slot;
+  VEC(tm_alias_pair,heap) **tm_alias_pairs
+    = (VEC(tm_alias_pair, heap) **) info;
+  tm_alias_pair *p;
+
+  p = VEC_safe_push (tm_alias_pair, heap, *tm_alias_pairs, NULL);
+  p->from = map->base.from;
+  p->to = map->to;
+  p->uid = DECL_UID (p->from);
+  return 1;
+}
+
+/* Dump the actual pairs to the .tm_clone_table section.  */
+
+static void
+dump_tm_clone_pairs (VEC(tm_alias_pair,heap) *tm_alias_pairs)
+{
+  unsigned i;
+  tm_alias_pair *p;
+  bool switched = false;
+
+  FOR_EACH_VEC_ELT (tm_alias_pair, tm_alias_pairs, i, p)
+    {
+      tree src = p->from;
+      tree dst = p->to;
+      struct cgraph_node *src_n = cgraph_get_node (src);
+      struct cgraph_node *dst_n = cgraph_get_node (dst);
+
+      /* The function ipa_tm_create_version() marks the clone as needed if
+	 the original function was needed.  But we also mark the clone as
+	 needed if we ever called the clone indirectly through
+	 TM_GETTMCLONE.  If neither of these are true, we didn't generate
+	 a clone, and we didn't call it indirectly... no sense keeping it
+	 in the clone table.  */
+      if (!dst_n || !dst_n->needed)
+	continue;
+
+      /* This covers the case where we have optimized the original
+	 function away, and only access the transactional clone.  */
+      if (!src_n || !src_n->needed)
+	continue;
+
+      if (!switched)
+	{
+	  switch_to_section (targetm.asm_out.tm_clone_table_section ());
+	  assemble_align (POINTER_SIZE);
+	  switched = true;
+	}
+
+      assemble_integer (XEXP (DECL_RTL (src), 0),
+			POINTER_SIZE / BITS_PER_UNIT, POINTER_SIZE, 1);
+      assemble_integer (XEXP (DECL_RTL (dst), 0),
+			POINTER_SIZE / BITS_PER_UNIT, POINTER_SIZE, 1);
+    }
+}
+
+/* Provide a default for the tm_clone_table section.  */
+
+section *
+default_clone_table_section (void)
+{
+  return get_named_section (NULL, ".tm_clone_table", 3);
+}
+
+/* Helper comparison function for qsorting by the DECL_UID stored in
+   alias_pair->emitted_diags.  */
+
+static int
+tm_alias_pair_cmp (const void *x, const void *y)
+{
+  const tm_alias_pair *p1 = (const tm_alias_pair *) x;
+  const tm_alias_pair *p2 = (const tm_alias_pair *) y;
+  if (p1->uid < p2->uid)
+    return -1;
+  if (p1->uid > p2->uid)
+    return 1;
+  return 0;
+}
+
+void
+finish_tm_clone_pairs (void)
+{
+  VEC(tm_alias_pair,heap) *tm_alias_pairs = NULL;
+
+  if (tm_clone_hash == NULL)
+    return;
+
+  /* We need a determenistic order for the .tm_clone_table, otherwise
+     we will get bootstrap comparison failures, so dump the hash table
+     to a vector, sort it, and dump the vector.  */
+
+  /* Dump the hashtable to a vector.  */
+  htab_traverse_noresize (tm_clone_hash, dump_tm_clone_to_vec,
+			  (void *) &tm_alias_pairs);
+  /* Sort it.  */
+  VEC_qsort (tm_alias_pair, tm_alias_pairs, tm_alias_pair_cmp);
+
+  /* Dump it.  */
+  dump_tm_clone_pairs (tm_alias_pairs);
+
+  htab_delete (tm_clone_hash);
+  tm_clone_hash = NULL;
+  VEC_free (tm_alias_pair, heap, tm_alias_pairs);
+}
+
+
 /* Emit an assembler directive to set symbol for DECL visibility to
    the visibility type VIS, which must not be VISIBILITY_DEFAULT.  */
 
 void
-default_assemble_visibility (tree decl ATTRIBUTE_UNUSED, 
+default_assemble_visibility (tree decl ATTRIBUTE_UNUSED,
 			     int vis ATTRIBUTE_UNUSED)
 {
 #ifdef HAVE_GAS_HIDDEN
@@ -6151,6 +6324,8 @@ default_elf_asm_named_section (const char *name, unsigned int flags,
 
   if (!(flags & SECTION_DEBUG))
     *f++ = 'a';
+  if (flags & SECTION_EXCLUDE)
+    *f++ = 'e';
   if (flags & SECTION_WRITE)
     *f++ = 'w';
   if (flags & SECTION_CODE)
@@ -6673,6 +6848,7 @@ static bool
 resolution_to_local_definition_p (enum ld_plugin_symbol_resolution resolution)
 {
   return (resolution == LDPR_PREVAILING_DEF
+	  || resolution == LDPR_PREVAILING_DEF_IRONLY_EXP
 	  || resolution == LDPR_PREVAILING_DEF_IRONLY);
 }
 
@@ -6684,6 +6860,7 @@ resolution_local_p (enum ld_plugin_symbol_resolution resolution)
 {
   return (resolution == LDPR_PREVAILING_DEF
 	  || resolution == LDPR_PREVAILING_DEF_IRONLY
+	  || resolution == LDPR_PREVAILING_DEF_IRONLY_EXP
 	  || resolution == LDPR_PREEMPTED_REG
 	  || resolution == LDPR_PREEMPTED_IR
 	  || resolution == LDPR_RESOLVED_IR
@@ -6707,7 +6884,7 @@ default_binds_local_p_1 (const_tree exp, int shlib)
   bool resolved_to_local_def = false;
 
   /* With resolution file in hands, take look into resolutions.
-     We can't just return true for resolved_localy symbols,
+     We can't just return true for resolved_locally symbols,
      because dynamic linking might overwrite symbols
      in shared libraries.  */
   if (TREE_CODE (exp) == VAR_DECL && TREE_PUBLIC (exp)
@@ -6734,11 +6911,14 @@ default_binds_local_p_1 (const_tree exp, int shlib)
   /* A non-decl is an entry in the constant pool.  */
   if (!DECL_P (exp))
     local_p = true;
-  /* Weakrefs may not bind locally, even though the weakref itself is
-     always static and therefore local.
-     FIXME: We can resolve this more curefuly by looking at the weakref
-     alias.  */
-  else if (lookup_attribute ("weakref", DECL_ATTRIBUTES (exp)))
+  /* Weakrefs may not bind locally, even though the weakref itself is always
+     static and therefore local.  Similarly, the resolver for ifunc functions
+     might resolve to a non-local function.
+     FIXME: We can resolve the weakref case more curefuly by looking at the
+     weakref alias.  */
+  else if (lookup_attribute ("weakref", DECL_ATTRIBUTES (exp))
+	   || (TREE_CODE (exp) == FUNCTION_DECL
+	       && lookup_attribute ("ifunc", DECL_ATTRIBUTES (exp))))
     local_p = false;
   /* Static variables are always local.  */
   else if (! TREE_PUBLIC (exp))
@@ -6816,7 +6996,7 @@ decl_binds_to_current_def_p (tree decl)
 	return resolution_to_local_definition_p (node->resolution);
     }
   /* Otherwise we have to assume the worst for DECL_WEAK (hidden weaks
-     binds localy but still can be overwritten).
+     binds locally but still can be overwritten).
      This rely on fact that binds_local_p behave as decl_replaceable_p
      for all other declaration types.  */
   return !DECL_WEAK (decl);
@@ -7348,6 +7528,178 @@ make_debug_expr_from_rtl (const_rtx exp)
   DEBUG_EXPR_TREE_DECL (dval) = ddecl;
   SET_DECL_RTL (ddecl, dval);
   return dval;
+}
+
+#ifdef ELF_ASCII_ESCAPES
+/* Default ASM_OUTPUT_LIMITED_STRING for ELF targets.  */
+
+void
+default_elf_asm_output_limited_string (FILE *f, const char *s)
+{
+  int escape;
+  unsigned char c;
+
+  fputs (STRING_ASM_OP, f);
+  putc ('"', f);
+  while (*s != '\0')
+    {
+      c = *s;
+      escape = ELF_ASCII_ESCAPES[c];
+      switch (escape)
+	{
+	case 0:
+	  putc (c, f);
+	  break;
+	case 1:
+	  /* TODO: Print in hex with fast function, important for -flto. */
+	  fprintf (f, "\\%03o", c);
+	  break;
+	default:
+	  putc ('\\', f);
+	  putc (escape, f);
+	  break;
+	}
+      s++;
+    }
+  putc ('\"', f);
+  putc ('\n', f);
+}
+
+/* Default ASM_OUTPUT_ASCII for ELF targets.  */
+
+void
+default_elf_asm_output_ascii (FILE *f, const char *s, unsigned int len)
+{
+  const char *limit = s + len;
+  const char *last_null = NULL;
+  unsigned bytes_in_chunk = 0;
+  unsigned char c;
+  int escape;
+
+  for (; s < limit; s++)
+    {
+      const char *p;
+
+      if (bytes_in_chunk >= 60)
+	{
+	  putc ('\"', f);
+	  putc ('\n', f);
+	  bytes_in_chunk = 0;
+	}
+
+      if (s > last_null)
+	{
+	  for (p = s; p < limit && *p != '\0'; p++)
+	    continue;
+	  last_null = p;
+	}
+      else
+	p = last_null;
+
+      if (p < limit && (p - s) <= (long) ELF_STRING_LIMIT)
+	{
+	  if (bytes_in_chunk > 0)
+	    {
+	      putc ('\"', f);
+	      putc ('\n', f);
+	      bytes_in_chunk = 0;
+	    }
+
+	  default_elf_asm_output_limited_string (f, s);
+	  s = p;
+	}
+      else
+	{
+	  if (bytes_in_chunk == 0)
+	    fputs (ASCII_DATA_ASM_OP "\"", f);
+
+	  c = *s;
+	  escape = ELF_ASCII_ESCAPES[c];
+	  switch (escape)
+	    {
+	    case 0:
+	      putc (c, f);
+	      bytes_in_chunk++;
+	      break;
+	    case 1:
+	      /* TODO: Print in hex with fast function, important for -flto. */
+	      fprintf (f, "\\%03o", c);
+	      bytes_in_chunk += 4;
+	      break;
+	    default:
+	      putc ('\\', f);
+	      putc (escape, f);
+	      bytes_in_chunk += 2;
+	      break;
+	    }
+
+	}
+    }
+
+  if (bytes_in_chunk > 0)
+    {
+      putc ('\"', f);
+      putc ('\n', f);
+    }
+}
+#endif
+
+static GTY(()) section *elf_init_array_section;
+static GTY(()) section *elf_fini_array_section;
+
+static section *
+get_elf_initfini_array_priority_section (int priority,
+					 bool constructor_p)
+{
+  section *sec;
+  if (priority != DEFAULT_INIT_PRIORITY)
+    {
+      char buf[18];
+      sprintf (buf, "%s.%.5u", 
+	       constructor_p ? ".init_array" : ".fini_array",
+	       priority);
+      sec = get_section (buf, SECTION_WRITE, NULL_TREE);
+    }
+  else
+    {
+      if (constructor_p)
+	{
+	  if (elf_init_array_section == NULL)
+	    elf_init_array_section
+	      = get_unnamed_section (0, output_section_asm_op,
+				     "\t.section\t.init_array");
+	  sec = elf_init_array_section;
+	}
+      else
+	{
+	  if (elf_fini_array_section == NULL)
+	    elf_fini_array_section
+	      = get_unnamed_section (0, output_section_asm_op,
+				     "\t.section\t.fini_array");
+	  sec = elf_fini_array_section;
+	}
+    }
+  return sec;
+}
+
+/* Use .init_array section for constructors. */
+
+void
+default_elf_init_array_asm_out_constructor (rtx symbol, int priority)
+{
+  section *sec = get_elf_initfini_array_priority_section (priority,
+							  true);
+  assemble_addr_to_section (symbol, sec);
+}
+
+/* Use .fini_array section for destructors. */
+
+void
+default_elf_fini_array_asm_out_destructor (rtx symbol, int priority)
+{
+  section *sec = get_elf_initfini_array_priority_section (priority,
+							  false);
+  assemble_addr_to_section (symbol, sec);
 }
 
 #include "gt-varasm.h"

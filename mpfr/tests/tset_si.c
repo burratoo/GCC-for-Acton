@@ -1,7 +1,7 @@
 /* Test file for mpfr_set_si and mpfr_set_ui.
 
 Copyright 1999, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -120,6 +120,27 @@ test_macros (void)
       exit (1);
     }
   mpfr_clears (x[0], x[1], x[2], (mpfr_ptr) 0);
+}
+
+static void
+test_macros_keyword (void)
+{
+  mpfr_t x;
+  unsigned long i;
+
+  mpfr_init2 (x, 64);
+#define MKN 0x1000000
+#define long short
+  mpfr_set_ui (x, MKN, MPFR_RNDN);
+#undef long
+  i = mpfr_get_ui (x, MPFR_RNDN);
+  if (i != MKN)
+    {
+      printf ("Error in test_macros_keyword: expected 0x%lx, got 0x%lx.\n",
+              (unsigned long) MKN, i);
+      exit (1);
+    }
+  mpfr_clear (x);
 }
 
 /* FIXME: Comparing against mpfr_get_si/ui is not ideal, it'd be better to
@@ -429,6 +450,7 @@ main (int argc, char *argv[])
 
   test_2exp ();
   test_macros ();
+  test_macros_keyword ();
   tests_end_mpfr ();
   return 0;
 }

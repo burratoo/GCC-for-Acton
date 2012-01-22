@@ -108,7 +108,8 @@ package body Ch6 is
    --    end [DESIGNATOR];
 
    --  SUBPROGRAM_RENAMING_DECLARATION ::=
-   --    SUBPROGRAM_SPECIFICATION renames callable_entity_NAME;
+   --    SUBPROGRAM_SPECIFICATION renames callable_entity_NAME
+   --      [ASPECT_SPECIFICATIONS];
 
    --  SUBPROGRAM_BODY_STUB ::=
    --    SUBPROGRAM_SPECIFICATION is separate;
@@ -184,7 +185,7 @@ package body Ch6 is
       Scope.Table (Scope.Last).Ecol := Start_Column;
       Scope.Table (Scope.Last).Lreq := False;
 
-      --  Ada2005: scan leading NOT OVERRIDING indicator
+      --  Ada 2005: Scan leading NOT OVERRIDING indicator
 
       if Token = Tok_Not then
          Scan;  -- past NOT
@@ -506,6 +507,7 @@ package body Ch6 is
             Scan; -- past RENAMES
             Set_Name (Rename_Node, P_Name);
             Set_Specification (Rename_Node, Specification_Node);
+            P_Aspect_Specifications (Rename_Node);
             TF_Semicolon;
             Pop_Scope_Stack;
             return Rename_Node;
@@ -675,10 +677,40 @@ package body Ch6 is
                   else
                      --  If the identifier is the first token on its line, then
                      --  let's assume that we have a missing begin and this is
-                     --  intended as a subprogram body.
+                     --  intended as a subprogram body. However, if the context
+                     --  is a function and the unit is a package declaration, a
+                     --  body would be illegal, so try for an unparenthesized
+                     --  expression function.
 
                      if Token_Is_At_Start_Of_Line then
-                        return False;
+                        declare
+                           --  The enclosing scope entry is a subprogram spec
+
+                           Spec_Node : constant Node_Id :=
+                                         Parent
+                                           (Scope.Table (Scope.Last).Labl);
+                           Lib_Node : Node_Id := Spec_Node;
+
+                        begin
+                           --  Check whether there is an enclosing scope that
+                           --  is a package declaration.
+
+                           if Scope.Last > 1 then
+                              Lib_Node  :=
+                                Parent (Scope.Table (Scope.Last - 1).Labl);
+                           end if;
+
+                           if Ada_Version >= Ada_2012
+                             and then
+                               Nkind (Lib_Node) = N_Package_Specification
+                             and then
+                               Nkind (Spec_Node) = N_Function_Specification
+                           then
+                              null;
+                           else
+                              return False;
+                           end if;
+                        end;
 
                      --  Otherwise we have to scan ahead. If the identifier is
                      --  followed by a colon or a comma, it is a declaration
@@ -1186,14 +1218,16 @@ package body Ch6 is
    --  FORMAL_PART ::= (PARAMETER_SPECIFICATION {; PARAMETER_SPECIFICATION})
 
    --  PARAMETER_SPECIFICATION ::=
-   --    DEFINING_IDENTIFIER_LIST : MODE [NULL_EXCLUSION] SUBTYPE_MARK
-   --      [:= DEFAULT_EXPRESSION]
+   --    DEFINING_IDENTIFIER_LIST : [ALIASED] MODE [NULL_EXCLUSION]
+   --      SUBTYPE_MARK [:= DEFAULT_EXPRESSION]
    --  | DEFINING_IDENTIFIER_LIST : ACCESS_DEFINITION
    --      [:= DEFAULT_EXPRESSION]
 
    --  This scans the construct Formal_Part. The caller has already checked
    --  that the initial token is a left parenthesis, and skipped past it, so
    --  that on entry Token is the first token following the left parenthesis.
+
+   --  Note: The ALIASED keyword is allowed only in Ada 2012 mode (AI 142)
 
    --  Error recovery: cannot raise Error_Resync
 
@@ -1235,9 +1269,11 @@ package body Ch6 is
 
                if Token /= Tok_Comma then
 
-                  --  Assume colon if IN or OUT keyword found
+                  --  Assume colon if ALIASED, IN or OUT keyword found
 
-                  exit Ident_Loop when Token = Tok_In or else Token = Tok_Out;
+                  exit Ident_Loop when Token = Tok_Aliased or else
+                                       Token = Tok_In      or else
+                                       Token = Tok_Out;
 
                   --  Otherwise scan ahead
 
@@ -1302,6 +1338,18 @@ package body Ch6 is
                Specification_Node :=
                  New_Node (N_Parameter_Specification, Ident_Sloc);
                Set_Defining_Identifier (Specification_Node, Idents (Ident));
+
+               --  Scan possible ALIASED for Ada 2012 (AI-142)
+
+               if Token = Tok_Aliased then
+                  if Ada_Version < Ada_2012 then
+                     Error_Msg_SC ("ALIASED parameter is an Ada 2012 feature");
+                  else
+                     Set_Aliased_Present (Specification_Node);
+                  end if;
+
+                  Scan; -- past ALIASED
+               end if;
 
                --  Scan possible NOT NULL for Ada 2005 (AI-231, AI-447)
 
@@ -1630,6 +1678,14 @@ package body Ch6 is
       elsif Token = Tok_Aliased then
          Scan; -- past ALIASED
          Set_Aliased_Present (Decl_Node);
+
+         if Ada_Version < Ada_2012 then
+            Error_Msg_SC -- CODEFIX
+              ("ALIASED not allowed in extended return in Ada 2012?");
+         else
+            Error_Msg_SC -- CODEFIX
+              ("ALIASED not allowed in extended return");
+         end if;
 
          if Token = Tok_Constant then
             Scan; -- past CONSTANT

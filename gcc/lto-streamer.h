@@ -142,7 +142,7 @@ along with GCC; see the file COPYING3.  If not see
 #define LTO_SECTION_NAME_PREFIX         ".gnu.lto_"
 
 #define LTO_major_version 2
-#define LTO_minor_version 0
+#define LTO_minor_version 1
 
 typedef unsigned char	lto_decl_flags_t;
 
@@ -238,6 +238,7 @@ enum lto_section_type
   LTO_section_cgraph,
   LTO_section_varpool,
   LTO_section_refs,
+  LTO_section_asm,
   LTO_section_jump_functions,
   LTO_section_ipa_pure_const,
   LTO_section_ipa_reference,
@@ -378,6 +379,23 @@ struct lto_decl_header
 
   /* Number of nodes in globals stream.  */
   int32_t num_nodes;
+
+  /* Size of region for expressions, decls, types, etc. */
+  int32_t main_size;
+
+  /* Size of the string table.  */
+  int32_t string_size;
+};
+
+
+/* Structure describing top level asm()s.  */
+struct lto_asm_header
+{
+  /* The header for all types of sections. */
+  struct lto_header lto_header;
+
+  /* Size compressed or 0 if not compressed.  */
+  int32_t compressed_size;
 
   /* Size of region for expressions, decls, types, etc. */
   int32_t main_size;
@@ -552,7 +570,7 @@ struct GTY(()) lto_file_decl_data
   struct lto_file_decl_data *next;
 
   /* Sub ID for merged objects. */
-  unsigned id;
+  unsigned HOST_WIDE_INT id;
 
   /* Symbol resolutions for this file */
   VEC(ld_plugin_symbol_resolution_t,heap) * GTY((skip)) resolutions;
@@ -652,7 +670,7 @@ struct output_block
   bool global;
 
   /* Cache of nodes written in this section.  */
-  struct lto_streamer_cache_d *writer_cache;
+  struct streamer_tree_cache_d *writer_cache;
 
   /* All data persistent across whole duration of output block
      can go here.  */
@@ -690,7 +708,7 @@ struct data_in
   VEC(ld_plugin_symbol_resolution_t,heap) *globals_resolution;
 
   /* Cache of pickled nodes.  */
-  struct lto_streamer_cache_d *reader_cache;
+  struct streamer_tree_cache_d *reader_cache;
 };
 
 
@@ -712,10 +730,6 @@ extern const char *lto_get_section_data (struct lto_file_decl_data *,
 extern void lto_free_section_data (struct lto_file_decl_data *,
 				   enum lto_section_type,
 				   const char *, const char *, size_t);
-extern unsigned HOST_WIDE_INT lto_input_uleb128 (struct lto_input_block *);
-extern unsigned HOST_WIDEST_INT lto_input_widest_uint_uleb128 (
-						struct lto_input_block *);
-extern HOST_WIDE_INT lto_input_sleb128 (struct lto_input_block *);
 extern htab_t lto_create_renaming_table (void);
 extern void lto_record_renamed_decl (struct lto_file_decl_data *,
 				     const char *, const char *);
@@ -742,12 +756,6 @@ extern void lto_end_section (void);
 extern void lto_write_stream (struct lto_output_stream *);
 extern void lto_output_data_stream (struct lto_output_stream *, const void *,
 				    size_t);
-extern void lto_output_uleb128_stream (struct lto_output_stream *,
-       				       unsigned HOST_WIDE_INT);
-extern void lto_output_widest_uint_uleb128_stream (struct lto_output_stream *,
-       					           unsigned HOST_WIDEST_INT);
-extern void lto_output_sleb128_stream (struct lto_output_stream *,
-				       HOST_WIDE_INT);
 extern bool lto_output_decl_index (struct lto_output_stream *,
 			    struct lto_tree_ref_encoder *,
 			    tree, unsigned int *);
@@ -799,6 +807,7 @@ extern void lto_input_function_body (struct lto_file_decl_data *, tree,
 				     const char *);
 extern void lto_input_constructors_and_inits (struct lto_file_decl_data *,
 					      const char *);
+extern void lto_input_toplevel_asms (struct lto_file_decl_data *, int);
 extern struct data_in *lto_data_in_create (struct lto_file_decl_data *,
 				    const char *, unsigned,
 				    VEC(ld_plugin_symbol_resolution_t,heap) *);
@@ -809,20 +818,21 @@ tree lto_input_tree_ref (struct lto_input_block *, struct data_in *,
 			 struct function *, enum LTO_tags);
 void lto_tag_check_set (enum LTO_tags, int, ...);
 void lto_init_eh (void);
+tree lto_input_tree (struct lto_input_block *, struct data_in *);
 
 
 /* In lto-streamer-out.c  */
 extern void lto_register_decl_definition (tree, struct lto_file_decl_data *);
 extern struct output_block *create_output_block (enum lto_section_type);
 extern void destroy_output_block (struct output_block *);
-extern void lto_output_tree (struct output_block *, tree, bool);
+extern void lto_output_tree (struct output_block *, tree, bool, bool);
+extern void lto_output_toplevel_asms (void);
 extern void produce_asm (struct output_block *ob, tree fn);
 void lto_output_decl_state_streams (struct output_block *,
 				    struct lto_out_decl_state *);
 void lto_output_decl_state_refs (struct output_block *,
 			         struct lto_output_stream *,
 			         struct lto_out_decl_state *);
-void lto_output_tree_ref (struct output_block *, tree);
 void lto_output_location (struct output_block *, location_t);
 
 
@@ -872,12 +882,7 @@ extern GTY(()) VEC(tree,gc) *lto_global_var_decls;
 
 
 /* In lto-opts.c.  */
-extern void lto_register_user_option (size_t, const char *, int, unsigned int);
-extern void lto_read_file_options (struct lto_file_decl_data *);
 extern void lto_write_options (void);
-extern void lto_reissue_options (void);
-void lto_clear_user_options (void);
-void lto_clear_file_options (void);
 
 
 /* In lto-wpa-fixup.c  */
@@ -1014,17 +1019,6 @@ static inline bool
 emit_label_in_global_context_p (tree label)
 {
   return DECL_NONLOCAL (label) || FORCED_LABEL (label);
-}
-
-/* Return true if tree node EXPR should be streamed as a builtin.  For
-   these nodes, we just emit the class and function code.  */
-static inline bool
-lto_stream_as_builtin_p (tree expr)
-{
-  return (TREE_CODE (expr) == FUNCTION_DECL
-	  && DECL_IS_BUILTIN (expr)
-	  && (DECL_BUILT_IN_CLASS (expr) == BUILT_IN_NORMAL
-	      || DECL_BUILT_IN_CLASS (expr) == BUILT_IN_MD));
 }
 
 DEFINE_DECL_STREAM_FUNCS (TYPE, type)

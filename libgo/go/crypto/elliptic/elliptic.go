@@ -14,9 +14,8 @@ package elliptic
 // reverse the transform than to operate in affine coordinates.
 
 import (
-	"big"
 	"io"
-	"os"
+	"math/big"
 	"sync"
 )
 
@@ -249,7 +248,7 @@ var mask = []byte{0xff, 0x1, 0x3, 0x7, 0xf, 0x1f, 0x3f, 0x7f}
 
 // GenerateKey returns a public/private key pair. The private key is generated
 // using the given reader, which must return random data.
-func (curve *Curve) GenerateKey(rand io.Reader) (priv []byte, x, y *big.Int, err os.Error) {
+func (curve *Curve) GenerateKey(rand io.Reader) (priv []byte, x, y *big.Int, err error) {
 	byteLen := (curve.BitSize + 7) >> 3
 	priv = make([]byte, byteLen)
 
@@ -284,7 +283,7 @@ func (curve *Curve) Marshal(x, y *big.Int) []byte {
 	return ret
 }
 
-// Unmarshal converts a point, serialised by Marshal, into an x, y pair. On
+// Unmarshal converts a point, serialized by Marshal, into an x, y pair. On
 // error, x = nil.
 func (curve *Curve) Unmarshal(data []byte) (x, y *big.Int) {
 	byteLen := (curve.BitSize + 7) >> 3

@@ -1,7 +1,7 @@
 /* C-compiler utilities for types and variables storage layout
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1996, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -622,12 +622,13 @@ layout_decl (tree decl, unsigned int known_align)
 	  /* See if we can use an ordinary integer mode for a bit-field.
 	     Conditions are: a fixed size that is correct for another mode,
 	     occupying a complete byte or bytes on proper boundary,
-	     and not volatile or not -fstrict-volatile-bitfields.  */
+	     and not -fstrict-volatile-bitfields.  If the latter is set,
+	     we unfortunately can't check TREE_THIS_VOLATILE, as a cast
+	     may make a volatile object later.  */
 	  if (TYPE_SIZE (type) != 0
 	      && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
 	      && GET_MODE_CLASS (TYPE_MODE (type)) == MODE_INT
-	      && !(TREE_THIS_VOLATILE (decl)
-		   && flag_strict_volatile_bitfields > 0))
+	      && flag_strict_volatile_bitfields <= 0)
 	    {
 	      enum machine_mode xmode
 		= mode_for_size_tree (DECL_SIZE (decl), MODE_INT, 1);
@@ -935,7 +936,8 @@ update_alignment_for_field (record_layout_info rli, tree field,
 	 applies if there was an immediately prior, nonzero-size
 	 bitfield.  (That's the way it is, experimentally.) */
       if ((!is_bitfield && !DECL_PACKED (field))
-	  || (!integer_zerop (DECL_SIZE (field))
+	  || ((DECL_SIZE (field) == NULL_TREE
+	       || !integer_zerop (DECL_SIZE (field)))
 	      ? !DECL_PACKED (field)
 	      : (rli->prev_field
 		 && DECL_BIT_FIELD_TYPE (rli->prev_field)
@@ -1958,16 +1960,15 @@ layout_type (tree type)
 	    if (integer_zerop (element_size))
 	      length = size_zero_node;
 
-	    /* The computation should happen in the original type so
-	       that (possible) negative values are handled appropriately.  */
+	    /* The computation should happen in the original signedness so
+	       that (possible) negative values are handled appropriately
+	       when determining overflow.  */
 	    else
 	      length
 		= fold_convert (sizetype,
-				fold_build2 (PLUS_EXPR, TREE_TYPE (lb),
-					     build_int_cst (TREE_TYPE (lb), 1),
-					     fold_build2 (MINUS_EXPR,
-							  TREE_TYPE (lb),
-							  ub, lb)));
+				size_binop (PLUS_EXPR,
+					    build_int_cst (TREE_TYPE (lb), 1),
+					    size_binop (MINUS_EXPR, ub, lb)));
 
 	    TYPE_SIZE (type) = size_binop (MULT_EXPR, element_size,
 					   fold_convert (bitsizetype,

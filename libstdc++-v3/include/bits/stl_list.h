@@ -58,7 +58,9 @@
 #define _STL_LIST_H 1
 
 #include <bits/concept_check.h>
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
 #include <initializer_list>
+#endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -306,22 +308,32 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
       typedef typename _Alloc::template rebind<_Tp>::other _Tp_alloc_type;
 
-      struct _List_impl 
+      struct _List_impl
       : public _Node_alloc_type
       {
 	__detail::_List_node_base _M_node;
 
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	size_t                    _M_size;
+#endif
+
 	_List_impl()
 	: _Node_alloc_type(), _M_node()
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	, _M_size(0)
+#endif
 	{ }
 
 	_List_impl(const _Node_alloc_type& __a)
 	: _Node_alloc_type(__a), _M_node()
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	, _M_size(0)
+#endif
 	{ }
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
 	_List_impl(_Node_alloc_type&& __a)
-	: _Node_alloc_type(std::move(__a)), _M_node()
+	: _Node_alloc_type(std::move(__a)), _M_node(), _M_size(0)
 	{ }
 #endif
       };
@@ -330,22 +342,33 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
       _List_node<_Tp>*
       _M_get_node()
-      { return _M_impl._Node_alloc_type::allocate(1); }
-      
+      {
+	_List_node<_Tp>* __tmp = _M_impl._Node_alloc_type::allocate(1);
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	++_M_impl._M_size;
+#endif	
+	return __tmp;
+      }
+
       void
       _M_put_node(_List_node<_Tp>* __p)
-      { _M_impl._Node_alloc_type::deallocate(__p, 1); }
+      {
+	_M_impl._Node_alloc_type::deallocate(__p, 1);
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	--_M_impl._M_size;
+#endif
+      }
       
   public:
       typedef _Alloc allocator_type;
 
       _Node_alloc_type&
       _M_get_Node_allocator() _GLIBCXX_NOEXCEPT
-      { return *static_cast<_Node_alloc_type*>(&this->_M_impl); }
+      { return *static_cast<_Node_alloc_type*>(&_M_impl); }
 
       const _Node_alloc_type&
       _M_get_Node_allocator() const _GLIBCXX_NOEXCEPT
-      { return *static_cast<const _Node_alloc_type*>(&this->_M_impl); }
+      { return *static_cast<const _Node_alloc_type*>(&_M_impl); }
 
       _Tp_alloc_type
       _M_get_Tp_allocator() const _GLIBCXX_NOEXCEPT
@@ -359,7 +382,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       : _M_impl()
       { _M_init(); }
 
-      _List_base(const allocator_type& __a)
+      _List_base(const _Node_alloc_type& __a)
       : _M_impl(__a)
       { _M_init(); }
 
@@ -368,8 +391,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       : _M_impl(std::move(__x._M_get_Node_allocator()))
       {
 	_M_init();
-	__detail::_List_node_base::swap(this->_M_impl._M_node, 
-					__x._M_impl._M_node);	
+	__detail::_List_node_base::swap(_M_impl._M_node, __x._M_impl._M_node);
+	std::swap(_M_impl._M_size, __x._M_impl._M_size);
       }
 #endif
 
@@ -441,6 +464,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
       typedef _List_base<_Tp, _Alloc>                    _Base;
       typedef typename _Base::_Tp_alloc_type		 _Tp_alloc_type;
+      typedef typename _Base::_Node_alloc_type		 _Node_alloc_type;
 
     public:
       typedef _Tp                                        value_type;
@@ -525,7 +549,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        */
       explicit
       list(const allocator_type& __a)
-      : _Base(__a) { }
+      : _Base(_Node_alloc_type(__a)) { }
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
       /**
@@ -550,7 +574,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        */
       list(size_type __n, const value_type& __value,
 	   const allocator_type& __a = allocator_type())
-      : _Base(__a)
+      : _Base(_Node_alloc_type(__a))
       { _M_fill_initialize(__n, __value); }
 #else
       /**
@@ -564,7 +588,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       explicit
       list(size_type __n, const value_type& __value = value_type(),
 	   const allocator_type& __a = allocator_type())
-      : _Base(__a)
+      : _Base(_Node_alloc_type(__a))
       { _M_fill_initialize(__n, __value); }
 #endif
 
@@ -600,7 +624,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        */
       list(initializer_list<value_type> __l,
            const allocator_type& __a = allocator_type())
-      : _Base(__a)
+      : _Base(_Node_alloc_type(__a))
       { _M_initialize_dispatch(__l.begin(), __l.end(), __false_type()); }
 #endif
 
@@ -617,7 +641,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       template<typename _InputIterator>
         list(_InputIterator __first, _InputIterator __last,
 	     const allocator_type& __a = allocator_type())
-        : _Base(__a)
+	: _Base(_Node_alloc_type(__a))
         { 
 	  // Check whether it's an integral type.  If so, it's not an iterator.
 	  typedef typename std::__is_integer<_InputIterator>::__type _Integral;
@@ -850,7 +874,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       /**  Returns the number of elements in the %list.  */
       size_type
       size() const _GLIBCXX_NOEXCEPT
-      { return std::distance(begin(), end()); }
+      {
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	return this->_M_impl._M_size;
+#else
+	return std::distance(begin(), end());
+#endif
+      }
 
       /**  Returns the size() of the largest possible %list.  */
       size_type
@@ -1100,8 +1130,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        */
       void
       insert(iterator __position, size_type __n, const value_type& __x)
-      {  
-	list __tmp(__n, __x, _M_get_Node_allocator());
+      {
+	list __tmp(__n, __x, get_allocator());
 	splice(__position, __tmp);
       }
 
@@ -1123,7 +1153,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         insert(iterator __position, _InputIterator __first,
 	       _InputIterator __last)
         {
-	  list __tmp(__first, __last, _M_get_Node_allocator());
+	  list __tmp(__first, __last, get_allocator());
 	  splice(__position, __tmp);
 	}
 
@@ -1185,6 +1215,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       {
 	__detail::_List_node_base::swap(this->_M_impl._M_node, 
 					__x._M_impl._M_node);
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	std::swap(this->_M_impl._M_size, __x._M_impl._M_size);
+#endif
 
 	// _GLIBCXX_RESOLVE_LIB_DEFECTS
 	// 431. Swapping containers with unequal allocators.
@@ -1229,6 +1262,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    _M_check_equal_allocators(__x);
 
 	    this->_M_transfer(__position, __x.begin(), __x.end());
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	    this->_M_impl._M_size += __x.size();
+	    __x._M_impl._M_size = 0;
+#endif
 	  }
       }
 
@@ -1260,7 +1298,14 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  return;
 
 	if (this != &__x)
-	  _M_check_equal_allocators(__x);
+	  {
+	    _M_check_equal_allocators(__x);
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+	    ++this->_M_impl._M_size;
+	    --__x._M_impl._M_size;
+#endif
+	  }
 
 	this->_M_transfer(__position, __i, __j);
       }
@@ -1295,7 +1340,15 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	if (__first != __last)
 	  {
 	    if (this != &__x)
-	      _M_check_equal_allocators(__x);
+	      {
+		_M_check_equal_allocators(__x);
+
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+		const size_type __size = std::distance(__first, __last);
+		this->_M_impl._M_size += __size;
+		__x._M_impl._M_size -= __size;
+#endif
+	      }
 
 	    this->_M_transfer(__position, __first, __last);
 	  }
@@ -1388,9 +1441,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
       /**
        *  @brief  Merge sorted lists according to comparison function.
-       *  @param  __x  Sorted list to merge.
        *  @tparam _StrictWeakOrdering Comparison function defining
        *  sort order.
+       *  @param  __x  Sorted list to merge.
+       *  @param  __comp  Comparison functor.
        *
        *  Assumes that both @a __x and this list are sorted according to
        *  StrictWeakOrdering.  Merges elements of @a __x into this list
@@ -1570,6 +1624,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     inline bool
     operator==(const list<_Tp, _Alloc>& __x, const list<_Tp, _Alloc>& __y)
     {
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
+      return (__x.size() == __y.size()
+	      && std::equal(__x.begin(), __x.end(), __y.begin()));
+#else
       typedef typename list<_Tp, _Alloc>::const_iterator const_iterator;
       const_iterator __end1 = __x.end();
       const_iterator __end2 = __y.end();
@@ -1582,6 +1640,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  ++__i2;
 	}
       return __i1 == __end1 && __i2 == __end2;
+#endif
     }
 
   /**

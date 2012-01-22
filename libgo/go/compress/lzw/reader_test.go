@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -19,7 +18,7 @@ type lzwTest struct {
 	desc       string
 	raw        string
 	compressed string
-	err        os.Error
+	err        error
 }
 
 var lzwTests = []lzwTest{
@@ -84,7 +83,7 @@ var lzwTests = []lzwTest{
 func TestReader(t *testing.T) {
 	b := bytes.NewBuffer(nil)
 	for _, tt := range lzwTests {
-		d := strings.Split(tt.desc, ";", -1)
+		d := strings.Split(tt.desc, ";")
 		var order Order
 		switch d[1] {
 		case "LSB":

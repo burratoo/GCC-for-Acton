@@ -8,12 +8,12 @@
 package ocsp
 
 import (
-	"asn1"
 	"crypto"
 	"crypto/rsa"
 	_ "crypto/sha1"
 	"crypto/x509"
-	"os"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"time"
 )
 
@@ -32,21 +32,8 @@ const (
 	ocspUnauthorized  = 5
 )
 
-type rdnSequence []relativeDistinguishedNameSET
-
-type relativeDistinguishedNameSET []attributeTypeAndValue
-
-type attributeTypeAndValue struct {
-	Type  asn1.ObjectIdentifier
-	Value interface{}
-}
-
-type algorithmIdentifier struct {
-	Algorithm asn1.ObjectIdentifier
-}
-
 type certID struct {
-	HashAlgorithm algorithmIdentifier
+	HashAlgorithm pkix.AlgorithmIdentifier
 	NameHash      []byte
 	IssuerKeyHash []byte
 	SerialNumber  asn1.RawValue
@@ -54,7 +41,7 @@ type certID struct {
 
 type responseASN1 struct {
 	Status   asn1.Enumerated
-	Response responseBytes "explicit,tag:0"
+	Response responseBytes `asn1:"explicit,tag:0"`
 }
 
 type responseBytes struct {
@@ -64,32 +51,32 @@ type responseBytes struct {
 
 type basicResponse struct {
 	TBSResponseData    responseData
-	SignatureAlgorithm algorithmIdentifier
+	SignatureAlgorithm pkix.AlgorithmIdentifier
 	Signature          asn1.BitString
-	Certificates       []asn1.RawValue "explicit,tag:0,optional"
+	Certificates       []asn1.RawValue `asn1:"explicit,tag:0,optional"`
 }
 
 type responseData struct {
 	Raw           asn1.RawContent
-	Version       int         "optional,default:1,explicit,tag:0"
-	RequestorName rdnSequence "optional,explicit,tag:1"
-	KeyHash       []byte      "optional,explicit,tag:2"
-	ProducedAt    *time.Time
+	Version       int              `asn1:"optional,default:1,explicit,tag:0"`
+	RequestorName pkix.RDNSequence `asn1:"optional,explicit,tag:1"`
+	KeyHash       []byte           `asn1:"optional,explicit,tag:2"`
+	ProducedAt    time.Time
 	Responses     []singleResponse
 }
 
 type singleResponse struct {
 	CertID     certID
-	Good       asn1.Flag   "explicit,tag:0,optional"
-	Revoked    revokedInfo "explicit,tag:1,optional"
-	Unknown    asn1.Flag   "explicit,tag:2,optional"
-	ThisUpdate *time.Time
-	NextUpdate *time.Time "explicit,tag:0,optional"
+	Good       asn1.Flag   `asn1:"explicit,tag:0,optional"`
+	Revoked    revokedInfo `asn1:"explicit,tag:1,optional"`
+	Unknown    asn1.Flag   `asn1:"explicit,tag:2,optional"`
+	ThisUpdate time.Time
+	NextUpdate time.Time `asn1:"explicit,tag:0,optional"`
 }
 
 type revokedInfo struct {
-	RevocationTime *time.Time
-	Reason         int "explicit,tag:0,optional"
+	RevocationTime time.Time
+	Reason         int `asn1:"explicit,tag:0,optional"`
 }
 
 // This is the exposed reflection of the internal OCSP structures.
@@ -110,7 +97,7 @@ type Response struct {
 	// Status is one of {Good, Revoked, Unknown, ServerFailed}
 	Status                                        int
 	SerialNumber                                  []byte
-	ProducedAt, ThisUpdate, NextUpdate, RevokedAt *time.Time
+	ProducedAt, ThisUpdate, NextUpdate, RevokedAt time.Time
 	RevocationReason                              int
 	Certificate                                   *x509.Certificate
 }
@@ -118,7 +105,7 @@ type Response struct {
 // ParseError results from an invalid OCSP response.
 type ParseError string
 
-func (p ParseError) String() string {
+func (p ParseError) Error() string {
 	return string(p)
 }
 
@@ -126,7 +113,7 @@ func (p ParseError) String() string {
 // responses for a single certificate and only those using RSA signatures.
 // Non-RSA responses will result in an x509.UnsupportedAlgorithmError.
 // Signature errors or parse failures will result in a ParseError.
-func ParseResponse(bytes []byte) (*Response, os.Error) {
+func ParseResponse(bytes []byte) (*Response, error) {
 	var resp responseASN1
 	rest, err := asn1.Unmarshal(bytes, &resp)
 	if err != nil {
@@ -174,7 +161,7 @@ func ParseResponse(bytes []byte) (*Response, os.Error) {
 
 	pub := ret.Certificate.PublicKey.(*rsa.PublicKey)
 	h.Write(basicResp.TBSResponseData.Raw)
-	digest := h.Sum()
+	digest := h.Sum(nil)
 	signature := basicResp.Signature.RightAlign()
 
 	if rsa.VerifyPKCS1v15(pub, hashType, digest, signature) != nil {

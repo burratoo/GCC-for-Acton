@@ -98,6 +98,13 @@ begin
 
    CStand.Create_Standard;
 
+   --  If the -gnatd.H flag is present, we are only interested in the Standard
+   --  package, so the frontend has done its job here.
+
+   if Debug_Flag_Dot_HH then
+      return;
+   end if;
+
    --  Check possible symbol definitions specified by -gnateD switches
 
    Prepcomp.Process_Command_Line_Symbol_Definitions;
@@ -218,6 +225,12 @@ begin
 
       Opt.Suppress_Options := Scope_Suppress;
    end;
+
+   --  This is where we can capture the value of the compilation unit specific
+   --  restrictions that have been set by the config pragma files (or from
+   --  Targparm), for later restoration when processing e.g. subunits.
+
+   Save_Config_Cunit_Boolean_Restrictions;
 
    --  If there was a -gnatem switch, initialize the mappings of unit names to
    --  file names and of file names to path names from the mapping file.

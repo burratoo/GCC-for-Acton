@@ -1,5 +1,5 @@
 /* Data references and dependences detectors.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
@@ -386,7 +386,7 @@ DEF_VEC_O (data_ref_loc);
 DEF_VEC_ALLOC_O (data_ref_loc, heap);
 
 bool get_references_in_stmt (gimple, VEC (data_ref_loc, heap) **);
-bool dr_analyze_innermost (struct data_reference *);
+bool dr_analyze_innermost (struct data_reference *, struct loop *);
 extern bool compute_data_dependences_for_loop (struct loop *, bool,
 					       VEC (loop_p, heap) **,
 					       VEC (data_reference_p, heap) **,
@@ -423,6 +423,9 @@ extern bool graphite_find_data_references_in_stmt (loop_p, loop_p, gimple,
 						   VEC (data_reference_p, heap) **);
 struct data_reference *create_data_ref (loop_p, loop_p, tree, gimple, bool);
 extern bool find_loop_nest (struct loop *, VEC (loop_p, heap) **);
+extern struct data_dependence_relation *initialize_data_dependence_relation
+     (struct data_reference *, struct data_reference *, VEC (loop_p, heap) *); 
+extern void compute_self_dependence (struct data_dependence_relation *);
 extern void compute_all_dependences (VEC (data_reference_p, heap) *,
 				     VEC (ddr_p, heap) **, VEC (loop_p, heap) *,
 				     bool);
@@ -431,7 +434,7 @@ extern tree find_data_references_in_bb (struct loop *, basic_block,
 
 extern void create_rdg_vertices (struct graph *, VEC (gimple, heap) *);
 extern bool dr_may_alias_p (const struct data_reference *,
-			    const struct data_reference *);
+			    const struct data_reference *, bool);
 extern bool dr_equal_offsets_p (struct data_reference *,
                                 struct data_reference *);
 

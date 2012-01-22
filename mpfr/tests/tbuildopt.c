@@ -2,7 +2,9 @@
    mpfr_buildopt_decimal_p.
 
 Copyright 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
+
+This file is part of the GNU MPFR Library.
 
 The GNU MPFR Library is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -58,11 +60,30 @@ check_decimal_p (void)
 #endif
 }
 
+static void
+check_gmpinternals_p (void)
+{
+#if defined(MPFR_HAVE_GMP_IMPL) || defined(WANT_GMP_INTERNALS)
+  if (!mpfr_buildopt_gmpinternals_p())
+    {
+      printf ("Error: mpfr_buildopt_gmpinternals_p should return true\n");
+      exit (1);
+    }
+#else
+  if (mpfr_buildopt_gmpinternals_p())
+    {
+      printf ("Error: mpfr_buildopt_gmpinternals_p should return false\n");
+      exit (1);
+    }
+#endif
+}
+
 int
 main (void)
 {
   check_tls_p();
   check_decimal_p();
+  check_gmpinternals_p();
 
   return 0;
 }

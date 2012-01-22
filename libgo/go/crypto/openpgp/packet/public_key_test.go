@@ -8,19 +8,20 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
+	"time"
 )
 
 var pubKeyTests = []struct {
 	hexData        string
 	hexFingerprint string
-	creationTime   uint32
+	creationTime   time.Time
 	pubKeyAlgo     PublicKeyAlgorithm
 	keyId          uint64
 	keyIdString    string
 	keyIdShort     string
 }{
-	{rsaPkDataHex, rsaFingerprintHex, 0x4d3c5c10, PubKeyAlgoRSA, 0xa34d7e18c20c31bb, "A34D7E18C20C31BB", "C20C31BB"},
-	{dsaPkDataHex, dsaFingerprintHex, 0x4d432f89, PubKeyAlgoDSA, 0x8e8fbe54062f19ed, "8E8FBE54062F19ED", "062F19ED"},
+	{rsaPkDataHex, rsaFingerprintHex, time.Unix(0x4d3c5c10, 0), PubKeyAlgoRSA, 0xa34d7e18c20c31bb, "A34D7E18C20C31BB", "C20C31BB"},
+	{dsaPkDataHex, dsaFingerprintHex, time.Unix(0x4d432f89, 0), PubKeyAlgoDSA, 0x8e8fbe54062f19ed, "8E8FBE54062F19ED", "062F19ED"},
 }
 
 func TestPublicKeyRead(t *testing.T) {
@@ -28,18 +29,18 @@ func TestPublicKeyRead(t *testing.T) {
 		packet, err := Read(readerFromHex(test.hexData))
 		if err != nil {
 			t.Errorf("#%d: Read error: %s", i, err)
-			return
+			continue
 		}
 		pk, ok := packet.(*PublicKey)
 		if !ok {
 			t.Errorf("#%d: failed to parse, got: %#v", i, packet)
-			return
+			continue
 		}
 		if pk.PubKeyAlgo != test.pubKeyAlgo {
 			t.Errorf("#%d: bad public key algorithm got:%x want:%x", i, pk.PubKeyAlgo, test.pubKeyAlgo)
 		}
-		if pk.CreationTime != test.creationTime {
-			t.Errorf("#%d: bad creation time got:%x want:%x", i, pk.CreationTime, test.creationTime)
+		if !pk.CreationTime.Equal(test.creationTime) {
+			t.Errorf("#%d: bad creation time got:%v want:%v", i, pk.CreationTime, test.creationTime)
 		}
 		expectedFingerprint, _ := hex.DecodeString(test.hexFingerprint)
 		if !bytes.Equal(expectedFingerprint, pk.Fingerprint[:]) {
@@ -53,6 +54,38 @@ func TestPublicKeyRead(t *testing.T) {
 		}
 		if g, e := pk.KeyIdShortString(), test.keyIdShort; g != e {
 			t.Errorf("#%d: bad KeyIdShortString got:%q want:%q", i, g, e)
+		}
+	}
+}
+
+func TestPublicKeySerialize(t *testing.T) {
+	for i, test := range pubKeyTests {
+		packet, err := Read(readerFromHex(test.hexData))
+		if err != nil {
+			t.Errorf("#%d: Read error: %s", i, err)
+			continue
+		}
+		pk, ok := packet.(*PublicKey)
+		if !ok {
+			t.Errorf("#%d: failed to parse, got: %#v", i, packet)
+			continue
+		}
+		serializeBuf := bytes.NewBuffer(nil)
+		err = pk.Serialize(serializeBuf)
+		if err != nil {
+			t.Errorf("#%d: failed to serialize: %s", i, err)
+			continue
+		}
+
+		packet, err = Read(serializeBuf)
+		if err != nil {
+			t.Errorf("#%d: Read error (from serialized data): %s", i, err)
+			continue
+		}
+		pk, ok = packet.(*PublicKey)
+		if !ok {
+			t.Errorf("#%d: failed to parse serialized data, got: %#v", i, packet)
+			continue
 		}
 	}
 }

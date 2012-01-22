@@ -93,9 +93,10 @@ static GTY(()) int label_num = 1;
 
 /* We record floating-point CONST_DOUBLEs in each floating-point mode for
    the values of 0, 1, and 2.  For the integer entries and VOIDmode, we
-   record a copy of const[012]_rtx.  */
+   record a copy of const[012]_rtx and constm1_rtx.  CONSTM1_RTX
+   is set only for MODE_INT and MODE_VECTOR_INT modes.  */
 
-rtx const_tiny_rtx[3][(int) MAX_MACHINE_MODE];
+rtx const_tiny_rtx[4][(int) MAX_MACHINE_MODE];
 
 rtx const_true_rtx;
 
@@ -1466,7 +1467,7 @@ get_mem_align_offset (rtx mem, unsigned int align)
   /* This function can't use
      if (!MEM_EXPR (mem) || !MEM_OFFSET_KNOWN_P (mem)
 	 || (MAX (MEM_ALIGN (mem),
-	          get_object_alignment (MEM_EXPR (mem), align))
+	          MAX (align, get_object_alignment (MEM_EXPR (mem))))
 	     < align))
        return -1;
      else
@@ -1695,6 +1696,12 @@ set_mem_attributes_minus_bitpos (rtx ref, tree t, int objectp,
 	  && !TREE_THIS_VOLATILE (base))
 	MEM_READONLY_P (ref) = 1;
 
+      /* Mark static const strings readonly as well.  */
+      if (base && TREE_CODE (base) == STRING_CST
+	  && TREE_READONLY (base)
+	  && TREE_STATIC (base))
+	MEM_READONLY_P (ref) = 1;
+
       /* If this expression uses it's parent's alias set, mark it such
 	 that we won't change it.  */
       if (component_uses_parent_alias_set (t))
@@ -1826,9 +1833,9 @@ set_mem_attributes_minus_bitpos (rtx ref, tree t, int objectp,
 	  apply_bitpos = bitpos;
 	}
 
-      if (!align_computed && !INDIRECT_REF_P (t))
+      if (!align_computed)
 	{
-	  unsigned int obj_align = get_object_alignment (t, BIGGEST_ALIGNMENT);
+	  unsigned int obj_align = get_object_alignment (t);
 	  attrs.align = MAX (attrs.align, obj_align);
 	}
     }
@@ -2444,6 +2451,8 @@ unshare_all_rtl_again (rtx insn)
       {
 	reset_used_flags (PATTERN (p));
 	reset_used_flags (REG_NOTES (p));
+	if (CALL_P (p))
+	  reset_used_flags (CALL_INSN_FUNCTION_USAGE (p));
       }
 
   /* Make sure that virtual stack slots are not shared.  */
@@ -2518,6 +2527,7 @@ verify_rtx_sharing (rtx orig, rtx insn)
     case PC:
     case CC0:
     case RETURN:
+    case SIMPLE_RETURN:
     case SCRATCH:
       return;
       /* SCRATCH must be shared because they represent distinct values.  */
@@ -2610,6 +2620,8 @@ verify_rtl_sharing (void)
       {
 	reset_used_flags (PATTERN (p));
 	reset_used_flags (REG_NOTES (p));
+	if (CALL_P (p))
+	  reset_used_flags (CALL_INSN_FUNCTION_USAGE (p));
 	if (GET_CODE (PATTERN (p)) == SEQUENCE)
 	  {
 	    int i;
@@ -2621,6 +2633,8 @@ verify_rtl_sharing (void)
 		gcc_assert (INSN_P (q));
 		reset_used_flags (PATTERN (q));
 		reset_used_flags (REG_NOTES (q));
+		if (CALL_P (q))
+		  reset_used_flags (CALL_INSN_FUNCTION_USAGE (q));
 	      }
 	  }
       }
@@ -2630,6 +2644,8 @@ verify_rtl_sharing (void)
       {
 	verify_rtx_sharing (PATTERN (p), p);
 	verify_rtx_sharing (REG_NOTES (p), p);
+	if (CALL_P (p))
+	  verify_rtx_sharing (CALL_INSN_FUNCTION_USAGE (p), p);
       }
 
   timevar_pop (TV_VERIFY_RTL_SHARING);
@@ -2646,6 +2662,9 @@ unshare_all_rtl_in_chain (rtx insn)
       {
 	PATTERN (insn) = copy_rtx_if_shared (PATTERN (insn));
 	REG_NOTES (insn) = copy_rtx_if_shared (REG_NOTES (insn));
+	if (CALL_P (insn))
+	  CALL_INSN_FUNCTION_USAGE (insn)
+	    = copy_rtx_if_shared (CALL_INSN_FUNCTION_USAGE (insn));
       }
 }
 
@@ -2725,6 +2744,7 @@ repeat:
     case PC:
     case CC0:
     case RETURN:
+    case SIMPLE_RETURN:
     case SCRATCH:
       /* SCRATCH must be shared because they represent distinct values.  */
       return;
@@ -2845,6 +2865,7 @@ repeat:
     case PC:
     case CC0:
     case RETURN:
+    case SIMPLE_RETURN:
       return;
 
     case DEBUG_INSN:
@@ -3309,21 +3330,6 @@ next_label (rtx insn)
   return insn;
 }
 
-/* Return the last CODE_LABEL before the insn INSN, or 0 if there is none.  */
-
-rtx
-prev_label (rtx insn)
-{
-  while (insn)
-    {
-      insn = PREV_INSN (insn);
-      if (insn == 0 || LABEL_P (insn))
-	break;
-    }
-
-  return insn;
-}
-
 /* Return the last label to mark the same position as LABEL.  Return LABEL
    itself if it is null or any return rtx.  */
 
@@ -3589,6 +3595,7 @@ try_split (rtx pat, rtx trial, int last)
 
 	case REG_NORETURN:
 	case REG_SETJMP:
+	case REG_TM:
 	  for (insn = insn_last; insn != NULL_RTX; insn = PREV_INSN (insn))
 	    {
 	      if (CALL_P (insn))
@@ -4997,6 +5004,17 @@ set_unique_reg_note (rtx insn, enum reg_note kind, rtx datum)
 
   return REG_NOTES (insn);
 }
+
+/* Like set_unique_reg_note, but don't do anything unless INSN sets DST.  */
+rtx
+set_dst_reg_note (rtx insn, enum reg_note kind, rtx datum, rtx dst)
+{
+  rtx set = single_set (insn);
+
+  if (set && SET_DEST (set) == dst)
+    return set_unique_reg_note (insn, kind, datum);
+  return NULL_RTX;
+}
 
 /* Return an indication of which type of insn should have X as a body.
    The value is CODE_LABEL, INSN, CALL_INSN or JUMP_INSN.  */
@@ -5008,7 +5026,7 @@ classify_insn (rtx x)
     return CODE_LABEL;
   if (GET_CODE (x) == CALL)
     return CALL_INSN;
-  if (GET_CODE (x) == RETURN)
+  if (ANY_RETURN_P (x))
     return JUMP_INSN;
   if (GET_CODE (x) == SET)
     {
@@ -5255,6 +5273,7 @@ copy_insn_1 (rtx orig)
   switch (code)
     {
     case REG:
+    case DEBUG_EXPR:
     case CONST_INT:
     case CONST_DOUBLE:
     case CONST_FIXED:
@@ -5264,6 +5283,7 @@ copy_insn_1 (rtx orig)
     case PC:
     case CC0:
     case RETURN:
+    case SIMPLE_RETURN:
       return orig;
     case CLOBBER:
       if (REG_P (XEXP (orig, 0)) && REGNO (XEXP (orig, 0)) < FIRST_PSEUDO_REGISTER)
@@ -5498,6 +5518,8 @@ gen_rtx_CONST_VECTOR (enum machine_mode mode, rtvec v)
 	return CONST0_RTX (mode);
       else if (x == CONST1_RTX (inner))
 	return CONST1_RTX (mode);
+      else if (x == CONSTM1_RTX (inner))
+	return CONSTM1_RTX (mode);
     }
 
   return gen_rtx_raw_CONST_VECTOR (mode, v);
@@ -5521,6 +5543,7 @@ init_emit_regs (void)
   /* Assign register numbers to the globally defined register rtx.  */
   pc_rtx = gen_rtx_fmt_ (PC, VOIDmode);
   ret_rtx = gen_rtx_fmt_ (RETURN, VOIDmode);
+  simple_return_rtx = gen_rtx_fmt_ (SIMPLE_RETURN, VOIDmode);
   cc0_rtx = gen_rtx_fmt_ (CC0, VOIDmode);
   stack_pointer_rtx = gen_raw_REG (Pmode, STACK_POINTER_REGNUM);
   frame_pointer_rtx = gen_raw_REG (Pmode, FRAME_POINTER_REGNUM);
@@ -5657,7 +5680,7 @@ init_emit_once (void)
   dconsthalf = dconst1;
   SET_REAL_EXP (&dconsthalf, REAL_EXP (&dconsthalf) - 1);
 
-  for (i = 0; i < (int) ARRAY_SIZE (const_tiny_rtx); i++)
+  for (i = 0; i < 3; i++)
     {
       const REAL_VALUE_TYPE *const r =
 	(i == 0 ? &dconst0 : i == 1 ? &dconst1 : &dconst2);
@@ -5687,6 +5710,18 @@ init_emit_once (void)
 	const_tiny_rtx[i][(int) mode] = GEN_INT (i);
     }
 
+  const_tiny_rtx[3][(int) VOIDmode] = constm1_rtx;
+
+  for (mode = GET_CLASS_NARROWEST_MODE (MODE_INT);
+       mode != VOIDmode;
+       mode = GET_MODE_WIDER_MODE (mode))
+    const_tiny_rtx[3][(int) mode] = constm1_rtx;
+
+  for (mode = GET_CLASS_NARROWEST_MODE (MODE_PARTIAL_INT);
+       mode != VOIDmode;
+       mode = GET_MODE_WIDER_MODE (mode))
+    const_tiny_rtx[3][(int) mode] = constm1_rtx;
+      
   for (mode = GET_CLASS_NARROWEST_MODE (MODE_COMPLEX_INT);
        mode != VOIDmode;
        mode = GET_MODE_WIDER_MODE (mode))
@@ -5709,6 +5744,7 @@ init_emit_once (void)
     {
       const_tiny_rtx[0][(int) mode] = gen_const_vector (mode, 0);
       const_tiny_rtx[1][(int) mode] = gen_const_vector (mode, 1);
+      const_tiny_rtx[3][(int) mode] = gen_const_vector (mode, 3);
     }
 
   for (mode = GET_CLASS_NARROWEST_MODE (MODE_VECTOR_FLOAT);

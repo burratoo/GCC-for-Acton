@@ -140,7 +140,7 @@ package Opt is
    --  or internal units, so it reflects the Ada version explicitly set
    --  using configuration pragmas or compiler switches (or if neither
    --  appears, it remains set to Ada_Version_Default). This is used in
-   --  the rare cases (notably for pragmas Preelaborate_05 and Pure_05)
+   --  the rare cases (notably for pragmas Preelaborate_05 and Pure_05/12)
    --  where in the run-time we want the explicit version set.
 
    Ada_Version_Runtime : Ada_Version_Type := Ada_2012;
@@ -537,8 +537,8 @@ package Opt is
                            Front_End_Setjmp_Longjmp_Exceptions;
    --  GNAT
    --  Set to the appropriate value depending on the default as given in
-   --  system.ads (ZCX_By_Default, GCC_ZCX_Support). The C convention is there
-   --  to make this variable accessible to gigi.
+   --  system.ads (ZCX_By_Default). The C convention is there to make this
+   --  variable accessible to gigi.
 
    Exception_Tracebacks : Boolean := False;
    --  GNATBIND
@@ -801,10 +801,12 @@ package Opt is
    --  Set to True to skip compile and bind steps (except when Bind_Only is
    --  set to True).
 
-   List_Inherited_Aspects : Boolean := True;
+   List_Inherited_Aspects : Boolean := False;
    --  GNAT
    --  List inherited invariants, preconditions, and postconditions from
-   --  Invariant'Class, Pre'Class, and Post'Class aspects.
+   --  Invariant'Class, Pre'Class, and Post'Class aspects. Also list inherited
+   --  subtype predicates. Set True by use of -gnatw.l and False by use of
+   --  -gnatw.L.
 
    List_Restrictions : Boolean := False;
    --  GNATBIND
@@ -1448,6 +1450,11 @@ package Opt is
    --  with literals or S'Length, presumably assuming a lower bound of one. Set
    --  False by -gnatwW.
 
+   Warn_On_Atomic_Synchronization : Boolean := False;
+   --  GNAT
+   --  Set to True to generate information messages for atomic synchronization.
+   --  Set True by use of -gnatw.n.
+
    Warn_On_Bad_Fixed_Value : Boolean := False;
    --  GNAT
    --  Set to True to generate warnings for static fixed-point expression
@@ -1550,6 +1557,12 @@ package Opt is
    --  clauses that are affected by non-standard bit-order. The default is
    --  that this warning is enabled.
 
+   Warn_On_Suspicious_Contract : Boolean := False;
+   --  GNAT
+   --  Set to True to generate warnings for suspicious contracts expressed as
+   --  pragmas or aspects precondition and postcondition. The default is that
+   --  this warning is disabled.
+
    Warn_On_Suspicious_Modulus_Value : Boolean := True;
    --  GNAT
    --  Set to True to generate warnings for suspicious modulus values. The
@@ -1632,11 +1645,11 @@ package Opt is
    --  GNAT
    --  This is the value of the configuration switch for the Ada 83 mode, as
    --  set by the command line switches -gnat83/95/05, and possibly modified by
-   --  the use of configuration pragmas Ada_83/Ada95/Ada05. This switch is used
-   --  to set the initial value for Ada_Version mode at the start of analysis
-   --  of a unit. Note however, that the setting of this flag is ignored for
-   --  internal and predefined units (which are always compiled in the most up
-   --  to date version of Ada).
+   --  the use of configuration pragmas Ada_*. This switch is used to set the
+   --  initial value for Ada_Version mode at the start of analysis of a unit.
+   --  Note however that the setting of this flag is ignored for internal and
+   --  predefined units (which are always compiled in the most up to date
+   --  version of Ada).
 
    Ada_Version_Explicit_Config : Ada_Version_Type;
    --  GNAT
@@ -1819,6 +1832,9 @@ package Opt is
    --  this flag, see package Expander. Indeed this flag might more logically
    --  be in the spec of Expander, but it is referenced by Errout, and it
    --  really seems wrong for Errout to depend on Expander.
+   --
+   --  Note: for many purposes, it is more appropriate to test the flag
+   --  Full_Expander_Active, which also checks that Alfa mode is not active.
 
    Static_Dispatch_Tables : Boolean := True;
    --  This flag indicates if the backend supports generation of statically
@@ -1868,16 +1884,28 @@ package Opt is
    --  Used to store the ASIS version number read from a tree file to check if
    --  it is the same as stored in the ASIS version number in Tree_IO.
 
-   ----------------------------------
-   -- Mode for Formal Verification --
-   ----------------------------------
+   -----------------------------------
+   -- Modes for Formal Verification --
+   -----------------------------------
 
-   --  This mode is currently defined through a debug flag
-
-   ALFA_Mode : Boolean := False;
+   Alfa_Mode : Boolean := False;
    --  Specific compiling mode targeting formal verification through the
    --  generation of Why code for those parts of the input code that belong to
-   --  the ALFA subset of Ada. Set by debuf flag -gnatd.F.
+   --  the Alfa subset of Ada. Set by debug flag -gnatd.F.
+
+   Strict_Alfa_Mode : Boolean := False;
+   --  Interpret compiler permissions as strictly as possible. E.g. base ranges
+   --  for integers are limited to the strict minimum with this option. Set by
+   --  debug flag -gnatd.D.
+
+   function Full_Expander_Active return Boolean;
+   pragma Inline (Full_Expander_Active);
+   --  Returns the value of (Expander_Active and not Alfa_Mode). This "flag"
+   --  indicates that expansion is fully active, that is, not in the reduced
+   --  mode for Alfa (True) or that expansion is either deactivated, or active
+   --  in the reduced mode for Alfa (False). For more information on full
+   --  expansion, see package Expander. For more information on reduced
+   --  Alfa expansion, see package Exp_Alfa.
 
 private
 

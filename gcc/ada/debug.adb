@@ -94,8 +94,8 @@ package body Debug is
    --  d.a  Force Target_Strict_Alignment mode to True
    --  d.b  Dump backend types
    --  d.c  Generate inline concatenation, do not call procedure
-   --  d.d
-   --  d.e
+   --  d.d  Disable atomic synchronization
+   --  d.e  Enable atomic synchronization
    --  d.f  Inhibit folding of static expressions
    --  d.g  Enable conversion of raise into goto
    --  d.h
@@ -121,14 +121,14 @@ package body Debug is
    --  d.A  Read/write Aspect_Specifications hash table to tree
    --  d.B
    --  d.C  Generate concatenation call, do not generate inline code
-   --  d.D
-   --  d.E
-   --  d.F  ALFA mode
+   --  d.D  Strict Alfa mode
+   --  d.E  Force Alfa mode for gnat2why
+   --  d.F  Alfa mode
    --  d.G  Precondition only mode for gnat2why
-   --  d.H
+   --  d.H  Standard package only mode for gnat2why
    --  d.I  SCIL generation mode
    --  d.J  Disable parallel SCIL generation mode
-   --  d.K
+   --  d.K  Alfa detection only mode for gnat2why
    --  d.L  Depend on back end for limited types in conditional expressions
    --  d.M
    --  d.N
@@ -513,6 +513,13 @@ package body Debug is
    --       System.Concat_n.Str_Concat_n routines in cases where the latter
    --       routines would normally be called.
 
+   --  d.d  Disable atomic synchronization for all atomic variable references.
+   --       Pragma Enable_Atomic_Synchronization is ignored.
+
+   --  d.e  Enable atomic synchronization for all atomic variable references.
+   --       Pragma Disable_Atomic_Synchronization is ignored, and also the
+   --       compiler switch -gnated is ignored.
+
    --  d.f  Suppress folding of static expressions. This of course results
    --       in seriously non-conforming behavior, but is useful sometimes
    --       when tracking down handling of complex expressions.
@@ -580,13 +587,24 @@ package body Debug is
    --  d.C  Generate call to System.Concat_n.Str_Concat_n routines in cases
    --       where we would normally generate inline concatenation code.
 
-   --  d.F  ALFA mode. Generate AST in a form suitable for formal verification,
+   --  d.D  Strict Alfa mode. Interpret compiler permissions as strictly as
+   --       possible in Alfa mode.
+
+   --  d.E  Force Alfa mode for gnat2why. In this mode, errors are issued for
+   --       all violations of Alfa in user code, and warnings are issued for
+   --       constructs not yet implemented in gnat2why.
+
+   --  d.F  Alfa mode. Generate AST in a form suitable for formal verification,
    --       as well as additional cross reference information in ALI files to
    --       compute effects of subprograms.
 
    --  d.G  Precondition only mode for gnat2why. In this mode, gnat2why will
    --       only generate Why code that checks for the well-guardedness of
    --       preconditions.
+
+   --  d.H  Standard package only mode for gnat2why. In this mode, gnat2why
+   --       will only generate Why code for package Standard. Any given input
+   --       file will be ignored.
 
    --  d.I  Generate SCIL mode. Generate intermediate code for the sake of
    --       of static analysis tools, and ensure additional tree consistency
@@ -595,6 +613,9 @@ package body Debug is
    --  d.J  Disable parallel SCIL generation. Normally SCIL file generation is
    --       done in parallel to speed processing. This switch disables this
    --       behavior.
+
+   --  d.K  Alfa detection only mode for gnat2why. In this mode, gnat2why
+   --       will only generate the .alfa file, but no Why code.
 
    --  d.L  Normally the front end generates special expansion for conditional
    --       expressions of a limited type. This debug flag removes this special

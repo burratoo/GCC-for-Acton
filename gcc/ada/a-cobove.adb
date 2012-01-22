@@ -28,9 +28,31 @@
 ------------------------------------------------------------------------------
 
 with Ada.Containers.Generic_Array_Sort;
+with Ada.Finalization; use Ada.Finalization;
+
 with System; use type System.Address;
 
 package body Ada.Containers.Bounded_Vectors is
+
+   type Iterator is new Limited_Controlled and
+     Vector_Iterator_Interfaces.Reversible_Iterator with
+   record
+      Container : Vector_Access;
+      Index     : Index_Type'Base;
+   end record;
+
+   overriding procedure Finalize (Object : in out Iterator);
+
+   overriding function First (Object : Iterator) return Cursor;
+   overriding function Last  (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
+
+   overriding function Previous
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
 
    -----------------------
    -- Local Subprograms --
@@ -356,6 +378,52 @@ package body Ada.Containers.Bounded_Vectors is
       Container.Last := No_Index;
    end Clear;
 
+   ------------------------
+   -- Constant_Reference --
+   ------------------------
+
+   function Constant_Reference
+     (Container : aliased Vector;
+      Position  : Cursor) return Constant_Reference_Type
+   is
+   begin
+      if Position.Container = null then
+         raise Constraint_Error with "Position cursor has no element";
+      end if;
+
+      if Position.Container /= Container'Unrestricted_Access then
+         raise Program_Error with "Position cursor denotes wrong container";
+      end if;
+
+      if Position.Index > Position.Container.Last then
+         raise Constraint_Error with "Position cursor is out of range";
+      end if;
+
+      declare
+         A : Elements_Array renames Container.Elements;
+         I : constant Count_Type := To_Array_Index (Position.Index);
+      begin
+         return (Element => A (I)'Access);
+      end;
+   end Constant_Reference;
+
+   function Constant_Reference
+     (Container : aliased Vector;
+      Index     : Index_Type) return Constant_Reference_Type
+   is
+   begin
+      if Index > Container.Last then
+         raise Constraint_Error with "Index is out of range";
+      end if;
+
+      declare
+         A : Elements_Array renames Container.Elements;
+         I : constant Count_Type := To_Array_Index (Index);
+      begin
+         return (Element => A (I)'Access);
+      end;
+   end Constant_Reference;
+
    --------------
    -- Contains --
    --------------
@@ -626,19 +694,29 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       if Index > Container.Last then
          raise Constraint_Error with "Index is out of range";
+      else
+         return Container.Elements (To_Array_Index (Index));
       end if;
-
-      return Container.Elements (To_Array_Index (Index));
    end Element;
 
    function Element (Position : Cursor) return Element_Type is
    begin
       if Position.Container = null then
          raise Constraint_Error with "Position cursor has no element";
+      else
+         return Position.Container.Element (Position.Index);
       end if;
-
-      return Position.Container.Element (Position.Index);
    end Element;
+
+   --------------
+   -- Finalize --
+   --------------
+
+   procedure Finalize (Object : in out Iterator) is
+      B : Natural renames Object.Container.Busy;
+   begin
+      B := B - 1;
+   end Finalize;
 
    ----------
    -- Find --
@@ -696,9 +774,32 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       if Is_Empty (Container) then
          return No_Element;
+      else
+         return (Container'Unrestricted_Access, Index_Type'First);
       end if;
+   end First;
 
-      return (Container'Unrestricted_Access, Index_Type'First);
+   function First (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Index component influences the
+      --  behavior of the First (and Last) selector function.
+
+      --  When the Index component is No_Index, this means the iterator
+      --  object was constructed without a start expression, in which case the
+      --  (forward) iteration starts from the (logical) beginning of the entire
+      --  sequence of items (corresponding to Container.First, for a forward
+      --  iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items.
+      --  When the Index component isn't No_Index, the iterator object was
+      --  constructed with a start expression, that specifies the position
+      --  from which the (forward) partial iteration begins.
+
+      if Object.Index = No_Index then
+         return First (Object.Container.all);
+      else
+         return Cursor'(Object.Container, Object.Index);
+      end if;
    end First;
 
    -------------------
@@ -709,9 +810,9 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       if Container.Last = No_Index then
          raise Constraint_Error with "Container is empty";
+      else
+         return Container.Elements (To_Array_Index (Index_Type'First));
       end if;
-
-      return Container.Elements (To_Array_Index (Index_Type'First));
    end First_Element;
 
    -----------------
@@ -761,16 +862,26 @@ package body Ada.Containers.Bounded_Vectors is
          I, J : Count_Type;
 
       begin
-         if Target.Is_Empty then
-            Move (Target => Target, Source => Source);
+
+         --  The semantics of Merge changed slightly per AI05-0021. It was
+         --  originally the case that if Target and Source denoted the same
+         --  container object, then the GNAT implementation of Merge did
+         --  nothing. However, it was argued that RM05 did not precisely
+         --  specify the semantics for this corner case. The decision of the
+         --  ARG was that if Target and Source denote the same non-empty
+         --  container object, then Program_Error is raised.
+
+         if Source.Is_Empty then
             return;
          end if;
 
          if Target'Address = Source'Address then
-            return;
+            raise Program_Error with
+              "Target and Source denote same non-empty container";
          end if;
 
-         if Source.Is_Empty then
+         if Target.Is_Empty then
+            Move (Target => Target, Source => Source);
             return;
          end if;
 
@@ -1367,8 +1478,8 @@ package body Ada.Containers.Bounded_Vectors is
 
       --  There are two constraints we need to satisfy. The first constraint is
       --  that a container cannot have more than Count_Type'Last elements, so
-      --  we must check the sum of the current length and the insertion
-      --  count. Note that we cannot simply add these values, because of the
+      --  we must check the sum of the current length and the insertion count.
+      --  Note that we cannot simply add these values, because of the
       --  possibility of overflow.
 
       if Old_Length > Count_Type'Last - Count then
@@ -1570,8 +1681,7 @@ package body Ada.Containers.Bounded_Vectors is
      (Container : Vector;
       Process   : not null access procedure (Position : Cursor))
    is
-      V : Vector renames Container'Unrestricted_Access.all;
-      B : Natural renames V.Busy;
+      B : Natural renames Container'Unrestricted_Access.all.Busy;
 
    begin
       B := B + 1;
@@ -1589,6 +1699,86 @@ package body Ada.Containers.Bounded_Vectors is
       B := B - 1;
    end Iterate;
 
+   function Iterate
+     (Container : Vector)
+      return Vector_Iterator_Interfaces.Reversible_Iterator'Class
+   is
+      V : constant Vector_Access := Container'Unrestricted_Access;
+      B : Natural renames V.Busy;
+
+   begin
+      --  The value of its Index component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Index
+      --  component is No_Index (as is the case here), this means the iterator
+      --  object was constructed without a start expression. This is a complete
+      --  iterator, meaning that the iteration starts from the (logical)
+      --  beginning of the sequence of items.
+
+      --  Note: For a forward iterator, Container.First is the beginning, and
+      --  for a reverse iterator, Container.Last is the beginning.
+
+      return It : constant Iterator :=
+                    (Limited_Controlled with
+                       Container => V,
+                       Index     => No_Index)
+      do
+         B := B + 1;
+      end return;
+   end Iterate;
+
+   function Iterate
+     (Container : Vector;
+      Start     : Cursor)
+      return Vector_Iterator_Interfaces.Reversible_Iterator'Class
+   is
+      V : constant Vector_Access := Container'Unrestricted_Access;
+      B : Natural renames V.Busy;
+
+   begin
+      --  It was formerly the case that when Start = No_Element, the partial
+      --  iterator was defined to behave the same as for a complete iterator,
+      --  and iterate over the entire sequence of items. However, those
+      --  semantics were unintuitive and arguably error-prone (it is too easy
+      --  to accidentally create an endless loop), and so they were changed,
+      --  per the ARG meeting in Denver on 2011/11. However, there was no
+      --  consensus about what positive meaning this corner case should have,
+      --  and so it was decided to simply raise an exception. This does imply,
+      --  however, that it is not possible to use a partial iterator to specify
+      --  an empty sequence of items.
+
+      if Start.Container = null then
+         raise Constraint_Error with
+           "Start position for iterator equals No_Element";
+      end if;
+
+      if Start.Container /= V then
+         raise Program_Error with
+           "Start cursor of Iterate designates wrong vector";
+      end if;
+
+      if Start.Index > V.Last then
+         raise Constraint_Error with
+           "Start position for iterator equals No_Element";
+      end if;
+
+      --  The value of its Index component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Index
+      --  component is not No_Index (as is the case here), it means that this
+      --  is a partial iteration, over a subset of the complete sequence of
+      --  items. The iterator object was constructed with a start expression,
+      --  indicating the position from which the iteration begins. Note that
+      --  the start position has the same value irrespective of whether this is
+      --  a forward or reverse iteration.
+
+      return It : constant Iterator :=
+                    (Limited_Controlled with
+                       Container => V,
+                       Index     => Start.Index)
+      do
+         B := B + 1;
+      end return;
+   end Iterate;
+
    ----------
    -- Last --
    ----------
@@ -1597,9 +1787,31 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       if Is_Empty (Container) then
          return No_Element;
+      else
+         return (Container'Unrestricted_Access, Container.Last);
       end if;
+   end Last;
 
-      return (Container'Unrestricted_Access, Container.Last);
+   function Last (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Index component influences the
+      --  behavior of the Last (and First) selector function.
+
+      --  When the Index component is No_Index, this means the iterator object
+      --  was constructed without a start expression, in which case the
+      --  (reverse) iteration starts from the (logical) beginning of the entire
+      --  sequence (corresponding to Container.Last, for a reverse iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items. When
+      --  the Index component is not No_Index, the iterator object was
+      --  constructed with a start expression, that specifies the position from
+      --  which the (reverse) partial iteration begins.
+
+      if Object.Index = No_Index then
+         return Last (Object.Container.all);
+      else
+         return Cursor'(Object.Container, Object.Index);
+      end if;
    end Last;
 
    ------------------
@@ -1610,9 +1822,9 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       if Container.Last = No_Index then
          raise Constraint_Error with "Container is empty";
+      else
+         return Container.Elements (Container.Length);
       end if;
-
-      return Container.Elements (Container.Length);
    end Last_Element;
 
    ----------------
@@ -1686,7 +1898,8 @@ package body Ada.Containers.Bounded_Vectors is
            "attempt to tamper with cursors (Source is busy)";
       end if;
 
-      --  Clear Target now, in case element assignment fails.
+      --  Clear Target now, in case element assignment fails
+
       Target.Last := No_Index;
 
       Target.Elements (1 .. Source.Length) :=
@@ -1713,9 +1926,19 @@ package body Ada.Containers.Bounded_Vectors is
       return No_Element;
    end Next;
 
-   ----------
-   -- Next --
-   ----------
+   function Next (Object : Iterator; Position : Cursor) return Cursor is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Next designates wrong vector";
+      end if;
+
+      return Next (Position);
+   end Next;
 
    procedure Next (Position : in out Cursor) is
    begin
@@ -1779,6 +2002,20 @@ package body Ada.Containers.Bounded_Vectors is
       end if;
 
       return No_Element;
+   end Previous;
+
+   function Previous (Object : Iterator; Position : Cursor) return Cursor is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Previous designates wrong vector";
+      end if;
+
+      return Previous (Position);
    end Previous;
 
    -------------------
@@ -1859,6 +2096,68 @@ package body Ada.Containers.Bounded_Vectors is
    begin
       raise Program_Error with "attempt to stream vector cursor";
    end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   ---------------
+   -- Reference --
+   ---------------
+
+   function Reference
+     (Container : aliased in out Vector;
+      Position  : Cursor) return Reference_Type
+   is
+   begin
+      if Position.Container = null then
+         raise Constraint_Error with "Position cursor has no element";
+      end if;
+
+      if Position.Container /= Container'Unrestricted_Access then
+         raise Program_Error with "Position cursor denotes wrong container";
+      end if;
+
+      if Position.Index > Position.Container.Last then
+         raise Constraint_Error with "Position cursor is out of range";
+      end if;
+
+      declare
+         A : Elements_Array renames Container.Elements;
+         I : constant Count_Type := To_Array_Index (Position.Index);
+      begin
+         return (Element => A (I)'Access);
+      end;
+   end Reference;
+
+   function Reference
+     (Container : aliased in out Vector;
+      Index     : Index_Type) return Reference_Type
+   is
+   begin
+      if Index > Container.Last then
+         raise Constraint_Error with "Index is out of range";
+      end if;
+
+      declare
+         A : Elements_Array renames Container.Elements;
+         I : constant Count_Type := To_Array_Index (Index);
+      begin
+         return (Element => A (I)'Access);
+      end;
+   end Reference;
 
    ---------------------
    -- Replace_Element --
@@ -2129,7 +2428,7 @@ package body Ada.Containers.Bounded_Vectors is
       --    Index >= Index_Type'First
       --  hence we also know that
       --    Index - Index_Type'First >= 0
-      --
+
       --  The issue is that even though 0 is guaranteed to be a value
       --  in the type Index_Type'Base, there's no guarantee that the
       --  difference is a value in that type. To prevent overflow we
@@ -2232,6 +2531,7 @@ package body Ada.Containers.Bounded_Vectors is
          end if;
 
       elsif Index_Type'First <= 0 then
+
          --  Here we can compute Last directly, in the normal way. We know that
          --  No_Index is less than 0, so there is no danger of overflow when
          --  adding the (positive) value of Length.
@@ -2291,6 +2591,7 @@ package body Ada.Containers.Bounded_Vectors is
       --  create a Last index value greater than Index_Type'Last.
 
       if Index_Type'Base'Last >= Count_Type'Pos (Count_Type'Last) then
+
          --  We perform a two-part test. First we determine whether the
          --  computed Last value lies in the base range of the type, and then
          --  determine whether it lies in the range of the index (sub)type.
@@ -2319,6 +2620,7 @@ package body Ada.Containers.Bounded_Vectors is
          end if;
 
       elsif Index_Type'First <= 0 then
+
          --  Here we can compute Last directly, in the normal way. We know that
          --  No_Index is less than 0, so there is no danger of overflow when
          --  adding the (positive) value of Length.
@@ -2434,6 +2736,22 @@ package body Ada.Containers.Bounded_Vectors is
    is
    begin
       raise Program_Error with "attempt to stream vector cursor";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
    end Write;
 
 end Ada.Containers.Bounded_Vectors;

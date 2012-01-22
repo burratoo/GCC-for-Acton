@@ -4,7 +4,6 @@
 
 package math
 
-
 // The original C code, the long comment, and the constants
 // below are from FreeBSD's /usr/src/lib/msun/src/e_acosh.c
 // and came with this notice.  The go code is a simplified
@@ -37,6 +36,7 @@ package math
 // Acosh(x) calculates the inverse hyperbolic cosine of x.
 //
 // Special cases are:
+//	Acosh(+Inf) = +Inf
 //	Acosh(x) = NaN if x < 1
 //	Acosh(NaN) = NaN
 func Acosh(x float64) float64 {

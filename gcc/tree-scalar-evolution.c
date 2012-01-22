@@ -1727,7 +1727,7 @@ interpret_rhs_expr (struct loop *loop, gimple at_stmt,
       chrec1 = analyze_scalar_evolution (loop, rhs1);
       chrec2 = analyze_scalar_evolution (loop, rhs2);
       chrec1 = chrec_convert (type, chrec1, at_stmt);
-      chrec2 = chrec_convert (sizetype, chrec2, at_stmt);
+      chrec2 = chrec_convert (TREE_TYPE (rhs2), chrec2, at_stmt);
       res = chrec_fold_plus (type, chrec1, chrec2);
       break;
 
@@ -1796,7 +1796,8 @@ interpret_expr (struct loop *loop, gimple at_stmt, tree expr)
   if (automatically_generated_chrec_p (expr))
     return expr;
 
-  if (TREE_CODE (expr) == POLYNOMIAL_CHREC)
+  if (TREE_CODE (expr) == POLYNOMIAL_CHREC
+      || get_gimple_rhs_class (TREE_CODE (expr)) == GIMPLE_TERNARY_RHS)
     return chrec_dont_know;
 
   extract_ops_from_tree (expr, &code, &op0, &op1);
@@ -3171,8 +3172,8 @@ simple_iv (struct loop *wrto_loop, struct loop *use_loop, tree op,
   iv->no_overflow = false;
 
   type = TREE_TYPE (op);
-  if (TREE_CODE (type) != INTEGER_TYPE
-      && TREE_CODE (type) != POINTER_TYPE)
+  if (!POINTER_TYPE_P (type)
+      && !INTEGRAL_TYPE_P (type))
     return false;
 
   ev = analyze_scalar_evolution_in_loop (wrto_loop, use_loop, op,

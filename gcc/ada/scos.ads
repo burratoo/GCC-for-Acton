@@ -28,7 +28,11 @@
 --  the ALI file, and by Get_SCO/Put_SCO to read and write the text form that
 --  is used in the ALI file.
 
-with Types; use Types;
+with Snames; use Snames;
+--  Note: used for Pragma_Id only, no other feature from Snames should be used,
+--  as a simplified version is maintained in Xcov.
+
+with Types;  use Types;
 
 with GNAT.Table;
 
@@ -131,36 +135,52 @@ package SCOs is
    --      any statement with a label (the label itself is not part of the
    --       entry point that is recorded).
 
-   --    Each entry point must appear as the first entry on a CS line.
-   --    The idea is that if any simple statement on a CS line is known to have
+   --    Each entry point must appear as the first statement entry on a CS
+   --    line. Thus, if any simple statement on a CS line is known to have
    --    been executed, then all statements that appear before it on the same
    --    CS line are certain to also have been executed.
 
    --    The form of a statement line in the ALI file is:
 
-   --      CS *sloc-range [*sloc-range...]
+   --      CS [dominance] *sloc-range [*sloc-range...]
 
    --    where each sloc-range corresponds to a single statement, and * is
    --    one of:
 
-   --      t  type declaration
-   --      s  subtype declaration
-   --      o  object declaration
-   --      r  renaming declaration
-   --      i  generic instantiation
-   --      C  CASE statement (from CASE through end of expression)
-   --      E  EXIT statement
-   --      F  FOR loop statement (from FOR through end of iteration scheme)
-   --      I  IF statement (from IF through end of condition)
-   --      p  disabled PRAGMA
-   --      P  PRAGMA
-   --      R  extended RETURN statement
-   --      W  WHILE loop statement (from WHILE through end of condition)
+   --      t        type declaration
+   --      s        subtype declaration
+   --      o        object declaration
+   --      r        renaming declaration
+   --      i        generic instantiation
+   --      C        CASE statement (from CASE through end of expression)
+   --      E        EXIT statement
+   --      F        FOR loop (from FOR through end of iteration scheme)
+   --      I        IF statement (from IF through end of condition)
+   --      P[name:] PRAGMA with the indicated name
+   --      R        extended RETURN statement
+   --      W        WHILE loop statement (from WHILE through end of condition)
 
    --      Note: for I and W, condition above is in the RM syntax sense (this
    --      condition is a decision in SCO terminology).
 
    --    and is omitted for all other cases
+
+   --    The optional dominance marker is of the form gives additional
+   --    information as to how the sequence of statements denoted by the CS
+   --    line can be entered:
+
+   --      >F<sloc>
+   --        sequence is entered only if the decision at <sloc> is False
+   --      >T<sloc>
+   --        sequence is entered only if the decision at <sloc> is True
+
+   --      >S<sloc>
+   --        sequence is entered only if the statement at <sloc> has been
+   --        executed
+
+   --      >E<sloc-range>
+   --        sequence is the sequence of statements for a exception_handler
+   --        with the given sloc range
 
    --    Note: up to 6 entries can appear on a single CS line. If more than 6
    --    entries appear in one logical statement sequence, continuation lines
@@ -227,15 +247,15 @@ package SCOs is
 
    --    Here * is one of the following characters:
 
-   --      I  decision in IF statement or conditional expression
    --      E  decision in EXIT WHEN statement
    --      G  decision in entry guard
+   --      I  decision in IF statement or conditional expression
    --      P  decision in pragma Assert/Check/Pre_Condition/Post_Condition
    --      W  decision in WHILE iteration scheme
    --      X  decision appearing in some other expression context
 
-   --    For I, E, G, P, W, sloc is the source location of the IF, EXIT,
-   --    ENTRY, PRAGMA or WHILE token, respectively
+   --    For E, G, I, P, W, sloc is the source location of the EXIT, ENTRY, IF,
+   --    PRAGMA or WHILE token, respectively
 
    --    For X, sloc is omitted
 
@@ -353,16 +373,19 @@ package SCOs is
    No_Source_Location : Source_Location := (No_Line_Number, No_Column_Number);
 
    type SCO_Table_Entry is record
-      From : Source_Location;
-      To   : Source_Location;
-      C1   : Character;
-      C2   : Character;
-      Last : Boolean;
+      From : Source_Location := No_Source_Location;
+      To   : Source_Location := No_Source_Location;
+      C1   : Character       := ' ';
+      C2   : Character       := ' ';
+      Last : Boolean         := False;
 
       Pragma_Sloc : Source_Ptr := No_Location;
       --  For the statement SCO for a pragma, or for any expression SCO nested
       --  in a pragma Debug/Assert/PPC, location of PRAGMA token (used for
       --  control of SCO output, value not recorded in ALI file).
+
+      Pragma_Name : Pragma_Id := Unknown_Pragma;
+      --  For the statement SCO for a pragma, gives the pragma name
    end record;
 
    package SCO_Table is new GNAT.Table (
@@ -375,7 +398,7 @@ package SCOs is
    --  The SCO_Table_Entry values appear as follows:
 
    --    Statements
-   --      C1   = 'S' for entry point, 's' otherwise
+   --      C1   = 'S'
    --      C2   = statement type code to appear on CS line (or ' ' if none)
    --      From = starting source location
    --      To   = ending source location
@@ -388,10 +411,25 @@ package SCOs is
    --    statements on a single CS line (possibly followed by Cs continuation
    --    lines).
 
-   --    Decision (IF/EXIT/WHILE)
-   --      C1   = 'I'/'E'/'W' (for IF/EXIT/WHILE)
+   --    Note: for a pragma that may be disabled (Debug, Assert, PPC, Check),
+   --    the entry is initially created with C2 = 'p', to mark it as disabled.
+   --    Later on during semantic analysis, if the pragma is enabled,
+   --    Set_SCO_Pragma_Enabled changes C2 to 'P' to cause the entry to be
+   --    emitted in Put_SCOs.
+
+   --    Dominance marker
+   --      C1   = '>'
+   --      C2   = 'F'/'T'/'S'/'E'
+   --      From = Decision/statement sloc ('F'/'T'/'S'),
+   --             handler first sloc ('E')
+   --      To   = No_Source_Location ('F'/'T'/'S'), handler last sloc ('E')
+
+   --    Note: A dominance marker is always followed by a statement entry
+
+   --    Decision (EXIT/entry guard/IF/WHILE)
+   --      C1   = 'E'/'G'/'I'/'W' (for EXIT/entry Guard/IF/WHILE)
    --      C2   = ' '
-   --      From = IF/EXIT/WHILE token
+   --      From = EXIT/ENTRY/IF/WHILE token
    --      To   = No_Source_Location
    --      Last = unused
 
@@ -402,14 +440,12 @@ package SCOs is
    --      To   = No_Source_Location
    --      Last = unused
 
-   --      Note: when the parse tree is first scanned, we unconditionally build
-   --      a pragma decision entry for any decision in a pragma (here as always
-   --      in SCO contexts, the only pragmas with decisions are Assert, Check,
-   --      dyadic Debug, Precondition and Postcondition).
-   --
-   --      During analysis, if the pragma is enabled, Set_SCO_Pragma_Enabled
-   --      marks the statement SCO table entry as enaabled (C1 changed from 'p'
-   --      to 'P') to cause the entry to be emitted in Put_SCOs.
+   --    Note: when the parse tree is first scanned, we unconditionally build a
+   --    pragma decision entry for any decision in a pragma (here as always in
+   --    SCO contexts, the only pragmas with decisions are Assert, Check,
+   --    dyadic Debug, Precondition and Postcondition). These entries will
+   --    be omitted in output if the pragma is disabled (see comments for
+   --    statement entries).
 
    --    Decision (Expression)
    --      C1   = 'X'
@@ -448,8 +484,8 @@ package SCOs is
 
    --  This table keeps track of the units and the corresponding starting and
    --  ending indexes (From, To) in the SCO table. Note that entry zero is
-   --  unused, it is for convenience in calling the sort routine. Thus the
-   --  real lower bound for active entries is 1.
+   --  present but unused, it is for convenience in calling the sort routine.
+   --  Thus the lower bound for real entries is 1.
 
    type SCO_Unit_Index is new Int;
    --  Used to index values in this table. Values start at 1 and are assigned
@@ -482,14 +518,5 @@ package SCOs is
 
    procedure Initialize;
    --  Reset tables for a new compilation
-
-   procedure Add_SCO
-     (From        : Source_Location := No_Source_Location;
-      To          : Source_Location := No_Source_Location;
-      C1          : Character       := ' ';
-      C2          : Character       := ' ';
-      Last        : Boolean         := False;
-      Pragma_Sloc : Source_Ptr      := No_Location);
-   --  Adds one entry to SCO table with given field values
 
 end SCOs;

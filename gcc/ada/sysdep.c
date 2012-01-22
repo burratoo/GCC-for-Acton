@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *         Copyright (C) 1992-2010, Free Software Foundation, Inc.          *
+ *         Copyright (C) 1992-2011, Free Software Foundation, Inc.          *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -69,55 +69,17 @@ extern struct tm *localtime_r(const time_t *, struct tm *);
 
 #include "adaint.h"
 
+/* Don't use macros versions of this functions on VxWorks since they cause
+   imcompatible changes in some VxWorks versions */
+#ifdef __vxworks
+#undef getchar
+#undef putchar
+#undef feof
+#undef ferror
+#undef fileno
+#endif
+
 /*
-   mode_read_text
-   open text file for reading
-   rt for DOS and Windows NT, r for Unix
-
-   mode_write_text
-   truncate to zero length or create text file for writing
-   wt for DOS and Windows NT, w for Unix
-
-   mode_append_text
-   append; open or create text file for writing at end-of-file
-   at for DOS and Windows NT, a for Unix
-
-   mode_read_binary
-   open binary file for reading
-   rb for DOS and Windows NT, r for Unix
-
-   mode_write_binary
-   truncate to zero length or create binary file for writing
-   wb for DOS and Windows NT, w for Unix
-
-   mode_append_binary
-   append; open or create binary file for writing at end-of-file
-   ab for DOS and Windows NT, a for Unix
-
-   mode_read_text_plus
-   open text file for update (reading and writing)
-   r+t for DOS and Windows NT, r+ for Unix
-
-   mode_write_text_plus
-   truncate to zero length or create text file for update
-   w+t for DOS and Windows NT, w+ for Unix
-
-   mode_append_text_plus
-   append; open or create text file for update, writing at end-of-file
-   a+t for DOS and Windows NT, a+ for Unix
-
-   mode_read_binary_plus
-   open binary file for update (reading and writing)
-   r+b for DOS and Windows NT, r+ for Unix
-
-   mode_write_binary_plus
-   truncate to zero length or create binary file for update
-   w+b for DOS and Windows NT, w+ for Unix
-
-   mode_append_binary_plus
-   append; open or create binary file for update, writing at end-of-file
-   a+b for DOS and Windows NT, a+ for Unix
-
    Notes:
 
    (1) Opening a file with read mode fails if the file does not exist or
@@ -158,126 +120,47 @@ extern struct tm *localtime_r(const time_t *, struct tm *);
 
 */
 
-#if defined(WINNT)
-static const char *mode_read_text = "rt";
-static const char *mode_write_text = "wt";
-static const char *mode_append_text = "at";
-static const char *mode_read_binary = "rb";
-static const char *mode_write_binary = "wb";
-static const char *mode_append_binary = "ab";
-static const char *mode_read_text_plus = "r+t";
-static const char *mode_write_text_plus = "w+t";
-static const char *mode_append_text_plus = "a+t";
-static const char *mode_read_binary_plus = "r+b";
-static const char *mode_write_binary_plus = "w+b";
-static const char *mode_append_binary_plus = "a+b";
+#if defined (WINNT) || defined (__CYGWIN__)
+
 const char __gnat_text_translation_required = 1;
+
+#ifdef __CYGWIN__
+#define WIN_SETMODE setmode
+#include <io.h>
+#else
+#define WIN_SETMODE _setmode
+#endif
 
 void
 __gnat_set_binary_mode (int handle)
 {
-  _setmode (handle, O_BINARY);
+  WIN_SETMODE (handle, O_BINARY);
 }
 
 void
 __gnat_set_text_mode (int handle)
 {
-  _setmode (handle, O_TEXT);
+  WIN_SETMODE (handle, O_TEXT);
 }
 
-#ifdef __MINGW32__
-#include <windows.h>
-
-/* Return the name of the tty.   Under windows there is no name for
-   the tty, so this function, if connected to a tty, returns the generic name
-   "console".  */
+#ifdef __CYGWIN__
 
 char *
 __gnat_ttyname (int filedes)
 {
-  if (isatty (filedes))
-    return "console";
-  else
-    return NULL;
+  extern char *ttyname (int);
+
+  return ttyname (filedes);
 }
 
-/* This function is needed to fix a bug under Win95/98. Under these platforms
-   doing :
-                ch1 = getch();
-		ch2 = fgetc (stdin);
+#endif /* __CYGWIN__ */
 
-   will put the same character into ch1 and ch2. It seem that the character
-   read by getch() is not correctly removed from the buffer. Even a
-   fflush(stdin) does not fix the bug. This bug does not appear under Window
-   NT. So we have two version of this routine below one for 95/98 and one for
-   NT/2000 version of Windows. There is also a special routine (winflushinit)
-   that will be called only the first time to check which version of Windows
-   we are running running on to set the right routine to use.
+#if defined (__CYGWIN__) || defined (__MINGW32__)
+#include <windows.h>
 
-   This problem occurs when using Text_IO.Get_Line after Text_IO.Get_Immediate
-   for example.
-
-   Calling FlushConsoleInputBuffer just after getch() fix the bug under
-   95/98. */
-
-#ifdef RTX
-
-static void winflush_nt (void);
-
-/* winflush_function will do nothing since we only have problems with Windows
-   95/98 which are not supported by RTX. */
-
-static void (*winflush_function) (void) = winflush_nt;
-
-static void
-winflush_nt (void)
-{
-  /* Does nothing as there is no problem under NT.  */
-}
-
-#else /* !RTX */
-
-static void winflush_init (void);
-
-static void winflush_95 (void);
-
-static void winflush_nt (void);
+#ifndef RTX
 
 int __gnat_is_windows_xp (void);
-
-/* winflusfunction is set first to the winflushinit function which will check
-   the OS version 95/98 or NT/2000 */
-
-static void (*winflush_function) (void) = winflush_init;
-
-/* This function does the runtime check of the OS version and then sets
-   winflush_function to the appropriate function and then call it. */
-
-static void
-winflush_init (void)
-{
-  DWORD dwVersion = GetVersion();
-
-  if (dwVersion < 0x80000000)                /* Windows NT/2000 */
-    winflush_function = winflush_nt;
-  else                                       /* Windows 95/98   */
-    winflush_function = winflush_95;
-
-  (*winflush_function)();      /* Perform the 'flush' */
-
-}
-
-static void
-winflush_95 (void)
-{
-  FlushConsoleInputBuffer (GetStdHandle (STD_INPUT_HANDLE));
-}
-
-static void
-winflush_nt (void)
-{
-  /* Does nothing as there is no problem under NT.  */
-}
 
 int
 __gnat_is_windows_xp (void)
@@ -321,22 +204,27 @@ __gnat_get_stack_bounds (void **base, void **limit)
   *limit = tib->StackLimit;
 }
 
-#endif /* !__MINGW32__ */
+#endif /* __CYGWIN__ || __MINGW32__ */
+
+#ifdef __MINGW32__
+
+/* Return the name of the tty.   Under windows there is no name for
+   the tty, so this function, if connected to a tty, returns the generic name
+   "console".  */
+
+char *
+__gnat_ttyname (int filedes)
+{
+  if (isatty (filedes))
+    return "console";
+  else
+    return NULL;
+}
+
+#endif /* __MINGW32__ */
 
 #else
 
-static const char *mode_read_text = "r";
-static const char *mode_write_text = "w";
-static const char *mode_append_text = "a";
-static const char *mode_read_binary = "r";
-static const char *mode_write_binary = "w";
-static const char *mode_append_binary = "a";
-static const char *mode_read_text_plus = "r+";
-static const char *mode_write_text_plus = "w+";
-static const char *mode_append_text_plus = "a+";
-static const char *mode_read_binary_plus = "r+";
-static const char *mode_write_binary_plus = "w+";
-static const char *mode_append_binary_plus = "a+";
 const char __gnat_text_translation_required = 0;
 
 /* These functions do nothing in non-DOS systems. */
@@ -532,7 +420,6 @@ getc_immediate_common (FILE *stream,
       if (waiting)
 	{
 	  *ch = getch ();
-	  (*winflush_function) ();
 
 	  if (*ch == eot_ch)
 	    *end_of_file = 1;
@@ -549,7 +436,6 @@ getc_immediate_common (FILE *stream,
 	    {
 	      *avail = 1;
 	      *ch = getch ();
-	      (*winflush_function) ();
 
 	      if (*ch == eot_ch)
 		*end_of_file = 1;
@@ -964,7 +850,7 @@ __gnat_localtime_tzoff (const time_t *timer, long *off)
    the options assigned to the current task (parent), so offering some user
    level control over the options for a task hierarchy. It forces VX_FP_TASK
    because it is almost always required. On processors with the SPE
-   category, VX_SPE_TASK is needed to enable the SPE. */
+   category, VX_SPE_TASK should be used instead to enable the SPE. */
 extern int __gnat_get_task_options (void);
 
 int
@@ -975,10 +861,11 @@ __gnat_get_task_options (void)
   /* Get the options for the task creator */
   taskOptionsGet (taskIdSelf (), &options);
 
-  /* Force VX_FP_TASK because it is almost always required */
-  options |= VX_FP_TASK;
-#if defined (__SPE__) && (! defined (__VXWORKSMILS__))
+  /* Force VX_FP_TASK or VX_SPE_TASK as needed */
+#if defined (__SPE__)
   options |= VX_SPE_TASK;
+#else
+  options |= VX_FP_TASK;
 #endif
 
   /* Mask those bits that are not under user control */

@@ -1,7 +1,7 @@
 /* Test file for mpfr_get_decimal64 and mpfr_set_decimal64.
 
 Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -20,12 +20,13 @@ along with the GNU MPFR Library; see the file COPYING.LESSER.  If not, see
 http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA. */
 
+#ifdef MPFR_WANT_DECIMAL_FLOATS
+
 #include <stdlib.h> /* for exit */
 #include "mpfr-test.h"
 
 /* #define DEBUG */
 
-#ifdef MPFR_WANT_DECIMAL_FLOATS
 static void
 print_decimal64 (_Decimal64 d)
 {
@@ -223,7 +224,6 @@ check_native (void)
 
   mpfr_clear (x);
 }
-#endif /* MPFR_WANT_DECIMAL_FLOATS */
 
 int
 main (void)
@@ -231,7 +231,6 @@ main (void)
   tests_start_mpfr ();
   mpfr_test_init ();
 
-#ifdef MPFR_WANT_DECIMAL_FLOATS
 #ifdef DEBUG
 #ifdef DPD_FORMAT
   printf ("Using DPD format\n");
@@ -242,8 +241,17 @@ main (void)
   check_inf_nan ();
   check_random ();
   check_native ();
-#endif
 
   tests_end_mpfr ();
   return 0;
 }
+
+#else /* MPFR_WANT_DECIMAL_FLOATS */
+
+int
+main (void)
+{
+  return 77;
+}
+
+#endif /* MPFR_WANT_DECIMAL_FLOATS */

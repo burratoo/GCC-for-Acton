@@ -1,7 +1,7 @@
 /* Test file for mpfr_urandomb
 
 Copyright 1999, 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -103,6 +103,40 @@ test_urandomb (long nbtests, mpfr_prec_t prec, int verbose)
   return;
 }
 
+/* Problem reported by Carl Witty: check mpfr_urandomb give similar results
+   on 32-bit and 64-bit machines.
+   We assume the default GMP random generator does not depend on the machine
+   word size, not on the GMP version.
+*/
+static void
+bug20100914 (void)
+{
+  mpfr_t x;
+  gmp_randstate_t s;
+
+  gmp_randinit_default (s);
+  gmp_randseed_ui (s, 42);
+  mpfr_init2 (x, 17);
+  mpfr_urandomb (x, s);
+  if (mpfr_cmp_str1 (x, "0.895943") != 0)
+    {
+      printf ("Error in bug20100914, expected 0.895943, got ");
+      mpfr_out_str (stdout, 10, 0, x, MPFR_RNDN);
+      printf ("\n");
+      exit (1);
+    }
+  mpfr_urandomb (x, s);
+  if (mpfr_cmp_str1 (x, "0.848824") != 0)
+    {
+      printf ("Error in bug20100914, expected 0.848824, got ");
+      mpfr_out_str (stdout, 10, 0, x, MPFR_RNDN);
+      printf ("\n");
+      exit (1);
+    }
+  mpfr_clear (x);
+  gmp_randclear (s);
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -134,6 +168,8 @@ main (int argc, char *argv[])
     {
       test_urandomb (nbtests, 2, 0);
     }
+
+  bug20100914 ();
 
   tests_end_mpfr ();
   return 0;

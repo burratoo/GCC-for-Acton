@@ -196,7 +196,7 @@ init_expmed (void)
   for (speed = 0; speed < 2; speed++)
     {
       crtl->maybe_hot_insn_p = speed;
-      zero_cost[speed] = rtx_cost (const0_rtx, SET, speed);
+      zero_cost[speed] = set_src_cost (const0_rtx, speed);
 
       for (mode = GET_CLASS_NARROWEST_MODE (MODE_INT);
 	   mode != VOIDmode;
@@ -217,15 +217,15 @@ init_expmed (void)
 	  PUT_MODE (&all.shift_sub0, mode);
 	  PUT_MODE (&all.shift_sub1, mode);
 
-	  add_cost[speed][mode] = rtx_cost (&all.plus, SET, speed);
-	  neg_cost[speed][mode] = rtx_cost (&all.neg, SET, speed);
-	  mul_cost[speed][mode] = rtx_cost (&all.mult, SET, speed);
-	  sdiv_cost[speed][mode] = rtx_cost (&all.sdiv, SET, speed);
-	  udiv_cost[speed][mode] = rtx_cost (&all.udiv, SET, speed);
+	  add_cost[speed][mode] = set_src_cost (&all.plus, speed);
+	  neg_cost[speed][mode] = set_src_cost (&all.neg, speed);
+	  mul_cost[speed][mode] = set_src_cost (&all.mult, speed);
+	  sdiv_cost[speed][mode] = set_src_cost (&all.sdiv, speed);
+	  udiv_cost[speed][mode] = set_src_cost (&all.udiv, speed);
 
-	  sdiv_pow2_cheap[speed][mode] = (rtx_cost (&all.sdiv_32, SET, speed)
+	  sdiv_pow2_cheap[speed][mode] = (set_src_cost (&all.sdiv_32, speed)
 				          <= 2 * add_cost[speed][mode]);
-	  smod_pow2_cheap[speed][mode] = (rtx_cost (&all.smod_32, SET, speed)
+	  smod_pow2_cheap[speed][mode] = (set_src_cost (&all.smod_32, speed)
 				          <= 4 * add_cost[speed][mode]);
 
 	  wider_mode = GET_MODE_WIDER_MODE (mode);
@@ -237,9 +237,9 @@ init_expmed (void)
 	      XEXP (&all.wide_lshr, 1) = GEN_INT (GET_MODE_BITSIZE (mode));
 
 	      mul_widen_cost[speed][wider_mode]
-	        = rtx_cost (&all.wide_mult, SET, speed);
+	        = set_src_cost (&all.wide_mult, speed);
 	      mul_highpart_cost[speed][mode]
-	        = rtx_cost (&all.wide_trunc, SET, speed);
+	        = set_src_cost (&all.wide_trunc, speed);
 	    }
 
 	  shift_cost[speed][mode][0] = 0;
@@ -252,10 +252,13 @@ init_expmed (void)
 	      XEXP (&all.shift, 1) = cint[m];
 	      XEXP (&all.shift_mult, 1) = pow2[m];
 
-	      shift_cost[speed][mode][m] = rtx_cost (&all.shift, SET, speed);
-	      shiftadd_cost[speed][mode][m] = rtx_cost (&all.shift_add, SET, speed);
-	      shiftsub0_cost[speed][mode][m] = rtx_cost (&all.shift_sub0, SET, speed);
-	      shiftsub1_cost[speed][mode][m] = rtx_cost (&all.shift_sub1, SET, speed);
+	      shift_cost[speed][mode][m] = set_src_cost (&all.shift, speed);
+	      shiftadd_cost[speed][mode][m] = set_src_cost (&all.shift_add,
+							    speed);
+	      shiftsub0_cost[speed][mode][m] = set_src_cost (&all.shift_sub0,
+							     speed);
+	      shiftsub1_cost[speed][mode][m] = set_src_cost (&all.shift_sub1,
+							     speed);
 	    }
 	}
     }
@@ -554,9 +557,21 @@ store_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
 					    0)
 				     : (int) i * BITS_PER_WORD);
 	  rtx value_word = operand_subword_force (value, wordnum, fieldmode);
+	  unsigned HOST_WIDE_INT new_bitsize =
+	    MIN (BITS_PER_WORD, bitsize - i * BITS_PER_WORD);
 
-	  if (!store_bit_field_1 (op0, MIN (BITS_PER_WORD,
-					    bitsize - i * BITS_PER_WORD),
+	  /* If the remaining chunk doesn't have full wordsize we have
+	     to make sure that for big endian machines the higher order
+	     bits are used.  */
+	  if (new_bitsize < BITS_PER_WORD && BYTES_BIG_ENDIAN && !backwards)
+	    value_word = simplify_expand_binop (word_mode, lshr_optab,
+						value_word,
+						GEN_INT (BITS_PER_WORD
+							 - new_bitsize),
+						NULL_RTX, true,
+						OPTAB_LIB_WIDEN);
+
+	  if (!store_bit_field_1 (op0, new_bitsize,
 				  bitnum + bit_offset,
 				  bitregion_start, bitregion_end,
 				  word_mode,
@@ -617,6 +632,10 @@ store_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
       && GET_MODE (value) != BLKmode
       && bitsize > 0
       && GET_MODE_BITSIZE (op_mode) >= bitsize
+      /* Do not use insv for volatile bitfields when
+         -fstrict-volatile-bitfields is in effect.  */
+      && !(MEM_P (op0) && MEM_VOLATILE_P (op0)
+	   && flag_strict_volatile_bitfields > 0)
       && ! ((REG_P (op0) || GET_CODE (op0) == SUBREG)
 	    && (bitsize + bitpos > GET_MODE_BITSIZE (op_mode))))
     {
@@ -656,18 +675,20 @@ store_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
 	  copy_back = true;
 	}
 
-      /* On big-endian machines, we count bits from the most significant.
-	 If the bit field insn does not, we must invert.  */
-
-      if (BITS_BIG_ENDIAN != BYTES_BIG_ENDIAN)
-	xbitpos = unit - bitsize - xbitpos;
-
       /* We have been counting XBITPOS within UNIT.
 	 Count instead within the size of the register.  */
-      if (BITS_BIG_ENDIAN && !MEM_P (xop0))
+      if (BYTES_BIG_ENDIAN && !MEM_P (xop0))
 	xbitpos += GET_MODE_BITSIZE (op_mode) - unit;
 
       unit = GET_MODE_BITSIZE (op_mode);
+
+      /* If BITS_BIG_ENDIAN is zero on a BYTES_BIG_ENDIAN machine, we count
+         "backwards" from the size of the unit we are inserting into.
+	 Otherwise, we count bits from the most significant on a
+	 BYTES/BITS_BIG_ENDIAN machine.  */
+
+      if (BITS_BIG_ENDIAN != BYTES_BIG_ENDIAN)
+	xbitpos = unit - bitsize - xbitpos;
 
       /* Convert VALUE to op_mode (which insv insn wants) in VALUE1.  */
       value1 = value;
@@ -1504,6 +1525,10 @@ extract_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
   if (ext_mode != MAX_MACHINE_MODE
       && bitsize > 0
       && GET_MODE_BITSIZE (ext_mode) >= bitsize
+      /* Do not use extv/extzv for volatile bitfields when
+         -fstrict-volatile-bitfields is in effect.  */
+      && !(MEM_P (op0) && MEM_VOLATILE_P (op0)
+	   && flag_strict_volatile_bitfields > 0)
       /* If op0 is a register, we need it in EXT_MODE to make it
 	 acceptable to the format of ext(z)v.  */
       && !(GET_CODE (op0) == SUBREG && GET_MODE (op0) != ext_mode)
@@ -1525,16 +1550,19 @@ extract_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
 	/* Get ref to first byte containing part of the field.  */
 	xop0 = adjust_address (xop0, byte_mode, xoffset);
 
-      /* On big-endian machines, we count bits from the most significant.
-	 If the bit field insn does not, we must invert.  */
-      if (BITS_BIG_ENDIAN != BYTES_BIG_ENDIAN)
-	xbitpos = unit - bitsize - xbitpos;
-
       /* Now convert from counting within UNIT to counting in EXT_MODE.  */
-      if (BITS_BIG_ENDIAN && !MEM_P (xop0))
+      if (BYTES_BIG_ENDIAN && !MEM_P (xop0))
 	xbitpos += GET_MODE_BITSIZE (ext_mode) - unit;
 
       unit = GET_MODE_BITSIZE (ext_mode);
+
+      /* If BITS_BIG_ENDIAN is zero on a BYTES_BIG_ENDIAN machine, we count
+         "backwards" from the size of the unit we are extracting from.
+	 Otherwise, we count bits from the most significant on a
+	 BYTES/BITS_BIG_ENDIAN machine.  */
+
+      if (BITS_BIG_ENDIAN != BYTES_BIG_ENDIAN)
+	xbitpos = unit - bitsize - xbitpos;
 
       if (xtarget == 0)
 	xtarget = xspec_target = gen_reg_rtx (tmode);
@@ -2923,6 +2951,7 @@ expand_mult_const (enum machine_mode mode, rtx op0, HOST_WIDE_INT val,
 	   && !optimize)
 	  ? target : 0;
       rtx accum_target = optimize ? 0 : accum;
+      rtx accum_inner;
 
       switch (alg->op[opno])
 	{
@@ -2988,16 +3017,18 @@ expand_mult_const (enum machine_mode mode, rtx op0, HOST_WIDE_INT val,
 	 that.  */
 
       tem = op0, nmode = mode;
+      accum_inner = accum;
       if (GET_CODE (accum) == SUBREG)
 	{
-	  nmode = GET_MODE (SUBREG_REG (accum));
+	  accum_inner = SUBREG_REG (accum);
+	  nmode = GET_MODE (accum_inner);
 	  tem = gen_lowpart (nmode, op0);
 	}
 
       insn = get_last_insn ();
-      set_unique_reg_note (insn, REG_EQUAL,
-			   gen_rtx_MULT (nmode, tem,
-					 GEN_INT (val_so_far)));
+      set_dst_reg_note (insn, REG_EQUAL,
+			gen_rtx_MULT (nmode, tem, GEN_INT (val_so_far)),
+			accum_inner);
     }
 
   if (variant == negate_variant)
@@ -3077,8 +3108,9 @@ expand_mult (enum machine_mode mode, rtx op0, rtx op1, rtx target,
 		 result is interpreted as an unsigned coefficient.
 		 Exclude cost of op0 from max_cost to match the cost
 		 calculation of the synth_mult.  */
-	      max_cost = rtx_cost (gen_rtx_MULT (mode, fake_reg, op1), SET, speed)
-			 - neg_cost[speed][mode];
+	      max_cost = (set_src_cost (gen_rtx_MULT (mode, fake_reg, op1),
+					speed)
+			  - neg_cost[speed][mode]);
 	      if (max_cost > 0
 		  && choose_mult_variant (mode, -INTVAL (op1), &algorithm,
 					  &variant, max_cost))
@@ -3121,7 +3153,7 @@ expand_mult (enum machine_mode mode, rtx op0, rtx op1, rtx target,
 
 	  /* Exclude cost of op0 from max_cost to match the cost
 	     calculation of the synth_mult.  */
-	  max_cost = rtx_cost (gen_rtx_MULT (mode, fake_reg, op1), SET, speed);
+	  max_cost = set_src_cost (gen_rtx_MULT (mode, fake_reg, op1), speed);
 	  if (choose_mult_variant (mode, coeff, &algorithm, &variant,
 				   max_cost))
 	    return expand_mult_const (mode, op0, coeff, target,
@@ -3450,7 +3482,7 @@ expand_mult_highpart_optab (enum machine_mode mode, rtx op0, rtx op1,
 
   /* Try widening multiplication.  */
   moptab = unsignedp ? umul_widen_optab : smul_widen_optab;
-  if (optab_handler (moptab, wider_mode) != CODE_FOR_nothing
+  if (widening_optab_handler (moptab, wider_mode, mode) != CODE_FOR_nothing
       && mul_widen_cost[speed][wider_mode] < max_cost)
     {
       tem = expand_binop (wider_mode, moptab, op0, narrow_op1, 0,
@@ -3487,7 +3519,7 @@ expand_mult_highpart_optab (enum machine_mode mode, rtx op0, rtx op1,
 
   /* Try widening multiplication of opposite signedness, and adjust.  */
   moptab = unsignedp ? smul_widen_optab : umul_widen_optab;
-  if (optab_handler (moptab, wider_mode) != CODE_FOR_nothing
+  if (widening_optab_handler (moptab, wider_mode, mode) != CODE_FOR_nothing
       && size - 1 < BITS_PER_WORD
       && (mul_widen_cost[speed][wider_mode] + 2 * shift_cost[speed][mode][size-1]
 	  + 4 * add_cost[speed][mode] < max_cost))
@@ -3610,7 +3642,8 @@ expand_smod_pow2 (enum machine_mode mode, rtx op0, HOST_WIDE_INT d)
 
 	  temp = gen_rtx_LSHIFTRT (mode, result, shift);
 	  if (optab_handler (lshr_optab, mode) == CODE_FOR_nothing
-	      || rtx_cost (temp, SET, optimize_insn_for_speed_p ()) > COSTS_N_INSNS (2))
+	      || (set_src_cost (temp, optimize_insn_for_speed_p ())
+		  > COSTS_N_INSNS (2)))
 	    {
 	      temp = expand_binop (mode, xor_optab, op0, signmask,
 				   NULL_RTX, 1, OPTAB_LIB_WIDEN);
@@ -3805,7 +3838,7 @@ expand_divmod (int rem_flag, enum tree_code code, enum machine_mode mode,
   rtx quotient = 0, remainder = 0;
   rtx last;
   int size;
-  rtx insn, set;
+  rtx insn;
   optab optab1, optab2;
   int op1_is_constant, op1_is_pow2 = 0;
   int max_cost, extra_cost;
@@ -4109,12 +4142,10 @@ expand_divmod (int rem_flag, enum tree_code code, enum machine_mode mode,
 		  break;
 
 		insn = get_last_insn ();
-		if (insn != last
-		    && (set = single_set (insn)) != 0
-		    && SET_DEST (set) == quotient)
-		  set_unique_reg_note (insn,
-				       REG_EQUAL,
-				       gen_rtx_UDIV (compute_mode, op0, op1));
+		if (insn != last)
+		  set_dst_reg_note (insn, REG_EQUAL,
+				    gen_rtx_UDIV (compute_mode, op0, op1),
+				    quotient);
 	      }
 	    else		/* TRUNC_DIV, signed */
 	      {
@@ -4193,18 +4224,14 @@ expand_divmod (int rem_flag, enum tree_code code, enum machine_mode mode,
 		      {
 			insn = get_last_insn ();
 			if (insn != last
-			    && (set = single_set (insn)) != 0
-			    && SET_DEST (set) == quotient
 			    && abs_d < ((unsigned HOST_WIDE_INT) 1
 					<< (HOST_BITS_PER_WIDE_INT - 1)))
-			  set_unique_reg_note (insn,
-					       REG_EQUAL,
-					       gen_rtx_DIV (compute_mode,
-							    op0,
-							    GEN_INT
-							    (trunc_int_for_mode
-							     (abs_d,
-							      compute_mode))));
+			  set_dst_reg_note (insn, REG_EQUAL,
+					    gen_rtx_DIV (compute_mode, op0,
+							 gen_int_mode
+							   (abs_d,
+							    compute_mode)),
+					    quotient);
 
 			quotient = expand_unop (compute_mode, neg_optab,
 						quotient, quotient, 0);
@@ -4291,12 +4318,10 @@ expand_divmod (int rem_flag, enum tree_code code, enum machine_mode mode,
 		  break;
 
 		insn = get_last_insn ();
-		if (insn != last
-		    && (set = single_set (insn)) != 0
-		    && SET_DEST (set) == quotient)
-		  set_unique_reg_note (insn,
-				       REG_EQUAL,
-				       gen_rtx_DIV (compute_mode, op0, op1));
+		if (insn != last)
+		  set_dst_reg_note (insn, REG_EQUAL,
+				    gen_rtx_DIV (compute_mode, op0, op1),
+				    quotient);
 	      }
 	    break;
 	  }
@@ -4714,11 +4739,10 @@ expand_divmod (int rem_flag, enum tree_code code, enum machine_mode mode,
 				    NULL_RTX, 1);
 
 	    insn = get_last_insn ();
-	    set_unique_reg_note (insn,
-				 REG_EQUAL,
-				 gen_rtx_fmt_ee (unsignedp ? UDIV : DIV,
-						 compute_mode,
-						 op0, op1));
+	    set_dst_reg_note (insn, REG_EQUAL,
+			      gen_rtx_fmt_ee (unsignedp ? UDIV : DIV,
+					      compute_mode, op0, op1),
+			      quotient);
 	  }
 	break;
 
@@ -5426,7 +5450,7 @@ emit_store_flag (rtx target, enum rtx_code code, rtx op0, rtx op1,
 
 	  /* For the reverse comparison, use either an addition or a XOR.  */
           if (want_add
-	      && rtx_cost (GEN_INT (normalizep), PLUS,
+	      && rtx_cost (GEN_INT (normalizep), PLUS, 1,
 			   optimize_insn_for_speed_p ()) == 0)
 	    {
 	      tem = emit_store_flag_1 (subtarget, rcode, op0, op1, mode, 0,
@@ -5437,7 +5461,7 @@ emit_store_flag (rtx target, enum rtx_code code, rtx op0, rtx op1,
 				     target, 0, OPTAB_WIDEN);
 	    }
           else if (!want_add
-	           && rtx_cost (trueval, XOR,
+	           && rtx_cost (trueval, XOR, 1,
 			        optimize_insn_for_speed_p ()) == 0)
 	    {
 	      tem = emit_store_flag_1 (subtarget, rcode, op0, op1, mode, 0,
@@ -5530,7 +5554,7 @@ emit_store_flag (rtx target, enum rtx_code code, rtx op0, rtx op1,
 
       /* Again, for the reverse comparison, use either an addition or a XOR.  */
       if (want_add
-	  && rtx_cost (GEN_INT (normalizep), PLUS,
+	  && rtx_cost (GEN_INT (normalizep), PLUS, 1,
 		       optimize_insn_for_speed_p ()) == 0)
 	{
 	  tem = emit_store_flag_1 (subtarget, rcode, op0, op1, mode, 0,
@@ -5540,7 +5564,7 @@ emit_store_flag (rtx target, enum rtx_code code, rtx op0, rtx op1,
 				GEN_INT (normalizep), target, 0, OPTAB_WIDEN);
 	}
       else if (!want_add
-	       && rtx_cost (trueval, XOR,
+	       && rtx_cost (trueval, XOR, 1,
 			    optimize_insn_for_speed_p ()) == 0)
 	{
 	  tem = emit_store_flag_1 (subtarget, rcode, op0, op1, mode, 0,

@@ -361,10 +361,13 @@ package body Freeze is
 
       --  For simple renamings, subsequent calls can be expanded directly as
       --  calls to the renamed entity. The body must be generated in any case
-      --  for calls that may appear elsewhere.
+      --  for calls that may appear elsewhere. This is not done in the case
+      --  where the subprogram is an instantiation because the actual proper
+      --  body has not been built yet.
 
       if Ekind_In (Old_S, E_Function, E_Procedure)
         and then Nkind (Decl) = N_Subprogram_Declaration
+        and then not Is_Generic_Instance (Old_S)
       then
          Set_Body_To_Inline (Decl, Old_S);
       end if;
@@ -1259,6 +1262,13 @@ package body Freeze is
 
                End_Package_Scope (E);
 
+               if Is_Generic_Instance (E)
+                 and then Has_Delayed_Freeze (E)
+               then
+                  Set_Has_Delayed_Freeze (E, False);
+                  Expand_N_Package_Declaration (Unit_Declaration_Node (E));
+               end if;
+
             elsif Ekind (E) in Task_Kind
               and then
                 (Nkind (Parent (E)) = N_Task_Type_Declaration
@@ -1332,7 +1342,9 @@ package body Freeze is
 
             --  If an incomplete type is still not frozen, this may be a
             --  premature freezing because of a body declaration that follows.
-            --  Indicate where the freezing took place.
+            --  Indicate where the freezing took place. Freezing will happen
+            --  if the body comes from source, but not if it is internally
+            --  generated, for example as the body of a type invariant.
 
             --  If the freezing is caused by the end of the current declarative
             --  part, it is a Taft Amendment type, and there is no error.
@@ -1344,14 +1356,23 @@ package body Freeze is
                   Bod : constant Node_Id := Next (After);
 
                begin
+                  --  The presence of a body freezes all entities previously
+                  --  declared in the current list of declarations, but this
+                  --  does not apply if the body does not come from source.
+                  --  A type invariant is transformed into a subprogram body
+                  --  which is placed at the end of the private part of the
+                  --  current package, but this body does not freeze incomplete
+                  --  types that may be declared in this private part.
+
                   if (Nkind_In (Bod, N_Subprogram_Body,
                                      N_Entry_Body,
                                      N_Package_Body,
                                      N_Protected_Body,
                                      N_Task_Body)
                         or else Nkind (Bod) in N_Body_Stub)
-                     and then
-                       List_Containing (After) = List_Containing (Parent (E))
+                    and then
+                      List_Containing (After) = List_Containing (Parent (E))
+                    and then Comes_From_Source (Bod)
                   then
                      Error_Msg_Sloc := Sloc (Next (After));
                      Error_Msg_NE
@@ -1397,7 +1418,11 @@ package body Freeze is
                Decl := Unit_Declaration_Node (E);
 
                if Nkind (Decl) = N_Subprogram_Renaming_Declaration then
-                  Build_And_Analyze_Renamed_Body (Decl, E, After);
+                  if Error_Posted (Decl) then
+                     Set_Has_Completion (E);
+                  else
+                     Build_And_Analyze_Renamed_Body (Decl, E, After);
+                  end if;
 
                elsif Nkind (Decl) = N_Subprogram_Declaration
                  and then Present (Corresponding_Body (Decl))
@@ -1432,27 +1457,24 @@ package body Freeze is
                end loop;
             end;
 
-         --  We add finalization collections to access types whose designated
-         --  types require finalization. This is normally done when freezing
-         --  the type, but this misses recursive type definitions where the
-         --  later members of the recursion introduce controlled components
-         --  (such as can happen when incomplete types are involved), as well
-         --  cases where a component type is private and the controlled full
-         --  type occurs after the access type is frozen. Cases that don't
-         --  need a finalization collection are generic formal types (the
-         --  actual type will have it) and types with Java and CIL conventions,
-         --  since those are used for API bindings. (Are there any other cases
-         --  that should be excluded here???)
+         --  We add finalization masters to access types whose designated types
+         --  require finalization. This is normally done when freezing the
+         --  type, but this misses recursive type definitions where the later
+         --  members of the recursion introduce controlled components (such as
+         --  can happen when incomplete types are involved), as well cases
+         --  where a component type is private and the controlled full type
+         --  occurs after the access type is frozen. Cases that don't need a
+         --  finalization master are generic formal types (the actual type will
+         --  have it) and types with Java and CIL conventions, since those are
+         --  used for API bindings. (Are there any other cases that should be
+         --  excluded here???)
 
          elsif Is_Access_Type (E)
            and then Comes_From_Source (E)
            and then not Is_Generic_Type (E)
            and then Needs_Finalization (Designated_Type (E))
-           and then No (Associated_Collection (E))
-           and then Convention (Designated_Type (E)) /= Convention_Java
-           and then Convention (Designated_Type (E)) /= Convention_CIL
          then
-            Build_Finalization_Collection (E);
+            Build_Finalization_Master (E);
          end if;
 
          Next_Entity (E);
@@ -1609,9 +1631,9 @@ package body Freeze is
       --  Start of processing for Check_Current_Instance
 
       begin
-         --  In Ada95, the (imprecise) rule is that the current instance of a
-         --  limited type is aliased. In Ada2005, limitedness must be explicit:
-         --  either a tagged type, or a limited record.
+         --  In Ada 95, the (imprecise) rule is that the current instance
+         --  of a limited type is aliased. In Ada 2005, limitedness must be
+         --  explicit: either a tagged type, or a limited record.
 
          if Is_Limited_Type (Rec_Type)
            and then (Ada_Version < Ada_2005 or else Is_Tagged_Type (Rec_Type))
@@ -1639,6 +1661,7 @@ package body Freeze is
          if Nkind (Decl) = N_Full_Type_Declaration then
             declare
                Tdef : constant Node_Id := Type_Definition (Decl);
+
             begin
                if Nkind (Tdef) = N_Modular_Type_Definition then
                   declare
@@ -1836,10 +1859,16 @@ package body Freeze is
                   --  if it is variable length. We omit this test in a generic
                   --  context, it will be applied at instantiation time.
 
+                  --  We also omit this test in CodePeer mode, since we do not
+                  --  have sufficient info on size and representation clauses.
+
                   if Present (CC) then
                      Placed_Component := True;
 
                      if Inside_A_Generic then
+                        null;
+
+                     elsif CodePeer_Mode then
                         null;
 
                      elsif not
@@ -2029,7 +2058,7 @@ package body Freeze is
             Next_Entity (Comp);
          end loop;
 
-         --  Deal with pragma Bit_Order setting non-standard bit order
+         --  Deal with Bit_Order aspect specifying a non-default bit order
 
          if Reverse_Bit_Order (Rec) and then Base_Type (Rec) = Rec then
             if not Placed_Component then
@@ -2242,12 +2271,13 @@ package body Freeze is
 
            and then RM_Size (Rec) >= Scalar_Component_Total_RM_Size
 
-           --  Never do implicit packing in CodePeer mode since we don't do
-           --  any packing in this mode, since this generates over-complex
-           --  code that confuses CodePeer, and in general, CodePeer does not
-           --  care about the internal representation of objects.
+           --  Never do implicit packing in CodePeer or Alfa modes since
+           --  we don't do any packing in these modes, since this generates
+           --  over-complex code that confuses static analysis, and in
+           --  general, neither CodePeer not GNATprove care about the
+           --  internal representation of objects.
 
-           and then not CodePeer_Mode
+           and then not (CodePeer_Mode or Alfa_Mode)
          then
             --  If implicit packing enabled, do it
 
@@ -2295,6 +2325,16 @@ package body Freeze is
       --  be frozen in the proper scope after the current generic is analyzed.
 
       elsif Inside_A_Generic and then External_Ref_In_Generic (Test_E) then
+         return No_List;
+
+      --  AI05-0213: A formal incomplete type does not freeze the actual. In
+      --  the instance, the same applies to the subtype renaming the actual.
+
+      elsif Is_Private_Type (E)
+        and then Is_Generic_Actual_Type (E)
+        and then No (Full_View (Base_Type (E)))
+        and then Ada_Version >= Ada_2012
+      then
          return No_List;
 
       --  Do not freeze a global entity within an inner scope created during
@@ -2385,6 +2425,7 @@ package body Freeze is
                if Nkind (Ritem) = N_Aspect_Specification
                  and then Entity (Ritem) = E
                  and then Is_Delayed_Aspect (Ritem)
+                 and then Scope (E) = Current_Scope
                then
                   Aitem := Aspect_Rep_Item (Ritem);
 
@@ -2804,7 +2845,7 @@ package body Freeze is
 
                --  Note: we inhibit this check for objects that do not come
                --  from source because there is at least one case (the
-               --  expansion of x'class'input where x is abstract) where we
+               --  expansion of x'Class'Input where x is abstract) where we
                --  legitimately generate an abstract object.
 
                if Is_Abstract_Type (Etype (E))
@@ -2999,8 +3040,13 @@ package body Freeze is
          --  nable and used in subsequent checks, so might as well try to
          --  compute it.
 
+         --  In Ada 2012, Freeze_Entities is also used in the front end to
+         --  trigger the analysis of aspect expressions, so in this case we
+         --  want to continue the freezing process.
+
          if Present (Scope (E))
            and then Is_Generic_Unit (Scope (E))
+           and then not Has_Predicates (E)
          then
             Check_Compile_Time_Size (E);
             return No_List;
@@ -3050,7 +3096,7 @@ package body Freeze is
                     and then not Is_Limited_Composite (E)
                     and then not Is_Packed (Root_Type (E))
                     and then not Has_Component_Size_Clause (Root_Type (E))
-                    and then not CodePeer_Mode
+                    and then not (CodePeer_Mode or Alfa_Mode)
                   then
                      Get_Index_Bounds (First_Index (E), Lo, Hi);
 
@@ -3696,7 +3742,7 @@ package body Freeze is
             --     package Pkg is
             --        type T is tagged private;
             --        type DT is new T with private;
-            --        procedure Prim (X : in out T; Y : in out DT'class);
+            --        procedure Prim (X : in out T; Y : in out DT'Class);
             --     private
             --        type T is tagged null record;
             --        Obj : T;
@@ -4033,6 +4079,16 @@ package body Freeze is
             Layout_Type (E);
          end if;
 
+         --  If this is an access to subprogram whose designated type is itself
+         --  a subprogram type, the return type of this anonymous subprogram
+         --  type must be decorated as well.
+
+         if Ekind (E) = E_Anonymous_Access_Subprogram_Type
+           and then Ekind (Designated_Type (E)) = E_Subprogram_Type
+         then
+            Layout_Type (Etype (Designated_Type (E)));
+         end if;
+
          --  If the type has a Defaut_Value/Default_Component_Value aspect,
          --  this is where we analye the expression (after the type is frozen,
          --  since in the case of Default_Value, we are analyzing with the
@@ -4199,7 +4255,8 @@ package body Freeze is
       --  By default, if no size clause is present, an enumeration type with
       --  Convention C is assumed to interface to a C enum, and has integer
       --  size. This applies to types. For subtypes, verify that its base
-      --  type has no size clause either.
+      --  type has no size clause either. Treat other foreign conventions
+      --  in the same way, and also make sure alignment is set right.
 
       if Has_Foreign_Convention (Typ)
         and then not Has_Size_Clause (Typ)
@@ -4207,6 +4264,7 @@ package body Freeze is
         and then Esize (Typ) < Standard_Integer_Size
       then
          Init_Esize (Typ, Standard_Integer_Size);
+         Set_Alignment (Typ, Alignment (Standard_Integer));
 
       else
          --  If the enumeration type interfaces to C, and it has a size clause
@@ -4307,13 +4365,23 @@ package body Freeze is
 
       --  If expression is non-static, then it does not freeze in a default
       --  expression, see section "Handling of Default Expressions" in the
-      --  spec of package Sem for further details. Note that we have to
-      --  make sure that we actually have a real expression (if we have
-      --  a subtype indication, we can't test Is_Static_Expression!)
+      --  spec of package Sem for further details. Note that we have to make
+      --  sure that we actually have a real expression (if we have a subtype
+      --  indication, we can't test Is_Static_Expression!) However, we exclude
+      --  the case of the prefix of an attribute of a static scalar subtype
+      --  from this early return, because static subtype attributes should
+      --  always cause freezing, even in default expressions, but the attribute
+      --  may not have been marked as static yet (because in Resolve_Attribute,
+      --  the call to Eval_Attribute follows the call of Freeze_Expression on
+      --  the prefix).
 
       if In_Spec_Exp
         and then Nkind (N) in N_Subexpr
         and then not Is_Static_Expression (N)
+        and then (Nkind (Parent (N)) /= N_Attribute_Reference
+                   or else not (Is_Entity_Name (N)
+                                 and then Is_Type (Entity (N))
+                                 and then Is_Static_Subtype (Entity (N))))
       then
          return;
       end if;

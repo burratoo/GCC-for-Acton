@@ -646,6 +646,24 @@ package body Atree is
    end Copy_Node;
 
    ------------------------
+   -- Copy_Separate_List --
+   ------------------------
+
+   function Copy_Separate_List (Source : List_Id) return List_Id is
+      Result : constant List_Id := New_List;
+      Nod    : Node_Id;
+
+   begin
+      Nod := First (Source);
+      while Present (Nod) loop
+         Append (Copy_Separate_Tree (Nod), Result);
+         Next (Nod);
+      end loop;
+
+      return Result;
+   end Copy_Separate_List;
+
+   ------------------------
    -- Copy_Separate_Tree --
    ------------------------
 
@@ -766,8 +784,8 @@ package body Atree is
          Set_Field4 (New_Id, Possible_Copy (Field4 (New_Id)));
          Set_Field5 (New_Id, Possible_Copy (Field5 (New_Id)));
 
-         --  Set Entity field to Empty
-         --  Why is this done??? and why is it always right to do it???
+         --  Set Entity field to Empty to ensure that no entity references
+         --  are shared between the two, if the source is already analyzed.
 
          if Nkind (New_Id) in N_Has_Entity
            or else Nkind (New_Id) = N_Freeze_Entity
@@ -1778,6 +1796,15 @@ package body Atree is
       pragma Assert (N <= Nodes.Last);
       Nodes.Table (N).Has_Aspects := Val;
    end Set_Has_Aspects;
+
+   -----------------------
+   -- Set_Original_Node --
+   -----------------------
+
+   procedure Set_Original_Node (N : Node_Id; Val : Node_Id) is
+   begin
+      Orig_Nodes.Table (N) := Val;
+   end Set_Original_Node;
 
    ---------------------
    -- Set_Paren_Count --

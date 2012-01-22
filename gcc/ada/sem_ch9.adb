@@ -23,7 +23,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Checks;   use Checks;
 with Einfo;    use Einfo;
@@ -727,7 +726,7 @@ package body Sem_Ch9 is
       --  for the discriminals and privals and finally a declaration for the
       --  entry family index (if applicable).
 
-      if Expander_Active
+      if Full_Expander_Active
         and then Is_Protected_Type (P_Type)
       then
          Install_Private_Data_Declarations
@@ -906,6 +905,83 @@ package body Sem_Ch9 is
          Bad_Predicated_Subtype_Use
            ("subtype& has predicate, not allowed in entry family",
             D_Sdef, Etype (D_Sdef));
+
+         --  Check entry family static bounds outside allowed limits
+
+         --  Note: originally this check was not performed here, but in that
+         --  case the check happens deep in the expander, and the message is
+         --  posted at the wrong location, and omitted in -gnatc mode.
+         --  If the type of the entry index is a generic formal, no check
+         --  is possible. In an instance, the check is not static and a run-
+         --  time exception will be raised if the bounds are unreasonable.
+
+         declare
+            PEI : constant Entity_Id := RTE (RE_Protected_Entry_Index);
+            LB  : constant Uint      := Expr_Value (Type_Low_Bound (PEI));
+            UB  : constant Uint      := Expr_Value (Type_High_Bound (PEI));
+
+            LBR : Node_Id;
+            UBR : Node_Id;
+
+         begin
+
+            --  No bounds checking if the type is generic or if previous error.
+            --  In an instance the check is dynamic.
+
+            if Is_Generic_Type (Etype (D_Sdef))
+              or else In_Instance
+              or else Error_Posted (D_Sdef)
+            then
+               goto Skip_LB;
+
+            elsif Nkind (D_Sdef) = N_Range then
+               LBR := Low_Bound (D_Sdef);
+
+            elsif Is_Entity_Name (D_Sdef)
+              and then Is_Type (Entity (D_Sdef))
+            then
+               LBR := Type_Low_Bound (Entity (D_Sdef));
+
+            else
+               goto Skip_LB;
+            end if;
+
+            if Is_Static_Expression (LBR)
+              and then Expr_Value (LBR) < LB
+            then
+               Error_Msg_Uint_1 := LB;
+               Error_Msg_N ("entry family low bound must be '>'= ^!", D_Sdef);
+            end if;
+
+         <<Skip_LB>>
+            if Is_Generic_Type (Etype (D_Sdef))
+              or else In_Instance
+              or else Error_Posted (D_Sdef)
+            then
+               goto Skip_UB;
+
+            elsif Nkind (D_Sdef) = N_Range then
+               UBR := High_Bound (D_Sdef);
+
+            elsif Is_Entity_Name (D_Sdef)
+              and then Is_Type (Entity (D_Sdef))
+            then
+               UBR := Type_High_Bound (Entity (D_Sdef));
+
+            else
+               goto Skip_UB;
+            end if;
+
+            if Is_Static_Expression (UBR)
+              and then Expr_Value (UBR) > UB
+            then
+               Error_Msg_Uint_1 := UB;
+               Error_Msg_N ("entry family high bound must be '<'= ^!", D_Sdef);
+            end if;
+
+         <<Skip_UB>>
+            null;
+         end;
       end if;
 
       --  Decorate Def_Id
@@ -1164,7 +1240,12 @@ package body Sem_Ch9 is
    begin
       if No_Run_Time_Mode then
          Error_Msg_CRT ("protected type", N);
-         goto Leave;
+
+         if Has_Aspects (N) then
+            Analyze_Aspect_Specifications (N, Def_Id);
+         end if;
+
+         return;
       end if;
 
       Tasking_Used := True;
@@ -1205,6 +1286,13 @@ package body Sem_Ch9 is
       end if;
 
       Set_Is_Constrained (T, not Has_Discriminants (T));
+
+      --  If aspects are present, analyze them now. They can make references
+      --  to the discriminants of the type, but not to any components.
+
+      if Has_Aspects (N) then
+         Analyze_Aspect_Specifications (N, Def_Id);
+      end if;
 
       Analyze (Protected_Definition (N));
 
@@ -1274,20 +1362,19 @@ package body Sem_Ch9 is
          end if;
 
          --  Create corresponding record now, because some private dependents
-         --  may be subtypes of the partial view. Skip if errors are present,
-         --  to prevent cascaded messages.
+         --  may be subtypes of the partial view.
+
+         --  Skip if errors are present, to prevent cascaded messages
 
          if Serious_Errors_Detected = 0
-           and then Expander_Active
+
+           --  Also skip if expander is not active
+
+           and then Full_Expander_Active
          then
             Expand_N_Protected_Type_Declaration (N);
             Process_Full_View (N, T, Def_Id);
          end if;
-      end if;
-
-   <<Leave>>
-      if Has_Aspects (N) then
-         Analyze_Aspect_Specifications (N, Def_Id);
       end if;
    end Analyze_Protected_Type_Declaration;
 
@@ -1722,7 +1809,6 @@ package body Sem_Ch9 is
           Defining_Identifier => O_Name,
           Object_Definition   => Make_Identifier (Loc,  Chars (T)));
 
-      Move_Aspects (N, O_Decl);
       Rewrite (N, T_Decl);
       Insert_After (N, O_Decl);
       Mark_Rewrite_Insertion (O_Decl);
@@ -1792,7 +1878,6 @@ package body Sem_Ch9 is
           Defining_Identifier => O_Name,
           Object_Definition   => Make_Identifier (Loc, Chars (T)));
 
-      Move_Aspects (N, O_Decl);
       Rewrite (N, T_Decl);
       Insert_After (N, O_Decl);
       Mark_Rewrite_Insertion (O_Decl);
@@ -2000,10 +2085,18 @@ package body Sem_Ch9 is
 
       --  In the case of an incomplete type, use the full view, unless it's not
       --  present (as can occur for an incomplete view from a limited with).
+      --  Initialize the Corresponding_Record_Type (which overlays the Private
+      --  Dependents field of the incomplete view).
 
-      if Ekind (T) = E_Incomplete_Type and then Present (Full_View (T)) then
-         T := Full_View (T);
-         Set_Completion_Referenced (T);
+      if Ekind (T) = E_Incomplete_Type then
+         if Present (Full_View (T)) then
+            T := Full_View (T);
+            Set_Completion_Referenced (T);
+
+         else
+            Set_Ekind (T, E_Task_Type);
+            Set_Corresponding_Record_Type (T, Empty);
+         end if;
       end if;
 
       Set_Ekind              (T, E_Task_Type);
@@ -2036,6 +2129,10 @@ package body Sem_Ch9 is
       end if;
 
       Set_Is_Constrained (T, not Has_Discriminants (T));
+
+      if Has_Aspects (N) then
+         Analyze_Aspect_Specifications (N, Def_Id);
+      end if;
 
       if Present (Task_Definition (N)) then
          Analyze_Task_Definition (Task_Definition (N));
@@ -2077,19 +2174,19 @@ package body Sem_Ch9 is
          end if;
 
          --  Create corresponding record now, because some private dependents
-         --  may be subtypes of the partial view. Skip if errors are present,
-         --  to prevent cascaded messages.
+         --  may be subtypes of the partial view.
+
+         --  Skip if errors are present, to prevent cascaded messages
 
          if Serious_Errors_Detected = 0
-           and then Expander_Active
+
+           --  Also skip if expander is not active
+
+           and then Full_Expander_Active
          then
             Expand_N_Task_Type_Declaration (N);
             Process_Full_View (N, T, Def_Id);
          end if;
-      end if;
-
-      if Has_Aspects (N) then
-         Analyze_Aspect_Specifications (N, Def_Id);
       end if;
    end Analyze_Task_Type_Declaration;
 
@@ -2368,7 +2465,7 @@ package body Sem_Ch9 is
          --  declaration must be limited.
 
          if Present (Interface_List (N))
-           and then not Is_Limited_Record (Priv_T)
+           and then not Is_Limited_Type (Priv_T)
          then
             Error_Msg_Sloc := Sloc (Priv_T);
             Error_Msg_N ("(Ada 2005) limited type declaration expected for " &

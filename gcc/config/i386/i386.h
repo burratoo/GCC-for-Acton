@@ -53,6 +53,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_SSE4_1	OPTION_ISA_SSE4_1
 #define TARGET_SSE4_2	OPTION_ISA_SSE4_2
 #define TARGET_AVX	OPTION_ISA_AVX
+#define TARGET_AVX2	OPTION_ISA_AVX2
 #define TARGET_FMA	OPTION_ISA_FMA
 #define TARGET_SSE4A	OPTION_ISA_SSE4A
 #define TARGET_FMA4	OPTION_ISA_FMA4
@@ -61,6 +62,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_ROUND	OPTION_ISA_ROUND
 #define TARGET_ABM	OPTION_ISA_ABM
 #define TARGET_BMI	OPTION_ISA_BMI
+#define TARGET_BMI2	OPTION_ISA_BMI2
 #define TARGET_LZCNT	OPTION_ISA_LZCNT
 #define TARGET_TBM	OPTION_ISA_TBM
 #define TARGET_POPCNT	OPTION_ISA_POPCNT
@@ -316,6 +318,8 @@ enum ix86_tune_indices {
   X86_TUNE_VECTORIZE_DOUBLE,
   X86_TUNE_SOFTWARE_PREFETCHING_BENEFICIAL,
   X86_TUNE_AVX128_OPTIMAL,
+  X86_TUNE_REASSOC_INT_TO_PARALLEL,
+  X86_TUNE_REASSOC_FP_TO_PARALLEL,
 
   X86_TUNE_LAST
 };
@@ -414,6 +418,11 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 	ix86_tune_features[X86_TUNE_SOFTWARE_PREFETCHING_BENEFICIAL]
 #define TARGET_AVX128_OPTIMAL \
 	ix86_tune_features[X86_TUNE_AVX128_OPTIMAL]
+#define TARGET_REASSOC_INT_TO_PARALLEL \
+	ix86_tune_features[X86_TUNE_REASSOC_INT_TO_PARALLEL]
+#define TARGET_REASSOC_FP_TO_PARALLEL \
+	ix86_tune_features[X86_TUNE_REASSOC_FP_TO_PARALLEL]
+
 /* Feature tests against the various architecture variations.  */
 enum ix86_arch_indices {
   X86_ARCH_CMOVE,		/* || TARGET_SSE */
@@ -986,7 +995,8 @@ enum target_cpu_default
 
 #define VALID_AVX256_REG_MODE(MODE)					\
   ((MODE) == V32QImode || (MODE) == V16HImode || (MODE) == V8SImode	\
-   || (MODE) == V4DImode || (MODE) == V8SFmode || (MODE) == V4DFmode)
+   || (MODE) == V4DImode || (MODE) == V2TImode || (MODE) == V8SFmode	\
+   || (MODE) == V4DFmode)
 
 #define VALID_SSE2_REG_MODE(MODE)					\
   ((MODE) == V16QImode || (MODE) == V8HImode || (MODE) == V2DFmode	\
@@ -1026,7 +1036,8 @@ enum target_cpu_default
    || (MODE) == TFmode || (MODE) == V8HImode || (MODE) == V2DFmode	\
    || (MODE) == V2DImode || (MODE) == V4SFmode || (MODE) == V4SImode	\
    || (MODE) == V32QImode || (MODE) == V16HImode || (MODE) == V8SImode	\
-   || (MODE) == V4DImode || (MODE) == V8SFmode || (MODE) == V4DFmode)
+   || (MODE) == V4DImode || (MODE) == V8SFmode || (MODE) == V4DFmode	\
+   || (MODE) == V2TImode)
 
 /* Value is 1 if hard register REGNO can hold a value of machine-mode MODE.  */
 
@@ -2303,6 +2314,20 @@ extern void debug_dispatch_window (int);
 #define IX86_BASE_CALLCVT(FLAGS) \
 	((FLAGS) & (IX86_CALLCVT_CDECL | IX86_CALLCVT_STDCALL \
 		    | IX86_CALLCVT_FASTCALL | IX86_CALLCVT_THISCALL))
+
+#define RECIP_MASK_NONE		0x00
+#define RECIP_MASK_DIV		0x01
+#define RECIP_MASK_SQRT		0x02
+#define RECIP_MASK_VEC_DIV	0x04
+#define RECIP_MASK_VEC_SQRT	0x08
+#define RECIP_MASK_ALL	(RECIP_MASK_DIV | RECIP_MASK_SQRT \
+			 | RECIP_MASK_VEC_DIV | RECIP_MASK_VEC_SQRT)
+#define RECIP_MASK_DEFAULT (RECIP_MASK_VEC_DIV | RECIP_MASK_VEC_SQRT)
+
+#define TARGET_RECIP_DIV	((recip_mask & RECIP_MASK_DIV) != 0)
+#define TARGET_RECIP_SQRT	((recip_mask & RECIP_MASK_SQRT) != 0)
+#define TARGET_RECIP_VEC_DIV	((recip_mask & RECIP_MASK_VEC_DIV) != 0)
+#define TARGET_RECIP_VEC_SQRT	((recip_mask & RECIP_MASK_VEC_SQRT) != 0)
 
 /*
 Local variables:

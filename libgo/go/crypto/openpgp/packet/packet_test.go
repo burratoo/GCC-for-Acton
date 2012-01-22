@@ -6,12 +6,11 @@ package packet
 
 import (
 	"bytes"
-	"crypto/openpgp/error"
+	error_ "crypto/openpgp/error"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"testing"
 )
 
@@ -49,7 +48,7 @@ var readLengthTests = []struct {
 	hexInput  string
 	length    int64
 	isPartial bool
-	err       os.Error
+	err       error
 }{
 	{"", 0, false, io.ErrUnexpectedEOF},
 	{"1f", 31, false, nil},
@@ -87,7 +86,7 @@ func TestReadLength(t *testing.T) {
 
 var partialLengthReaderTests = []struct {
 	hexInput  string
-	err       os.Error
+	err       error
 	hexOutput string
 }{
 	{"e0", io.ErrUnexpectedEOF, ""},
@@ -153,14 +152,14 @@ func TestReadHeader(t *testing.T) {
 	for i, test := range readHeaderTests {
 		tag, length, contents, err := readHeader(readerFromHex(test.hexInput))
 		if test.structuralError {
-			if _, ok := err.(error.StructuralError); ok {
+			if _, ok := err.(error_.StructuralError); ok {
 				continue
 			}
 			t.Errorf("%d: expected StructuralError, got:%s", i, err)
 			continue
 		}
 		if err != nil {
-			if len(test.hexInput) == 0 && err == os.EOF {
+			if len(test.hexInput) == 0 && err == io.EOF {
 				continue
 			}
 			if !test.unexpectedEOF || err != io.ErrUnexpectedEOF {
@@ -207,6 +206,50 @@ func TestSerializeHeader(t *testing.T) {
 		}
 		if int(length2) != length {
 			t.Errorf("length %d, length incorrect (got %d)", length, length2)
+		}
+	}
+}
+
+func TestPartialLengths(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	w := new(partialLengthWriter)
+	w.w = noOpCloser{buf}
+
+	const maxChunkSize = 64
+
+	var b [maxChunkSize]byte
+	var n uint8
+	for l := 1; l <= maxChunkSize; l++ {
+		for i := 0; i < l; i++ {
+			b[i] = n
+			n++
+		}
+		m, err := w.Write(b[:l])
+		if m != l {
+			t.Errorf("short write got: %d want: %d", m, l)
+		}
+		if err != nil {
+			t.Errorf("error from write: %s", err)
+		}
+	}
+	w.Close()
+
+	want := (maxChunkSize * (maxChunkSize + 1)) / 2
+	copyBuf := bytes.NewBuffer(nil)
+	r := &partialLengthReader{buf, 0, true}
+	m, err := io.Copy(copyBuf, r)
+	if m != int64(want) {
+		t.Errorf("short copy got: %d want: %d", m, want)
+	}
+	if err != nil {
+		t.Errorf("error from copy: %s", err)
+	}
+
+	copyBytes := copyBuf.Bytes()
+	for i := 0; i < want; i++ {
+		if copyBytes[i] != uint8(i) {
+			t.Errorf("bad pattern in copy at %d", i)
+			break
 		}
 	}
 }

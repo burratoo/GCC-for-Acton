@@ -42,8 +42,6 @@ extern bool score_block_move (rtx* ops);
 extern int score_address_cost (rtx addr, bool speed);
 extern int score_address_p (enum machine_mode mode, rtx x, int strict);
 extern int score_reg_class (int regno);
-extern int score_register_move_cost (enum machine_mode mode, enum reg_class to,
-                                     enum reg_class from);
 extern int score_hard_regno_mode_ok (unsigned int, enum machine_mode);
 extern int score_const_ok_for_letter_p (HOST_WIDE_INT value, char c);
 extern int score_extra_constraint (rtx op, char c);
@@ -73,7 +71,8 @@ extern const char * score_select (rtx *ops, const char *inst_pre, bool commu,
 extern const char * score_output_casesi (rtx *operands);
 extern const char * score_rpush (rtx *ops);
 extern const char * score_rpop (rtx *ops);
-extern bool score_rtx_costs (rtx x, int code, int outer_code, int *total, bool speed);
+extern bool score_rtx_costs (rtx x, int code, int outer_code, int opno,
+			     int *total, bool speed);
 
 #ifdef RTX_CODE
 extern enum machine_mode score_select_cc_mode (enum rtx_code op, rtx x, rtx y);
