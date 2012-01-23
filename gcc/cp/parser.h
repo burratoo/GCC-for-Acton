@@ -169,6 +169,10 @@ typedef struct GTY(()) cp_unparsed_functions_entry_d {
   /* Functions with defintions that require post-processing.  Functions
      appear in this list in declaration order.  */
   VEC(tree,gc) *funs_with_definitions;
+
+  /* Non-static data members with initializers that require post-processing.
+     FIELD_DECLs appear in this list in declaration order.  */
+  VEC(tree,gc) *nsdmis;
 } cp_unparsed_functions_entry;
 
 DEF_VEC_O(cp_unparsed_functions_entry);
@@ -325,6 +329,10 @@ typedef struct GTY(()) cp_parser {
      a local class.  */
   bool in_function_body;
 
+  /* Nonzero if we're processing a __transaction_atomic or
+     __transaction_relaxed statement.  */
+  unsigned char in_transaction;
+
   /* TRUE if we can auto-correct a colon to a scope operator.  */
   bool colon_corrects_to_scope_p;
 
@@ -348,9 +356,7 @@ typedef struct GTY(()) cp_parser {
 } cp_parser;
 
 /* In parser.c  */
-#ifdef ENABLE_CHECKING
-extern void cp_lexer_dump_tokens (FILE *, VEC(cp_token,gc) *, unsigned);
 extern void cp_lexer_debug_tokens (VEC(cp_token,gc) *);
-#endif
+extern void cp_debug_parser (FILE *, cp_parser *);
 
 #endif  /* GCC_CP_PARSER_H  */

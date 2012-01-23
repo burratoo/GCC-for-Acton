@@ -110,7 +110,8 @@ const char * const ld_plugin_symbol_resolution_names[]=
   "preempted_ir",
   "resolved_ir",
   "resolved_exec",
-  "resolved_dyn"
+  "resolved_dyn",
+  "prevailing_def_ironly_exp"
 };
 
 static void cgraph_node_remove_callers (struct cgraph_node *node);
@@ -411,7 +412,7 @@ cgraph_remove_node_duplication_hook (struct cgraph_2node_hook_list *entry)
 }
 
 /* Call all node duplication hooks.  */
-static void
+void
 cgraph_call_node_duplication_hooks (struct cgraph_node *node1,
 				    struct cgraph_node *node2)
 {
@@ -835,7 +836,7 @@ cgraph_set_call_stmt (struct cgraph_edge *e, gimple new_stmt)
       struct cgraph_node *new_callee = cgraph_get_node (decl);
 
       gcc_checking_assert (new_callee);
-      cgraph_make_edge_direct (e, new_callee, 0);
+      cgraph_make_edge_direct (e, new_callee);
     }
 
   push_cfun (DECL_STRUCT_FUNCTION (e->caller->decl));
@@ -987,8 +988,12 @@ cgraph_create_edge_1 (struct cgraph_node *caller, struct cgraph_node *callee,
   edge->can_throw_external
     = call_stmt ? stmt_can_throw_external (call_stmt) : false;
   pop_cfun ();
-  edge->call_stmt_cannot_inline_p =
-    (call_stmt ? gimple_call_cannot_inline_p (call_stmt) : false);
+  if (call_stmt
+      && callee && callee->decl
+      && !gimple_check_call_matching_types (call_stmt, callee->decl))
+    edge->call_stmt_cannot_inline_p = true;
+  else
+    edge->call_stmt_cannot_inline_p = false;
   if (call_stmt && caller->call_site_hash)
     cgraph_add_edge_to_call_site_hash (edge);
 
@@ -1161,11 +1166,9 @@ cgraph_redirect_edge_callee (struct cgraph_edge *e, struct cgraph_node *n)
    pointer (first parameter) to compensate for skipping a thunk adjustment.  */
 
 void
-cgraph_make_edge_direct (struct cgraph_edge *edge, struct cgraph_node *callee,
-			 HOST_WIDE_INT delta)
+cgraph_make_edge_direct (struct cgraph_edge *edge, struct cgraph_node *callee)
 {
   edge->indirect_unknown_callee = 0;
-  edge->indirect_info->thunk_delta = delta;
 
   /* Get the edge out of the indirect edge list. */
   if (edge->prev_callee)
@@ -1184,6 +1187,10 @@ cgraph_make_edge_direct (struct cgraph_edge *edge, struct cgraph_node *callee,
 
   /* Insert to callers list of the new callee.  */
   cgraph_set_edge_callee (edge, callee);
+
+  if (edge->call_stmt)
+    edge->call_stmt_cannot_inline_p
+      = !gimple_check_call_matching_types (edge->call_stmt, callee->decl);
 
   /* We need to re-determine the inlining status of the edge.  */
   initialize_inline_failed (edge);
@@ -1839,6 +1846,10 @@ dump_cgraph_node (FILE *f, struct cgraph_node *node)
     fprintf (f, " only_called_at_startup");
   if (node->only_called_at_exit)
     fprintf (f, " only_called_at_exit");
+  else if (node->alias)
+    fprintf (f, " alias");
+  if (node->tm_clone)
+    fprintf (f, " tm_clone");
 
   fprintf (f, "\n");
 
@@ -2235,7 +2246,7 @@ cgraph_create_virtual_clone (struct cgraph_node *old_node,
   if (!args_to_skip)
     new_decl = copy_node (old_decl);
   else
-    new_decl = build_function_decl_skip_args (old_decl, args_to_skip);
+    new_decl = build_function_decl_skip_args (old_decl, args_to_skip, false);
   DECL_STRUCT_FUNCTION (new_decl) = NULL;
 
   /* Generate a new name for the new version. */
@@ -2568,7 +2579,7 @@ cgraph_for_node_thunks_and_aliases (struct cgraph_node *node,
   for (e = node->callers; e; e = e->next_caller)
     if (e->caller->thunk.thunk_p
 	&& (include_overwritable
-	    || cgraph_function_body_availability (e->caller)))
+	    || cgraph_function_body_availability (e->caller) > AVAIL_OVERWRITABLE))
       if (cgraph_for_node_thunks_and_aliases (e->caller, callback, data,
 					      include_overwritable))
 	return true;

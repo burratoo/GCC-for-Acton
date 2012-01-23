@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -33,7 +33,8 @@
 
 private with Ada.Containers.Red_Black_Trees;
 private with Ada.Finalization;
-private with Ada.Streams;
+with Ada.Streams; use Ada.Streams;
+with Ada.Iterator_Interfaces;
 
 generic
    type Element_Type (<>) is private;
@@ -47,7 +48,11 @@ package Ada.Containers.Indefinite_Ordered_Sets is
 
    function Equivalent_Elements (Left, Right : Element_Type) return Boolean;
 
-   type Set is tagged private;
+   type Set is tagged private with
+      Constant_Indexing => Constant_Reference,
+      Default_Iterator  => Iterate,
+      Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (Set);
 
    type Cursor is private;
@@ -56,6 +61,11 @@ package Ada.Containers.Indefinite_Ordered_Sets is
    Empty_Set : constant Set;
 
    No_Element : constant Cursor;
+
+   function Has_Element (Position : Cursor) return Boolean;
+
+   package Set_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    function "=" (Left, Right : Set) return Boolean;
 
@@ -79,6 +89,31 @@ package Ada.Containers.Indefinite_Ordered_Sets is
    procedure Query_Element
      (Position : Cursor;
       Process  : not null access procedure (Element : Element_Type));
+
+   type Constant_Reference_Type
+     (Element : not null access constant Element_Type) is
+   private with
+      Implicit_Dereference => Element;
+
+   function Constant_Reference
+     (Container : aliased Set;
+      Position  : Cursor) return Constant_Reference_Type;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
+
+   for Constant_Reference_Type'Read use Read;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   procedure Assign (Target : in out Set; Source : Set);
+
+   function Copy (Source : Set) return Set;
 
    procedure Move (Target : in out Set; Source : in out Set);
 
@@ -160,15 +195,21 @@ package Ada.Containers.Indefinite_Ordered_Sets is
 
    procedure Previous (Position : in out Cursor);
 
-   function Find (Container : Set; Item : Element_Type) return Cursor;
+   function Find
+     (Container : Set;
+      Item      : Element_Type) return Cursor;
 
-   function Floor (Container : Set; Item : Element_Type) return Cursor;
+   function Floor
+     (Container : Set;
+      Item      : Element_Type) return Cursor;
 
-   function Ceiling (Container : Set; Item : Element_Type) return Cursor;
+   function Ceiling
+     (Container : Set;
+      Item      : Element_Type) return Cursor;
 
-   function Contains (Container : Set; Item : Element_Type) return Boolean;
-
-   function Has_Element (Position : Cursor) return Boolean;
+   function Contains
+     (Container : Set;
+      Item      : Element_Type) return Boolean;
 
    function "<" (Left, Right : Cursor) return Boolean;
 
@@ -189,6 +230,15 @@ package Ada.Containers.Indefinite_Ordered_Sets is
    procedure Reverse_Iterate
      (Container : Set;
       Process   : not null access procedure (Position : Cursor));
+
+   function Iterate
+     (Container : Set)
+      return Set_Iterator_Interfaces.Reversible_Iterator'class;
+
+   function Iterate
+     (Container : Set;
+      Start     : Cursor)
+      return Set_Iterator_Interfaces.Reversible_Iterator'class;
 
    generic
       type Key_Type (<>) is private;
@@ -236,10 +286,40 @@ package Ada.Containers.Indefinite_Ordered_Sets is
          Process   : not null access
                        procedure (Element : in out Element_Type));
 
+      type Reference_Type (Element : not null access Element_Type) is private
+      with
+         Implicit_Dereference => Element;
+
+      function Reference_Preserving_Key
+        (Container : aliased in out Set;
+         Position  : Cursor) return Reference_Type;
+
+      function Constant_Reference
+        (Container : aliased Set;
+         Key       : Key_Type) return Constant_Reference_Type;
+
+      function Reference_Preserving_Key
+        (Container : aliased in out Set;
+         Key       : Key_Type) return Reference_Type;
+
+   private
+      type Reference_Type
+         (Element : not null access Element_Type) is null record;
+
+      procedure Write
+        (Stream : not null access Root_Stream_Type'Class;
+         Item   : Reference_Type);
+
+      for Reference_Type'Write use Write;
+
+      procedure Read
+        (Stream : not null access Root_Stream_Type'Class;
+         Item   : out Reference_Type);
+
+      for Reference_Type'Read use Read;
    end Generic_Keys;
 
 private
-
    pragma Inline (Next);
    pragma Inline (Previous);
 
@@ -271,7 +351,6 @@ private
    use Red_Black_Trees;
    use Tree_Types;
    use Ada.Finalization;
-   use Ada.Streams;
 
    type Set_Access is access all Set;
    for Set_Access'Storage_Size use 0;
@@ -306,6 +385,9 @@ private
       Container : out Set);
 
    for Set'Read use Read;
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is null record;
 
    Empty_Set : constant Set :=
                  (Controlled with Tree => (First  => null,

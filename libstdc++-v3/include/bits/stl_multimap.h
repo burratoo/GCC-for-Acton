@@ -58,7 +58,9 @@
 #define _STL_MULTIMAP_H 1
 
 #include <bits/concept_check.h>
+#ifdef __GXX_EXPERIMENTAL_CXX0X__
 #include <initializer_list>
+#endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -158,7 +160,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       explicit
       multimap(const _Compare& __comp,
 	       const allocator_type& __a = allocator_type())
-      : _M_t(__comp, __a) { }
+      : _M_t(__comp, _Pair_alloc_type(__a)) { }
 
       /**
        *  @brief  %Multimap copy constructor.
@@ -195,7 +197,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       multimap(initializer_list<value_type> __l,
 	       const _Compare& __comp = _Compare(),
 	       const allocator_type& __a = allocator_type())
-      : _M_t(__comp, __a)
+      : _M_t(__comp, _Pair_alloc_type(__a))
       { _M_t._M_insert_equal(__l.begin(), __l.end()); }
 #endif
 
@@ -228,7 +230,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
         multimap(_InputIterator __first, _InputIterator __last,
 		 const _Compare& __comp,
 		 const allocator_type& __a = allocator_type())
-        : _M_t(__comp, __a)
+	: _M_t(__comp, _Pair_alloc_type(__a))
         { _M_t._M_insert_equal(__first, __last); }
 
       // FIXME There is no dtor declared, but we should have something generated
@@ -295,7 +297,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       /// Get a copy of the memory allocation object.
       allocator_type
       get_allocator() const _GLIBCXX_NOEXCEPT 
-      { return _M_t.get_allocator(); }
+      { return allocator_type(_M_t.get_allocator()); }
 
       // iterators
       /**
@@ -533,6 +535,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        */
       iterator
       erase(const_iterator __position)
+      { return _M_t.erase(__position); }
+
+      // LWG 2059.
+      iterator
+      erase(iterator __position)
       { return _M_t.erase(__position); }
 #else
       /**

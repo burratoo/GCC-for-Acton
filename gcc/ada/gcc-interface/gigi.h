@@ -377,6 +377,7 @@ enum standard_datatypes
   ADT_longjmp_decl,
   ADT_update_setjmp_buf_decl,
   ADT_raise_nodefer_decl,
+  ADT_reraise_zcx_decl,
   ADT_begin_handler_decl,
   ADT_end_handler_decl,
   ADT_others_decl,
@@ -422,6 +423,7 @@ extern GTY(()) tree gnat_raise_decls_ext[(int) LAST_REASON_CODE + 1];
 #define longjmp_decl gnat_std_decls[(int) ADT_longjmp_decl]
 #define update_setjmp_buf_decl gnat_std_decls[(int) ADT_update_setjmp_buf_decl]
 #define raise_nodefer_decl gnat_std_decls[(int) ADT_raise_nodefer_decl]
+#define reraise_zcx_decl gnat_std_decls[(int) ADT_reraise_zcx_decl]
 #define begin_handler_decl gnat_std_decls[(int) ADT_begin_handler_decl]
 #define others_decl gnat_std_decls[(int) ADT_others_decl]
 #define all_others_decl gnat_std_decls[(int) ADT_all_others_decl]
@@ -448,8 +450,8 @@ extern void set_block_jmpbuf_decl (tree decl);
 /* Get the setjmp_decl, if any, for the current binding level.  */
 extern tree get_block_jmpbuf_decl (void);
 
-/* Records a ..._DECL node DECL as belonging to the current lexical scope
-   and uses GNAT_NODE for location information.  */
+/* Record DECL as belonging to the current lexical scope and use GNAT_NODE
+   for location information and flag propagation.  */
 extern void gnat_pushdecl (tree decl, Node_Id gnat_node);
 
 extern void gnat_init_gcc_eh (void);
@@ -477,6 +479,9 @@ extern tree gnat_signed_type (tree type_node);
    transparently converted to each other.  */
 extern int gnat_types_compatible_p (tree t1, tree t2);
 
+/* Return true if EXPR is a useless type conversion.  */
+extern bool gnat_useless_type_conversion (tree expr);
+
 /* Return true if T, a FUNCTION_TYPE, has the specified list of flags.  */
 extern bool fntype_same_flags_p (const_tree, tree, bool, bool, bool);
 
@@ -486,6 +491,10 @@ extern bool fntype_same_flags_p (const_tree, tree, bool, bool, bool);
    conversions; callers should filter out those that are
    not permitted by the language being compiled.  */
 extern tree convert (tree type, tree expr);
+
+/* Create an expression whose value is that of EXPR converted to the common
+   index type, which is sizetype.  */
+extern tree convert_to_index_type (tree expr);
 
 /* Routines created solely for the tree translator's sake. Their prototypes
    can be changed as desired.  */
@@ -669,7 +678,7 @@ extern tree create_label_decl (tree label_name);
 /* Return a FUNCTION_DECL node.  SUBPROG_NAME is the name of the subprogram,
    ASM_NAME is its assembler name, SUBPROG_TYPE is its type (a FUNCTION_TYPE
    node), PARAM_DECL_LIST is the list of the subprogram arguments (a list of
-   PARM_DECL nodes chained through the TREE_CHAIN field).
+   PARM_DECL nodes chained through the DECL_CHAIN field).
 
    INLINE_FLAG, PUBLIC_FLAG, EXTERN_FLAG, ARTIFICIAL_FLAG and ATTR_LIST are
    used to set the appropriate fields in the FUNCTION_DECL.  GNAT_NODE is
@@ -685,8 +694,11 @@ extern tree create_subprog_decl (tree subprog_name, tree asm_name,
    appearing in the subprogram.  */
 extern void begin_subprog_body (tree subprog_decl);
 
-/* Finish the definition of the current subprogram BODY and finalize it.  */
+/* Finish translating the current subprogram and set its BODY.  */
 extern void end_subprog_body (tree body);
+
+/* Wrap up compilation of SUBPROG_DECL, a subprogram body.  */
+extern void rest_of_subprog_body_compilation (tree subprog_decl);
 
 /* Build a template of type TEMPLATE_TYPE from the array bounds of ARRAY_TYPE.
    EXPR is an expression that we can use to locate any PLACEHOLDER_EXPRs.
@@ -792,6 +804,12 @@ extern unsigned int known_alignment (tree exp);
    of 2.  */
 extern bool value_factor_p (tree value, HOST_WIDE_INT factor);
 
+/* Build an atomic load for the underlying atomic object in SRC.  */
+extern tree build_atomic_load (tree src);
+
+/* Build an atomic store from SRC to the underlying atomic object in DEST.  */
+extern tree build_atomic_store (tree dest, tree src);
+
 /* Make a binary operation of kind OP_CODE.  RESULT_TYPE is the type
    desired for the result.  Usually the operation is to be performed
    in that type.  For MODIFY_EXPR and ARRAY_REF, RESULT_TYPE may be 0
@@ -811,16 +829,11 @@ extern tree build_cond_expr (tree result_type, tree condition_operand,
 extern tree build_compound_expr (tree result_type, tree stmt_operand,
 				 tree expr_operand);
 
-/* Build a CALL_EXPR to call FUNDECL with one argument, ARG.  Return
-   the CALL_EXPR.  */
-extern tree build_call_1_expr (tree fundecl, tree arg);
-
-/* Build a CALL_EXPR to call FUNDECL with two argument, ARG1 & ARG2.  Return
-   the CALL_EXPR.  */
-extern tree build_call_2_expr (tree fundecl, tree arg1, tree arg2);
-
-/* Likewise to call FUNDECL with no arguments.  */
-extern tree build_call_0_expr (tree fundecl);
+/* Conveniently construct a function call expression.  FNDECL names the
+   function to be called, N is the number of arguments, and the "..."
+   parameters are the argument expressions.  Unlike build_call_expr
+   this doesn't fold the call, hence it will always return a CALL_EXPR.  */
+extern tree build_call_n_expr (tree fndecl, int n, ...);
 
 /* Call a function that raises an exception and pass the line number and file
    name, if requested.  MSG says which exception function to call.
@@ -913,6 +926,11 @@ extern tree gnat_protect_expr (tree exp);
    through something we don't know how to stabilize.  */
 extern tree gnat_stabilize_reference (tree ref, bool force, bool *success);
 
+/* If EXPR is an expression that is invariant in the current function, in the
+   sense that it can be evaluated anywhere in the function and any number of
+   times, return EXPR or an equivalent expression.  Otherwise return NULL.  */
+extern tree gnat_invariant_expr (tree expr);
+
 /* Implementation of the builtin_function langhook.  */
 extern tree gnat_builtin_function (tree decl);
 
@@ -954,7 +972,7 @@ extern Pos get_target_double_size (void);
 extern Pos get_target_long_double_size (void);
 extern Pos get_target_pointer_size (void);
 extern Pos get_target_maximum_default_alignment (void);
-extern Pos get_target_default_allocator_alignment (void);
+extern Pos get_target_system_allocator_alignment (void);
 extern Pos get_target_maximum_allowed_alignment (void);
 extern Pos get_target_maximum_alignment (void);
 extern Nat get_float_words_be (void);

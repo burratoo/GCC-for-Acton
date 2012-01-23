@@ -8,18 +8,18 @@
 package binary
 
 import (
-	"math"
+	"errors"
 	"io"
-	"os"
+	"math"
 	"reflect"
 )
 
 // A ByteOrder specifies how to convert byte sequences into
 // 16-, 32-, or 64-bit unsigned integers.
 type ByteOrder interface {
-	Uint16(b []byte) uint16
-	Uint32(b []byte) uint32
-	Uint64(b []byte) uint64
+	Uint16([]byte) uint16
+	Uint32([]byte) uint32
+	Uint64([]byte) uint64
 	PutUint16([]byte, uint16)
 	PutUint32([]byte, uint32)
 	PutUint64([]byte, uint64)
@@ -124,7 +124,36 @@ func (bigEndian) GoString() string { return "binary.BigEndian" }
 // or an array or struct containing only fixed-size values.
 // Bytes read from r are decoded using the specified byte order
 // and written to successive fields of the data.
-func Read(r io.Reader, order ByteOrder, data interface{}) os.Error {
+func Read(r io.Reader, order ByteOrder, data interface{}) error {
+	// Fast path for basic types.
+	if n := intDestSize(data); n != 0 {
+		var b [8]byte
+		bs := b[:n]
+		if _, err := io.ReadFull(r, bs); err != nil {
+			return err
+		}
+		switch v := data.(type) {
+		case *int8:
+			*v = int8(b[0])
+		case *uint8:
+			*v = b[0]
+		case *int16:
+			*v = int16(order.Uint16(bs))
+		case *uint16:
+			*v = order.Uint16(bs)
+		case *int32:
+			*v = int32(order.Uint32(bs))
+		case *uint32:
+			*v = order.Uint32(bs)
+		case *int64:
+			*v = int64(order.Uint64(bs))
+		case *uint64:
+			*v = order.Uint64(bs)
+		}
+		return nil
+	}
+
+	// Fallback to reflect-based.
 	var v reflect.Value
 	switch d := reflect.ValueOf(data); d.Kind() {
 	case reflect.Ptr:
@@ -132,11 +161,11 @@ func Read(r io.Reader, order ByteOrder, data interface{}) os.Error {
 	case reflect.Slice:
 		v = d
 	default:
-		return os.NewError("binary.Read: invalid type " + d.Type().String())
+		return errors.New("binary.Read: invalid type " + d.Type().String())
 	}
 	size := TotalSize(v)
 	if size < 0 {
-		return os.NewError("binary.Read: invalid type " + v.Type().String())
+		return errors.New("binary.Read: invalid type " + v.Type().String())
 	}
 	d := &decoder{order: order, buf: make([]byte, size)}
 	if _, err := io.ReadFull(r, d.buf); err != nil {
@@ -154,11 +183,68 @@ func Read(r io.Reader, order ByteOrder, data interface{}) os.Error {
 // or an array or struct containing only fixed-size values.
 // Bytes written to w are encoded using the specified byte order
 // and read from successive fields of the data.
-func Write(w io.Writer, order ByteOrder, data interface{}) os.Error {
+func Write(w io.Writer, order ByteOrder, data interface{}) error {
+	// Fast path for basic types.
+	var b [8]byte
+	var bs []byte
+	switch v := data.(type) {
+	case *int8:
+		bs = b[:1]
+		b[0] = byte(*v)
+	case int8:
+		bs = b[:1]
+		b[0] = byte(v)
+	case *uint8:
+		bs = b[:1]
+		b[0] = *v
+	case uint8:
+		bs = b[:1]
+		b[0] = byte(v)
+	case *int16:
+		bs = b[:2]
+		order.PutUint16(bs, uint16(*v))
+	case int16:
+		bs = b[:2]
+		order.PutUint16(bs, uint16(v))
+	case *uint16:
+		bs = b[:2]
+		order.PutUint16(bs, *v)
+	case uint16:
+		bs = b[:2]
+		order.PutUint16(bs, v)
+	case *int32:
+		bs = b[:4]
+		order.PutUint32(bs, uint32(*v))
+	case int32:
+		bs = b[:4]
+		order.PutUint32(bs, uint32(v))
+	case *uint32:
+		bs = b[:4]
+		order.PutUint32(bs, *v)
+	case uint32:
+		bs = b[:4]
+		order.PutUint32(bs, v)
+	case *int64:
+		bs = b[:8]
+		order.PutUint64(bs, uint64(*v))
+	case int64:
+		bs = b[:8]
+		order.PutUint64(bs, uint64(v))
+	case *uint64:
+		bs = b[:8]
+		order.PutUint64(bs, *v)
+	case uint64:
+		bs = b[:8]
+		order.PutUint64(bs, v)
+	}
+	if bs != nil {
+		_, err := w.Write(bs)
+		return err
+	}
 	v := reflect.Indirect(reflect.ValueOf(data))
 	size := TotalSize(v)
 	if size < 0 {
-		return os.NewError("binary.Write: invalid type " + v.Type().String())
+		return errors.New("binary.Write: invalid type " + v.Type().String())
 	}
 	buf := make([]byte, size)
 	e := &encoder{order: order, buf: buf}
@@ -393,4 +479,20 @@ func (e *encoder) value(v reflect.Value) {
 			e.uint64(math.Float64bits(imag(x)))
 		}
 	}
+}
+
+// intDestSize returns the size of the integer that ptrType points to,
+// or 0 if the type is not supported.
+func intDestSize(ptrType interface{}) int {
+	switch ptrType.(type) {
+	case *int8, *uint8:
+		return 1
+	case *int16, *uint16:
+		return 2
+	case *int32, *uint32:
+		return 4
+	case *int64, *uint64:
+		return 8
+	}
+	return 0
 }

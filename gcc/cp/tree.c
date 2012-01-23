@@ -203,10 +203,13 @@ lvalue_kind (const_tree ref)
       return lvalue_kind (BASELINK_FUNCTIONS (CONST_CAST_TREE (ref)));
 
     case NON_DEPENDENT_EXPR:
-      /* We used to just return clk_ordinary for NON_DEPENDENT_EXPR because
-	 it was safe enough for C++98, but in C++0x lvalues don't bind to
-	 rvalue references, so we get bogus errors (c++/44870).  */
-      return lvalue_kind (TREE_OPERAND (ref, 0));
+      /* We just return clk_ordinary for NON_DEPENDENT_EXPR in C++98, but
+	 in C++11 lvalues don't bind to rvalue references, so we need to
+	 work harder to avoid bogus errors (c++/44870).  */
+      if (cxx_dialect < cxx0x)
+	return clk_ordinary;
+      else
+	return lvalue_kind (TREE_OPERAND (ref, 0));
 
     default:
       if (!TREE_TYPE (ref))
@@ -288,6 +291,7 @@ static tree
 build_target_expr (tree decl, tree value, tsubst_flags_t complain)
 {
   tree t;
+  tree type = TREE_TYPE (decl);
 
 #ifdef ENABLE_CHECKING
   gcc_assert (VOID_TYPE_P (TREE_TYPE (value))
@@ -302,12 +306,14 @@ build_target_expr (tree decl, tree value, tsubst_flags_t complain)
   t = cxx_maybe_build_cleanup (decl, complain);
   if (t == error_mark_node)
     return error_mark_node;
-  t = build4 (TARGET_EXPR, TREE_TYPE (decl), decl, value, t, NULL_TREE);
+  t = build4 (TARGET_EXPR, type, decl, value, t, NULL_TREE);
   /* We always set TREE_SIDE_EFFECTS so that expand_expr does not
      ignore the TARGET_EXPR.  If there really turn out to be no
      side-effects, then the optimizer should be able to get rid of
      whatever code is generated anyhow.  */
   TREE_SIDE_EFFECTS (t) = 1;
+  if (literal_type_p (type))
+    TREE_CONSTANT (t) = TREE_CONSTANT (value);
 
   return t;
 }
@@ -558,7 +564,7 @@ diagnose_non_constexpr_vec_init (tree expr)
   tree type = TREE_TYPE (VEC_INIT_EXPR_SLOT (expr));
   tree init, elt_init;
   if (VEC_INIT_EXPR_VALUE_INIT (expr))
-    init = void_zero_node;
+    init = void_type_node;
   else
     init = VEC_INIT_EXPR_INIT (expr);
 
@@ -1447,6 +1453,23 @@ is_overloaded_fn (tree x)
 	   || TREE_CODE (x) == OVERLOAD);
 }
 
+/* X is the CALL_EXPR_FN of a CALL_EXPR.  If X represents a dependent name
+   (14.6.2), return the IDENTIFIER_NODE for that name.  Otherwise, return
+   NULL_TREE.  */
+
+tree
+dependent_name (tree x)
+{
+  if (TREE_CODE (x) == IDENTIFIER_NODE)
+    return x;
+  if (TREE_CODE (x) != COMPONENT_REF
+      && TREE_CODE (x) != OFFSET_REF
+      && TREE_CODE (x) != BASELINK
+      && is_overloaded_fn (x))
+    return DECL_NAME (get_first_fn (x));
+  return NULL_TREE;
+}
+
 /* Returns true iff X is an expression for an overloaded function
    whose type cannot be known without performing overload
    resolution.  */
@@ -1847,9 +1870,13 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
 
   if (!TYPE_P (t) && TREE_CONSTANT (t) && !TREE_SIDE_EFFECTS (t))
     {
-      /* There can't be any TARGET_EXPRs or their slot variables below
-	 this point.  */
+      /* There can't be any TARGET_EXPRs or their slot variables below this
+	 point.  But we must make a copy, in case subsequent processing
+	 alters any part of it.  For example, during gimplification a cast
+	 of the form (T) &X::f (where "f" is a member function) will lead
+	 to replacing the PTRMEM_CST for &X::f with a VAR_DECL.  */
       *walk_subtrees = 0;
+      *tp = unshare_expr (t);
       return NULL_TREE;
     }
   if (TREE_CODE (t) == TARGET_EXPR)
@@ -1857,11 +1884,19 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
       tree u;
 
       if (TREE_CODE (TREE_OPERAND (t, 1)) == AGGR_INIT_EXPR)
-	u = build_cplus_new (TREE_TYPE (t), TREE_OPERAND (t, 1),
-			     tf_warning_or_error);
+	{
+	  u = build_cplus_new (TREE_TYPE (t), TREE_OPERAND (t, 1),
+			       tf_warning_or_error);
+	  if (AGGR_INIT_ZERO_FIRST (TREE_OPERAND (t, 1)))
+	    AGGR_INIT_ZERO_FIRST (TREE_OPERAND (u, 1)) = true;
+	}
       else
 	u = build_target_expr_with_type (TREE_OPERAND (t, 1), TREE_TYPE (t),
 					 tf_warning_or_error);
+
+      TARGET_EXPR_IMPLICIT_P (u) = TARGET_EXPR_IMPLICIT_P (t);
+      TARGET_EXPR_LIST_INIT_P (u) = TARGET_EXPR_LIST_INIT_P (t);
+      TARGET_EXPR_DIRECT_INIT_P (u) = TARGET_EXPR_DIRECT_INIT_P (t);
 
       /* Map the old variable to the new one.  */
       splay_tree_insert (target_remap,
@@ -1880,7 +1915,10 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
     }
 
   /* Make a copy of this node.  */
-  return copy_tree_r (tp, walk_subtrees, NULL);
+  t = copy_tree_r (tp, walk_subtrees, NULL);
+  if (TREE_CODE (*tp) == CALL_EXPR)
+    set_flags_from_callee (*tp);
+  return t;
 }
 
 /* Replace all remapped VAR_DECLs in T with their new equivalents.
@@ -1901,14 +1939,35 @@ bot_replace (tree* t,
       if (n)
 	*t = (tree) n->value;
     }
+  else if (TREE_CODE (*t) == PARM_DECL
+	   && DECL_NAME (*t) == this_identifier)
+    {
+      /* In an NSDMI we need to replace the 'this' parameter we used for
+	 parsing with the real one for this function.  */
+      *t = current_class_ptr;
+    }
+  else if (TREE_CODE (*t) == CONVERT_EXPR
+	   && CONVERT_EXPR_VBASE_PATH (*t))
+    {
+      /* In an NSDMI build_base_path defers building conversions to virtual
+	 bases, and we handle it here.  */
+      tree basetype = TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (*t)));
+      VEC(tree,gc) *vbases = CLASSTYPE_VBASECLASSES (current_class_type);
+      int i; tree binfo;
+      FOR_EACH_VEC_ELT (tree, vbases, i, binfo)
+	if (BINFO_TYPE (binfo) == basetype)
+	  break;
+      *t = build_base_path (PLUS_EXPR, TREE_OPERAND (*t, 0), binfo, true,
+			    tf_warning_or_error);
+    }
 
   return NULL_TREE;
 }
 
 /* When we parse a default argument expression, we may create
    temporary variables via TARGET_EXPRs.  When we actually use the
-   default-argument expression, we make a copy of the expression, but
-   we must replace the temporaries with appropriate local versions.  */
+   default-argument expression, we make a copy of the expression
+   and replace the temporaries with appropriate local versions.  */
 
 tree
 break_out_target_exprs (tree t)
@@ -2184,7 +2243,12 @@ cp_tree_equal (tree t1, tree t2)
       {
 	tree arg1, arg2;
 	call_expr_arg_iterator iter1, iter2;
-	if (!cp_tree_equal (CALL_EXPR_FN (t1), CALL_EXPR_FN (t2)))
+	/* Core 1321: dependent names are equivalent even if the
+	   overload sets are different.  */
+	tree name1 = dependent_name (CALL_EXPR_FN (t1));
+	tree name2 = dependent_name (CALL_EXPR_FN (t2));
+	if (!(name1 && name2 && name1 == name2)
+	    && !cp_tree_equal (CALL_EXPR_FN (t1), CALL_EXPR_FN (t2)))
 	  return false;
 	for (arg1 = first_call_expr_arg (t1, &iter1),
 	       arg2 = first_call_expr_arg (t2, &iter2);
@@ -2256,6 +2320,7 @@ cp_tree_equal (tree t1, tree t2)
     case BASELINK:
       return (BASELINK_BINFO (t1) == BASELINK_BINFO (t2)
 	      && BASELINK_ACCESS_BINFO (t1) == BASELINK_ACCESS_BINFO (t2)
+	      && BASELINK_QUALIFIED_P (t1) == BASELINK_QUALIFIED_P (t2)
 	      && cp_tree_equal (BASELINK_FUNCTIONS (t1),
 				BASELINK_FUNCTIONS (t2)));
 
@@ -2347,6 +2412,7 @@ cp_tree_equal (tree t1, tree t2)
     case REINTERPRET_CAST_EXPR:
     case CONST_CAST_EXPR:
     case DYNAMIC_CAST_EXPR:
+    case IMPLICIT_CONV_EXPR:
     case NEW_EXPR:
       if (!same_type_p (TREE_TYPE (t1), TREE_TYPE (t2)))
 	return false;
@@ -2944,11 +3010,13 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
 
     case TYPE_PACK_EXPANSION:
       WALK_SUBTREE (TREE_TYPE (*tp));
+      WALK_SUBTREE (PACK_EXPANSION_EXTRA_ARGS (*tp));
       *walk_subtrees_p = 0;
       break;
       
     case EXPR_PACK_EXPANSION:
       WALK_SUBTREE (TREE_OPERAND (*tp, 0));
+      WALK_SUBTREE (PACK_EXPANSION_EXTRA_ARGS (*tp));
       *walk_subtrees_p = 0;
       break;
 
@@ -2957,6 +3025,7 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
     case STATIC_CAST_EXPR:
     case CONST_CAST_EXPR:
     case DYNAMIC_CAST_EXPR:
+    case IMPLICIT_CONV_EXPR:
       if (TREE_TYPE (*tp))
 	WALK_SUBTREE (TREE_TYPE (*tp));
 
@@ -3285,6 +3354,7 @@ stabilize_init (tree init, tree *initp)
 
   if (TREE_CODE (t) == INIT_EXPR
       && TREE_CODE (TREE_OPERAND (t, 1)) != TARGET_EXPR
+      && TREE_CODE (TREE_OPERAND (t, 1)) != CONSTRUCTOR
       && TREE_CODE (TREE_OPERAND (t, 1)) != AGGR_INIT_EXPR)
     {
       TREE_OPERAND (t, 1) = stabilize_expr (TREE_OPERAND (t, 1), initp);
@@ -3302,11 +3372,20 @@ stabilize_init (tree init, tree *initp)
       /* Aggregate initialization: stabilize each of the field
 	 initializers.  */
       unsigned i;
-      tree value;
+      constructor_elt *ce;
       bool good = true;
-      FOR_EACH_CONSTRUCTOR_VALUE (CONSTRUCTOR_ELTS (t), i, value)
-	if (!stabilize_init (value, initp))
-	  good = false;
+      VEC(constructor_elt,gc) *v = CONSTRUCTOR_ELTS (t);
+      for (i = 0; VEC_iterate (constructor_elt, v, i, ce); ++i)
+	{
+	  tree type = TREE_TYPE (ce->value);
+	  tree subinit;
+	  if (TREE_CODE (type) == REFERENCE_TYPE
+	      || SCALAR_TYPE_P (type))
+	    ce->value = stabilize_expr (ce->value, &subinit);
+	  else if (!stabilize_init (ce->value, &subinit))
+	    good = false;
+	  *initp = add_stmt_to_compound (*initp, subinit);
+	}
       return good;
     }
 
@@ -3416,17 +3495,6 @@ cp_free_lang_data (tree t)
 	 in this TU.  So make it an external reference.  */
       DECL_EXTERNAL (t) = 1;
       TREE_STATIC (t) = 0;
-    }
-  if (CP_AGGREGATE_TYPE_P (t)
-      && TYPE_NAME (t))
-    {
-      tree name = TYPE_NAME (t);
-      if (TREE_CODE (name) == TYPE_DECL)
-	name = DECL_NAME (name);
-      /* Drop anonymous names.  */
-      if (name != NULL_TREE
-	  && ANON_AGGRNAME_P (name))
-	TYPE_NAME (t) = NULL_TREE;
     }
   if (TREE_CODE (t) == NAMESPACE_DECL)
     {

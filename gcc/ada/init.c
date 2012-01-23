@@ -10,20 +10,19 @@
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
- * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
- * Boston, MA 02110-1301, USA.                                              *
+ * or FITNESS FOR A PARTICULAR PURPOSE.                                     *
  *                                                                          *
- * As a  special  exception,  if you  link  this file  with other  files to *
- * produce an executable,  this file does not by itself cause the resulting *
- * executable to be covered by the GNU General Public License. This except- *
- * ion does not  however invalidate  any other reasons  why the  executable *
- * file might be covered by the  GNU Public License.                        *
+ * As a special exception under Section 7 of GPL version 3, you are granted *
+ * additional permissions described in the GCC Runtime Library Exception,   *
+ * version 3.1, as published by the Free Software Foundation.               *
+ *                                                                          *
+ * You should have received a copy of the GNU General Public License and    *
+ * a copy of the GCC Runtime Library Exception along with this program;     *
+ * see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    *
+ * <http://www.gnu.org/licenses/>.                                          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
@@ -220,6 +219,19 @@ nanosleep (struct timestruc_t *Rqtp, struct timestruc_t *Rmtp)
 
 #endif /* _AIXVERSION_430 */
 
+/* Version of AIX before 5.3 don't have pthread_condattr_setclock:
+ * supply it as a weak symbol here so that if linking on a 5.3 or newer
+ * machine, we get the real one.
+ */
+
+#ifndef _AIXVERSION_530
+#pragma weak pthread_condattr_setclock
+int
+pthread_condattr_setclock (pthread_condattr_t *attr, clockid_t cl) {
+  return 0;
+}
+#endif
+
 static void
 __gnat_error_handler (int sig,
 		      siginfo_t *si ATTRIBUTE_UNUSED,
@@ -359,7 +371,7 @@ __gnat_error_handler (int sig, siginfo_t *si, void *ucontext)
 	  ((volatile char *)
 	   ((long) si->si_addr & - getpagesize ()))[getpagesize ()];
 	  exception = &storage_error;
-	  msg = "stack overflow (or erroneous memory access)";
+	  msg = "stack overflow or erroneous memory access";
 	}
       break;
 
@@ -645,7 +657,7 @@ __gnat_error_handler (int sig, siginfo_t *si ATTRIBUTE_UNUSED, void *ucontext)
 	 that this is quite acceptable, since a "real" SIGSEGV can only
 	 occur as the result of an erroneous program.  */
       exception = &storage_error;
-      msg = "stack overflow (or erroneous memory access)";
+      msg = "stack overflow or erroneous memory access";
       break;
 
     case SIGBUS:
@@ -825,7 +837,7 @@ __gnat_error_handler (int sig, siginfo_t *reason, void *uc ATTRIBUTE_UNUSED)
 		 the stack into a guard page, not an attempt to
 		 write to .text or something.  */
 	  exception = &storage_error;
-	  msg = "SIGSEGV: (stack overflow or erroneous memory access)";
+	  msg = "SIGSEGV: stack overflow or erroneous memory access";
 	}
       else
 	{
@@ -1023,7 +1035,7 @@ __gnat_error_handler (int sig, siginfo_t *si, void *ucontext ATTRIBUTE_UNUSED)
 	  ((volatile char *)
 	   ((long) si->si_addr & - getpagesize ()))[getpagesize ()];
 	  exception = &storage_error;
-	  msg = "stack overflow (or erroneous memory access)";
+	  msg = "stack overflow or erroneous memory access";
 	}
       break;
 
@@ -1422,7 +1434,7 @@ __gnat_handle_vms_condition (int *sigargs, void *mechargs)
 	else
 	  {
 	    exception = &storage_error;
-	    msg = "stack overflow (or erroneous memory access)";
+	    msg = "stack overflow or erroneous memory access";
 	  }
 	__gnat_adjust_context_for_raise (SS$_ACCVIO, (void *)mechargs);
 	break;
@@ -1748,6 +1760,31 @@ __gnat_set_features (void)
   __gnat_features_set = 1;
 }
 
+/* Return true if the VMS version is 7.x.  */
+
+extern unsigned int LIB$GETSYI (int *, ...);
+
+#define SYI$_VERSION 0x1000
+
+int
+__gnat_is_vms_v7 (void)
+{
+  struct descriptor_s desc;
+  char version[8];
+  int status;
+  int code = SYI$_VERSION;
+
+  desc.len = sizeof (version);
+  desc.mbz = 0;
+  desc.adr = version;
+
+  status = LIB$GETSYI (&code, 0, &desc);
+  if ((status & 1) == 1 && version[1] == '7' && version[2] == '.')
+    return 1;
+  else
+    return 0;
+}
+
 /*******************/
 /* FreeBSD Section */
 /*******************/
@@ -1784,8 +1821,8 @@ __gnat_error_handler (int sig,
       break;
 
     case SIGBUS:
-      exception = &constraint_error;
-      msg = "SIGBUS";
+      exception = &storage_error;
+      msg = "SIGBUS: possible stack overflow";
       break;
 
     default:
@@ -1882,7 +1919,8 @@ __gnat_clear_exception_count (void)
 /* Handle different SIGnal to exception mappings in different VxWorks
    versions.   */
 static void
-__gnat_map_signal (int sig)
+__gnat_map_signal (int sig, void *si ATTRIBUTE_UNUSED,
+		   struct sigcontext *sc ATTRIBUTE_UNUSED)
 {
   struct Exception_Data *exception;
   const char *msg;
@@ -1977,9 +2015,7 @@ __gnat_map_signal (int sig)
    propagation after the required low level adjustments.  */
 
 void
-__gnat_error_handler (int sig,
-		      void *si ATTRIBUTE_UNUSED,
-		      struct sigcontext *sc ATTRIBUTE_UNUSED)
+__gnat_error_handler (int sig, void *si, struct sigcontext *sc)
 {
   sigset_t mask;
 
@@ -1991,7 +2027,22 @@ __gnat_error_handler (int sig,
   sigdelset (&mask, sig);
   sigprocmask (SIG_SETMASK, &mask, NULL);
 
-  __gnat_map_signal (sig);
+#if defined (__PPC__) && defined(_WRS_KERNEL)
+  /* On PowerPC, kernel mode, we process signals through a Call Frame Info
+     trampoline, voiding the need for myriads of fallback_frame_state
+     variants in the ZCX runtime.  We have no simple way to distinguish ZCX
+     from SJLJ here, so we do this for SJLJ as well even though this is not
+     necessary.  This only incurs a few extra instructions and a tiny
+     amount of extra stack usage.  */
+
+  #include "sigtramp.h"
+
+  __gnat_sigtramp (sig, (void *)si, (void *)sc,
+		   (sighandler_t *)&__gnat_map_signal);
+
+#else
+  __gnat_map_signal (sig, si, sc);
+#endif
 }
 
 void
@@ -2244,11 +2295,32 @@ __gnat_is_stack_guard (mach_vm_address_t addr)
   return 0;
 }
 
+#define HAVE_GNAT_ADJUST_CONTEXT_FOR_RAISE
+
+void
+__gnat_adjust_context_for_raise (int signo ATTRIBUTE_UNUSED,
+				 void *ucontext ATTRIBUTE_UNUSED)
+{
+#if defined (__x86_64__)
+  /* Work around radar #10302855/pr50678, where the unwinders (libunwind or
+     libgcc_s depending on the system revision) and the DWARF unwind data for
+     the sigtramp have different ideas about register numbering (causing rbx
+     and rdx to be transposed)..  */
+  ucontext_t *uc = (ucontext_t *)ucontext ;
+  unsigned long t = uc->uc_mcontext->__ss.__rbx;
+
+  uc->uc_mcontext->__ss.__rbx = uc->uc_mcontext->__ss.__rdx;
+  uc->uc_mcontext->__ss.__rdx = t;
+#endif
+}
+
 static void
-__gnat_error_handler (int sig, siginfo_t *si, void *ucontext ATTRIBUTE_UNUSED)
+__gnat_error_handler (int sig, siginfo_t *si, void *ucontext)
 {
   struct Exception_Data *exception;
   const char *msg;
+
+  __gnat_adjust_context_for_raise (sig, ucontext);
 
   switch (sig)
     {

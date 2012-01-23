@@ -30,6 +30,7 @@
 ------------------------------------------------------------------------------
 
 with Atree;    use Atree;
+with Einfo;    use Einfo;
 with Nlists;   use Nlists;
 with Sinfo;    use Sinfo;
 with Tree_IO;  use Tree_IO;
@@ -118,6 +119,56 @@ package body Aspects is
       return Aspect_Id_Hash_Table.Get (Name);
    end Get_Aspect_Id;
 
+   -----------------
+   -- Find_Aspect --
+   -----------------
+
+   function Find_Aspect (Ent : Entity_Id; A : Aspect_Id) return Node_Id is
+      Ritem : Node_Id;
+      Typ   : Entity_Id;
+
+   begin
+
+      --  If the aspect is an inherited one and the entity is a class-wide
+      --  type, use the aspect of the specific type. If the type is a base
+      --  aspect, examine the rep. items of the base type.
+
+      if Is_Type (Ent) then
+         if Base_Aspect (A) then
+            Typ := Base_Type (Ent);
+         else
+            Typ := Ent;
+         end if;
+
+         if Is_Class_Wide_Type (Typ)
+           and then Inherited_Aspect (A)
+         then
+            Ritem := First_Rep_Item (Etype (Typ));
+         else
+            Ritem := First_Rep_Item (Typ);
+         end if;
+
+      else
+         Ritem := First_Rep_Item (Ent);
+      end if;
+
+      while Present (Ritem) loop
+         if Nkind (Ritem) = N_Aspect_Specification
+           and then Get_Aspect_Id (Chars (Identifier (Ritem))) = A
+         then
+            if A = Aspect_Default_Iterator then
+               return Expression (Aspect_Rep_Item (Ritem));
+            else
+               return Expression (Ritem);
+            end if;
+         end if;
+
+         Next_Rep_Item (Ritem);
+      end loop;
+
+      return Empty;
+   end Find_Aspect;
+
    ------------------
    -- Move_Aspects --
    ------------------
@@ -141,6 +192,7 @@ package body Aspects is
       N_Component_Declaration                  => True,
       N_Entry_Declaration                      => True,
       N_Exception_Declaration                  => True,
+      N_Exception_Renaming_Declaration         => True,
       N_Formal_Abstract_Subprogram_Declaration => True,
       N_Formal_Concrete_Subprogram_Declaration => True,
       N_Formal_Object_Declaration              => True,
@@ -149,11 +201,14 @@ package body Aspects is
       N_Full_Type_Declaration                  => True,
       N_Function_Instantiation                 => True,
       N_Generic_Package_Declaration            => True,
+      N_Generic_Renaming_Declaration           => True,
       N_Generic_Subprogram_Declaration         => True,
       N_Object_Declaration                     => True,
+      N_Object_Renaming_Declaration            => True,
       N_Package_Declaration                    => True,
       N_Package_Instantiation                  => True,
       N_Package_Specification                  => True,
+      N_Package_Renaming_Declaration           => True,
       N_Private_Extension_Declaration          => True,
       N_Private_Type_Declaration               => True,
       N_Procedure_Instantiation                => True,
@@ -163,6 +218,7 @@ package body Aspects is
       N_Single_Task_Declaration                => True,
       N_Subprogram_Body                        => True,
       N_Subprogram_Declaration                 => True,
+      N_Subprogram_Renaming_Declaration        => True,
       N_Subtype_Declaration                    => True,
       N_Task_Body                              => True,
       N_Task_Type_Declaration                  => True,
@@ -185,21 +241,31 @@ package body Aspects is
     Aspect_Ada_2012                     => Aspect_Ada_2005,
     Aspect_Address                      => Aspect_Address,
     Aspect_Alignment                    => Aspect_Alignment,
+    Aspect_Asynchronous                 => Aspect_Asynchronous,
     Aspect_Atomic                       => Aspect_Atomic,
     Aspect_Atomic_Components            => Aspect_Atomic_Components,
+    Aspect_Attach_Handler               => Aspect_Attach_Handler,
     Aspect_Bit_Order                    => Aspect_Bit_Order,
     Aspect_Component_Size               => Aspect_Component_Size,
     Aspect_Constant_Indexing            => Aspect_Constant_Indexing,
+    Aspect_CPU                          => Aspect_CPU,
     Aspect_Default_Component_Value      => Aspect_Default_Component_Value,
     Aspect_Default_Iterator             => Aspect_Default_Iterator,
     Aspect_Default_Value                => Aspect_Default_Value,
+    Aspect_Dimension                    => Aspect_Dimension,
+    Aspect_Dimension_System             => Aspect_Dimension_System,
     Aspect_Discard_Names                => Aspect_Discard_Names,
+    Aspect_Dispatching_Domain           => Aspect_Dispatching_Domain,
     Aspect_Dynamic_Predicate            => Aspect_Predicate,
     Aspect_External_Tag                 => Aspect_External_Tag,
     Aspect_Favor_Top_Level              => Aspect_Favor_Top_Level,
     Aspect_Implicit_Dereference         => Aspect_Implicit_Dereference,
+    Aspect_Independent                  => Aspect_Independent,
+    Aspect_Independent_Components       => Aspect_Independent_Components,
     Aspect_Inline                       => Aspect_Inline,
     Aspect_Inline_Always                => Aspect_Inline,
+    Aspect_Interrupt_Handler            => Aspect_Interrupt_Handler,
+    Aspect_Interrupt_Priority           => Aspect_Interrupt_Priority,
     Aspect_Iterator_Element             => Aspect_Iterator_Element,
     Aspect_All_Calls_Remote             => Aspect_All_Calls_Remote,
     Aspect_Compiler_Unit                => Aspect_Compiler_Unit,
@@ -208,6 +274,7 @@ package body Aspects is
     Aspect_Preelaborate_05              => Aspect_Preelaborate_05,
     Aspect_Pure                         => Aspect_Pure,
     Aspect_Pure_05                      => Aspect_Pure_05,
+    Aspect_Pure_12                      => Aspect_Pure_12,
     Aspect_Remote_Call_Interface        => Aspect_Remote_Call_Interface,
     Aspect_Remote_Types                 => Aspect_Remote_Types,
     Aspect_Shared_Passive               => Aspect_Shared_Passive,
@@ -226,10 +293,12 @@ package body Aspects is
     Aspect_Precondition                 => Aspect_Pre,
     Aspect_Predicate                    => Aspect_Predicate,
     Aspect_Preelaborable_Initialization => Aspect_Preelaborable_Initialization,
+    Aspect_Priority                     => Aspect_Priority,
     Aspect_Pure_Function                => Aspect_Pure_Function,
     Aspect_Read                         => Aspect_Read,
     Aspect_Shared                       => Aspect_Atomic,
     Aspect_Size                         => Aspect_Size,
+    Aspect_Small                        => Aspect_Small,
     Aspect_Static_Predicate             => Aspect_Predicate,
     Aspect_Storage_Pool                 => Aspect_Storage_Pool,
     Aspect_Storage_Size                 => Aspect_Storage_Size,

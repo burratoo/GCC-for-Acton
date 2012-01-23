@@ -149,6 +149,7 @@ skip_insns_after_block (basic_block bb)
 	    break;
 	  case NOTE_INSN_DELETED:
 	  case NOTE_INSN_DELETED_LABEL:
+	  case NOTE_INSN_DELETED_DEBUG_LABEL:
 	    continue;
 	  default:
 	    reorder_insns (insn, insn, last_insn);
@@ -767,6 +768,7 @@ fixup_reorder_chain (void)
     {
       edge e_fall, e_taken, e;
       rtx bb_end_insn;
+      rtx ret_label = NULL_RTX;
       basic_block nb, src_bb;
       edge_iterator ei;
 
@@ -786,6 +788,7 @@ fixup_reorder_chain (void)
       bb_end_insn = BB_END (bb);
       if (JUMP_P (bb_end_insn))
 	{
+	  ret_label = JUMP_LABEL (bb_end_insn);
 	  if (any_condjump_p (bb_end_insn))
 	    {
 	      /* This might happen if the conditional jump has side
@@ -899,7 +902,7 @@ fixup_reorder_chain (void)
 	 Note force_nonfallthru can delete E_FALL and thus we have to
 	 save E_FALL->src prior to the call to force_nonfallthru.  */
       src_bb = e_fall->src;
-      nb = force_nonfallthru_and_redirect (e_fall, e_fall->dest);
+      nb = force_nonfallthru_and_redirect (e_fall, e_fall->dest, ret_label);
       if (nb)
 	{
 	  nb->il.rtl->visited = 1;
@@ -1172,6 +1175,10 @@ duplicate_insn_chain (rtx from, rtx to)
       switch (GET_CODE (insn))
 	{
 	case DEBUG_INSN:
+	  /* Don't duplicate label debug insns.  */
+	  if (TREE_CODE (INSN_VAR_LOCATION_DECL (insn)) == LABEL_DECL)
+	    break;
+	  /* FALLTHRU */
 	case INSN:
 	case CALL_INSN:
 	case JUMP_INSN:
@@ -1217,6 +1224,7 @@ duplicate_insn_chain (rtx from, rtx to)
 
 	    case NOTE_INSN_DELETED:
 	    case NOTE_INSN_DELETED_LABEL:
+	    case NOTE_INSN_DELETED_DEBUG_LABEL:
 	      /* No problem to strip these.  */
 	    case NOTE_INSN_FUNCTION_BEG:
 	      /* There is always just single entry to function.  */

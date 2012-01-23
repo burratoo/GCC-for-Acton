@@ -36,6 +36,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "graphite-poly.h"
 #include "graphite-scop-detection.h"
 
+/* Forward declarations.  */
+static void make_close_phi_nodes_unique (basic_block);
+
 /* The type of the analyzed basic block.  */
 
 typedef enum gbb_type {
@@ -255,25 +258,33 @@ graphite_can_represent_expr (basic_block scop_entry, loop_p loop,
    Graphite.  */
 
 static bool
-stmt_has_simple_data_refs_p (loop_p outermost_loop, gimple stmt)
+stmt_has_simple_data_refs_p (loop_p outermost_loop ATTRIBUTE_UNUSED,
+			     gimple stmt)
 {
   data_reference_p dr;
   unsigned i;
   int j;
   bool res = true;
-  VEC (data_reference_p, heap) *drs = VEC_alloc (data_reference_p, heap, 5);
+  VEC (data_reference_p, heap) *drs = NULL;
+  loop_p outer;
 
-  graphite_find_data_references_in_stmt (outermost_loop,
-					 loop_containing_stmt (stmt),
-					 stmt, &drs);
+  for (outer = loop_containing_stmt (stmt); outer; outer = loop_outer (outer))
+    {
+      graphite_find_data_references_in_stmt (outer,
+					     loop_containing_stmt (stmt),
+					     stmt, &drs);
 
-  FOR_EACH_VEC_ELT (data_reference_p, drs, j, dr)
-    for (i = 0; i < DR_NUM_DIMENSIONS (dr); i++)
-      if (!graphite_can_represent_scev (DR_ACCESS_FN (dr, i)))
-	{
-	  res = false;
-	  goto done;
-	}
+      FOR_EACH_VEC_ELT (data_reference_p, drs, j, dr)
+	for (i = 0; i < DR_NUM_DIMENSIONS (dr); i++)
+	  if (!graphite_can_represent_scev (DR_ACCESS_FN (dr, i)))
+	    {
+	      res = false;
+	      goto done;
+	    }
+
+      free_data_refs (drs);
+      drs = NULL;
+    }
 
  done:
   free_data_refs (drs);
@@ -1231,6 +1242,13 @@ remove_duplicate_close_phi (gimple phi, gimple_stmt_iterator *gsi)
 	SET_USE (use_p, res);
 
       update_stmt (use_stmt);
+      
+      /* It is possible that we just created a duplicate close-phi
+	 for an already-processed containing loop.  Check for this
+	 case and clean it up.  */
+      if (gimple_code (use_stmt) == GIMPLE_PHI
+	  && gimple_phi_num_args (use_stmt) == 1)
+	make_close_phi_nodes_unique (gimple_bb (use_stmt));
     }
 
   remove_phi_node (gsi, true);

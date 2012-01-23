@@ -50,6 +50,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "lto-streamer.h"
 #include "tree-streamer.h"
 #include "tree-pass.h"
+#include "streamer-hooks.h"
 
 /* The table to hold the file names.  */
 static htab_t file_name_hash_table;
@@ -86,7 +87,7 @@ lto_input_data_block (struct lto_input_block *ib, void *addr, size_t length)
   unsigned char *const buffer = (unsigned char *const) addr;
 
   for (i = 0; i < length; i++)
-    buffer[i] = lto_input_1_unsigned (ib);
+    buffer[i] = streamer_read_uchar (ib);
 }
 
 
@@ -98,21 +99,22 @@ canon_file_name (const char *string)
 {
   void **slot;
   struct string_slot s_slot;
+  size_t len = strlen (string);
+
   s_slot.s = string;
-  s_slot.len = strlen (string);
+  s_slot.len = len;
 
   slot = htab_find_slot (file_name_hash_table, &s_slot, INSERT);
   if (*slot == NULL)
     {
-      size_t len;
       char *saved_string;
       struct string_slot *new_slot;
 
-      len = strlen (string);
       saved_string = (char *) xmalloc (len + 1);
       new_slot = XCNEW (struct string_slot);
-      strcpy (saved_string, string);
+      memcpy (saved_string, string, len + 1);
       new_slot->s = saved_string;
+      new_slot->len = len;
       *slot = new_slot;
       return saved_string;
     }
@@ -179,15 +181,23 @@ lto_input_location_bitpack (struct data_in *data_in, struct bitpack_d *bp)
 }
 
 
-/* Read a location from input block IB.  */
+/* Read a location from input block IB.
+   If the input_location streamer hook exists, call it.
+   Otherwise, proceed with reading the location from the
+   expanded location bitpack.  */
 
 location_t
 lto_input_location (struct lto_input_block *ib, struct data_in *data_in)
 {
-  struct bitpack_d bp;
+  if (streamer_hooks.input_location)
+    return streamer_hooks.input_location (ib, data_in);
+  else
+    {
+      struct bitpack_d bp;
 
-  bp = lto_input_bitpack (ib);
-  return lto_input_location_bitpack (data_in, &bp);
+      bp = streamer_read_bitpack (ib);
+      return lto_input_location_bitpack (data_in, &bp);
+    }
 }
 
 
@@ -195,7 +205,7 @@ lto_input_location (struct lto_input_block *ib, struct data_in *data_in)
    TAG is the expected node that should be found in IB, if TAG belongs
    to one of the indexable trees, expect to read a reference index to
    be looked up in one of the symbol tables, otherwise read the pysical
-   representation of the tree using lto_input_tree.  FN is the
+   representation of the tree using stream_read_tree.  FN is the
    function scope for the read tree.  */
 
 tree
@@ -210,32 +220,32 @@ lto_input_tree_ref (struct lto_input_block *ib, struct data_in *data_in,
   switch (tag)
     {
     case LTO_type_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_type (data_in->file_data, ix_u);
       break;
 
     case LTO_ssa_name_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = VEC_index (tree, SSANAMES (fn), ix_u);
       break;
 
     case LTO_field_decl_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_field_decl (data_in->file_data, ix_u);
       break;
 
     case LTO_function_decl_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_fn_decl (data_in->file_data, ix_u);
       break;
 
     case LTO_type_decl_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_type_decl (data_in->file_data, ix_u);
       break;
 
     case LTO_namespace_decl_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_namespace_decl (data_in->file_data, ix_u);
       break;
 
@@ -245,7 +255,7 @@ lto_input_tree_ref (struct lto_input_block *ib, struct data_in *data_in,
     case LTO_imported_decl_ref:
     case LTO_label_decl_ref:
     case LTO_translation_unit_decl_ref:
-      ix_u = lto_input_uleb128 (ib);
+      ix_u = streamer_read_uhwi (ib);
       result = lto_file_decl_data_get_var_decl (data_in->file_data, ix_u);
       break;
 
@@ -270,7 +280,7 @@ lto_input_eh_catch_list (struct lto_input_block *ib, struct data_in *data_in,
   enum LTO_tags tag;
 
   *last_p = first = NULL;
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   while (tag)
     {
       tree list;
@@ -280,9 +290,9 @@ lto_input_eh_catch_list (struct lto_input_block *ib, struct data_in *data_in,
 
       /* Read the catch node.  */
       n = ggc_alloc_cleared_eh_catch_d ();
-      n->type_list = lto_input_tree (ib, data_in);
-      n->filter_list = lto_input_tree (ib, data_in);
-      n->label = lto_input_tree (ib, data_in);
+      n->type_list = stream_read_tree (ib, data_in);
+      n->filter_list = stream_read_tree (ib, data_in);
+      n->label = stream_read_tree (ib, data_in);
 
       /* Register all the types in N->FILTER_LIST.  */
       for (list = n->filter_list; list; list = TREE_CHAIN (list))
@@ -298,7 +308,7 @@ lto_input_eh_catch_list (struct lto_input_block *ib, struct data_in *data_in,
       if (first == NULL)
 	first = n;
 
-      tag = input_record_start (ib);
+      tag = streamer_read_record_start (ib);
     }
 
   return first;
@@ -315,20 +325,20 @@ input_eh_region (struct lto_input_block *ib, struct data_in *data_in, int ix)
   eh_region r;
 
   /* Read the region header.  */
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   if (tag == LTO_null)
     return NULL;
 
   r = ggc_alloc_cleared_eh_region_d ();
-  r->index = lto_input_sleb128 (ib);
+  r->index = streamer_read_hwi (ib);
 
   gcc_assert (r->index == ix);
 
   /* Read all the region pointers as region numbers.  We'll fix up
      the pointers once the whole array has been read.  */
-  r->outer = (eh_region) (intptr_t) lto_input_sleb128 (ib);
-  r->inner = (eh_region) (intptr_t) lto_input_sleb128 (ib);
-  r->next_peer = (eh_region) (intptr_t) lto_input_sleb128 (ib);
+  r->outer = (eh_region) (intptr_t) streamer_read_hwi (ib);
+  r->inner = (eh_region) (intptr_t) streamer_read_hwi (ib);
+  r->next_peer = (eh_region) (intptr_t) streamer_read_hwi (ib);
 
   switch (tag)
     {
@@ -351,9 +361,9 @@ input_eh_region (struct lto_input_block *ib, struct data_in *data_in, int ix)
 	  tree l;
 
 	  r->type = ERT_ALLOWED_EXCEPTIONS;
-	  r->u.allowed.type_list = lto_input_tree (ib, data_in);
-	  r->u.allowed.label = lto_input_tree (ib, data_in);
-	  r->u.allowed.filter = lto_input_uleb128 (ib);
+	  r->u.allowed.type_list = stream_read_tree (ib, data_in);
+	  r->u.allowed.label = stream_read_tree (ib, data_in);
+	  r->u.allowed.filter = streamer_read_uhwi (ib);
 
 	  for (l = r->u.allowed.type_list; l ; l = TREE_CHAIN (l))
 	    add_type_for_runtime (TREE_VALUE (l));
@@ -362,7 +372,7 @@ input_eh_region (struct lto_input_block *ib, struct data_in *data_in, int ix)
 
       case LTO_ert_must_not_throw:
 	r->type = ERT_MUST_NOT_THROW;
-	r->u.must_not_throw.failure_decl = lto_input_tree (ib, data_in);
+	r->u.must_not_throw.failure_decl = stream_read_tree (ib, data_in);
 	r->u.must_not_throw.failure_loc = lto_input_location (ib, data_in);
 	break;
 
@@ -370,7 +380,7 @@ input_eh_region (struct lto_input_block *ib, struct data_in *data_in, int ix)
 	gcc_unreachable ();
     }
 
-  r->landing_pads = (eh_landing_pad) (intptr_t) lto_input_sleb128 (ib);
+  r->landing_pads = (eh_landing_pad) (intptr_t) streamer_read_hwi (ib);
 
   return r;
 }
@@ -386,18 +396,18 @@ input_eh_lp (struct lto_input_block *ib, struct data_in *data_in, int ix)
   eh_landing_pad lp;
 
   /* Read the landing pad header.  */
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   if (tag == LTO_null)
     return NULL;
 
   lto_tag_check_range (tag, LTO_eh_landing_pad, LTO_eh_landing_pad);
 
   lp = ggc_alloc_cleared_eh_landing_pad_d ();
-  lp->index = lto_input_sleb128 (ib);
+  lp->index = streamer_read_hwi (ib);
   gcc_assert (lp->index == ix);
-  lp->next_lp = (eh_landing_pad) (intptr_t) lto_input_sleb128 (ib);
-  lp->region = (eh_region) (intptr_t) lto_input_sleb128 (ib);
-  lp->post_landing_pad = lto_input_tree (ib, data_in);
+  lp->next_lp = (eh_landing_pad) (intptr_t) streamer_read_hwi (ib);
+  lp->region = (eh_region) (intptr_t) streamer_read_hwi (ib);
+  lp->post_landing_pad = stream_read_tree (ib, data_in);
 
   return lp;
 }
@@ -492,7 +502,7 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
   HOST_WIDE_INT i, root_region, len;
   enum LTO_tags tag;
 
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   if (tag == LTO_null)
     return;
 
@@ -505,11 +515,11 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
 
   gcc_assert (fn->eh);
 
-  root_region = lto_input_sleb128 (ib);
+  root_region = streamer_read_hwi (ib);
   gcc_assert (root_region == (int) root_region);
 
   /* Read the EH region array.  */
-  len = lto_input_sleb128 (ib);
+  len = streamer_read_hwi (ib);
   gcc_assert (len == (int) len);
   if (len > 0)
     {
@@ -522,7 +532,7 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
     }
 
   /* Read the landing pads.  */
-  len = lto_input_sleb128 (ib);
+  len = streamer_read_hwi (ib);
   gcc_assert (len == (int) len);
   if (len > 0)
     {
@@ -535,20 +545,20 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
     }
 
   /* Read the runtime type data.  */
-  len = lto_input_sleb128 (ib);
+  len = streamer_read_hwi (ib);
   gcc_assert (len == (int) len);
   if (len > 0)
     {
       VEC_safe_grow (tree, gc, fn->eh->ttype_data, len);
       for (i = 0; i < len; i++)
 	{
-	  tree ttype = lto_input_tree (ib, data_in);
+	  tree ttype = stream_read_tree (ib, data_in);
 	  VEC_replace (tree, fn->eh->ttype_data, i, ttype);
 	}
     }
 
   /* Read the table of action chains.  */
-  len = lto_input_sleb128 (ib);
+  len = streamer_read_hwi (ib);
   gcc_assert (len == (int) len);
   if (len > 0)
     {
@@ -557,7 +567,7 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
 	  VEC_safe_grow (tree, gc, fn->eh->ehspec_data.arm_eabi, len);
 	  for (i = 0; i < len; i++)
 	    {
-	      tree t = lto_input_tree (ib, data_in);
+	      tree t = stream_read_tree (ib, data_in);
 	      VEC_replace (tree, fn->eh->ehspec_data.arm_eabi, i, t);
 	    }
 	}
@@ -566,7 +576,7 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
 	  VEC_safe_grow (uchar, gc, fn->eh->ehspec_data.other, len);
 	  for (i = 0; i < len; i++)
 	    {
-	      uchar c = lto_input_1_unsigned (ib);
+	      uchar c = streamer_read_uchar (ib);
 	      VEC_replace (uchar, fn->eh->ehspec_data.other, i, c);
 	    }
 	}
@@ -576,7 +586,7 @@ input_eh_regions (struct lto_input_block *ib, struct data_in *data_in,
      pointers.  */
   fixup_eh_region_pointers (fn, root_region);
 
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   lto_tag_check_range (tag, LTO_null, LTO_null);
 }
 
@@ -611,9 +621,10 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
   init_empty_tree_cfg_for_function (fn);
   init_ssa_operands ();
 
-  profile_status_for_function (fn) = lto_input_enum (ib, profile_status_d, PROFILE_LAST);
+  profile_status_for_function (fn) = streamer_read_enum (ib, profile_status_d,
+							 PROFILE_LAST);
 
-  bb_count = lto_input_uleb128 (ib);
+  bb_count = streamer_read_uhwi (ib);
 
   last_basic_block_for_function (fn) = bb_count;
   if (bb_count > VEC_length (basic_block, basic_block_info_for_function (fn)))
@@ -624,7 +635,7 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
     VEC_safe_grow_cleared (basic_block, gc,
 			   label_to_block_map_for_function (fn), bb_count);
 
-  index = lto_input_sleb128 (ib);
+  index = streamer_read_hwi (ib);
   while (index != -1)
     {
       basic_block bb = BASIC_BLOCK_FOR_FUNCTION (fn, index);
@@ -633,7 +644,7 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
       if (bb == NULL)
 	bb = make_new_block (fn, index);
 
-      edge_count = lto_input_uleb128 (ib);
+      edge_count = streamer_read_uhwi (ib);
 
       /* Connect up the CFG.  */
       for (i = 0; i < edge_count; i++)
@@ -645,11 +656,11 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
 	  gcov_type count;
 	  edge e;
 
-	  dest_index = lto_input_uleb128 (ib);
-	  probability = (int) lto_input_sleb128 (ib);
-	  count = ((gcov_type) lto_input_sleb128 (ib) * count_materialization_scale
+	  dest_index = streamer_read_uhwi (ib);
+	  probability = (int) streamer_read_hwi (ib);
+	  count = ((gcov_type) streamer_read_hwi (ib) * count_materialization_scale
 		   + REG_BR_PROB_BASE / 2) / REG_BR_PROB_BASE;
-	  edge_flags = lto_input_uleb128 (ib);
+	  edge_flags = streamer_read_uhwi (ib);
 
 	  dest = BASIC_BLOCK_FOR_FUNCTION (fn, dest_index);
 
@@ -661,18 +672,18 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
 	  e->count = count;
 	}
 
-      index = lto_input_sleb128 (ib);
+      index = streamer_read_hwi (ib);
     }
 
   p_bb = ENTRY_BLOCK_PTR_FOR_FUNCTION(fn);
-  index = lto_input_sleb128 (ib);
+  index = streamer_read_hwi (ib);
   while (index != -1)
     {
       basic_block bb = BASIC_BLOCK_FOR_FUNCTION (fn, index);
       bb->prev_bb = p_bb;
       p_bb->next_bb = bb;
       p_bb = bb;
-      index = lto_input_sleb128 (ib);
+      index = streamer_read_hwi (ib);
     }
 }
 
@@ -686,10 +697,10 @@ input_ssa_names (struct lto_input_block *ib, struct data_in *data_in,
 {
   unsigned int i, size;
 
-  size = lto_input_uleb128 (ib);
+  size = streamer_read_uhwi (ib);
   init_ssanames (fn, size);
 
-  i = lto_input_uleb128 (ib);
+  i = streamer_read_uhwi (ib);
   while (i)
     {
       tree ssa_name, name;
@@ -699,14 +710,14 @@ input_ssa_names (struct lto_input_block *ib, struct data_in *data_in,
       while (VEC_length (tree, SSANAMES (fn)) < i)
 	VEC_quick_push (tree, SSANAMES (fn), NULL_TREE);
 
-      is_default_def = (lto_input_1_unsigned (ib) != 0);
-      name = lto_input_tree (ib, data_in);
+      is_default_def = (streamer_read_uchar (ib) != 0);
+      name = stream_read_tree (ib, data_in);
       ssa_name = make_ssa_name_fn (fn, name, gimple_build_nop ());
 
       if (is_default_def)
 	set_default_def (SSA_NAME_VAR (ssa_name), ssa_name);
 
-      i = lto_input_uleb128 (ib);
+      i = streamer_read_uhwi (ib);
     }
 }
 
@@ -753,30 +764,43 @@ fixup_call_stmt_edges (struct cgraph_node *orig, gimple *stmts)
       }
 }
 
-/* Read the body of function FN_DECL from DATA_IN using input block IB.  */
+
+/* Input the base body of struct function FN from DATA_IN
+   using input block IB.  */
 
 static void
-input_function (tree fn_decl, struct data_in *data_in,
-		struct lto_input_block *ib)
+input_struct_function_base (struct function *fn, struct data_in *data_in,
+                            struct lto_input_block *ib)
 {
-  struct function *fn;
-  enum LTO_tags tag;
-  gimple *stmts;
-  basic_block bb;
   struct bitpack_d bp;
-  struct cgraph_node *node;
-  tree args, narg, oarg;
   int len;
 
-  fn = DECL_STRUCT_FUNCTION (fn_decl);
-  tag = input_record_start (ib);
-  clear_line_info (data_in);
+  /* Read the static chain and non-local goto save area.  */
+  fn->static_chain_decl = stream_read_tree (ib, data_in);
+  fn->nonlocal_goto_save_area = stream_read_tree (ib, data_in);
 
-  gimple_register_cfg_hooks ();
-  lto_tag_check (tag, LTO_function);
+  /* Read all the local symbols.  */
+  len = streamer_read_hwi (ib);
+  if (len > 0)
+    {
+      int i;
+      VEC_safe_grow (tree, gc, fn->local_decls, len);
+      for (i = 0; i < len; i++)
+	{
+	  tree t = stream_read_tree (ib, data_in);
+	  VEC_replace (tree, fn->local_decls, i, t);
+	}
+    }
+
+  /* Input the function start and end loci.  */
+  fn->function_start_locus = lto_input_location (ib, data_in);
+  fn->function_end_locus = lto_input_location (ib, data_in);
+
+  /* Input the current IL state of the function.  */
+  fn->curr_properties = streamer_read_uhwi (ib);
 
   /* Read all the attributes for FN.  */
-  bp = lto_input_bitpack (ib);
+  bp = streamer_read_bitpack (ib);
   fn->is_thunk = bp_unpack_value (&bp, 1);
   fn->has_local_explicit_reg_vars = bp_unpack_value (&bp, 1);
   fn->after_tree_profile = bp_unpack_value (&bp, 1);
@@ -791,44 +815,44 @@ input_function (tree fn_decl, struct data_in *data_in,
   fn->calls_setjmp = bp_unpack_value (&bp, 1);
   fn->va_list_fpr_size = bp_unpack_value (&bp, 8);
   fn->va_list_gpr_size = bp_unpack_value (&bp, 8);
+}
 
-  /* Input the function start and end loci.  */
-  fn->function_start_locus = lto_input_location (ib, data_in);
-  fn->function_end_locus = lto_input_location (ib, data_in);
 
-  /* Input the current IL state of the function.  */
-  fn->curr_properties = lto_input_uleb128 (ib);
+/* Read the body of function FN_DECL from DATA_IN using input block IB.  */
 
-  /* Read the static chain and non-local goto save area.  */
-  fn->static_chain_decl = lto_input_tree (ib, data_in);
-  fn->nonlocal_goto_save_area = lto_input_tree (ib, data_in);
+static void
+input_function (tree fn_decl, struct data_in *data_in,
+		struct lto_input_block *ib)
+{
+  struct function *fn;
+  enum LTO_tags tag;
+  gimple *stmts;
+  basic_block bb;
+  struct cgraph_node *node;
+  tree args, narg, oarg;
 
-  /* Read all the local symbols.  */
-  len = lto_input_sleb128 (ib);
-  if (len > 0)
-    {
-      int i;
-      VEC_safe_grow (tree, gc, fn->local_decls, len);
-      for (i = 0; i < len; i++)
-	{
-	  tree t = lto_input_tree (ib, data_in);
-	  VEC_replace (tree, fn->local_decls, i, t);
-	}
-    }
+  fn = DECL_STRUCT_FUNCTION (fn_decl);
+  tag = streamer_read_record_start (ib);
+  clear_line_info (data_in);
+
+  gimple_register_cfg_hooks ();
+  lto_tag_check (tag, LTO_function);
+
+  input_struct_function_base (fn, data_in, ib);
 
   /* Read all function arguments.  We need to re-map them here to the
      arguments of the merged function declaration.  */
-  args = lto_input_tree (ib, data_in);
+  args = stream_read_tree (ib, data_in);
   for (oarg = args, narg = DECL_ARGUMENTS (fn_decl);
        oarg && narg;
        oarg = TREE_CHAIN (oarg), narg = TREE_CHAIN (narg))
     {
       unsigned ix;
       bool res;
-      res = lto_streamer_cache_lookup (data_in->reader_cache, oarg, &ix);
+      res = streamer_tree_cache_lookup (data_in->reader_cache, oarg, &ix);
       gcc_assert (res);
       /* Replace the argument in the streamer cache.  */
-      lto_streamer_cache_insert_at (data_in->reader_cache, narg, ix);
+      streamer_tree_cache_insert_at (data_in->reader_cache, narg, ix);
     }
   gcc_assert (!oarg && !narg);
 
@@ -839,18 +863,18 @@ input_function (tree fn_decl, struct data_in *data_in,
   input_eh_regions (ib, data_in, fn);
 
   /* Read the tree of lexical scopes for the function.  */
-  DECL_INITIAL (fn_decl) = lto_input_tree (ib, data_in);
+  DECL_INITIAL (fn_decl) = stream_read_tree (ib, data_in);
   gcc_assert (DECL_INITIAL (fn_decl));
   DECL_SAVED_TREE (fn_decl) = NULL_TREE;
   node = cgraph_get_create_node (fn_decl);
 
   /* Read all the basic blocks.  */
-  tag = input_record_start (ib);
+  tag = streamer_read_record_start (ib);
   while (tag)
     {
       input_bb (ib, tag, data_in, fn,
 		node->count_materialization_scale);
-      tag = input_record_start (ib);
+      tag = streamer_read_record_start (ib);
     }
 
   /* Fix up the call statements that are mentioned in the callgraph
@@ -920,7 +944,7 @@ input_alias_pairs (struct lto_input_block *ib, struct data_in *data_in)
 
   clear_line_info (data_in);
 
-  var = lto_input_tree (ib, data_in);
+  var = stream_read_tree (ib, data_in);
   while (var)
     {
       const char *orig_name, *new_name;
@@ -928,7 +952,7 @@ input_alias_pairs (struct lto_input_block *ib, struct data_in *data_in)
 
       p = VEC_safe_push (alias_pair, gc, alias_pairs, NULL);
       p->decl = var;
-      p->target = lto_input_tree (ib, data_in);
+      p->target = stream_read_tree (ib, data_in);
 
       /* If the target is a static object, we may have registered a
 	 new name for it to avoid clashes between statics coming from
@@ -938,7 +962,7 @@ input_alias_pairs (struct lto_input_block *ib, struct data_in *data_in)
       if (strcmp (orig_name, new_name) != 0)
 	p->target = get_identifier (new_name);
 
-      var = lto_input_tree (ib, data_in);
+      var = stream_read_tree (ib, data_in);
     }
 }
 
@@ -955,9 +979,9 @@ lto_read_body (struct lto_file_decl_data *file_data, tree fn_decl,
 {
   const struct lto_function_header *header;
   struct data_in *data_in;
-  int32_t cfg_offset;
-  int32_t main_offset;
-  int32_t string_offset;
+  int cfg_offset;
+  int main_offset;
+  int string_offset;
   struct lto_input_block ib_cfg;
   struct lto_input_block ib_main;
 
@@ -988,6 +1012,7 @@ lto_read_body (struct lto_file_decl_data *file_data, tree fn_decl,
       struct function *fn = DECL_STRUCT_FUNCTION (fn_decl);
       struct lto_in_decl_state *decl_state;
       struct cgraph_node *node = cgraph_get_node (fn_decl);
+      unsigned from;
 
       gcc_checking_assert (node);
       push_cfun (fn);
@@ -1001,7 +1026,33 @@ lto_read_body (struct lto_file_decl_data *file_data, tree fn_decl,
       input_cfg (&ib_cfg, fn, node->count_materialization_scale);
 
       /* Set up the struct function.  */
+      from = VEC_length (tree, data_in->reader_cache->nodes);
       input_function (fn_decl, data_in, &ib_main);
+      /* And fixup types we streamed locally.  */
+	{
+	  struct streamer_tree_cache_d *cache = data_in->reader_cache;
+	  unsigned len = VEC_length (tree, cache->nodes);
+	  unsigned i;
+	  for (i = len; i-- > from;)
+	    {
+	      tree t = VEC_index (tree, cache->nodes, i);
+	      if (t == NULL_TREE)
+		continue;
+
+	      if (TYPE_P (t))
+		{
+		  gcc_assert (TYPE_CANONICAL (t) == NULL_TREE);
+		  TYPE_CANONICAL (t) = TYPE_MAIN_VARIANT (t);
+		  if (TYPE_MAIN_VARIANT (t) != t)
+		    {
+		      gcc_assert (TYPE_NEXT_VARIANT (t) == NULL_TREE);
+		      TYPE_NEXT_VARIANT (t)
+			= TYPE_NEXT_VARIANT (TYPE_MAIN_VARIANT (t));
+		      TYPE_NEXT_VARIANT (TYPE_MAIN_VARIANT (t)) = t;
+		    }
+		}
+	    }
+	}
 
       /* We should now be in SSA.  */
       cfun->gimple_df->in_ssa_p = true;
@@ -1044,18 +1095,144 @@ lto_input_constructors_and_inits (struct lto_file_decl_data *file_data,
 }
 
 
-/* LTO streamer hook for reading GIMPLE trees.  IB and DATA_IN are as in
-   lto_read_tree.  EXPR is the tree was materialized by lto_read_tree and
-   needs GIMPLE specific data to be filled in.  */
+/* Read the physical representation of a tree node with tag TAG from
+   input block IB using the per-file context in DATA_IN.  */
+
+static tree
+lto_read_tree (struct lto_input_block *ib, struct data_in *data_in,
+	       enum LTO_tags tag)
+{
+  /* Instantiate a new tree node.  */
+  tree result = streamer_alloc_tree (ib, data_in, tag);
+
+  /* Enter RESULT in the reader cache.  This will make RESULT
+     available so that circular references in the rest of the tree
+     structure can be resolved in subsequent calls to stream_read_tree.  */
+  streamer_tree_cache_append (data_in->reader_cache, result);
+
+  /* Read all the bitfield values in RESULT.  Note that for LTO, we
+     only write language-independent bitfields, so no more unpacking is
+     needed.  */
+  streamer_read_tree_bitfields (ib, result);
+
+  /* Read all the pointer fields in RESULT.  */
+  streamer_read_tree_body (ib, data_in, result);
+
+  /* Read any LTO-specific data not read by the tree streamer.  */
+  if (DECL_P (result)
+      && TREE_CODE (result) != FUNCTION_DECL
+      && TREE_CODE (result) != TRANSLATION_UNIT_DECL)
+    DECL_INITIAL (result) = stream_read_tree (ib, data_in);
+
+  /* We should never try to instantiate an MD or NORMAL builtin here.  */
+  if (TREE_CODE (result) == FUNCTION_DECL)
+    gcc_assert (!streamer_handle_as_builtin_p (result));
+
+  /* end_marker = */ streamer_read_uchar (ib);
+
+#ifdef LTO_STREAMER_DEBUG
+  /* Remove the mapping to RESULT's original address set by
+     streamer_alloc_tree.  */
+  lto_orig_address_remove (result);
+#endif
+
+  return result;
+}
+
+
+/* Read a tree from input block IB using the per-file context in
+   DATA_IN.  This context is used, for example, to resolve references
+   to previously read nodes.  */
+
+tree
+lto_input_tree (struct lto_input_block *ib, struct data_in *data_in)
+{
+  enum LTO_tags tag;
+  tree result;
+
+  tag = streamer_read_record_start (ib);
+  gcc_assert ((unsigned) tag < (unsigned) LTO_NUM_TAGS);
+
+  if (tag == LTO_null)
+    result = NULL_TREE;
+  else if (tag >= LTO_field_decl_ref && tag <= LTO_global_decl_ref)
+    {
+      /* If TAG is a reference to an indexable tree, the next value
+	 in IB is the index into the table where we expect to find
+	 that tree.  */
+      result = lto_input_tree_ref (ib, data_in, cfun, tag);
+    }
+  else if (tag == LTO_tree_pickle_reference)
+    {
+      /* If TAG is a reference to a previously read tree, look it up in
+	 the reader cache.  */
+      result = streamer_get_pickled_tree (ib, data_in);
+    }
+  else if (tag == LTO_builtin_decl)
+    {
+      /* If we are going to read a built-in function, all we need is
+	 the code and class.  */
+      result = streamer_get_builtin_tree (ib, data_in);
+    }
+  else if (tag == lto_tree_code_to_tag (INTEGER_CST))
+    {
+      /* For integer constants we only need the type and its hi/low
+	 words.  */
+      result = streamer_read_integer_cst (ib, data_in);
+    }
+  else
+    {
+      /* Otherwise, materialize a new node from IB.  */
+      result = lto_read_tree (ib, data_in, tag);
+    }
+
+  return result;
+}
+
+
+/* Input toplevel asms.  */
 
 void
-lto_streamer_read_tree (struct lto_input_block *ib, struct data_in *data_in,
-			tree expr)
+lto_input_toplevel_asms (struct lto_file_decl_data *file_data, int order_base)
 {
-  if (DECL_P (expr)
-      && TREE_CODE (expr) != FUNCTION_DECL
-      && TREE_CODE (expr) != TRANSLATION_UNIT_DECL)
-    DECL_INITIAL (expr) = lto_input_tree (ib, data_in);
+  size_t len;
+  const char *data = lto_get_section_data (file_data, LTO_section_asm,
+					   NULL, &len);
+  const struct lto_asm_header *header = (const struct lto_asm_header *) data;
+  int string_offset;
+  struct data_in *data_in;
+  struct lto_input_block ib;
+  tree str;
+
+  if (! data)
+    return;
+
+  string_offset = sizeof (*header) + header->main_size;
+
+  LTO_INIT_INPUT_BLOCK (ib,
+			data + sizeof (*header),
+			0,
+			header->main_size);
+
+  data_in = lto_data_in_create (file_data, data + string_offset,
+				header->string_size, NULL);
+
+  /* Make sure the file was generated by the exact same compiler.  */
+  lto_check_version (header->lto_header.major_version,
+		     header->lto_header.minor_version);
+
+  while ((str = streamer_read_string_cst (data_in, &ib)))
+    {
+      struct cgraph_asm_node *node = cgraph_add_asm_node (str);
+      node->order = streamer_read_hwi (&ib) + order_base;
+      if (node->order >= cgraph_order)
+	cgraph_order = node->order + 1;
+    }
+
+  clear_line_info (data_in);
+  lto_data_in_delete (data_in);
+
+  lto_free_section_data (file_data, LTO_section_asm, NULL, data, len);
 }
 
 
@@ -1084,7 +1261,7 @@ lto_data_in_create (struct lto_file_decl_data *file_data, const char *strings,
   data_in->strings = strings;
   data_in->strings_len = len;
   data_in->globals_resolution = resolutions;
-  data_in->reader_cache = lto_streamer_cache_create ();
+  data_in->reader_cache = streamer_tree_cache_create ();
 
   return data_in;
 }
@@ -1096,7 +1273,7 @@ void
 lto_data_in_delete (struct data_in *data_in)
 {
   VEC_free (ld_plugin_symbol_resolution_t, heap, data_in->globals_resolution);
-  lto_streamer_cache_delete (data_in->reader_cache);
+  streamer_tree_cache_delete (data_in->reader_cache);
   free (data_in->labels);
   free (data_in);
 }

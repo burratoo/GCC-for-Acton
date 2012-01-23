@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -40,6 +40,8 @@
 --  want to waste the space for these image tables, and they are not needed,
 --  so we can do the instantiation under control of Discard_Names to remove
 --  the tables.
+
+pragma Compiler_Unit;
 
 generic
 package System.Rident is
@@ -122,12 +124,24 @@ package System.Rident is
 
       No_Default_Initialization,               -- GNAT
 
-      --  The following cases do not require consistency checking
+      --  The following cases do not require consistency checking and if used
+      --  as a configuration pragma within a specific unit, apply only to that
+      --  unit (e.g. if used in the package spec, do not apply to the body)
+
+      --  Note: No_Elaboration_Code is handled specially. Like the other
+      --  non-partition-wide restrictions, it can only be set in a unit that
+      --  is part of the extended main source unit (body/spec/subunits). But
+      --  it is sticky, in that if it is found anywhere within any of these
+      --  units, it applies to all units in this extended main source.
 
       Immediate_Reclamation,                   -- (RM H.4(10))
+      No_Implementation_Aspect_Specifications, -- Ada 2012 AI-241
       No_Implementation_Attributes,            -- Ada 2005 AI-257
+      No_Implementation_Identifiers,           -- Ada 2012 AI-246
       No_Implementation_Pragmas,               -- Ada 2005 AI-257
       No_Implementation_Restrictions,          -- GNAT
+      No_Implementation_Units,                 -- Ada 2012 AI-242
+      No_Implicit_Aliasing,                    -- GNAT
       No_Elaboration_Code,                     -- GNAT
       No_Obsolescent_Features,                 -- Ada 2005 AI-368
       No_Wide_Characters,                      -- GNAT
@@ -196,7 +210,7 @@ package System.Rident is
    --  Boolean restrictions that are not checked for partition consistency
    --  and that thus apply only to the current unit. Note that for these
    --  restrictions, the compiler does not apply restrictions found in
-   --  with'ed units, parent specs etc. to the main unit.
+   --  with'ed units, parent specs etc. to the main unit, and vice versa.
 
    subtype All_Parameter_Restrictions is
      Restriction_Id range
@@ -309,12 +323,21 @@ package System.Rident is
    -- Profile Definitions and Data --
    ----------------------------------
 
-   type Profile_Name is (No_Profile, Ravenscar, Restricted);
+   --  Note: to add a profile, modify the following declarations appropriately,
+   --  add Name_xxx to Snames, and add a branch to the conditions for pragmas
+   --  Profile and Profile_Warnings in the body of Sem_Prag.
+
+   type Profile_Name is
+     (No_Profile,
+      No_Implementation_Extensions,
+      Ravenscar,
+      Restricted);
    --  Names of recognized profiles. No_Profile is used to indicate that a
    --  restriction came from pragma Restrictions[_Warning], as opposed to
    --  pragma Profile[_Warning].
 
-   subtype Profile_Name_Actual is Profile_Name range Ravenscar .. Restricted;
+   subtype Profile_Name_Actual is Profile_Name
+     range No_Implementation_Extensions .. Restricted;
    --  Actual used profile names
 
    type Profile_Data is record
@@ -333,9 +356,25 @@ package System.Rident is
 
    Profile_Info : constant array (Profile_Name_Actual) of Profile_Data :=
 
+                    (No_Implementation_Extensions =>
+                        --  Restrictions for Restricted profile
+
+                       (Set   =>
+                          (No_Implementation_Aspect_Specifications => True,
+                           No_Implementation_Attributes            => True,
+                           No_Implementation_Identifiers           => True,
+                           No_Implementation_Pragmas               => True,
+                           No_Implementation_Units                 => True,
+                           others                                  => False),
+
+                        --  Value settings for Restricted profile (none
+
+                        Value =>
+                          (others                          => 0)),
+
                      --  Restricted Profile
 
-                    (Restricted =>
+                     Restricted =>
 
                         --  Restrictions for Restricted profile
 

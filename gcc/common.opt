@@ -543,9 +543,17 @@ Wframe-larger-than=
 Common RejectNegative Joined UInteger
 -Wframe-larger-than=<number>	Warn if a function's stack frame requires more than <number> bytes
 
+Wfree-nonheap-object
+Common Var(warn_free_nonheap_object) Init(1) Warning
+Warn when attempting to free a non-heap object
+
 Winline
 Common Var(warn_inline) Warning
 Warn when an inlined function cannot be inlined
+
+Winvalid-memory-model
+Common Var(warn_invalid_memory_model) Init(1) Warning
+Warn when an atomic memory model parameter is known to be outside the valid range.
 
 Wlarger-than-
 Common RejectNegative Joined Warning Undocumented Alias(Wlarger-than=)
@@ -561,10 +569,6 @@ Warn if the loop cannot be optimized due to nontrivial assumptions.
 Wmissing-noreturn
 Common Var(warn_missing_noreturn) Warning
 Warn about functions which might be candidates for __attribute__((noreturn))
-
-Wmudflap
-Common Var(warn_mudflap) Init(1) Warning
-Warn about constructs not instrumented by -fmudflap
 
 Woverflow
 Common Var(warn_overflow) Init(1) Warning
@@ -690,6 +694,10 @@ Wcoverage-mismatch
 Common Var(warn_coverage_mismatch) Init(1) Warning
 Warn in case profiles in -fprofile-use do not match
 
+Wvector-operation-performance
+Common Var(warn_vector_operation_performance) Warning
+Warn when a vector operation is compiled outside the SIMD
+
 Xassembler
 Driver Separate
 
@@ -774,7 +782,10 @@ Driver Undocumented
 ;    function parameters used in other parameters and the return type.
 ;    First selectable in G++ 4.6.
 ;
-; 6: The version of the ABI that doesn't promote scoped enums to int.
+; 6: The version of the ABI that doesn't promote scoped enums to int and
+;    changes the mangling of template argument packs, const/static_cast,
+;    prefix ++ and --, and a class scope function used as a template
+;    argument.
 ;    First selectable in G++ 4.7.
 ;
 ; Additional positive integers will be assigned as new versions of
@@ -1083,6 +1094,10 @@ Enum(excess_precision) String(standard) Value(EXCESS_PRECISION_STANDARD)
 ffast-math
 Common
 
+ffat-lto-objects
+Common Var(flag_fat_lto_objects) Init(1)
+Output lto objects containing both the intermediate language and binary output.
+
 ffinite-math-only
 Common Report Var(flag_finite_math_only) Optimization SetByCombined
 Assume no NaNs or infinities are generated
@@ -1178,6 +1193,10 @@ floop-block
 Common Report Var(flag_loop_block) Optimization
 Enable Loop Blocking transformation
 
+fgnu-tm
+Common Report Var(flag_tm)
+Enable support for GNU transactional memory
+
 floop-flatten
 Common Report Var(flag_loop_flatten) Optimization
 Enable Loop Flattening transformation
@@ -1254,6 +1273,10 @@ finline-limit=
 Common RejectNegative Joined UInteger
 -finline-limit=<number>	Limit the size of inlined functions to <number>
 
+finline-atomics
+Common Report Var(flag_inline_atomics) Init(1) Optimization
+Inline __atomic operations when a lock free instruction sequence is available.
+
 finstrument-functions
 Common Report Var(flag_instrument_function_entry_exit)
 Instrument function entry and exit with profiling calls
@@ -1313,7 +1336,7 @@ EnumValue
 Enum(ira_algorithm) String(priority) Value(IRA_ALGORITHM_PRIORITY)
 
 fira-region=
-Common Joined RejectNegative Enum(ira_region) Var(flag_ira_region) Init(IRA_REGION_MIXED)
+Common Joined RejectNegative Enum(ira_region) Var(flag_ira_region) Init(IRA_REGION_AUTODETECT)
 -fira-region=[one|all|mixed] Set regions for IRA
 
 Enum
@@ -1440,18 +1463,6 @@ Perform SMS based modulo scheduling with register moves allowed
 fmove-loop-invariants
 Common Report Var(flag_move_loop_invariants) Init(1) Optimization
 Move loop invariant computations out of loops
-
-fmudflap
-Common RejectNegative Report Var(flag_mudflap)
-Add mudflap bounds-checking instrumentation for single-threaded program
-
-fmudflapth
-Common RejectNegative Report Var(flag_mudflap,2)
-Add mudflap bounds-checking instrumentation for multi-threaded program
-
-fmudflapir
-Common RejectNegative Report Var(flag_mudflap_ignore_reads)
-Ignore read operations when inserting mudflap instrumentation
 
 fdce
 Common Var(flag_dce) Init(1) Optimization
@@ -1757,12 +1768,21 @@ Common Ignore
 Does nothing.  Preserved for backward compatibility.
 
 fzee
-Common Report Var(flag_zee) Init(0)
-Eliminate redundant zero extensions on targets that support implicit extensions.
+Common Ignore
+Does nothing.  Preserved for backward compatibility.
+
+free
+Common Report Var(flag_ree) Init(0)
+Turn on Redundant Extensions Elimination pass.
 
 fshow-column
 Common Report Var(flag_show_column) Init(1)
 Show column numbers in diagnostics, when available.  Default on
+
+fshrink-wrap
+Common Report Var(flag_shrink_wrap) Optimization
+Emit function prologues only before parts of the function that need it,
+rather than at the top of the function.
 
 fsignaling-nans
 Common Report Var(flag_signaling_nans) Optimization SetByCombined
@@ -1937,6 +1957,10 @@ ftree-dominator-opts
 Common Report Var(flag_tree_dom) Optimization
 Enable dominator optimizations
 
+ftree-tail-merge
+Common Report Var(flag_tree_tail_merge) Optimization
+Enable tail merging on trees
+
 ftree-dse
 Common Report Var(flag_tree_dse) Optimization
 Enable dead store elimination
@@ -1948,6 +1972,10 @@ Enable forward propagation on trees
 ftree-fre
 Common Report Var(flag_tree_fre) Optimization
 Enable Full Redundancy Elimination (FRE) on trees
+
+foptimize-strlen
+Common Report Var(flag_optimize_strlen) Optimization
+Enable string length optimizations on trees
 
 ftree-loop-distribution
 Common Report Var(flag_tree_loop_distribution) Optimization

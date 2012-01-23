@@ -900,7 +900,7 @@ package body Sem_Cat is
          --  If the type is private, it must have the Ada 2005 pragma
          --  Has_Preelaborable_Initialization.
          --  The check is omitted within predefined units. This is probably
-         --  obsolete code to fix the Ada95 weakness in this area ???
+         --  obsolete code to fix the Ada 95 weakness in this area ???
 
          if Is_Private_Type (T)
            and then not Has_Pragma_Preelab_Init (T)
@@ -972,7 +972,16 @@ package body Sem_Cat is
          while Present (Item) loop
             if Nkind (Item) = N_With_Clause
               and then not (Implicit_With (Item)
-                              or else Limited_Present (Item))
+                              or else Limited_Present (Item)
+
+                              --  Skip if error already posted on the WITH
+                              --  clause (in which case the Name attribute
+                              --  may be invalid). In particular, this fixes
+                              --  the problem of hanging in the presence of a
+                              --  WITH clause on a child that is an illegal
+                              --  generic instantiation.
+
+                              or else Error_Posted (Item))
             then
                Entity_Of_Withed := Entity (Name (Item));
                Check_Categorization_Dependencies
@@ -1391,6 +1400,10 @@ package body Sem_Cat is
       if Ekind (Subp) = E_Function then
          Rtyp := Etype (Subp);
 
+         --  AI05-0101 (Binding Interpretation): The result type of a remote
+         --  function must either support external streaming or be a
+         --  controlling access result type.
+
          if Has_Controlling_Result (Subp) then
             null;
 
@@ -1406,19 +1419,16 @@ package body Sem_Cat is
                  ("limited return type must have Read and Write attributes",
                      Parent (Subp));
                Explain_Limited_Type (Rtyp, Parent (Subp));
-
-            --  Check that the return type supports external streaming.
-            --  Note that the language of the standard (E.2.2(14)) does not
-            --  explicitly mention that case, but it really does not make
-            --  sense to return a value containing a local access type.
-
-            elsif No_External_Streaming (Rtyp)
-                    and then not Error_Posted (Rtyp)
-            then
-               Illegal_Remote_Subp ("return type containing non-remote access "
-                 & "must have Read and Write attributes",
-                 Parent (Subp));
             end if;
+
+         --  Check that the return type supports external streaming
+
+         elsif No_External_Streaming (Rtyp)
+                 and then not Error_Posted (Rtyp)
+         then
+            Illegal_Remote_Subp ("return type containing non-remote access "
+              & "must have Read and Write attributes",
+              Parent (Subp));
          end if;
       end if;
 
@@ -1674,13 +1684,8 @@ package body Sem_Cat is
          then
             return True;
 
-         --  A limited interface is not currently a legal ancestor for the
-         --  designated type of an RACW type, because a type that implements
-         --  such an interface need not be limited. However, the ARG seems to
-         --  incline towards allowing an access to classwide limited interface
-         --  type as a remote access type, as resolved in AI05-060. But note
-         --  that the expansion circuitry for RACWs that designate classwide
-         --  interfaces is not complete yet.
+         --  AI05-0060 (Binding Interpretation): A limited interface is a legal
+         --  ancestor for the designated type of an RACW type.
 
          elsif Is_Limited_Record (E) and then Is_Limited_Interface (E) then
             return True;

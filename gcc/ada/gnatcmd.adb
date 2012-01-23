@@ -34,7 +34,7 @@ with MLib.Fil;
 with Namet;    use Namet;
 with Opt;      use Opt;
 with Osint;    use Osint;
-with Output;
+with Output;   use Output;
 with Prj;      use Prj;
 with Prj.Env;
 with Prj.Ext;  use Prj.Ext;
@@ -202,6 +202,9 @@ procedure GNATCmd is
    --  indicate that the underlying tool (gnatcheck, gnatpp or gnatmetric)
    --  should be invoked for all sources of all projects.
 
+   Max_OpenVMS_Logical_Length : constant Integer := 255;
+   --  The maximum length of OpenVMS logicals
+
    -----------------------
    -- Local Subprograms --
    -----------------------
@@ -261,6 +264,7 @@ procedure GNATCmd is
    procedure Set_Library_For
      (Project           : Project_Id;
       Tree              : Project_Tree_Ref;
+      In_Aggregate_Lib  : Boolean;
       Libraries_Present : in out Boolean);
    --  If Project is a library project, add the correct -L and -l switches to
    --  the linker invocation.
@@ -1258,9 +1262,10 @@ procedure GNATCmd is
    procedure Set_Library_For
      (Project           : Project_Id;
       Tree              : Project_Tree_Ref;
+      In_Aggregate_Lib  : Boolean;
       Libraries_Present : in out Boolean)
    is
-      pragma Unreferenced (Tree);
+      pragma Unreferenced (Tree, In_Aggregate_Lib);
 
       Path_Option : constant String_Access :=
                       MLib.Linker_Library_Path_Option;
@@ -1369,6 +1374,10 @@ procedure GNATCmd is
 --  Start of processing for GNATCmd
 
 begin
+   --  All output from GNATCmd is debugging or error output: send to stderr
+
+   Set_Standard_Error;
+
    --  Initializations
 
    Csets.Initialize;
@@ -1416,6 +1425,15 @@ begin
       Add_Char_To_Name_Buffer (' ');
       Add_Str_To_Name_Buffer (Argument (J));
    end loop;
+
+   --  On OpenVMS, setenv creates a logical whose length is limited to
+   --  255 bytes.
+
+   if OpenVMS and then Name_Len > Max_OpenVMS_Logical_Length then
+      Name_Buffer (Max_OpenVMS_Logical_Length - 2
+                     .. Max_OpenVMS_Logical_Length) := "...";
+      Name_Len := Max_OpenVMS_Logical_Length;
+   end if;
 
    Setenv ("GNAT_DRIVER_COMMAND_LINE", Name_Buffer (1 .. Name_Len));
 
@@ -1886,6 +1904,10 @@ begin
             Env               => Root_Environment,
             Packages_To_Check => Packages_To_Check);
 
+         --  Prj.Pars.Parse calls Set_Standard_Output, reset to stderr
+
+         Set_Standard_Error;
+
          if Project = Prj.No_Project then
             Fail ("""" & Project_File.all & """ processing failed");
          end if;
@@ -2068,7 +2090,7 @@ begin
             begin
                if Pkg /= No_Package then
 
-                  --  First, check if there is a single main specified.
+                  --  First, check if there is a single main specified
 
                   for J in 1  .. Last_Switches.Last loop
                      if Last_Switches.Table (J) (1) /= '-' then

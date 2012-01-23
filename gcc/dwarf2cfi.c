@@ -1757,7 +1757,8 @@ dwarf2out_frame_debug_expr (rtx expr)
 	     regiser.  */
           if (fde
               && fde->stack_realign
-              && src == hard_frame_pointer_rtx)
+	      && REG_P (src)
+	      && REGNO (src) == HARD_FRAME_POINTER_REGNUM)
 	    {
 	      gcc_assert (cur_cfa->reg != dw_frame_pointer_regnum);
 	      cur_trace->cfa_store.offset = 0;
@@ -1929,9 +1930,6 @@ dwarf2out_frame_debug (rtx insn)
 {
   rtx note, n;
   bool handled_one = false;
-  bool need_flush = false;
-
-  any_cfis_emitted = false;
 
   for (note = REG_NOTES (insn); note; note = XEXP (note, 1))
     switch (REG_NOTE_KIND (note))
@@ -2019,8 +2017,7 @@ dwarf2out_frame_debug (rtx insn)
 	break;
 
       case REG_CFA_FLUSH_QUEUE:
-	/* The actual flush happens below.  */
-	need_flush = true;
+	/* The actual flush happens elsewhere.  */
 	handled_one = true;
 	break;
 
@@ -2028,13 +2025,7 @@ dwarf2out_frame_debug (rtx insn)
 	break;
       }
 
-  if (handled_one)
-    {
-      /* Minimize the number of advances by emitting the entire queue
-	 once anything is emitted.  */
-      need_flush |= any_cfis_emitted;
-    }
-  else
+  if (!handled_one)
     {
       insn = PATTERN (insn);
     do_frame_expr:
@@ -2043,12 +2034,9 @@ dwarf2out_frame_debug (rtx insn)
       /* Check again.  A parallel can save and update the same register.
          We could probably check just once, here, but this is safer than
          removing the check at the start of the function.  */
-      if (any_cfis_emitted || clobbers_queued_reg_save (insn))
-	need_flush = true;
+      if (clobbers_queued_reg_save (insn))
+	dwarf2out_flush_queued_reg_saves ();
     }
-
-  if (need_flush)
-    dwarf2out_flush_queued_reg_saves ();
 }
 
 /* Emit CFI info to change the state from OLD_ROW to NEW_ROW.  */
@@ -2153,11 +2141,18 @@ add_cfis_to_fde (void)
       if (NOTE_P (insn) && NOTE_KIND (insn) == NOTE_INSN_CFI)
 	{
 	  bool required = cfi_label_required_p (NOTE_CFI (insn));
-	  while (next && NOTE_P (next) && NOTE_KIND (next) == NOTE_INSN_CFI)
-	    {
-	      required |= cfi_label_required_p (NOTE_CFI (next));
+	  while (next)
+	    if (NOTE_P (next) && NOTE_KIND (next) == NOTE_INSN_CFI)
+	      {
+		required |= cfi_label_required_p (NOTE_CFI (next));
+		next = NEXT_INSN (next);
+	      }
+	    else if (active_insn_p (next)
+		     || (NOTE_P (next) && (NOTE_KIND (next)
+					   == NOTE_INSN_SWITCH_TEXT_SECTIONS)))
+	      break;
+	    else
 	      next = NEXT_INSN (next);
-	    }
 	  if (required)
 	    {
 	      int num = dwarf2out_cfi_label_num;
@@ -2178,7 +2173,9 @@ add_cfis_to_fde (void)
 
 	  do
 	    {
-	      VEC_safe_push (dw_cfi_ref, gc, fde->dw_fde_cfi, NOTE_CFI (insn));
+	      if (NOTE_P (insn) && NOTE_KIND (insn) == NOTE_INSN_CFI)
+		VEC_safe_push (dw_cfi_ref, gc, fde->dw_fde_cfi,
+			       NOTE_CFI (insn));
 	      insn = NEXT_INSN (insn);
 	    }
 	  while (insn != next);
@@ -2427,7 +2424,7 @@ scan_trace (dw_trace_info *trace)
 	    notice_eh_throw (control);
 	  dwarf2out_flush_queued_reg_saves ();
 
-	  if (INSN_ANNULLED_BRANCH_P (control))
+	  if (JUMP_P (control) && INSN_ANNULLED_BRANCH_P (control))
 	    {
 	      /* ??? Hopefully multiple delay slots are not annulled.  */
 	      gcc_assert (n == 2);
@@ -2442,10 +2439,12 @@ scan_trace (dw_trace_info *trace)
 	      if (INSN_FROM_TARGET_P (elt))
 		{
 		  HOST_WIDE_INT restore_args_size;
+		  cfi_vec save_row_reg_save;
 
 		  add_cfi_insn = NULL;
 		  restore_args_size = cur_trace->end_true_args_size;
 		  cur_cfa = &cur_row->cfa;
+		  save_row_reg_save = VEC_copy (dw_cfi_ref, gc, cur_row->reg_save);
 
 		  scan_insn_after (elt);
 
@@ -2456,6 +2455,7 @@ scan_trace (dw_trace_info *trace)
 
 		  cur_trace->end_true_args_size = restore_args_size;
 		  cur_row->cfa = this_cfa;
+		  cur_row->reg_save = save_row_reg_save;
 		  cur_cfa = &this_cfa;
 		  continue;
 		}
@@ -2479,6 +2479,7 @@ scan_trace (dw_trace_info *trace)
 
 	  /* Make sure any register saves are visible at the jump target.  */
 	  dwarf2out_flush_queued_reg_saves ();
+	  any_cfis_emitted = false;
 
           /* However, if there is some adjustment on the call itself, e.g.
 	     a call_pop, that action should be considered to happen after
@@ -2498,6 +2499,7 @@ scan_trace (dw_trace_info *trace)
 		   || clobbers_queued_reg_save (insn)
 		   || find_reg_note (insn, REG_CFA_FLUSH_QUEUE, NULL))
 	    dwarf2out_flush_queued_reg_saves ();
+	  any_cfis_emitted = false;
 
 	  add_cfi_insn = insn;
 	  scan_insn_after (insn);
@@ -2507,6 +2509,12 @@ scan_trace (dw_trace_info *trace)
       /* Between frame-related-p and args_size we might have otherwise
 	 emitted two cfa adjustments.  Do it now.  */
       def_cfa_1 (&this_cfa);
+
+      /* Minimize the number of advances by emitting the entire queue
+	 once anything is emitted.  */
+      if (any_cfis_emitted
+	  || find_reg_note (insn, REG_CFA_FLUSH_QUEUE, NULL))
+	dwarf2out_flush_queued_reg_saves ();
 
       /* Note that a test for control_flow_insn_p does exactly the
 	 same tests as are done to actually create the edges.  So

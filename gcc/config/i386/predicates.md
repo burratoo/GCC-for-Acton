@@ -565,7 +565,7 @@
 (define_predicate "call_insn_operand"
   (ior (match_operand 0 "constant_call_address_operand")
        (match_operand 0 "call_register_no_elim_operand")
-       (and (match_test "!TARGET_X32")
+       (and (not (match_test "TARGET_X32"))
 	    (match_operand 0 "memory_operand"))))
 
 ;; Similarly, but for tail calls, in which we cannot allow memory references.
@@ -597,12 +597,26 @@
   (and (match_code "const_int")
        (match_test "INTVAL (op) == 128")))
 
+;; Match exactly 0x0FFFFFFFF in anddi as a zero-extension operation
+(define_predicate "const_32bit_mask"
+  (and (match_code "const_int")
+       (match_test "trunc_int_for_mode (INTVAL (op), DImode)
+		    == (HOST_WIDE_INT) 0xffffffff")))
+
 ;; Match 2, 4, or 8.  Used for leal multiplicands.
 (define_predicate "const248_operand"
   (match_code "const_int")
 {
   HOST_WIDE_INT i = INTVAL (op);
   return i == 2 || i == 4 || i == 8;
+})
+
+;; Match 1, 2, 4, or 8
+(define_predicate "const1248_operand"
+  (match_code "const_int")
+{
+  HOST_WIDE_INT i = INTVAL (op);
+  return i == 1 || i == 2 || i == 4 || i == 8;
 })
 
 ;; Match 3, 5, or 9.  Used for leal multiplicands.
@@ -794,21 +808,59 @@
        (match_operand 0 "const0_operand")))
 
 ;; Return true if op if a valid address for LEA, and does not contain
-;; a segment override.
-(define_predicate "lea_address_operand"
+;; a segment override.  Defined as a special predicate to allow
+;; mode-less const_int operands pass to address_operand.
+(define_special_predicate "lea_address_operand"
   (match_operand 0 "address_operand")
 {
   struct ix86_address parts;
   int ok;
 
   /*  LEA handles zero-extend by itself.  */
-  if (GET_CODE (op) == ZERO_EXTEND)
+  if (GET_CODE (op) == ZERO_EXTEND
+      || GET_CODE (op) == AND)
     return false;
 
   ok = ix86_decompose_address (op, &parts);
   gcc_assert (ok);
   return parts.seg == SEG_DEFAULT;
 })
+
+;; Return true if op if a valid base register, displacement or
+;; sum of base register and displacement for VSIB addressing.
+(define_predicate "vsib_address_operand"
+  (match_operand 0 "address_operand")
+{
+  struct ix86_address parts;
+  int ok;
+  rtx disp;
+
+  ok = ix86_decompose_address (op, &parts);
+  gcc_assert (ok);
+  if (parts.index || parts.seg != SEG_DEFAULT)
+    return false;
+
+  /* VSIB addressing doesn't support (%rip).  */
+  if (parts.disp && GET_CODE (parts.disp) == CONST)
+    {
+      disp = XEXP (parts.disp, 0);
+      if (GET_CODE (disp) == PLUS)
+	disp = XEXP (disp, 0);
+      if (GET_CODE (disp) == UNSPEC)
+	switch (XINT (disp, 1))
+	  {
+	  case UNSPEC_GOTPCREL:
+	  case UNSPEC_PCREL:
+	  case UNSPEC_GOTNTPOFF:
+	    return false;
+	  }
+    }
+
+  return true;
+})
+
+(define_predicate "vsib_mem_operator"
+  (match_code "mem"))
 
 ;; Return true if the rtx is known to be at least 32 bits aligned.
 (define_predicate "aligned_operand"
@@ -1111,7 +1163,7 @@
 
 ;; Return true if OP is a binary operator that can be promoted to wider mode.
 (define_predicate "promotable_binary_operator"
-  (ior (match_code "plus,and,ior,xor,ashift")
+  (ior (match_code "plus,minus,and,ior,xor,ashift")
        (and (match_code "mult")
 	    (match_test "TARGET_TUNE_PROMOTE_HIMODE_IMUL"))))
 
@@ -1194,4 +1246,13 @@
     if (XVECEXP (op, 0, i) != elt)
       return false;
   return true;
+})
+
+;; Return true if OP is a proper third operand to vpblendw256.
+(define_predicate "avx2_pblendw_operand"
+  (match_code "const_int")
+{
+  HOST_WIDE_INT val = INTVAL (op);
+  HOST_WIDE_INT low = val & 0xff;
+  return val == ((low << 8) | low);
 })

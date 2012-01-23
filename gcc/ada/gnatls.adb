@@ -75,7 +75,7 @@ procedure Gnatls is
       Value : String_Access;
       Next  : Dir_Ref;
    end record;
-   --  ??? comment needed
+   --  Simply linked list of dirs
 
    First_Source_Dir : Dir_Ref;
    Last_Source_Dir  : Dir_Ref;
@@ -168,6 +168,9 @@ procedure Gnatls is
 
    procedure Scan_Ls_Arg (Argv : String);
    --  Scan and process lser specific arguments. Argv is a single argument
+
+   procedure Search_RTS (Name : String);
+   --  Find include and objects path for the RTS name.
 
    procedure Usage;
    --  Print usage message
@@ -822,41 +825,13 @@ procedure Gnatls is
    --------------------------------
 
    procedure Output_License_Information is
-      Params_File_Name : constant String := "gnatlic.adl";
-      --  Name of license file
-
-      Lo   : constant Source_Ptr := 1;
-      Hi   : Source_Ptr;
-      Text : Source_Buffer_Ptr;
-
    begin
-      Name_Len := 0;
-      Add_Str_To_Name_Buffer (Params_File_Name);
-      Read_Source_File (Name_Find, Lo, Hi, Text);
-
-      if Text /= null then
-
-         --  Omit last character (end-of-file marker) in output
-
-         Write_Str (String (Text (Lo .. Hi - 1)));
-         Write_Eol;
-
-         --  The following condition is determined at compile time: disable
-         --  "condition is always true/false" warning.
-
-         pragma Warnings (Off);
-      elsif Build_Type /= GPL and then Build_Type /= FSF then
-         pragma Warnings (On);
-
-         Write_Str ("License file missing, please contact AdaCore.");
-         Write_Eol;
-
-      else
-         Write_Str ("Please refer to file COPYING in your distribution"
-                  & " for license terms.");
-         Write_Eol;
-
-      end if;
+      case Build_Type is
+         when others =>
+            Write_Str ("Please refer to file COPYING in your distribution"
+                     & " for license terms.");
+            Write_Eol;
+      end case;
 
       Exit_Program (E_Success);
    end Output_License_Information;
@@ -1204,6 +1179,72 @@ procedure Gnatls is
       end if;
    end Reset_Print;
 
+   ----------------
+   -- Search_RTS --
+   ----------------
+
+   procedure Search_RTS (Name : String) is
+      Src_Path : String_Ptr;
+      Lib_Path : String_Ptr;
+      --  Paths for source and include subdirs
+
+      Rts_Full_Path : String_Access;
+      --  Full path for RTS project
+
+   begin
+      --  Try to find the RTS
+
+      Src_Path := Get_RTS_Search_Dir (Name, Include);
+      Lib_Path := Get_RTS_Search_Dir (Name, Objects);
+
+      --  For non-project RTS, both the include and the objects directories
+      --  must be present.
+
+      if Src_Path /= null and then Lib_Path /= null then
+         Add_Search_Dirs (Src_Path, Include);
+         Add_Search_Dirs (Lib_Path, Objects);
+         return;
+      end if;
+
+      if Lib_Path /= null then
+         Osint.Fail ("RTS path not valid: missing adainclude directory");
+      elsif Src_Path /= null then
+         Osint.Fail ("RTS path not valid: missing adalib directory");
+      end if;
+
+      --  Try to find the RTS on the project path. First setup the project path
+
+      Initialize_Default_Project_Path
+        (Prj_Path, Target_Name => Sdefault.Target_Name.all);
+
+      Rts_Full_Path := Get_Runtime_Path (Prj_Path, Name);
+
+      if Rts_Full_Path /= null then
+
+         --  Directory name was found on the project path. Look for the
+         --  include subdirectory(s).
+
+         Src_Path := Get_RTS_Search_Dir (Rts_Full_Path.all, Include);
+
+         if Src_Path /= null then
+            Add_Search_Dirs (Src_Path, Include);
+
+            --  Add the lib subdirectory if it exists
+
+            Lib_Path := Get_RTS_Search_Dir (Rts_Full_Path.all, Objects);
+
+            if Lib_Path /= null then
+               Add_Search_Dirs (Lib_Path, Objects);
+            end if;
+
+            return;
+         end if;
+      end if;
+
+      Osint.Fail
+        ("RTS path not valid: missing adainclude and adalib directories");
+   end Search_RTS;
+
    -------------------
    -- Scan_Ls_Arg --
    -------------------
@@ -1354,37 +1395,6 @@ procedure Gnatls is
 
                Opt.No_Stdinc := True;
                Opt.RTS_Switch := True;
-
-               declare
-                  Src_Path_Name : constant String_Ptr :=
-                                    Get_RTS_Search_Dir
-                                      (Argv (7 .. Argv'Last), Include);
-                  Lib_Path_Name : constant String_Ptr :=
-                                    Get_RTS_Search_Dir
-                                      (Argv (7 .. Argv'Last), Objects);
-
-               begin
-                  if Src_Path_Name /= null
-                    and then Lib_Path_Name /= null
-                  then
-                     Add_Search_Dirs (Src_Path_Name, Include);
-                     Add_Search_Dirs (Lib_Path_Name, Objects);
-
-                  elsif Src_Path_Name = null
-                    and then Lib_Path_Name = null
-                  then
-                     Osint.Fail ("RTS path not valid: missing " &
-                                 "adainclude and adalib directories");
-
-                  elsif Src_Path_Name = null then
-                     Osint.Fail ("RTS path not valid: missing " &
-                                 "adainclude directory");
-
-                  elsif Lib_Path_Name = null then
-                     Osint.Fail ("RTS path not valid: missing " &
-                                 "adalib directory");
-                  end if;
-               end;
             end if;
          end if;
 
@@ -1413,6 +1423,8 @@ procedure Gnatls is
 
       Write_Str ("switches:");
       Write_Eol;
+
+      Display_Usage_Version_And_Help;
 
       --  Line for -a
 
@@ -1541,10 +1553,17 @@ begin
    --  If -l (output license information) is given, it must be the only switch
 
    if License and then Arg_Count /= 2 then
+      Set_Standard_Error;
       Write_Str ("Can't use -l with another switch");
       Write_Eol;
       Usage;
       Exit_Program (E_Fatal);
+   end if;
+
+   --  Handle --RTS switch
+
+   if RTS_Specified /= null then
+      Search_RTS (RTS_Specified.all);
    end if;
 
    --  Add the source and object directories specified on the command line, if
@@ -1695,6 +1714,7 @@ begin
             GNATDIST.Output_No_ALI (Lib_File_Name (Main_File));
 
          else
+            Set_Standard_Error;
             Write_Str ("Can't find library info for ");
             Get_Name_String (Main_File);
             Write_Char ('"'); -- "
@@ -1726,6 +1746,10 @@ begin
          end if;
       end if;
    end loop;
+
+   --  Reset default output file descriptor, if needed
+
+   Set_Standard_Output;
 
    if Very_Verbose_Mode then
       for A in ALIs.First .. ALIs.Last loop

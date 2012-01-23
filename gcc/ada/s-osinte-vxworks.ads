@@ -7,7 +7,7 @@
 --                                   S p e c                                --
 --                                                                          --
 --            Copyright (C) 1991-1994, Florida State University             --
---          Copyright (C) 1995-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -47,6 +47,7 @@ package System.OS_Interface is
    pragma Preelaborate;
 
    subtype int             is Interfaces.C.int;
+   subtype unsigned        is Interfaces.C.unsigned;
    subtype short           is Short_Integer;
    type unsigned_int       is mod 2 ** int'Size;
    type long               is new Long_Integer;
@@ -242,9 +243,7 @@ package System.OS_Interface is
    end record;
    pragma Convention (C, timespec);
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME : constant clockid_t;   --  System wide realtime clock
+   type clockid_t is new int;
 
    function To_Duration (TS : timespec) return Duration;
    pragma Inline (To_Duration);
@@ -493,6 +492,11 @@ package System.OS_Interface is
    --  For SMP run-times the affinity to CPU.
    --  For uniprocessor systems return ERROR status.
 
+   function taskMaskAffinitySet (tid : t_id; CPU_Set : unsigned) return int
+     renames System.VxWorks.Ext.taskMaskAffinitySet;
+   --  For SMP run-times the affinity to CPU_Set.
+   --  For uniprocessor systems return ERROR status.
+
    ---------------------
    -- Multiprocessors --
    ---------------------
@@ -504,9 +508,6 @@ private
    type pid_t is new int;
 
    ERROR_PID : constant pid_t := -1;
-
-   type clockid_t is new int;
-   CLOCK_REALTIME : constant clockid_t := 0;
 
    type sigset_t is new System.VxWorks.Ext.sigset_t;
 end System.OS_Interface;

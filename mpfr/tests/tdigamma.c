@@ -1,7 +1,9 @@
 /* test file for digamma function
 
 Copyright 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
+
+This file is part of the GNU MPFR Library.
 
 The GNU MPFR Library is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by

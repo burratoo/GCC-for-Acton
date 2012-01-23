@@ -46,16 +46,22 @@ package Aspects is
      (No_Aspect,                            -- Dummy entry for no aspect
       Aspect_Address,
       Aspect_Alignment,
+      Aspect_Attach_Handler,
       Aspect_Bit_Order,
       Aspect_Component_Size,
       Aspect_Constant_Indexing,
+      Aspect_CPU,
       Aspect_Default_Component_Value,
       Aspect_Default_Iterator,
       Aspect_Default_Value,
+      Aspect_Dimension,                     -- GNAT
+      Aspect_Dimension_System,              -- GNAT
+      Aspect_Dispatching_Domain,
       Aspect_Dynamic_Predicate,
       Aspect_External_Tag,
       Aspect_Implicit_Dereference,
       Aspect_Input,
+      Aspect_Interrupt_Priority,
       Aspect_Invariant,
       Aspect_Iterator_Element,
       Aspect_Machine_Radix,
@@ -66,8 +72,10 @@ package Aspects is
       Aspect_Pre,
       Aspect_Precondition,
       Aspect_Predicate,                     -- GNAT
+      Aspect_Priority,
       Aspect_Read,
       Aspect_Size,
+      Aspect_Small,
       Aspect_Static_Predicate,
       Aspect_Storage_Pool,
       Aspect_Storage_Size,
@@ -90,6 +98,7 @@ package Aspects is
       Aspect_Preelaborate_05,               -- GNAT
       Aspect_Pure,
       Aspect_Pure_05,                       -- GNAT
+      Aspect_Pure_12,                       -- GNAT
       Aspect_Remote_Call_Interface,
       Aspect_Remote_Types,
       Aspect_Shared_Passive,
@@ -104,12 +113,16 @@ package Aspects is
 
       Aspect_Ada_2005,                      -- GNAT
       Aspect_Ada_2012,                      -- GNAT
+      Aspect_Asynchronous,
       Aspect_Atomic,
       Aspect_Atomic_Components,
       Aspect_Discard_Names,
       Aspect_Favor_Top_Level,               -- GNAT
+      Aspect_Independent,
+      Aspect_Independent_Components,
       Aspect_Inline,
       Aspect_Inline_Always,                 -- GNAT
+      Aspect_Interrupt_Handler,
       Aspect_No_Return,
       Aspect_Pack,
       Aspect_Persistent_BSS,                -- GNAT
@@ -134,12 +147,70 @@ package Aspects is
                         Aspect_Post          => True,
                         others               => False);
 
+   --  The following array indicates aspects that a subtype inherits from
+   --  its base type. True means that the subtype inherits the aspect from
+   --  its base type. False means it is not inherited.
+
+   Base_Aspect : constant array (Aspect_Id) of Boolean :=
+                   (Aspect_Atomic                  => True,
+                    Aspect_Atomic_Components       => True,
+                    Aspect_Discard_Names           => True,
+                    Aspect_Independent_Components  => True,
+                    Aspect_Iterator_Element        => True,
+                    Aspect_Constant_Indexing       => True,
+                    Aspect_Default_Iterator        => True,
+                    Aspect_Type_Invariant          => True,
+                    Aspect_Unchecked_Union         => True,
+                    Aspect_Variable_Indexing       => True,
+                    Aspect_Volatile                => True,
+                    others                         => False);
+
+   --  The following array identifies all implementation defined aspects
+
+   Impl_Defined_Aspects : constant array (Aspect_Id) of Boolean :=
+                            (Aspect_Ada_2005             => True,
+                             Aspect_Ada_2012             => True,
+                             Aspect_Compiler_Unit        => True,
+                             Aspect_Dimension            => True,
+                             Aspect_Dimension_System     => True,
+                             Aspect_Favor_Top_Level      => True,
+                             Aspect_Inline_Always        => True,
+                             Aspect_Object_Size          => True,
+                             Aspect_Persistent_BSS       => True,
+                             Aspect_Predicate            => True,
+                             Aspect_Preelaborate_05      => True,
+                             Aspect_Pure_05              => True,
+                             Aspect_Pure_12              => True,
+                             Aspect_Pure_Function        => True,
+                             Aspect_Shared               => True,
+                             Aspect_Suppress_Debug_Info  => True,
+                             Aspect_Test_Case            => True,
+                             Aspect_Universal_Data       => True,
+                             Aspect_Universal_Aliasing   => True,
+                             Aspect_Unmodified           => True,
+                             Aspect_Unreferenced         => True,
+                             Aspect_Unreferenced_Objects => True,
+                             Aspect_Value_Size           => True,
+                             others                      => False);
+
    --  The following array indicates aspects for which multiple occurrences of
    --  the same aspect attached to the same declaration are allowed.
 
    No_Duplicates_Allowed : constant array (Aspect_Id) of Boolean :=
                              (Aspect_Test_Case => False,
                               others           => True);
+
+   --  The following array indicates type aspects that are inherited and apply
+   --  to the class-wide type as well.
+
+   Inherited_Aspect : constant array (Aspect_Id) of Boolean :=
+                        (Aspect_Constant_Indexing    => True,
+                         Aspect_Default_Iterator     => True,
+                         Aspect_Implicit_Dereference => True,
+                         Aspect_Iterator_Element     => True,
+                         Aspect_Remote_Types         => True,
+                         Aspect_Variable_Indexing    => True,
+                         others                      => False);
 
    --  The following subtype defines aspects corresponding to library unit
    --  pragmas, these can only validly appear as aspects for library units,
@@ -166,7 +237,7 @@ package Aspects is
 
    type Aspect_Expression is
      (Optional,               -- Optional boolean expression
-      Expression,             -- Required non-boolean expression
+      Expression,             -- Required expression
       Name);                  -- Required name
 
    --  The following array indicates what argument type is required
@@ -175,16 +246,22 @@ package Aspects is
                        (No_Aspect                      => Optional,
                         Aspect_Address                 => Expression,
                         Aspect_Alignment               => Expression,
+                        Aspect_Attach_Handler          => Expression,
                         Aspect_Bit_Order               => Expression,
                         Aspect_Component_Size          => Expression,
                         Aspect_Constant_Indexing       => Name,
+                        Aspect_CPU                     => Expression,
                         Aspect_Default_Component_Value => Expression,
                         Aspect_Default_Iterator        => Name,
                         Aspect_Default_Value           => Expression,
+                        Aspect_Dimension               => Expression,
+                        Aspect_Dimension_System        => Expression,
+                        Aspect_Dispatching_Domain      => Expression,
                         Aspect_Dynamic_Predicate       => Expression,
                         Aspect_External_Tag            => Expression,
                         Aspect_Implicit_Dereference    => Name,
                         Aspect_Input                   => Name,
+                        Aspect_Interrupt_Priority      => Expression,
                         Aspect_Invariant               => Expression,
                         Aspect_Iterator_Element        => Name,
                         Aspect_Machine_Radix           => Expression,
@@ -195,8 +272,10 @@ package Aspects is
                         Aspect_Pre                     => Expression,
                         Aspect_Precondition            => Expression,
                         Aspect_Predicate               => Expression,
+                        Aspect_Priority                => Expression,
                         Aspect_Read                    => Name,
                         Aspect_Size                    => Expression,
+                        Aspect_Small                   => Expression,
                         Aspect_Static_Predicate        => Expression,
                         Aspect_Storage_Pool            => Name,
                         Aspect_Storage_Size            => Expression,
@@ -226,24 +305,34 @@ package Aspects is
      Aspect_Address                      => Name_Address,
      Aspect_Alignment                    => Name_Alignment,
      Aspect_All_Calls_Remote             => Name_All_Calls_Remote,
+     Aspect_Asynchronous                 => Name_Asynchronous,
      Aspect_Atomic                       => Name_Atomic,
      Aspect_Atomic_Components            => Name_Atomic_Components,
+     Aspect_Attach_Handler               => Name_Attach_Handler,
      Aspect_Bit_Order                    => Name_Bit_Order,
      Aspect_Compiler_Unit                => Name_Compiler_Unit,
      Aspect_Component_Size               => Name_Component_Size,
      Aspect_Constant_Indexing            => Name_Constant_Indexing,
+     Aspect_CPU                          => Name_CPU,
      Aspect_Default_Iterator             => Name_Default_Iterator,
      Aspect_Default_Value                => Name_Default_Value,
      Aspect_Default_Component_Value      => Name_Default_Component_Value,
+     Aspect_Dimension                    => Name_Dimension,
+     Aspect_Dimension_System             => Name_Dimension_System,
      Aspect_Discard_Names                => Name_Discard_Names,
+     Aspect_Dispatching_Domain           => Name_Dispatching_Domain,
      Aspect_Dynamic_Predicate            => Name_Dynamic_Predicate,
      Aspect_Elaborate_Body               => Name_Elaborate_Body,
      Aspect_External_Tag                 => Name_External_Tag,
      Aspect_Favor_Top_Level              => Name_Favor_Top_Level,
      Aspect_Implicit_Dereference         => Name_Implicit_Dereference,
+     Aspect_Independent                  => Name_Independent,
+     Aspect_Independent_Components       => Name_Independent_Components,
      Aspect_Inline                       => Name_Inline,
      Aspect_Inline_Always                => Name_Inline_Always,
      Aspect_Input                        => Name_Input,
+     Aspect_Interrupt_Handler            => Name_Interrupt_Handler,
+     Aspect_Interrupt_Priority           => Name_Interrupt_Priority,
      Aspect_Invariant                    => Name_Invariant,
      Aspect_Iterator_Element             => Name_Iterator_Element,
      Aspect_Machine_Radix                => Name_Machine_Radix,
@@ -260,8 +349,10 @@ package Aspects is
      Aspect_Preelaborable_Initialization => Name_Preelaborable_Initialization,
      Aspect_Preelaborate                 => Name_Preelaborate,
      Aspect_Preelaborate_05              => Name_Preelaborate_05,
+     Aspect_Priority                     => Name_Priority,
      Aspect_Pure                         => Name_Pure,
      Aspect_Pure_05                      => Name_Pure_05,
+     Aspect_Pure_12                      => Name_Pure_12,
      Aspect_Pure_Function                => Name_Pure_Function,
      Aspect_Read                         => Name_Read,
      Aspect_Remote_Call_Interface        => Name_Remote_Call_Interface,
@@ -269,6 +360,7 @@ package Aspects is
      Aspect_Shared                       => Name_Shared,
      Aspect_Shared_Passive               => Name_Shared_Passive,
      Aspect_Size                         => Name_Size,
+     Aspect_Small                        => Name_Small,
      Aspect_Static_Predicate             => Name_Static_Predicate,
      Aspect_Storage_Pool                 => Name_Storage_Pool,
      Aspect_Storage_Size                 => Name_Storage_Size,
@@ -338,6 +430,9 @@ package Aspects is
    --  procedure with a node that does not permit aspect specifications, or a
    --  node that has its Has_Aspects flag set True on entry, or with L being an
    --  empty list or No_List.
+
+   function Find_Aspect (Ent : Entity_Id; A : Aspect_Id) return Node_Id;
+   --  Find value of a given aspect from aspect list of entity
 
    procedure Move_Aspects (From : Node_Id; To : Node_Id);
    --  Moves aspects from 'From' node to 'To' node. Has_Aspects (To) must be

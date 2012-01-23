@@ -19,7 +19,7 @@
 
 ;;; Unused letters:
 ;;;     B     H           T  W
-;;;           h jk          v
+;;;           h  k          v
 
 ;; Integer register constraints.
 ;; It is not necessary to define 'r' here.
@@ -87,23 +87,14 @@
 
 ;; We use the Y prefix to denote any number of conditional register sets:
 ;;  z	First SSE register.
-;;  2	SSE2 enabled
 ;;  i	SSE2 inter-unit moves enabled
 ;;  m	MMX inter-unit moves enabled
+;;  p	Integer register when TARGET_PARTIAL_REG_STALL is disabled
 ;;  d	Integer register when integer DFmode moves are enabled
 ;;  x	Integer register when integer XFmode moves are enabled
 
 (define_register_constraint "Yz" "TARGET_SSE ? SSE_FIRST_REG : NO_REGS"
  "First SSE register (@code{%xmm0}).")
-
-(define_register_constraint "Y2" "TARGET_SSE2 ? SSE_REGS : NO_REGS"
- "@internal Any SSE register, when SSE2 is enabled.")
-
-(define_register_constraint "Y3" "TARGET_SSE3 ? SSE_REGS : NO_REGS"
- "@internal Any SSE register, when SSE3 is enabled.")
-
-(define_register_constraint "Y4" "TARGET_SSE4_1 ? SSE_REGS : NO_REGS"
- "@internal Any SSE register, when SSE4_1 is enabled.")
 
 (define_register_constraint "Yi"
  "TARGET_SSE2 && TARGET_INTER_UNIT_MOVES ? SSE_REGS : NO_REGS"
@@ -112,6 +103,10 @@
 (define_register_constraint "Ym"
  "TARGET_MMX && TARGET_INTER_UNIT_MOVES ? MMX_REGS : NO_REGS"
  "@internal Any MMX register, when inter-unit moves are enabled.")
+
+(define_register_constraint "Yp"
+ "TARGET_PARTIAL_REG_STALL ? NO_REGS : GENERAL_REGS"
+ "@internal Any integer register when TARGET_PARTIAL_REG_STALL is disabled.")
 
 (define_register_constraint "Yd"
  "(TARGET_64BIT
@@ -129,8 +124,13 @@
 
 (define_constraint "w"
   "@internal Call memory operand."
-  (and (match_test "!TARGET_X32")
+  (and (not (match_test "TARGET_X32"))
        (match_operand 0 "memory_operand")))
+
+(define_address_constraint "j"
+  "@internal Address operand that can be zero extended in LEA instruction."
+  (and (not (match_code "const_int"))
+       (match_operand 0 "address_operand")))
 
 ;; Integer constant constraints.
 (define_constraint "I"
@@ -149,9 +149,11 @@
        (match_test "IN_RANGE (ival, -128, 127)")))
 
 (define_constraint "L"
-  "@code{0xFF} or @code{0xFFFF}, for andsi as a zero-extending move."
+  "@code{0xFF}, @code{0xFFFF} or @code{0xFFFFFFFF}
+   for AND as a zero-extending move."
   (and (match_code "const_int")
-       (match_test "ival == 0xFF || ival == 0xFFFF")))
+       (match_test "ival == 0xff || ival == 0xffff
+		    || ival == (HOST_WIDE_INT) 0xffffffff")))
 
 (define_constraint "M"
   "0, 1, 2, or 3 (shifts for the @code{lea} instruction)."

@@ -1088,8 +1088,8 @@ package body Clean is
                end if;
             end if;
 
-            if Project.Standalone_Library and then
-              Project.Object_Directory /= No_Path_Information
+            if Project.Standalone_Library /= No
+              and then Project.Object_Directory /= No_Path_Information
             then
                Delete_Binder_Generated_Files
                  (Get_Name_String (Project.Object_Directory.Display_Name),
@@ -1892,6 +1892,8 @@ package body Clean is
          Display_Copyright;
          Put_Line ("Usage: gnatclean [switches] {[-innn] name}");
          New_Line;
+
+         Display_Usage_Version_And_Help;
 
          Put_Line ("  names is one or more file names from which " &
                    "the .adb or .ads suffix may be omitted");

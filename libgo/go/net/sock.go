@@ -2,11 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// +build darwin freebsd linux netbsd openbsd windows
+
 // Sockets
 
 package net
 
 import (
+	"io"
 	"os"
 	"reflect"
 	"syscall"
@@ -21,13 +24,13 @@ func boolint(b bool) int {
 }
 
 // Generic socket creation.
-func socket(net string, f, p, t int, la, ra syscall.Sockaddr, toAddr func(syscall.Sockaddr) Addr) (fd *netFD, err os.Error) {
+func socket(net string, f, p, t int, la, ra syscall.Sockaddr, toAddr func(syscall.Sockaddr) Addr) (fd *netFD, err error) {
 	// See ../syscall/exec.go for description of ForkLock.
 	syscall.ForkLock.RLock()
 	s, e := syscall.Socket(f, p, t)
-	if e != 0 {
+	if err != nil {
 		syscall.ForkLock.RUnlock()
-		return nil, os.Errno(e)
+		return nil, err
 	}
 	syscall.CloseOnExec(s)
 	syscall.ForkLock.RUnlock()
@@ -36,9 +39,9 @@ func socket(net string, f, p, t int, la, ra syscall.Sockaddr, toAddr func(syscal
 
 	if la != nil {
 		e = syscall.Bind(s, la)
-		if e != 0 {
+		if e != nil {
 			closesocket(s)
-			return nil, os.Errno(e)
+			return nil, e
 		}
 	}
 
@@ -49,8 +52,8 @@ func socket(net string, f, p, t int, la, ra syscall.Sockaddr, toAddr func(syscal
 
 	if ra != nil {
 		if err = fd.connect(ra); err != nil {
-			fd.sysfd = -1
 			closesocket(s)
+			fd.Close()
 			return nil, err
 		}
 	}
@@ -64,74 +67,69 @@ func socket(net string, f, p, t int, la, ra syscall.Sockaddr, toAddr func(syscal
 	return fd, nil
 }
 
-func setsockoptInt(fd, level, opt int, value int) os.Error {
-	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(fd, level, opt, value))
+func setsockoptInt(fd *netFD, level, opt int, value int) error {
+	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(fd.sysfd, level, opt, value))
 }
 
-func setsockoptNsec(fd, level, opt int, nsec int64) os.Error {
+func setsockoptNsec(fd *netFD, level, opt int, nsec int64) error {
 	var tv = syscall.NsecToTimeval(nsec)
-	return os.NewSyscallError("setsockopt", syscall.SetsockoptTimeval(fd, level, opt, &tv))
+	return os.NewSyscallError("setsockopt", syscall.SetsockoptTimeval(fd.sysfd, level, opt, &tv))
 }
 
-func setReadBuffer(fd *netFD, bytes int) os.Error {
+func setReadBuffer(fd *netFD, bytes int) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, bytes)
+	return setsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, bytes)
 }
 
-func setWriteBuffer(fd *netFD, bytes int) os.Error {
+func setWriteBuffer(fd *netFD, bytes int) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, bytes)
+	return setsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, bytes)
 }
 
-func setReadTimeout(fd *netFD, nsec int64) os.Error {
+func setReadTimeout(fd *netFD, nsec int64) error {
 	fd.rdeadline_delta = nsec
 	return nil
 }
 
-func setWriteTimeout(fd *netFD, nsec int64) os.Error {
+func setWriteTimeout(fd *netFD, nsec int64) error {
 	fd.wdeadline_delta = nsec
 	return nil
 }
 
-func setTimeout(fd *netFD, nsec int64) os.Error {
+func setTimeout(fd *netFD, nsec int64) error {
 	if e := setReadTimeout(fd, nsec); e != nil {
 		return e
 	}
 	return setWriteTimeout(fd, nsec)
 }
 
-func setReuseAddr(fd *netFD, reuse bool) os.Error {
+func setReuseAddr(fd *netFD, reuse bool) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, boolint(reuse))
+	return setsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, boolint(reuse))
 }
 
-func bindToDevice(fd *netFD, dev string) os.Error {
-	// TODO(rsc): call setsockopt with null-terminated string pointer
-	return os.EINVAL
-}
-
-func setDontRoute(fd *netFD, dontroute bool) os.Error {
+func setDontRoute(fd *netFD, dontroute bool) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.SOL_SOCKET, syscall.SO_DONTROUTE, boolint(dontroute))
+	return setsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_DONTROUTE, boolint(dontroute))
 }
 
-func setKeepAlive(fd *netFD, keepalive bool) os.Error {
+func setKeepAlive(fd *netFD, keepalive bool) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, boolint(keepalive))
+	return setsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, boolint(keepalive))
 }
 
-func setNoDelay(fd *netFD, noDelay bool) os.Error {
+func setNoDelay(fd *netFD, noDelay bool) error {
 	fd.incref()
 	defer fd.decref()
-	return setsockoptInt(fd.sysfd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(noDelay))
+	return setsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(noDelay))
 }
 
-func setLinger(fd *netFD, sec int) os.Error {
+func setLinger(fd *netFD, sec int) error {
 	var l syscall.Linger
 	if sec >= 0 {
 		l.Onoff = 1
@@ -150,19 +148,17 @@ type UnknownSocketError struct {
 	sa syscall.Sockaddr
 }
 
-func (e *UnknownSocketError) String() string {
+func (e *UnknownSocketError) Error() string {
 	return "unknown socket address type " + reflect.TypeOf(e.sa).String()
 }
 
-func sockaddrToString(sa syscall.Sockaddr) (name string, err os.Error) {
-	switch a := sa.(type) {
-	case *syscall.SockaddrInet4:
-		return JoinHostPort(IP(a.Addr[0:]).String(), itoa(a.Port)), nil
-	case *syscall.SockaddrInet6:
-		return JoinHostPort(IP(a.Addr[0:]).String(), itoa(a.Port)), nil
-	case *syscall.SockaddrUnix:
-		return a.Name, nil
-	}
+type writerOnly struct {
+	io.Writer
+}
 
-	return "", &UnknownSocketError{sa}
+// Fallback implementation of io.ReaderFrom's ReadFrom, when sendfile isn't
+// applicable.
+func genericReadFrom(w io.Writer, r io.Reader) (n int64, err error) {
+	// Use wrapper to hide existing r.ReadFrom from io.Copy.
+	return io.Copy(writerOnly{w}, r)
 }

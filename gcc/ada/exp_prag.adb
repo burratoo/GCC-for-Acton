@@ -274,9 +274,16 @@ package body Exp_Prag is
 
    procedure Expand_Pragma_Check (N : Node_Id) is
       Cond : constant Node_Id    := Arg2 (N);
-      Loc  : constant Source_Ptr := Sloc (Cond);
       Nam  : constant Name_Id    := Chars (Arg1 (N));
       Msg  : Node_Id;
+
+      Loc  : constant Source_Ptr := Sloc (First_Node (Cond));
+      --  Source location used in the case of a failed assertion. Note that
+      --  the source location of the expression is not usually the best choice
+      --  here. For example, it gets located on the last AND keyword in a
+      --  chain of boolean expressiond AND'ed together. It is best to put the
+      --  message on the first character of the assertion, which is the effect
+      --  of the First_Node call here.
 
    begin
       --  We already know that this check is enabled, because otherwise the
@@ -324,15 +331,6 @@ package body Exp_Prag is
       --  Generate the appropriate if statement. Note that we consider this to
       --  be an explicit conditional in the source, not an implicit if, so we
       --  do not call Make_Implicit_If_Statement.
-
-      --  In formal verification mode, we keep the pragma check in the code,
-      --  and its enclosed expression is not expanded. This requires that no
-      --  transient scope is introduced for pragma check in this mode in
-      --  Exp_Ch7.Establish_Transient_Scope.
-
-      if ALFA_Mode then
-         return;
-      end if;
 
       --  Case where we generate a direct raise
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -32,8 +32,9 @@
 ------------------------------------------------------------------------------
 
 private with Ada.Containers.Hash_Tables;
-private with Ada.Streams;
 private with Ada.Finalization;
+with Ada.Streams; use Ada.Streams;
+with Ada.Iterator_Interfaces;
 
 generic
    type Key_Type (<>) is private;
@@ -47,19 +48,30 @@ package Ada.Containers.Indefinite_Hashed_Maps is
    pragma Preelaborate;
    pragma Remote_Types;
 
-   type Map is tagged private;
+   type Map is tagged private with
+      Constant_Indexing => Constant_Reference,
+      Variable_Indexing => Reference,
+      Default_Iterator  => Iterate,
+      Iterator_Element  => Element_Type;
+
    pragma Preelaborable_Initialization (Map);
 
    type Cursor is private;
    pragma Preelaborable_Initialization (Cursor);
 
-   Empty_Map  : constant Map;
+   Empty_Map : constant Map;
    --  Map objects declared without an initialization expression are
    --  initialized to the value Empty_Map.
 
    No_Element : constant Cursor;
    --  Cursor objects declared without an initialization expression are
    --  initialized to the value No_Element.
+
+   function Has_Element (Position : Cursor) return Boolean;
+   --  Equivalent to Position /= No_Element
+
+   package Map_Iterator_Interfaces is new
+     Ada.Iterator_Interfaces (Cursor, Has_Element);
 
    overriding function "=" (Left, Right : Map) return Boolean;
    --  For each key/element pair in Left, equality attempts to find the key in
@@ -121,6 +133,59 @@ package Ada.Containers.Indefinite_Hashed_Maps is
                                              Element : in out Element_Type));
    --  Calls Process with the key (with only a constant view) and element (with
    --  a variable view) of the node designed by the cursor.
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type);
+
+   for Constant_Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type);
+
+   for Constant_Reference_Type'Read use Read;
+
+   type Reference_Type (Element : not null access Element_Type) is private
+   with
+      Implicit_Dereference => Element;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type);
+
+   for Reference_Type'Write use Write;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type);
+
+   for Reference_Type'Read use Read;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Position  : Cursor) return Constant_Reference_Type;
+
+   function Reference
+     (Container : aliased in out Map;
+      Position  : Cursor) return Reference_Type;
+
+   function Constant_Reference
+     (Container : aliased Map;
+      Key       : Key_Type) return Constant_Reference_Type;
+
+   function Reference
+     (Container : aliased in out Map;
+      Key       : Key_Type) return Reference_Type;
+
+   procedure Assign (Target : in out Map; Source : Map);
+
+   function Copy (Source : Map; Capacity : Count_Type := 0) return Map;
 
    procedure Move (Target : in out Map; Source : in out Map);
    --  Clears Target (if it's not empty), and then moves (not copies) the
@@ -227,9 +292,6 @@ package Ada.Containers.Indefinite_Hashed_Maps is
    function Element (Container : Map; Key : Key_Type) return Element_Type;
    --  Equivalent to Element (Find (Container, Key))
 
-   function Has_Element (Position : Cursor) return Boolean;
-   --  Equivalent to Position /= No_Element
-
    function Equivalent_Keys (Left, Right : Cursor) return Boolean;
    --  Returns the result of calling Equivalent_Keys with the keys of the nodes
    --  designated by cursors Left and Right.
@@ -246,6 +308,9 @@ package Ada.Containers.Indefinite_Hashed_Maps is
      (Container : Map;
       Process   : not null access procedure (Position : Cursor));
    --  Calls Process for each node in the map
+
+   function Iterate (Container : Map)
+      return Map_Iterator_Interfaces.Forward_Iterator'class;
 
 private
    pragma Inline ("=");
@@ -283,13 +348,11 @@ private
 
    use HT_Types;
    use Ada.Finalization;
-   use Ada.Streams;
 
-   overriding procedure Adjust (Container : in out Map);
-
+   overriding procedure Adjust   (Container : in out Map);
    overriding procedure Finalize (Container : in out Map);
 
-   type Map_Access is access constant Map;
+   type Map_Access is access all Map;
    for Map_Access'Storage_Size use 0;
 
    type Cursor is record
@@ -302,6 +365,12 @@ private
       Item   : Cursor);
 
    for Cursor'Write use Write;
+
+   type Constant_Reference_Type
+      (Element : not null access constant Element_Type) is null record;
+
+   type Reference_Type
+      (Element : not null access Element_Type) is null record;
 
    procedure Read
      (Stream : not null access Root_Stream_Type'Class;

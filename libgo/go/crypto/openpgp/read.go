@@ -8,13 +8,11 @@ package openpgp
 import (
 	"crypto"
 	"crypto/openpgp/armor"
-	"crypto/openpgp/error"
+	error_ "crypto/openpgp/error"
 	"crypto/openpgp/packet"
-	"crypto/rsa"
 	_ "crypto/sha256"
 	"hash"
 	"io"
-	"os"
 	"strconv"
 )
 
@@ -22,14 +20,14 @@ import (
 var SignatureType = "PGP SIGNATURE"
 
 // readArmored reads an armored block with the given type.
-func readArmored(r io.Reader, expectedType string) (body io.Reader, err os.Error) {
+func readArmored(r io.Reader, expectedType string) (body io.Reader, err error) {
 	block, err := armor.Decode(r)
 	if err != nil {
 		return
 	}
 
 	if block.Type != expectedType {
-		return nil, error.InvalidArgumentError("expected '" + expectedType + "', got: " + block.Type)
+		return nil, error_.InvalidArgumentError("expected '" + expectedType + "', got: " + block.Type)
 	}
 
 	return block.Body, nil
@@ -44,7 +42,7 @@ type MessageDetails struct {
 	DecryptedWith            Key                 // the private key used to decrypt the message, if any.
 	IsSigned                 bool                // true if the message is signed.
 	SignedByKeyId            uint64              // the key id of the signer, if any.
-	SignedBy                 *Key                // the key of the signer, if availible.
+	SignedBy                 *Key                // the key of the signer, if available.
 	LiteralData              *packet.LiteralData // the metadata of the contents
 	UnverifiedBody           io.Reader           // the contents of the message.
 
@@ -57,8 +55,7 @@ type MessageDetails struct {
 	// been consumed. Once EOF has been seen, the following fields are
 	// valid. (An authentication code failure is reported as a
 	// SignatureError error when reading from UnverifiedBody.)
-
-	SignatureError os.Error          // nil if the signature is good.
+	SignatureError error             // nil if the signature is good.
 	Signature      *packet.Signature // the signature packet itself.
 
 	decrypted io.ReadCloser
@@ -71,7 +68,7 @@ type MessageDetails struct {
 // passphrase to try. If the decrypted private key or given passphrase isn't
 // correct, the function will be called again, forever. Any error returned will
 // be passed up.
-type PromptFunction func(keys []Key, symmetric bool) ([]byte, os.Error)
+type PromptFunction func(keys []Key, symmetric bool) ([]byte, error)
 
 // A keyEnvelopePair is used to store a private key with the envelope that
 // contains a symmetric key, encrypted with that key.
@@ -83,7 +80,7 @@ type keyEnvelopePair struct {
 // ReadMessage parses an OpenPGP message that may be signed and/or encrypted.
 // The given KeyRing should contain both public keys (for signature
 // verification) and, possibly encrypted, private keys for decrypting.
-func ReadMessage(r io.Reader, keyring KeyRing, prompt PromptFunction) (md *MessageDetails, err os.Error) {
+func ReadMessage(r io.Reader, keyring KeyRing, prompt PromptFunction) (md *MessageDetails, err error) {
 	var p packet.Packet
 
 	var symKeys []*packet.SymmetricKeyEncrypted
@@ -112,7 +109,10 @@ ParsePackets:
 		case *packet.EncryptedKey:
 			// This packet contains the decryption key encrypted to a public key.
 			md.EncryptedToKeyIds = append(md.EncryptedToKeyIds, p.KeyId)
-			if p.Algo != packet.PubKeyAlgoRSA && p.Algo != packet.PubKeyAlgoRSAEncryptOnly {
+			switch p.Algo {
+			case packet.PubKeyAlgoRSA, packet.PubKeyAlgoRSAEncryptOnly, packet.PubKeyAlgoElGamal:
+				break
+			default:
 				continue
 			}
 			var keys []Key
@@ -130,7 +130,7 @@ ParsePackets:
 		case *packet.Compressed, *packet.LiteralData, *packet.OnePassSignature:
 			// This message isn't encrypted.
 			if len(symKeys) != 0 || len(pubKeys) != 0 {
-				return nil, error.StructuralError("key material not followed by encrypted message")
+				return nil, error_.StructuralError("key material not followed by encrypted message")
 			}
 			packets.Unread(p)
 			return readSignedMessage(packets, nil, keyring)
@@ -145,7 +145,7 @@ ParsePackets:
 	// function so that it can decrypt a key or give us a passphrase.
 FindKey:
 	for {
-		// See if any of the keys already have a private key availible
+		// See if any of the keys already have a private key available
 		candidates = candidates[:0]
 		candidateFingerprints := make(map[string]bool)
 
@@ -155,13 +155,13 @@ FindKey:
 			}
 			if !pk.key.PrivateKey.Encrypted {
 				if len(pk.encryptedKey.Key) == 0 {
-					pk.encryptedKey.DecryptRSA(pk.key.PrivateKey.PrivateKey.(*rsa.PrivateKey))
+					pk.encryptedKey.Decrypt(pk.key.PrivateKey)
 				}
 				if len(pk.encryptedKey.Key) == 0 {
 					continue
 				}
 				decrypted, err = se.Decrypt(pk.encryptedKey.CipherFunc, pk.encryptedKey.Key)
-				if err != nil && err != error.KeyIncorrectError {
+				if err != nil && err != error_.KeyIncorrectError {
 					return nil, err
 				}
 				if decrypted != nil {
@@ -179,11 +179,11 @@ FindKey:
 		}
 
 		if len(candidates) == 0 && len(symKeys) == 0 {
-			return nil, error.KeyIncorrectError
+			return nil, error_.KeyIncorrectError
 		}
 
 		if prompt == nil {
-			return nil, error.KeyIncorrectError
+			return nil, error_.KeyIncorrectError
 		}
 
 		passphrase, err := prompt(candidates, len(symKeys) != 0)
@@ -197,7 +197,7 @@ FindKey:
 				err = s.Decrypt(passphrase)
 				if err == nil && !s.Encrypted {
 					decrypted, err = se.Decrypt(s.CipherFunc, s.Key)
-					if err != nil && err != error.KeyIncorrectError {
+					if err != nil && err != error_.KeyIncorrectError {
 						return nil, err
 					}
 					if decrypted != nil {
@@ -214,10 +214,10 @@ FindKey:
 	return readSignedMessage(packets, md, keyring)
 }
 
-// readSignedMessage reads a possibily signed message if mdin is non-zero then
+// readSignedMessage reads a possibly signed message if mdin is non-zero then
 // that structure is updated and returned. Otherwise a fresh MessageDetails is
 // used.
-func readSignedMessage(packets *packet.Reader, mdin *MessageDetails, keyring KeyRing) (md *MessageDetails, err os.Error) {
+func readSignedMessage(packets *packet.Reader, mdin *MessageDetails, keyring KeyRing) (md *MessageDetails, err error) {
 	if mdin == nil {
 		mdin = new(MessageDetails)
 	}
@@ -237,7 +237,7 @@ FindLiteralData:
 			packets.Push(p.Body)
 		case *packet.OnePassSignature:
 			if !p.IsLast {
-				return nil, error.UnsupportedError("nested signatures")
+				return nil, error_.UnsupportedError("nested signatures")
 			}
 
 			h, wrappedHash, err = hashForSignature(p.Hash, p.SigType)
@@ -249,11 +249,12 @@ FindLiteralData:
 			md.IsSigned = true
 			md.SignedByKeyId = p.KeyId
 			keys := keyring.KeysById(p.KeyId)
-			for _, key := range keys {
+			for i, key := range keys {
 				if key.SelfSignature.FlagsValid && !key.SelfSignature.FlagSign {
 					continue
 				}
-				md.SignedBy = &key
+				md.SignedBy = &keys[i]
+				break
 			}
 		case *packet.LiteralData:
 			md.LiteralData = p
@@ -274,13 +275,13 @@ FindLiteralData:
 
 // hashForSignature returns a pair of hashes that can be used to verify a
 // signature. The signature may specify that the contents of the signed message
-// should be preprocessed (i.e. to normalise line endings). Thus this function
+// should be preprocessed (i.e. to normalize line endings). Thus this function
 // returns two hashes. The second should be used to hash the message itself and
 // performs any needed preprocessing.
-func hashForSignature(hashId crypto.Hash, sigType packet.SignatureType) (hash.Hash, hash.Hash, os.Error) {
+func hashForSignature(hashId crypto.Hash, sigType packet.SignatureType) (hash.Hash, hash.Hash, error) {
 	h := hashId.New()
 	if h == nil {
-		return nil, nil, error.UnsupportedError("hash not availible: " + strconv.Itoa(int(hashId)))
+		return nil, nil, error_.UnsupportedError("hash not available: " + strconv.Itoa(int(hashId)))
 	}
 
 	switch sigType {
@@ -290,7 +291,7 @@ func hashForSignature(hashId crypto.Hash, sigType packet.SignatureType) (hash.Ha
 		return h, NewCanonicalTextHash(h), nil
 	}
 
-	return nil, nil, error.UnsupportedError("unsupported signature type: " + strconv.Itoa(int(sigType)))
+	return nil, nil, error_.UnsupportedError("unsupported signature type: " + strconv.Itoa(int(sigType)))
 }
 
 // checkReader wraps an io.Reader from a LiteralData packet. When it sees EOF
@@ -300,9 +301,9 @@ type checkReader struct {
 	md *MessageDetails
 }
 
-func (cr checkReader) Read(buf []byte) (n int, err os.Error) {
+func (cr checkReader) Read(buf []byte) (n int, err error) {
 	n, err = cr.md.LiteralData.Body.Read(buf)
-	if err == os.EOF {
+	if err == io.EOF {
 		mdcErr := cr.md.decrypted.Close()
 		if mdcErr != nil {
 			err = mdcErr
@@ -320,10 +321,10 @@ type signatureCheckReader struct {
 	md             *MessageDetails
 }
 
-func (scr *signatureCheckReader) Read(buf []byte) (n int, err os.Error) {
+func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 	n, err = scr.md.LiteralData.Body.Read(buf)
 	scr.wrappedHash.Write(buf[:n])
-	if err == os.EOF {
+	if err == io.EOF {
 		var p packet.Packet
 		p, scr.md.SignatureError = scr.packets.Next()
 		if scr.md.SignatureError != nil {
@@ -332,7 +333,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err os.Error) {
 
 		var ok bool
 		if scr.md.Signature, ok = p.(*packet.Signature); !ok {
-			scr.md.SignatureError = error.StructuralError("LiteralData not followed by Signature")
+			scr.md.SignatureError = error_.StructuralError("LiteralData not followed by Signature")
 			return
 		}
 
@@ -354,7 +355,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err os.Error) {
 // CheckDetachedSignature takes a signed file and a detached signature and
 // returns the signer if the signature is valid. If the signer isn't know,
 // UnknownIssuerError is returned.
-func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signer *Entity, err os.Error) {
+func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signer *Entity, err error) {
 	p, err := packet.Read(signature)
 	if err != nil {
 		return
@@ -362,16 +363,16 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 
 	sig, ok := p.(*packet.Signature)
 	if !ok {
-		return nil, error.StructuralError("non signature packet found")
+		return nil, error_.StructuralError("non signature packet found")
 	}
 
 	if sig.IssuerKeyId == nil {
-		return nil, error.StructuralError("signature doesn't have an issuer")
+		return nil, error_.StructuralError("signature doesn't have an issuer")
 	}
 
 	keys := keyring.KeysById(*sig.IssuerKeyId)
 	if len(keys) == 0 {
-		return nil, error.UnknownIssuerError
+		return nil, error_.UnknownIssuerError
 	}
 
 	h, wrappedHash, err := hashForSignature(sig.Hash, sig.SigType)
@@ -380,7 +381,7 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 	}
 
 	_, err = io.Copy(wrappedHash, signed)
-	if err != nil && err != os.EOF {
+	if err != nil && err != io.EOF {
 		return
 	}
 
@@ -398,12 +399,12 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 		return
 	}
 
-	return nil, error.UnknownIssuerError
+	return nil, error_.UnknownIssuerError
 }
 
 // CheckArmoredDetachedSignature performs the same actions as
 // CheckDetachedSignature but expects the signature to be armored.
-func CheckArmoredDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signer *Entity, err os.Error) {
+func CheckArmoredDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signer *Entity, err error) {
 	body, err := readArmored(signature, SignatureType)
 	if err != nil {
 		return

@@ -93,6 +93,71 @@ lto_obj_create_section_hash_table (void)
   return htab_create (37, hash_name, eq_name, free_with_string);
 }
 
+/* Delete an allocated integer KEY in the splay tree.  */
+
+static void
+lto_splay_tree_delete_id (splay_tree_key key)
+{
+  free ((void *) key);
+}
+
+/* Compare splay tree node ids A and B.  */
+
+static int
+lto_splay_tree_compare_ids (splay_tree_key a, splay_tree_key b)
+{
+  unsigned HOST_WIDE_INT ai;
+  unsigned HOST_WIDE_INT bi;
+
+  ai = *(unsigned HOST_WIDE_INT *) a;
+  bi = *(unsigned HOST_WIDE_INT *) b;
+
+  if (ai < bi)
+    return -1;
+  else if (ai > bi)
+    return 1;
+  return 0;
+}
+
+/* Look up splay tree node by ID in splay tree T.  */
+
+static splay_tree_node
+lto_splay_tree_lookup (splay_tree t, unsigned HOST_WIDE_INT id)
+{
+  return splay_tree_lookup (t, (splay_tree_key) &id);
+}
+
+/* Check if KEY has ID.  */
+
+static bool
+lto_splay_tree_id_equal_p (splay_tree_key key, unsigned HOST_WIDE_INT id)
+{
+  return *(unsigned HOST_WIDE_INT *) key == id;
+}
+
+/* Insert a splay tree node into tree T with ID as key and FILE_DATA as value. 
+   The ID is allocated separately because we need HOST_WIDE_INTs which may
+   be wider than a splay_tree_key. */
+
+static void
+lto_splay_tree_insert (splay_tree t, unsigned HOST_WIDE_INT id,
+		       struct lto_file_decl_data *file_data)
+{
+  unsigned HOST_WIDE_INT *idp = XCNEW (unsigned HOST_WIDE_INT);
+  *idp = id;
+  splay_tree_insert (t, (splay_tree_key) idp, (splay_tree_value) file_data);
+}
+
+/* Create a splay tree.  */
+
+static splay_tree
+lto_splay_tree_new (void)
+{
+  return splay_tree_new (lto_splay_tree_compare_ids,
+	 	         lto_splay_tree_delete_id,
+			 NULL);
+}
+
 /* Read the constructors and inits.  */
 
 static void
@@ -202,9 +267,9 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
   uint32_t ix;
   tree decl;
   uint32_t i, j;
-  
+
   ix = *data++;
-  decl = lto_streamer_cache_get (data_in->reader_cache, ix);
+  decl = streamer_tree_cache_get (data_in->reader_cache, ix);
   if (TREE_CODE (decl) != FUNCTION_DECL)
     {
       gcc_assert (decl == void_type_node);
@@ -218,7 +283,7 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
       tree *decls = ggc_alloc_vec_tree (size);
 
       for (j = 0; j < size; j++)
-	decls[j] = lto_streamer_cache_get (data_in->reader_cache, data[j]);
+	decls[j] = streamer_tree_cache_get (data_in->reader_cache, data[j]);
 
       state->streams[i].size = size;
       state->streams[i].trees = decls;
@@ -241,13 +306,16 @@ remember_with_vars (tree t)
   *(tree *) htab_find_slot (tree_with_vars, t, INSERT) = t;
 }
 
+#define GIMPLE_REGISTER_TYPE(tt) \
+   (TREE_VISITED (tt) ? gimple_register_type (tt) : tt)
+
 #define LTO_FIXUP_TREE(tt) \
   do \
     { \
       if (tt) \
 	{ \
 	  if (TYPE_P (tt)) \
-	    (tt) = gimple_register_type (tt); \
+	    (tt) = GIMPLE_REGISTER_TYPE (tt); \
 	  if (VAR_OR_FUNCTION_DECL_P (tt) && TREE_PUBLIC (tt)) \
 	    remember_with_vars (t); \
 	} \
@@ -316,6 +384,13 @@ lto_ft_decl_non_common (tree t)
   LTO_FIXUP_TREE (DECL_ARGUMENT_FLD (t));
   LTO_FIXUP_TREE (DECL_RESULT_FLD (t));
   LTO_FIXUP_TREE (DECL_VINDEX (t));
+  /* The C frontends may create exact duplicates for DECL_ORIGINAL_TYPE
+     like for 'typedef enum foo foo'.  We have no way of avoiding to
+     merge them and dwarf2out.c cannot deal with this,
+     so fix this up by clearing DECL_ORIGINAL_TYPE in this case.  */
+  if (TREE_CODE (t) == TYPE_DECL
+      && DECL_ORIGINAL_TYPE (t) == TREE_TYPE (t))
+    DECL_ORIGINAL_TYPE (t) = NULL_TREE;
 }
 
 /* Fix up fields of a decl_non_common T.  */
@@ -563,7 +638,7 @@ lto_register_var_decl_in_symtab (struct data_in *data_in, tree decl)
   if (TREE_PUBLIC (decl))
     {
       unsigned ix;
-      if (!lto_streamer_cache_lookup (data_in->reader_cache, decl, &ix))
+      if (!streamer_tree_cache_lookup (data_in->reader_cache, decl, &ix))
 	gcc_unreachable ();
       lto_symtab_register_decl (decl, get_resolution (data_in, ix),
 				data_in->file_data);
@@ -629,7 +704,7 @@ lto_register_function_decl_in_symtab (struct data_in *data_in, tree decl)
   if (TREE_PUBLIC (decl) && !DECL_ABSTRACT (decl))
     {
       unsigned ix;
-      if (!lto_streamer_cache_lookup (data_in->reader_cache, decl, &ix))
+      if (!streamer_tree_cache_lookup (data_in->reader_cache, decl, &ix))
 	gcc_unreachable ();
       lto_symtab_register_decl (decl, get_resolution (data_in, ix),
 				data_in->file_data);
@@ -645,7 +720,7 @@ lto_register_function_decl_in_symtab (struct data_in *data_in, tree decl)
 static void
 uniquify_nodes (struct data_in *data_in, unsigned from)
 {
-  struct lto_streamer_cache_d *cache = data_in->reader_cache;
+  struct streamer_tree_cache_d *cache = data_in->reader_cache;
   unsigned len = VEC_length (tree, cache->nodes);
   unsigned i;
 
@@ -659,7 +734,14 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
     {
       tree t = VEC_index (tree, cache->nodes, i);
       if (t && TYPE_P (t))
-	gimple_register_type (t);
+	{
+	  tree newt = gimple_register_type (t);
+	  /* Mark non-prevailing types so we fix them up.  No need
+	     to reset that flag afterwards - nothing that refers
+	     to those types is left and they are collected.  */
+	  if (newt != t)
+	    TREE_VISITED (t) = 1;
+	}
     }
 
   /* Second fixup all trees in the new cache entries.  */
@@ -677,7 +759,7 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 	continue;
 
       /* Now try to find a canonical variant of T itself.  */
-      t = gimple_register_type (t);
+      t = GIMPLE_REGISTER_TYPE (t);
 
       if (t == oldt)
 	{
@@ -699,7 +781,7 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 	    }
 
 	  /* Query our new main variant.  */
-	  mv = gimple_register_type (TYPE_MAIN_VARIANT (t));
+	  mv = GIMPLE_REGISTER_TYPE (TYPE_MAIN_VARIANT (t));
 
 	  /* If we were the variant leader and we get replaced ourselves drop
 	     all variants from our list.  */
@@ -721,6 +803,8 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 	    {
 	      TYPE_NEXT_VARIANT (t) = TYPE_NEXT_VARIANT (mv);
 	      TYPE_NEXT_VARIANT (mv) = t;
+	      if (RECORD_OR_UNION_TYPE_P (t))
+		TYPE_BINFO (t) = TYPE_BINFO (mv);
 	    }
 
 	  /* Finally adjust our main variant and fix it up.  */
@@ -754,7 +838,7 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 		  {
 		    unsigned ix;
 		    gcc_assert (f1 != f2 && DECL_NAME (f1) == DECL_NAME (f2));
-		    if (!lto_streamer_cache_lookup (cache, f2, &ix))
+		    if (!streamer_tree_cache_lookup (cache, f2, &ix))
 		      gcc_unreachable ();
 		    /* If we're going to replace an element which we'd
 		       still visit in the next iterations, we wouldn't
@@ -770,14 +854,14 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 		       operand handling.  */
 		    if (ix < i)
 		      lto_fixup_types (f2);
-		    lto_streamer_cache_insert_at (cache, f1, ix);
+		    streamer_tree_cache_insert_at (cache, f1, ix);
 		  }
 	    }
 
 	  /* If we found a tree that is equal to oldt replace it in the
 	     cache, so that further users (in the various LTO sections)
 	     make use of it.  */
-	  lto_streamer_cache_insert_at (cache, t, i);
+	  streamer_tree_cache_insert_at (cache, t, i);
 	}
     }
 
@@ -797,6 +881,9 @@ uniquify_nodes (struct data_in *data_in, unsigned from)
 	lto_register_var_decl_in_symtab (data_in, t);
       else if (TREE_CODE (t) == FUNCTION_DECL && !DECL_BUILT_IN (t))
 	lto_register_function_decl_in_symtab (data_in, t);
+      else if (!flag_wpa
+	       && TREE_CODE (t) == TYPE_DECL)
+	debug_hooks->type_decl (t, !DECL_FILE_SCOPE_P (t));
       else if (TYPE_P (t) && !TYPE_CANONICAL (t))
 	TYPE_CANONICAL (t) = gimple_register_canonical_type (t);
     }
@@ -812,9 +899,9 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 		VEC(ld_plugin_symbol_resolution_t,heap) *resolutions)
 {
   const struct lto_decl_header *header = (const struct lto_decl_header *) data;
-  const int32_t decl_offset = sizeof (struct lto_decl_header);
-  const int32_t main_offset = decl_offset + header->decl_state_size;
-  const int32_t string_offset = main_offset + header->main_size;
+  const int decl_offset = sizeof (struct lto_decl_header);
+  const int main_offset = decl_offset + header->decl_state_size;
+  const int string_offset = main_offset + header->main_size;
   struct lto_input_block ib_main;
   struct data_in *data_in;
   unsigned int i;
@@ -827,12 +914,15 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
   data_in = lto_data_in_create (decl_data, (const char *) data + string_offset,
 				header->string_size, resolutions);
 
+  /* We do not uniquify the pre-loaded cache entries, those are middle-end
+     internal types that should not be merged.  */
+
   /* Read the global declarations and types.  */
   while (ib_main.p < ib_main.len)
     {
       tree t;
       unsigned from = VEC_length (tree, data_in->reader_cache->nodes);
-      t = lto_input_tree (&ib_main, data_in);
+      t = stream_read_tree (&ib_main, data_in);
       gcc_assert (t && ib_main.p <= ib_main.len);
       uniquify_nodes (data_in, from);
     }
@@ -865,17 +955,20 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 
   if (data_ptr != data_end)
     internal_error ("bytecode stream: garbage at the end of symbols section");
-  
+
   /* Set the current decl state to be the global state. */
   decl_data->current_decl_state = decl_data->global_decl_state;
 
   lto_data_in_delete (data_in);
 }
 
-/* strtoll is not portable. */
-int64_t
-lto_parse_hex (const char *p) {
-  uint64_t ret = 0;
+/* Custom version of strtoll, which is not portable.  */
+
+static HOST_WIDEST_INT
+lto_parse_hex (const char *p)
+{
+  HOST_WIDEST_INT ret = 0;
+
   for (; *p != '\0'; ++p)
     {
       char c = *p;
@@ -891,6 +984,7 @@ lto_parse_hex (const char *p) {
         internal_error ("could not parse hex number");
       ret |= part;
     }
+
   return ret;
 }
 
@@ -926,7 +1020,7 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
     {
       int t;
       char offset_p[17];
-      int64_t offset;
+      HOST_WIDEST_INT offset;
       t = fscanf (resolution, "@0x%16s", offset_p);
       if (t != 1)
         internal_error ("could not parse file offset");
@@ -942,14 +1036,16 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
   for (i = 0; i < num_symbols; i++)
     {
       int t;
-      unsigned index, id;
+      unsigned index;
+      unsigned HOST_WIDE_INT id;
       char r_str[27];
       enum ld_plugin_symbol_resolution r = (enum ld_plugin_symbol_resolution) 0;
       unsigned int j;
       unsigned int lto_resolution_str_len =
 	sizeof (lto_resolution_str) / sizeof (char *);
 
-      t = fscanf (resolution, "%u %x %26s %*[^\n]\n", &index, &id, r_str);
+      t = fscanf (resolution, "%u " HOST_WIDE_INT_PRINT_HEX_PURE " %26s %*[^\n]\n", 
+		  &index, &id, r_str);
       if (t != 3)
         internal_error ("invalid line in the resolution file");
       if (index > max_index)
@@ -966,17 +1062,15 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
       if (j == lto_resolution_str_len)
 	internal_error ("invalid resolution in the resolution file");
 
-      if (!(nd && nd->key == id))
+      if (!(nd && lto_splay_tree_id_equal_p (nd->key, id)))
 	{
-	  nd = splay_tree_lookup (file_ids, id);
+	  nd = lto_splay_tree_lookup (file_ids, id);
 	  if (nd == NULL)
-	    internal_error ("resolution sub id %x not in object file", id);
+	    internal_error ("resolution sub id " HOST_WIDE_INT_PRINT_HEX_PURE
+			    " not in object file", id);
 	}
 
       file_data = (struct lto_file_decl_data *)nd->value;
-      if (cgraph_dump_file)
-	fprintf (cgraph_dump_file, "Adding resolution %u %u to id %x\n",
-		 index, r, file_data->id);
       VEC_safe_grow_cleared (ld_plugin_symbol_resolution_t, heap, 
 			     file_data->resolutions,
 			     max_index + 1);
@@ -985,28 +1079,33 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
     }
 }
 
+/* List of file_decl_datas */
+struct file_data_list
+  {
+    struct lto_file_decl_data *first, *last;
+  };
+
 /* Is the name for a id'ed LTO section? */
 
 static int 
-lto_section_with_id (const char *name, unsigned *id)
+lto_section_with_id (const char *name, unsigned HOST_WIDE_INT *id)
 {
   const char *s;
 
   if (strncmp (name, LTO_SECTION_NAME_PREFIX, strlen (LTO_SECTION_NAME_PREFIX)))
     return 0;
   s = strrchr (name, '.');
-  return s && sscanf (s, ".%x", id) == 1;
+  return s && sscanf (s, "." HOST_WIDE_INT_PRINT_HEX_PURE, id) == 1;
 }
 
 /* Create file_data of each sub file id */
 
 static int 
-create_subid_section_table (void **slot, void *data)
+create_subid_section_table (struct lto_section_slot *ls, splay_tree file_ids,
+                            struct file_data_list *list)
 {
   struct lto_section_slot s_slot, *new_slot;
-  struct lto_section_slot *ls = *(struct lto_section_slot **)slot;
-  splay_tree file_ids = (splay_tree)data;
-  unsigned id;
+  unsigned HOST_WIDE_INT id;
   splay_tree_node nd;
   void **hash_slot;
   char *new_name;
@@ -1016,7 +1115,7 @@ create_subid_section_table (void **slot, void *data)
     return 1;
   
   /* Find hash table of sub module id */
-  nd = splay_tree_lookup (file_ids, id);
+  nd = lto_splay_tree_lookup (file_ids, id);
   if (nd != NULL)
     {
       file_data = (struct lto_file_decl_data *)nd->value;
@@ -1027,7 +1126,14 @@ create_subid_section_table (void **slot, void *data)
       memset(file_data, 0, sizeof (struct lto_file_decl_data));
       file_data->id = id;
       file_data->section_hash_table = lto_obj_create_section_hash_table ();;
-      splay_tree_insert (file_ids, id, (splay_tree_value)file_data);
+      lto_splay_tree_insert (file_ids, id, file_data);
+
+      /* Maintain list in linker order */
+      if (!list->first)
+        list->first = file_data;
+      if (list->last)
+        list->last->next = file_data;
+      list->last = file_data;
     }
 
   /* Copy section into sub module hash table */
@@ -1062,27 +1168,17 @@ lto_file_finalize (struct lto_file_decl_data *file_data, lto_file *file)
   lto_free_section_data (file_data, LTO_section_decls, NULL, data, len);
 }
 
-struct lwstate
+/* Finalize FILE_DATA in FILE and increase COUNT. */
+
+static int 
+lto_create_files_from_ids (lto_file *file, struct lto_file_decl_data *file_data, 
+			   int *count)
 {
-  lto_file *file;
-  struct lto_file_decl_data **file_data;
-  int *count;
-};
-
-/* Traverse ids and create a list of file_datas out of it. */      
-
-static int lto_create_files_from_ids (splay_tree_node node, void *data)
-{
-  struct lwstate *lw = (struct lwstate *)data;
-  struct lto_file_decl_data *file_data = (struct lto_file_decl_data *)node->value;
-
-  lto_file_finalize (file_data, lw->file);
+  lto_file_finalize (file_data, file);
   if (cgraph_dump_file)
-    fprintf (cgraph_dump_file, "Creating file %s with sub id %x\n", 
+    fprintf (cgraph_dump_file, "Creating file %s with sub id " HOST_WIDE_INT_PRINT_HEX "\n", 
 	     file_data->file_name, file_data->id);
-  file_data->next = *lw->file_data;
-  *lw->file_data = file_data;
-  (*lw->count)++;
+  (*count)++;
   return 0;
 }
 
@@ -1099,29 +1195,31 @@ lto_file_read (lto_file *file, FILE *resolution_file, int *count)
   struct lto_file_decl_data *file_data = NULL;
   splay_tree file_ids;
   htab_t section_hash_table;
-  struct lwstate state;
-  
-  section_hash_table = lto_obj_build_section_table (file);
+  struct lto_section_slot *section;
+  struct file_data_list file_list;
+  struct lto_section_list section_list;
+ 
+  memset (&section_list, 0, sizeof (struct lto_section_list)); 
+  section_hash_table = lto_obj_build_section_table (file, &section_list);
 
   /* Find all sub modules in the object and put their sections into new hash
      tables in a splay tree. */
-  file_ids = splay_tree_new (splay_tree_compare_ints, NULL, NULL);
-  htab_traverse (section_hash_table, create_subid_section_table, file_ids);
-  
+  file_ids = lto_splay_tree_new ();
+  memset (&file_list, 0, sizeof (struct file_data_list));
+  for (section = section_list.first; section != NULL; section = section->next)
+    create_subid_section_table (section, file_ids, &file_list);
+
   /* Add resolutions to file ids */
   lto_resolution_read (file_ids, resolution_file, file);
 
-  /* Finalize each lto file for each submodule in the merged object
-     and create list for returning. */
-  state.file = file;
-  state.file_data = &file_data;
-  state.count = count;
-  splay_tree_foreach (file_ids, lto_create_files_from_ids, &state);
-    
+  /* Finalize each lto file for each submodule in the merged object */
+  for (file_data = file_list.first; file_data != NULL; file_data = file_data->next)
+    lto_create_files_from_ids (file, file_data, count);
+ 
   splay_tree_delete (file_ids);
   htab_delete (section_hash_table);
 
-  return file_data;
+  return file_list.first;
 }
 
 #if HAVE_MMAP_FILE && HAVE_SYSCONF && defined _SC_PAGE_SIZE
@@ -1166,7 +1264,10 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
     {
       fd = open (file_data->file_name, O_RDONLY|O_BINARY);
       if (fd == -1)
-	return NULL;
+        {
+	  fatal_error ("Cannot open %s", file_data->file_name);
+	  return NULL;
+        }
       fd_name = xstrdup (file_data->file_name);
     }
 
@@ -1184,7 +1285,10 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
   result = (char *) mmap (NULL, computed_len, PROT_READ, MAP_PRIVATE,
 			  fd, computed_offset);
   if (result == MAP_FAILED)
-    return NULL;
+    {
+      fatal_error ("Cannot map %s", file_data->file_name);
+      return NULL;
+    }
 
   return result + diff;
 #else
@@ -1193,6 +1297,7 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
       || read (fd, result, len) != (ssize_t) len)
     {
       free (result);
+      fatal_error ("Cannot read %s", file_data->file_name);
       result = NULL;
     }
 #ifdef __MINGW32__
@@ -1403,6 +1508,8 @@ add_varpool_node_to_partition (ltrans_partition part, struct varpool_node *vnode
 {
   varpool_node_set_iterator vsi;
 
+  vnode = varpool_variable_node (vnode, NULL);
+
   /* If NODE is already there, we have nothing to do.  */
   vsi = varpool_node_set_find (part->varpool_set, vnode);
   if (!vsi_end_p (vsi))
@@ -1587,6 +1694,23 @@ lto_1_to_1_map (void)
 						 ltrans_partitions);
 }
 
+/* Helper function for qsort; sort nodes by order.  */
+static int
+node_cmp (const void *pa, const void *pb)
+{
+  const struct cgraph_node *a = *(const struct cgraph_node * const *) pa;
+  const struct cgraph_node *b = *(const struct cgraph_node * const *) pb;
+  return b->order - a->order;
+}
+
+/* Helper function for qsort; sort nodes by order.  */
+static int
+varpool_node_cmp (const void *pa, const void *pb)
+{
+  const struct varpool_node *a = *(const struct varpool_node * const *) pa;
+  const struct varpool_node *b = *(const struct varpool_node * const *) pb;
+  return b->order - a->order;
+}
 
 /* Group cgraph nodes into equally-sized partitions.
 
@@ -1630,9 +1754,11 @@ static void
 lto_balanced_map (void)
 {
   int n_nodes = 0;
+  int n_varpool_nodes = 0, varpool_pos = 0;
   struct cgraph_node **postorder =
     XCNEWVEC (struct cgraph_node *, cgraph_n_nodes);
   struct cgraph_node **order = XNEWVEC (struct cgraph_node *, cgraph_max_uid);
+  struct varpool_node **varpool_order = NULL;
   int i, postorder_len;
   struct cgraph_node *node;
   int total_size = 0, best_total_size = 0;
@@ -1644,6 +1770,7 @@ lto_balanced_map (void)
   int best_n_nodes = 0, best_n_varpool_nodes = 0, best_i = 0, best_cost =
     INT_MAX, best_internal = 0;
   int npartitions;
+  int current_order = -1;
 
   for (vnode = varpool_nodes; vnode; vnode = vnode->next)
     gcc_assert (!vnode->aux);
@@ -1653,6 +1780,7 @@ lto_balanced_map (void)
      multiple partitions, this is just an estimate of real size.  This is why
      we keep partition_size updated after every partition is finalized.  */
   postorder_len = ipa_reverse_postorder (postorder);
+    
   for (i = 0; i < postorder_len; i++)
     {
       node = postorder[i];
@@ -1663,6 +1791,23 @@ lto_balanced_map (void)
 	}
     }
   free (postorder);
+
+  if (!flag_toplevel_reorder)
+    {
+      qsort (order, n_nodes, sizeof (struct cgraph_node *), node_cmp);
+
+      for (vnode = varpool_nodes; vnode; vnode = vnode->next)
+	if (partition_varpool_node_p (vnode))
+	  n_varpool_nodes++;
+      varpool_order = XNEWVEC (struct varpool_node *, n_varpool_nodes);
+
+      n_varpool_nodes = 0;
+      for (vnode = varpool_nodes; vnode; vnode = vnode->next)
+	if (partition_varpool_node_p (vnode))
+	  varpool_order[n_varpool_nodes++] = vnode;
+      qsort (varpool_order, n_varpool_nodes, sizeof (struct varpool_node *),
+	     varpool_node_cmp);
+    }
 
   /* Compute partition size and create the first partition.  */
   partition_size = total_size / PARAM_VALUE (PARAM_LTO_PARTITIONS);
@@ -1678,8 +1823,20 @@ lto_balanced_map (void)
     {
       if (order[i]->aux)
 	continue;
+
+      current_order = order[i]->order;
+
+      if (!flag_toplevel_reorder)
+	while (varpool_pos < n_varpool_nodes && varpool_order[varpool_pos]->order < current_order)
+	  {
+	    if (!varpool_order[varpool_pos]->aux)
+	      add_varpool_node_to_partition (partition, varpool_order[varpool_pos]);
+	    varpool_pos++;
+	  }
+
       add_cgraph_node_to_partition (partition, order[i]);
       total_size -= inline_summary (order[i])->size;
+	  
 
       /* Once we added a new node to the partition, we also want to add
          all referenced variables unless they was already added into some
@@ -1718,7 +1875,7 @@ lto_balanced_map (void)
 
 	      gcc_assert (node->analyzed);
 
-	      /* Compute boundary cost of callgrpah edges.  */
+	      /* Compute boundary cost of callgraph edges.  */
 	      for (edge = node->callees; edge; edge = edge->next_callee)
 		if (edge->callee->analyzed)
 		  {
@@ -1770,7 +1927,8 @@ lto_balanced_map (void)
 		vnode = ipa_ref_varpool_node (ref);
 		if (!vnode->finalized)
 		  continue;
-		if (!vnode->aux && partition_varpool_node_p (vnode))
+		if (!vnode->aux && flag_toplevel_reorder
+		    && partition_varpool_node_p (vnode))
 		  add_varpool_node_to_partition (partition, vnode);
 		vsi = varpool_node_set_find (partition->varpool_set, vnode);
 		if (!vsi_end_p (vsi)
@@ -1800,7 +1958,8 @@ lto_balanced_map (void)
 
 		vnode = ipa_ref_refering_varpool_node (ref);
 		gcc_assert (vnode->finalized);
-		if (!vnode->aux && partition_varpool_node_p (vnode))
+		if (!vnode->aux && flag_toplevel_reorder
+		    && partition_varpool_node_p (vnode))
 		  add_varpool_node_to_partition (partition, vnode);
 		vsi = varpool_node_set_find (partition->varpool_set, vnode);
 		if (!vsi_end_p (vsi)
@@ -1889,9 +2048,22 @@ lto_balanced_map (void)
     }
 
   /* Varables that are not reachable from the code go into last partition.  */
-  for (vnode = varpool_nodes; vnode; vnode = vnode->next)
-    if (partition_varpool_node_p (vnode) && !vnode->aux)
-      add_varpool_node_to_partition (partition, vnode);
+  if (flag_toplevel_reorder)
+    {
+      for (vnode = varpool_nodes; vnode; vnode = vnode->next)
+        if (partition_varpool_node_p (vnode) && !vnode->aux)
+	  add_varpool_node_to_partition (partition, vnode);
+    }
+  else
+    {
+      while (varpool_pos < n_varpool_nodes)
+	{
+	  if (!varpool_order[varpool_pos]->aux)
+	    add_varpool_node_to_partition (partition, varpool_order[varpool_pos]);
+	  varpool_pos++;
+	}
+      free (varpool_order);
+    }
   free (order);
 }
 
@@ -2056,13 +2228,35 @@ static lto_file *current_lto_file;
    longest compilation being executed too late.  */
 
 static int
-cmp_partitions (const void *a, const void *b)
+cmp_partitions_size (const void *a, const void *b)
 {
   const struct ltrans_partition_def *pa
      = *(struct ltrans_partition_def *const *)a;
   const struct ltrans_partition_def *pb
      = *(struct ltrans_partition_def *const *)b;
   return pb->insns - pa->insns;
+}
+
+/* Helper for qsort; compare partitions and return one with smaller order.  */
+
+static int
+cmp_partitions_order (const void *a, const void *b)
+{
+  const struct ltrans_partition_def *pa
+     = *(struct ltrans_partition_def *const *)a;
+  const struct ltrans_partition_def *pb
+     = *(struct ltrans_partition_def *const *)b;
+  int ordera = -1, orderb = -1;
+
+  if (VEC_length (cgraph_node_ptr, pa->cgraph_set->nodes))
+    ordera = VEC_index (cgraph_node_ptr, pa->cgraph_set->nodes, 0)->order;
+  else if (VEC_length (varpool_node_ptr, pa->varpool_set->nodes))
+    ordera = VEC_index (varpool_node_ptr, pa->varpool_set->nodes, 0)->order;
+  if (VEC_length (cgraph_node_ptr, pb->cgraph_set->nodes))
+    orderb = VEC_index (cgraph_node_ptr, pb->cgraph_set->nodes, 0)->order;
+  else if (VEC_length (varpool_node_ptr, pb->varpool_set->nodes))
+    orderb = VEC_index (varpool_node_ptr, pb->varpool_set->nodes, 0)->order;
+  return orderb - ordera;
 }
 
 /* Write all output files in WPA mode and the file with the list of
@@ -2113,7 +2307,12 @@ lto_wpa_write_files (void)
   blen = strlen (temp_filename);
 
   n_sets = VEC_length (ltrans_partition, ltrans_partitions);
-  VEC_qsort (ltrans_partition, ltrans_partitions, cmp_partitions);
+
+  /* Sort partitions by size so small ones are compiled last.
+     FIXME: Even when not reordering we may want to output one list for parallel make
+     and other for final link command.  */
+  VEC_qsort (ltrans_partition, ltrans_partitions,
+	    flag_toplevel_reorder ? cmp_partitions_size : cmp_partitions_order);
   for (i = 0; i < n_sets; i++)
     {
       size_t len;
@@ -2320,60 +2519,6 @@ lto_fixup_decls (struct lto_file_decl_data **files)
 
       htab_traverse (file->function_decl_states, lto_fixup_state_aux, NULL);
     }
-}
-
-/* Read the options saved from each file in the command line.  Called
-   from lang_hooks.post_options which is called by process_options
-   right before all the options are used to initialize the compiler.
-   This assumes that decode_options has already run, so the
-   num_in_fnames and in_fnames are properly set.
-
-   Note that this assumes that all the files had been compiled with
-   the same options, which is not a good assumption.  In general,
-   options ought to be read from all the files in the set and merged.
-   However, it is still unclear what the merge rules should be.  */
-
-void
-lto_read_all_file_options (void)
-{
-  size_t i;
-
-  /* Clear any file options currently saved.  */
-  lto_clear_file_options ();
-
-  /* Set the hooks to read ELF sections.  */
-  lto_set_in_hooks (NULL, get_section_data, free_section_data);
-  if (!quiet_flag)
-    fprintf (stderr, "Reading command line options:");
-
-  for (i = 0; i < num_in_fnames; i++)
-    {
-      struct lto_file_decl_data *file_data;
-      lto_file *file = lto_obj_file_open (in_fnames[i], false);
-      if (!file)
-	break;
-      if (!quiet_flag)
-	{
-	  fprintf (stderr, " %s", in_fnames[i]);
-	  fflush (stderr);
-	}
-
-      file_data = XCNEW (struct lto_file_decl_data);
-      file_data->file_name = file->filename;
-      file_data->section_hash_table = lto_obj_build_section_table (file);
-
-      lto_read_file_options (file_data);
-
-      lto_obj_file_close (file);
-      htab_delete (file_data->section_hash_table);
-      free (file_data);
-    }
-
-  if (!quiet_flag)
-    fprintf (stderr, "\n");
-
-  /* Apply globally the options read from all the files.  */
-  lto_reissue_options ();
 }
 
 static GTY((length ("lto_stats.num_input_files + 1"))) struct lto_file_decl_data **all_file_decl_data;
@@ -2749,6 +2894,7 @@ lto_init (void)
   lto_process_name ();
   lto_streamer_hooks_init ();
   lto_reader_init ();
+  lto_set_in_hooks (NULL, get_section_data, free_section_data);
   memset (&lto_stats, 0, sizeof (lto_stats));
   bitmap_obstack_initialize (NULL);
   gimple_register_cfg_hooks ();

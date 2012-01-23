@@ -7,7 +7,7 @@
 --                                  S p e c                                 --
 --                                                                          --
 --             Copyright (C) 1991-1994, Florida State University            --
---          Copyright (C) 1995-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -243,9 +243,7 @@ package System.OS_Interface is
 
    type timespec is private;
 
-   type clockid_t is private;
-
-   CLOCK_REALTIME : constant clockid_t;
+   type clockid_t is new int;
 
    function clock_gettime
      (clock_id : clockid_t; tp : access timespec) return int;
@@ -492,6 +490,24 @@ package System.OS_Interface is
       obind   : processorid_t_ptr) return int;
    pragma Import (C, processor_bind, "processor_bind");
 
+   type psetid_t is new int;
+
+   function pset_create (pset : access psetid_t) return int;
+   pragma Import (C, pset_create, "pset_create");
+
+   function pset_assign
+     (pset    : psetid_t;
+      proc_id : processorid_t;
+      opset   : access psetid_t) return int;
+   pragma Import (C, pset_assign, "pset_assign");
+
+   function pset_bind
+     (pset    : psetid_t;
+      id_type : int;
+      id      : id_t;
+      opset   : access psetid_t) return int;
+   pragma Import (C, pset_bind, "pset_bind");
+
    procedure pthread_init;
    --  Dummy procedure to share s-intman.adb with other Solaris targets
 
@@ -512,9 +528,6 @@ private
       tv_nsec : long;
    end record;
    pragma Convention (C, timespec);
-
-   type clockid_t is new int;
-   CLOCK_REALTIME : constant clockid_t := 0;
 
    type array_type_9 is array (0 .. 3) of unsigned_char;
    type record_type_3 is record

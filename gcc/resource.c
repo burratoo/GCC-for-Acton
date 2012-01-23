@@ -171,7 +171,7 @@ next_insn_no_annul (rtx insn)
     {
       /* If INSN is an annulled branch, skip any insns from the target
 	 of the branch.  */
-      if (INSN_P (insn)
+      if (JUMP_P (insn)
 	  && INSN_ANNULLED_BRANCH_P (insn)
 	  && NEXT_INSN (PREV_INSN (insn)) != insn)
 	{
@@ -492,7 +492,7 @@ find_dead_or_set_registers (rtx target, struct resources *res,
 	  if (jump_count++ < 10)
 	    {
 	      if (any_uncondjump_p (this_jump_insn)
-		  || GET_CODE (PATTERN (this_jump_insn)) == RETURN)
+		  || ANY_RETURN_P (PATTERN (this_jump_insn)))
 		{
 		  next = JUMP_LABEL (this_jump_insn);
 		  if (ANY_RETURN_P (next))
@@ -710,10 +710,18 @@ mark_set_resources (rtx x, struct resources *res, int in_dest,
       return;
 
     case SEQUENCE:
-      for (i = 0; i < XVECLEN (x, 0); i++)
-	if (! (INSN_ANNULLED_BRANCH_P (XVECEXP (x, 0, 0))
-	       && INSN_FROM_TARGET_P (XVECEXP (x, 0, i))))
-	  mark_set_resources (XVECEXP (x, 0, i), res, 0, mark_type);
+      {
+        rtx control = XVECEXP (x, 0, 0);
+        bool annul_p = JUMP_P (control) && INSN_ANNULLED_BRANCH_P (control);
+
+        mark_set_resources (control, res, 0, mark_type);
+        for (i = XVECLEN (x, 0) - 1; i >= 0; --i)
+	  {
+	    rtx elt = XVECEXP (x, 0, i);
+	    if (!annul_p && INSN_FROM_TARGET_P (elt))
+	      mark_set_resources (elt, res, 0, mark_type);
+	  }
+      }
       return;
 
     case POST_INC:
@@ -821,7 +829,7 @@ mark_set_resources (rtx x, struct resources *res, int in_dest,
 static bool
 return_insn_p (const_rtx insn)
 {
-  if (JUMP_P (insn) && GET_CODE (PATTERN (insn)) == RETURN)
+  if (JUMP_P (insn) && ANY_RETURN_P (PATTERN (insn)))
     return true;
 
   if (NONJUMP_INSN_P (insn) && GET_CODE (PATTERN (insn)) == SEQUENCE)
@@ -1137,11 +1145,11 @@ init_resource_info (rtx epilogue_insn)
   basic_block bb;
 
   /* Indicate what resources are required to be valid at the end of the current
-     function.  The condition code never is and memory always is.  If the
-     frame pointer is needed, it is and so is the stack pointer unless
-     EXIT_IGNORE_STACK is nonzero.  If the frame pointer is not needed, the
-     stack pointer is.  Registers used to return the function value are
-     needed.  Registers holding global variables are needed.  */
+     function.  The condition code never is and memory always is.
+     The stack pointer is needed unless EXIT_IGNORE_STACK is true
+     and there is an epilogue that restores the original stack pointer
+     from the frame pointer.  Registers used to return the function value
+     are needed.  Registers holding global variables are needed.  */
 
   end_of_function_needs.cc = 0;
   end_of_function_needs.memory = 1;
@@ -1154,11 +1162,11 @@ init_resource_info (rtx epilogue_insn)
 #if !HARD_FRAME_POINTER_IS_FRAME_POINTER
       SET_HARD_REG_BIT (end_of_function_needs.regs, HARD_FRAME_POINTER_REGNUM);
 #endif
-      if (! EXIT_IGNORE_STACK
-	  || current_function_sp_is_unchanging)
-	SET_HARD_REG_BIT (end_of_function_needs.regs, STACK_POINTER_REGNUM);
     }
-  else
+  if (!(frame_pointer_needed
+	&& EXIT_IGNORE_STACK
+	&& epilogue_insn
+	&& !current_function_sp_is_unchanging))
     SET_HARD_REG_BIT (end_of_function_needs.regs, STACK_POINTER_REGNUM);
 
   if (crtl->return_rtx != 0)

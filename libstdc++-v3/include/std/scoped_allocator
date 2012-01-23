@@ -234,7 +234,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
           return __a_traits::select_on_container_copy_construction(__a);
         }
 
-      template<int... _Indices>
+      template<std::size_t... _Indices>
         scoped_allocator_adaptor(tuple<const _OuterAlloc&,
                                        const _InnerAllocs&...> __refs,
                                  _Index_tuple<_Indices...>)
@@ -267,9 +267,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       template <class _Tp>
         struct rebind
         {
-          // TODO: use rebind_alloc<Tp> instead of __rebind_alloc<Tp>::__type
           typedef scoped_allocator_adaptor<
-            typename __traits::template __rebind_alloc<_Tp>::__type,
+            typename __traits::template rebind_alloc<_Tp>,
             _InnerAllocs...> other;
         };
 

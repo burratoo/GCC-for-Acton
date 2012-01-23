@@ -442,7 +442,7 @@ package body Checks is
       --  are cases (e.g. with pragma Debug) where generating the checks
       --  can cause real trouble).
 
-      if not Expander_Active then
+      if not Full_Expander_Active then
          return;
       end if;
 
@@ -479,11 +479,27 @@ package body Checks is
       Insert_Node : Node_Id)
    is
       Loc         : constant Source_Ptr := Sloc (N);
-      Param_Ent   : constant Entity_Id  := Param_Entity (N);
+      Param_Ent   : Entity_Id           := Param_Entity (N);
       Param_Level : Node_Id;
       Type_Level  : Node_Id;
 
    begin
+      if Ada_Version >= Ada_2012
+         and then not Present (Param_Ent)
+         and then Is_Entity_Name (N)
+         and then Ekind_In (Entity (N), E_Constant, E_Variable)
+         and then Present (Effective_Extra_Accessibility (Entity (N)))
+      then
+         Param_Ent := Entity (N);
+         while Present (Renamed_Object (Param_Ent)) loop
+
+            --  Renamed_Object must return an Entity_Name here
+            --  because of preceding "Present (E_E_A (...))" test.
+
+            Param_Ent := Entity (Renamed_Object (Param_Ent));
+         end loop;
+      end if;
+
       if Inside_A_Generic then
          return;
 
@@ -494,7 +510,8 @@ package body Checks is
 
       elsif Present (Param_Ent)
          and then Present (Extra_Accessibility (Param_Ent))
-         and then UI_Gt (Object_Access_Level (N), Type_Access_Level (Typ))
+         and then UI_Gt (Object_Access_Level (N),
+                         Deepest_Type_Access_Level (Typ))
          and then not Accessibility_Checks_Suppressed (Param_Ent)
          and then not Accessibility_Checks_Suppressed (Typ)
       then
@@ -502,7 +519,7 @@ package body Checks is
            New_Occurrence_Of (Extra_Accessibility (Param_Ent), Loc);
 
          Type_Level :=
-           Make_Integer_Literal (Loc, Type_Access_Level (Typ));
+           Make_Integer_Literal (Loc, Deepest_Type_Access_Level (Typ));
 
          --  Raise Program_Error if the accessibility level of the access
          --  parameter is deeper than the level of the target access type.
@@ -861,7 +878,7 @@ package body Checks is
 
          if Backend_Overflow_Checks_On_Target
            or else not Do_Overflow_Check (N)
-           or else not Expander_Active
+           or else not Full_Expander_Active
            or else (Present (Parent (N))
                      and then Nkind (Parent (N)) = N_Type_Conversion
                      and then Integer_Promotion_Possible (Parent (N)))
@@ -1161,7 +1178,7 @@ package body Checks is
       --  Nothing to do if discriminant checks are suppressed or else no code
       --  is to be generated
 
-      if not Expander_Active
+      if not Full_Expander_Active
         or else Discriminant_Checks_Suppressed (T_Typ)
       then
          return;
@@ -1223,7 +1240,9 @@ package body Checks is
       --  partial view that is constrained.
 
       elsif Ada_Version >= Ada_2005
-        and then Has_Constrained_Partial_View (Base_Type (T_Typ))
+        and then Effectively_Has_Constrained_Partial_View
+                   (Typ  => Base_Type (T_Typ),
+                    Scop => Current_Scope)
       then
          return;
       end if;
@@ -1445,7 +1464,7 @@ package body Checks is
       --  Don't actually use this value
 
    begin
-      if Expander_Active
+      if Full_Expander_Active
         and then not Backend_Divide_Checks_On_Target
         and then Check_Needed (Right, Division_Check)
       then
@@ -1545,7 +1564,7 @@ package body Checks is
    --          Lo_OK be True.
    --      (3) If I'Last < 0, then let Hi be F'Succ (I'Last) and let Hi_OK
    --          be False. Otherwise let Hi be F'Pred (I'Last + 1) and let
-   --          Hi_OK be False
+   --          Hi_OK be True.
 
    procedure Apply_Float_Conversion_Check
      (Ck_Node    : Node_Id;
@@ -1860,6 +1879,10 @@ package body Checks is
       if Is_Subscr_Ref then
          Arr := Prefix (Parnt);
          Arr_Typ := Get_Actual_Subtype_If_Available (Arr);
+
+         if Is_Access_Type (Arr_Typ) then
+            Arr_Typ := Designated_Type (Arr_Typ);
+         end if;
       end if;
 
       if not Do_Range_Check (Expr) then
@@ -2097,7 +2120,7 @@ package body Checks is
                       (not Length_Checks_Suppressed (Target_Typ));
 
    begin
-      if not Expander_Active then
+      if not Full_Expander_Active then
          return;
       end if;
 
@@ -2205,7 +2228,7 @@ package body Checks is
                     (not Range_Checks_Suppressed (Target_Typ));
 
    begin
-      if not Expander_Active or else not Checks_On then
+      if not Full_Expander_Active or else not Checks_On then
          return;
       end if;
 
@@ -2325,7 +2348,11 @@ package body Checks is
       Target_Type : constant Entity_Id := Etype (N);
       Target_Base : constant Entity_Id := Base_Type (Target_Type);
       Expr        : constant Node_Id   := Expression (N);
-      Expr_Type   : constant Entity_Id := Etype (Expr);
+
+      Expr_Type : constant Entity_Id := Underlying_Type (Etype (Expr));
+      --  Note: if Etype (Expr) is a private type without discriminants, its
+      --  full view might have discriminants with defaults, so we need the
+      --  full view here to retrieve the constraints.
 
    begin
       if Inside_A_Generic then
@@ -2371,6 +2398,15 @@ package body Checks is
                else
                   Apply_Scalar_Range_Check
                     (Expr, Target_Type, Fixed_Int => Conv_OK);
+
+                  --  If the target type has predicates, we need to indicate
+                  --  the need for a check, even if Determine_Range finds
+                  --  that the value is within bounds. This may be the case
+                  --  e.g for a division with a constant denominator.
+
+                  if Has_Predicates (Target_Type) then
+                     Enable_Range_Check (Expr);
+                  end if;
                end if;
             end if;
          end;
@@ -2383,7 +2419,7 @@ package body Checks is
         and then not Is_Constrained (Target_Type)
         and then Present (Stored_Constraint (Target_Type))
       then
-         --  An unconstrained derived type may have inherited discriminant
+         --  An unconstrained derived type may have inherited discriminant.
          --  Build an actual discriminant constraint list using the stored
          --  constraint, to verify that the expression of the parent type
          --  satisfies the constraints imposed by the (unconstrained!)
@@ -2529,6 +2565,40 @@ package body Checks is
          return;
       end if;
    end Apply_Universal_Integer_Attribute_Checks;
+
+   -------------------------------------
+   -- Atomic_Synchronization_Disabled --
+   -------------------------------------
+
+   --  Note: internally Disable/Enable_Atomic_Synchronization is implemented
+   --  using a bogus check called Atomic_Synchronization. This is to make it
+   --  more convenient to get exactly the same semantics as [Un]Suppress.
+
+   function Atomic_Synchronization_Disabled (E : Entity_Id) return Boolean is
+   begin
+      --  If debug flag d.e is set, always return False, i.e. all atomic sync
+      --  looks enabled, since it is never disabled.
+
+      if Debug_Flag_Dot_E then
+         return False;
+
+      --  If debug flag d.d is set then always return True, i.e. all atomic
+      --  sync looks disabled, since it always tests True.
+
+      elsif Debug_Flag_Dot_D then
+         return True;
+
+      --  If entity present, then check result for that entity
+
+      elsif Present (E) and then Checks_May_Be_Suppressed (E) then
+         return Is_Check_Suppressed (E, Atomic_Synchronization);
+
+      --  Otherwise result depends on current scope setting
+
+      else
+         return Scope_Suppress (Atomic_Synchronization);
+      end if;
+   end Atomic_Synchronization_Disabled;
 
    -------------------------------
    -- Build_Discriminant_Checks --
@@ -3458,10 +3528,11 @@ package body Checks is
       --  to restrict the possible range of results.
 
       --  If one of the computed bounds is outside the range of the base type,
-      --  the expression may raise an exception and we better indicate that
+      --  the expression may raise an exception and we had better indicate that
       --  the evaluation has failed, at least if checks are enabled.
 
-      if Enable_Overflow_Checks
+      if OK1
+        and then Enable_Overflow_Checks
         and then not Is_Entity_Name (N)
         and then (Lor < Lo or else Hir > Hi)
       then
@@ -5249,7 +5320,7 @@ package body Checks is
       --  enhanced to check for an always True value in the condition and to
       --  generate a compilation warning???
 
-      if not Expander_Active or else not Checks_On then
+      if not Full_Expander_Active or else not Checks_On then
          return;
       end if;
 
@@ -5609,6 +5680,22 @@ package body Checks is
         and then Chars (N) = Name_uObject
         and then Is_Concurrent_Record_Type
                    (Directly_Designated_Type (Etype (N)))
+      then
+         return;
+      end if;
+
+      --  No check needed for the Get_Current_Excep.all.all idiom generated by
+      --  the expander within exception handlers, since we know that the value
+      --  can never be null.
+
+      --  Is this really the right way to do this? Normally we generate such
+      --  code in the expander with checks off, and that's how we suppress this
+      --  kind of junk check ???
+
+      if Nkind (N) = N_Function_Call
+        and then Nkind (Name (N)) = N_Explicit_Dereference
+        and then Nkind (Prefix (Name (N))) = N_Identifier
+        and then Is_RTE (Entity (Prefix (Name (N))), RE_Get_Current_Excep)
       then
          return;
       end if;
@@ -6160,7 +6247,7 @@ package body Checks is
    --  Start of processing for Selected_Length_Checks
 
    begin
-      if not Expander_Active then
+      if not Full_Expander_Active then
          return Ret_Result;
       end if;
 
@@ -6734,7 +6821,7 @@ package body Checks is
    --  Start of processing for Selected_Range_Checks
 
    begin
-      if not Expander_Active then
+      if not Full_Expander_Active then
          return Ret_Result;
       end if;
 

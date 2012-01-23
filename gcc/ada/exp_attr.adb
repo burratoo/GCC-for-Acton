@@ -678,7 +678,7 @@ package body Exp_Attr is
 
       case Id is
 
-         --  Attributes related to Ada2012 iterators (placeholder ???)
+         --  Attributes related to Ada 2012 iterators (placeholder ???)
 
          when Attribute_Constant_Indexing    => null;
          when Attribute_Default_Iterator     => null;
@@ -971,11 +971,12 @@ package body Exp_Attr is
                                      (Etype (Prefix (Ref_Object))));
                   begin
                      --  No implicit conversion required if designated types
-                     --  match.
+                     --  match, or if we have an unrestricted access.
 
                      if Obj_DDT /= Btyp_DDT
+                       and then Id /= Attribute_Unrestricted_Access
                        and then not (Is_Class_Wide_Type (Obj_DDT)
-                                       and then Etype (Obj_DDT) = Btyp_DDT)
+                                      and then Etype (Obj_DDT) = Btyp_DDT)
                      then
                         Rewrite (N,
                           Convert_To (Typ,
@@ -1119,28 +1120,26 @@ package body Exp_Attr is
          --  operation _Alignment applied to X.
 
          elsif Is_Class_Wide_Type (Ptyp) then
+            New_Node :=
+              Make_Attribute_Reference (Loc,
+                Prefix         => Pref,
+                Attribute_Name => Name_Tag);
 
-            --  No need to do anything else compiling under restriction
-            --  No_Dispatching_Calls. During the semantic analysis we
-            --  already notified such violation.
-
-            if Restriction_Active (No_Dispatching_Calls) then
-               return;
+            if VM_Target = No_VM then
+               New_Node := Build_Get_Alignment (Loc, New_Node);
+            else
+               New_Node :=
+                 Make_Function_Call (Loc,
+                   Name => New_Reference_To (RTE (RE_Get_Alignment), Loc),
+                   Parameter_Associations => New_List (New_Node));
             end if;
 
-            New_Node :=
-              Make_Function_Call (Loc,
-                Name => New_Reference_To
-                  (Find_Prim_Op (Ptyp, Name_uAlignment), Loc),
-                Parameter_Associations => New_List (Pref));
+            --  Case where the context is a specific integer type with which
+            --  the original attribute was compatible. The function has a
+            --  specific type as well, so to preserve the compatibility we
+            --  must convert explicitly.
 
             if Typ /= Standard_Integer then
-
-               --  The context is a specific integer type with which the
-               --  original attribute was compatible. The function has a
-               --  specific type as well, so to preserve the compatibility
-               --  we must convert explicitly.
-
                New_Node := Convert_To (Typ, New_Node);
             end if;
 
@@ -1559,10 +1558,12 @@ package body Exp_Attr is
                return Is_Aliased_View (Obj)
                         and then
                       (Is_Constrained (Etype (Obj))
-                         or else (Nkind (Obj) = N_Explicit_Dereference
-                                    and then
-                                      not Has_Constrained_Partial_View
-                                            (Base_Type (Etype (Obj)))));
+                         or else
+                           (Nkind (Obj) = N_Explicit_Dereference
+                              and then
+                                not Effectively_Has_Constrained_Partial_View
+                                      (Typ  => Base_Type (Etype (Obj)),
+                                       Scop => Current_Scope)));
             end if;
          end Is_Constrained_Aliased_View;
 
@@ -1684,7 +1685,9 @@ package body Exp_Attr is
                     or else
                      (Nkind (Pref) = N_Explicit_Dereference
                        and then
-                         not Has_Constrained_Partial_View (Base_Type (Ptyp)))
+                         not Effectively_Has_Constrained_Partial_View
+                               (Typ  => Base_Type (Ptyp),
+                                Scop => Current_Scope))
                     or else Is_Constrained (Underlying_Type (Ptyp))
                     or else (Ada_Version >= Ada_2012
                               and then Is_Tagged_Type (Underlying_Type (Ptyp))
@@ -1799,6 +1802,29 @@ package body Exp_Attr is
          Analyze_And_Resolve (N, Typ);
       end Count;
 
+      ---------------------
+      -- Descriptor_Size --
+      ---------------------
+
+      when Attribute_Descriptor_Size =>
+
+         --  Attribute Descriptor_Size is handled by the back end when applied
+         --  to an unconstrained array type.
+
+         if Is_Array_Type (Ptyp)
+           and then not Is_Constrained (Ptyp)
+         then
+            Apply_Universal_Integer_Attribute_Checks (N);
+
+         --  For any other type, the descriptor size is 0 because there is no
+         --  actual descriptor, but the result is not formally static.
+
+         else
+            Rewrite (N, Make_Integer_Literal (Loc, 0));
+            Analyze (N);
+            Set_Is_Static_Expression (N, False);
+         end if;
+
       ---------------
       -- Elab_Body --
       ---------------
@@ -1813,11 +1839,11 @@ package body Exp_Attr is
       --  and then the Elab_Body/Spec attribute is replaced by a reference
       --  to this defining identifier.
 
-      when Attribute_Elab_Body |
-           Attribute_Elab_Spec =>
+      when Attribute_Elab_Body      |
+           Attribute_Elab_Spec      =>
 
          --  Leave attribute unexpanded in CodePeer mode: the gnat2scil
-         --  back-end knows how to handle this attribute directly.
+         --  back-end knows how to handle these attributes directly.
 
          if CodePeer_Mode then
             return;
@@ -1907,6 +1933,17 @@ package body Exp_Attr is
             Set_Entity (N, Ent);
             Rewrite (N, New_Occurrence_Of (Ent, Loc));
          end Elab_Body;
+
+      --------------------
+      -- Elab_Subp_Body --
+      --------------------
+
+      --  Always ignored. In CodePeer mode, gnat2scil knows how to handle
+      --  this attribute directly, and if we are not in CodePeer mode it is
+      --  entirely ignored ???
+
+      when Attribute_Elab_Subp_Body =>
+         return;
 
       ----------------
       -- Elaborated --
@@ -2083,21 +2120,38 @@ package body Exp_Attr is
       --  computation to be completed in the back-end, since we don't know what
       --  layout will be chosen.
 
-      when Attribute_First_Bit => First_Bit : declare
+      when Attribute_First_Bit => First_Bit_Attr : declare
          CE : constant Entity_Id := Entity (Selector_Name (Pref));
 
       begin
-         if Known_Static_Component_Bit_Offset (CE) then
+         --  In Ada 2005 (or later) if we have the standard nondefault
+         --  bit order, then we return the original value as given in
+         --  the component clause (RM 2005 13.5.2(3/2)).
+
+         if Present (Component_Clause (CE))
+           and then Ada_Version >= Ada_2005
+           and then not Reverse_Bit_Order (Scope (CE))
+         then
+            Rewrite (N,
+              Make_Integer_Literal (Loc,
+                Intval => Expr_Value (First_Bit (Component_Clause (CE)))));
+            Analyze_And_Resolve (N, Typ);
+
+         --  Otherwise (Ada 83/95 or Ada 2005 or later with reverse bit order),
+         --  rewrite with normalized value if we know it statically.
+
+         elsif Known_Static_Component_Bit_Offset (CE) then
             Rewrite (N,
               Make_Integer_Literal (Loc,
                 Component_Bit_Offset (CE) mod System_Storage_Unit));
-
             Analyze_And_Resolve (N, Typ);
+
+         --  Otherwise left to back end, just do universal integer checks
 
          else
             Apply_Universal_Integer_Attribute_Checks (N);
          end if;
-      end First_Bit;
+      end First_Bit_Attr;
 
       -----------------
       -- Fixed_Value --
@@ -2520,8 +2574,12 @@ package body Exp_Attr is
                   return;
                end if;
 
+               --  Build the type's Input function, passing the subtype rather
+               --  than its base type, because checks are needed in the case of
+               --  constrained discriminants (see Ada 2012 AI05-0192).
+
                Build_Record_Or_Elementary_Input_Function
-                 (Loc, Base_Type (U_Type), Decl, Fname);
+                 (Loc, U_Type, Decl, Fname);
                Insert_Action (N, Decl);
 
                if Nkind (Parent (N)) = N_Object_Declaration
@@ -2642,24 +2700,41 @@ package body Exp_Attr is
       --  the computation up to the back end, since we don't know what layout
       --  will be chosen.
 
-      when Attribute_Last_Bit => Last_Bit : declare
+      when Attribute_Last_Bit => Last_Bit_Attr : declare
          CE : constant Entity_Id := Entity (Selector_Name (Pref));
 
       begin
-         if Known_Static_Component_Bit_Offset (CE)
+         --  In Ada 2005 (or later) if we have the standard nondefault
+         --  bit order, then we return the original value as given in
+         --  the component clause (RM 2005 13.5.2(4/2)).
+
+         if Present (Component_Clause (CE))
+           and then Ada_Version >= Ada_2005
+           and then not Reverse_Bit_Order (Scope (CE))
+         then
+            Rewrite (N,
+              Make_Integer_Literal (Loc,
+                Intval => Expr_Value (Last_Bit (Component_Clause (CE)))));
+            Analyze_And_Resolve (N, Typ);
+
+         --  Otherwise (Ada 83/95 or Ada 2005 or later with reverse bit order),
+         --  rewrite with normalized value if we know it statically.
+
+         elsif Known_Static_Component_Bit_Offset (CE)
            and then Known_Static_Esize (CE)
          then
             Rewrite (N,
               Make_Integer_Literal (Loc,
                Intval => (Component_Bit_Offset (CE) mod System_Storage_Unit)
                                 + Esize (CE) - 1));
-
             Analyze_And_Resolve (N, Typ);
+
+         --  Otherwise leave to back end, just apply universal integer checks
 
          else
             Apply_Universal_Integer_Attribute_Checks (N);
          end if;
-      end Last_Bit;
+      end Last_Bit_Attr;
 
       ------------------
       -- Leading_Part --
@@ -2917,6 +2992,52 @@ package body Exp_Attr is
          Analyze_And_Resolve (N, Typ);
       end Mantissa;
 
+      ----------------------------------
+      -- Max_Size_In_Storage_Elements --
+      ----------------------------------
+
+      when Attribute_Max_Size_In_Storage_Elements =>
+         Apply_Universal_Integer_Attribute_Checks (N);
+
+         --  Heap-allocated controlled objects contain two extra pointers which
+         --  are not part of the actual type. Transform the attribute reference
+         --  into a runtime expression to add the size of the hidden header.
+
+         --  Do not perform this expansion on .NET/JVM targets because the
+         --  two pointers are already present in the type.
+
+         if VM_Target = No_VM
+           and then Nkind (N) = N_Attribute_Reference
+           and then Needs_Finalization (Ptyp)
+           and then not Header_Size_Added (N)
+         then
+            Set_Header_Size_Added (N);
+
+            --  Generate:
+            --    P'Max_Size_In_Storage_Elements +
+            --      Universal_Integer
+            --        (Header_Size_With_Padding (Ptyp'Alignment))
+
+            Rewrite (N,
+              Make_Op_Add (Loc,
+                Left_Opnd  => Relocate_Node (N),
+                Right_Opnd =>
+                  Convert_To (Universal_Integer,
+                    Make_Function_Call (Loc,
+                      Name                   =>
+                        New_Reference_To
+                          (RTE (RE_Header_Size_With_Padding), Loc),
+
+                      Parameter_Associations => New_List (
+                        Make_Attribute_Reference (Loc,
+                          Prefix         =>
+                            New_Reference_To (Ptyp, Loc),
+                          Attribute_Name => Name_Alignment))))));
+
+            Analyze (N);
+            return;
+         end if;
+
       --------------------
       -- Mechanism_Code --
       --------------------
@@ -3079,6 +3200,100 @@ package body Exp_Attr is
 
          Rewrite (N, New_Occurrence_Of (Tnn, Loc));
       end Old;
+
+      ----------------------
+      -- Overlaps_Storage --
+      ----------------------
+
+      when Attribute_Overlaps_Storage => Overlaps_Storage : declare
+         Loc : constant Source_Ptr := Sloc (N);
+
+         X   : constant Node_Id := Prefix (N);
+         Y   : constant Node_Id := First (Expressions (N));
+         --  The argumens
+
+         X_Addr, Y_Addr : Node_Id;
+         --  the expressions for their integer addresses
+
+         X_Size, Y_Size : Node_Id;
+         --  the expressions for their sizes
+
+         Cond : Node_Id;
+
+      begin
+         --  Attribute expands into:
+
+         --    if X'Address < Y'address then
+         --      (X'address + X'Size - 1) >= Y'address
+         --    else
+         --      (Y'address + Y'size - 1) >= X'Address
+         --    end if;
+
+         --  with the proper address operations. We convert addresses to
+         --  integer addresses to use predefined arithmetic. The size is
+         --  expressed in storage units.
+
+         X_Addr :=
+           Unchecked_Convert_To (RTE (RE_Integer_Address),
+             Make_Attribute_Reference (Loc,
+               Attribute_Name => Name_Address,
+               Prefix         => New_Copy_Tree (X)));
+
+         Y_Addr :=
+           Unchecked_Convert_To (RTE (RE_Integer_Address),
+             Make_Attribute_Reference (Loc,
+               Attribute_Name => Name_Address,
+               Prefix         => New_Copy_Tree (Y)));
+
+         X_Size :=
+           Make_Op_Divide (Loc,
+             Left_Opnd  =>
+               Make_Attribute_Reference (Loc,
+                 Attribute_Name => Name_Size,
+                 Prefix         => New_Copy_Tree (X)),
+             Right_Opnd =>
+               Make_Integer_Literal (Loc, System_Storage_Unit));
+
+         Y_Size :=
+           Make_Op_Divide (Loc,
+             Left_Opnd  =>
+               Make_Attribute_Reference (Loc,
+                 Attribute_Name => Name_Size,
+                 Prefix         => New_Copy_Tree (Y)),
+             Right_Opnd =>
+               Make_Integer_Literal (Loc, System_Storage_Unit));
+
+         Cond :=
+            Make_Op_Le (Loc,
+              Left_Opnd  => X_Addr,
+              Right_Opnd => Y_Addr);
+
+         Rewrite (N,
+           Make_Conditional_Expression (Loc,
+             New_List (
+               Cond,
+
+               Make_Op_Ge (Loc,
+                  Left_Opnd   =>
+                   Make_Op_Add (Loc,
+                     Left_Opnd  => X_Addr,
+                     Right_Opnd =>
+                       Make_Op_Subtract (Loc,
+                         Left_Opnd  => X_Size,
+                         Right_Opnd => Make_Integer_Literal (Loc, 1))),
+                  Right_Opnd => Y_Addr),
+
+               Make_Op_Ge (Loc,
+                   Make_Op_Add (Loc,
+                     Left_Opnd  => Y_Addr,
+                     Right_Opnd =>
+                       Make_Op_Subtract (Loc,
+                         Left_Opnd  => Y_Size,
+                         Right_Opnd => Make_Integer_Literal (Loc, 1))),
+                  Right_Opnd => X_Addr))));
+
+         Analyze_And_Resolve (N, Standard_Boolean);
+      end Overlaps_Storage;
 
       ------------
       -- Output --
@@ -3363,21 +3578,41 @@ package body Exp_Attr is
       --  the computation up to the back end, since we don't know what layout
       --  will be chosen.
 
-      when Attribute_Position => Position :
+      when Attribute_Position => Position_Attr :
       declare
          CE : constant Entity_Id := Entity (Selector_Name (Pref));
 
       begin
          if Present (Component_Clause (CE)) then
-            Rewrite (N,
-              Make_Integer_Literal (Loc,
-                Intval => Component_Bit_Offset (CE) / System_Storage_Unit));
+
+            --  In Ada 2005 (or later) if we have the standard nondefault
+            --  bit order, then we return the original value as given in
+            --  the component clause (RM 2005 13.5.2(2/2)).
+
+            if Ada_Version >= Ada_2005
+              and then not Reverse_Bit_Order (Scope (CE))
+            then
+               Rewrite (N,
+                  Make_Integer_Literal (Loc,
+                    Intval => Expr_Value (Position (Component_Clause (CE)))));
+
+            --  Otherwise (Ada 83 or 95, or reverse bit order specified in
+            --  later Ada version), return the normalized value.
+
+            else
+               Rewrite (N,
+                 Make_Integer_Literal (Loc,
+                   Intval => Component_Bit_Offset (CE) / System_Storage_Unit));
+            end if;
+
             Analyze_And_Resolve (N, Typ);
+
+         --  If back end is doing things, just apply universal integer checks
 
          else
             Apply_Universal_Integer_Attribute_Checks (N);
          end if;
-      end Position;
+      end Position_Attr;
 
       ----------
       -- Pred --
@@ -3904,6 +4139,73 @@ package body Exp_Attr is
 
       when Attribute_Rounding =>
          Expand_Fpt_Attribute_R (N);
+
+      ------------------
+      -- Same_Storage --
+      ------------------
+
+      when Attribute_Same_Storage => Same_Storage : declare
+         Loc : constant Source_Ptr := Sloc (N);
+
+         X   : constant Node_Id := Prefix (N);
+         Y   : constant Node_Id := First (Expressions (N));
+         --  The arguments
+
+         X_Addr, Y_Addr : Node_Id;
+         --  Rhe expressions for their addresses
+
+         X_Size, Y_Size : Node_Id;
+         --  Rhe expressions for their sizes
+
+      begin
+         --  The attribute is expanded as:
+
+         --    (X'address = Y'address)
+         --      and then (X'Size = Y'Size)
+
+         --  If both arguments have the same Etype the second conjunct can be
+         --  omitted.
+
+         X_Addr :=
+           Make_Attribute_Reference (Loc,
+             Attribute_Name => Name_Address,
+             Prefix         => New_Copy_Tree (X));
+
+         Y_Addr :=
+           Make_Attribute_Reference (Loc,
+             Attribute_Name => Name_Address,
+             Prefix         => New_Copy_Tree (Y));
+
+         X_Size :=
+           Make_Attribute_Reference (Loc,
+             Attribute_Name => Name_Size,
+             Prefix         => New_Copy_Tree (X));
+
+         Y_Size :=
+           Make_Attribute_Reference (Loc,
+             Attribute_Name => Name_Size,
+             Prefix         => New_Copy_Tree (Y));
+
+         if Etype (X) = Etype (Y) then
+            Rewrite (N,
+              (Make_Op_Eq (Loc,
+                 Left_Opnd  => X_Addr,
+                 Right_Opnd => Y_Addr)));
+         else
+            Rewrite (N,
+              Make_Op_And (Loc,
+                Left_Opnd  =>
+                  Make_Op_Eq (Loc,
+                    Left_Opnd  => X_Addr,
+                    Right_Opnd => Y_Addr),
+                Right_Opnd =>
+                  Make_Op_Eq (Loc,
+                    Left_Opnd  => X_Size,
+                    Right_Opnd => Y_Size)));
+         end if;
+
+         Analyze_And_Resolve (N, Standard_Boolean);
+      end Same_Storage;
 
       -------------
       -- Scaling --
@@ -5319,8 +5621,7 @@ package body Exp_Attr is
       --  that the result is in range.
 
       when Attribute_Aft                          |
-           Attribute_Max_Alignment_For_Allocation |
-           Attribute_Max_Size_In_Storage_Elements =>
+           Attribute_Max_Alignment_For_Allocation =>
          Apply_Universal_Integer_Attribute_Checks (N);
 
       --  The following attributes should not appear at this stage, since they
@@ -5368,6 +5669,7 @@ package body Exp_Attr is
            Attribute_Small                        |
            Attribute_Storage_Unit                 |
            Attribute_Stub_Type                    |
+           Attribute_System_Allocator_Alignment   |
            Attribute_Target_Name                  |
            Attribute_Type_Class                   |
            Attribute_Type_Key                     |

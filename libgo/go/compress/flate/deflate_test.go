@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"sync"
 	"testing"
 )
@@ -31,63 +30,62 @@ type reverseBitsTest struct {
 }
 
 var deflateTests = []*deflateTest{
-	&deflateTest{[]byte{}, 0, []byte{1, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11}, -1, []byte{18, 4, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11}, DefaultCompression, []byte{18, 4, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11}, 4, []byte{18, 4, 4, 0, 0, 255, 255}},
+	{[]byte{}, 0, []byte{1, 0, 0, 255, 255}},
+	{[]byte{0x11}, -1, []byte{18, 4, 4, 0, 0, 255, 255}},
+	{[]byte{0x11}, DefaultCompression, []byte{18, 4, 4, 0, 0, 255, 255}},
+	{[]byte{0x11}, 4, []byte{18, 4, 4, 0, 0, 255, 255}},
 
-	&deflateTest{[]byte{0x11}, 0, []byte{0, 1, 0, 254, 255, 17, 1, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x12}, 0, []byte{0, 2, 0, 253, 255, 17, 18, 1, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 0,
+	{[]byte{0x11}, 0, []byte{0, 1, 0, 254, 255, 17, 1, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x12}, 0, []byte{0, 2, 0, 253, 255, 17, 18, 1, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 0,
 		[]byte{0, 8, 0, 247, 255, 17, 17, 17, 17, 17, 17, 17, 17, 1, 0, 0, 255, 255},
 	},
-	&deflateTest{[]byte{}, 1, []byte{1, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11}, 1, []byte{18, 4, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x12}, 1, []byte{18, 20, 2, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 1, []byte{18, 132, 2, 64, 0, 0, 0, 255, 255}},
-	&deflateTest{[]byte{}, 9, []byte{1, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11}, 9, []byte{18, 4, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x12}, 9, []byte{18, 20, 2, 4, 0, 0, 255, 255}},
-	&deflateTest{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 9, []byte{18, 132, 2, 64, 0, 0, 0, 255, 255}},
+	{[]byte{}, 1, []byte{1, 0, 0, 255, 255}},
+	{[]byte{0x11}, 1, []byte{18, 4, 4, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x12}, 1, []byte{18, 20, 2, 4, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 1, []byte{18, 132, 2, 64, 0, 0, 0, 255, 255}},
+	{[]byte{}, 9, []byte{1, 0, 0, 255, 255}},
+	{[]byte{0x11}, 9, []byte{18, 4, 4, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x12}, 9, []byte{18, 20, 2, 4, 0, 0, 255, 255}},
+	{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, 9, []byte{18, 132, 2, 64, 0, 0, 0, 255, 255}},
 }
 
 var deflateInflateTests = []*deflateInflateTest{
-	&deflateInflateTest{[]byte{}},
-	&deflateInflateTest{[]byte{0x11}},
-	&deflateInflateTest{[]byte{0x11, 0x12}},
-	&deflateInflateTest{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}},
-	&deflateInflateTest{[]byte{0x11, 0x10, 0x13, 0x41, 0x21, 0x21, 0x41, 0x13, 0x87, 0x78, 0x13}},
-	&deflateInflateTest{getLargeDataChunk()},
+	{[]byte{}},
+	{[]byte{0x11}},
+	{[]byte{0x11, 0x12}},
+	{[]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}},
+	{[]byte{0x11, 0x10, 0x13, 0x41, 0x21, 0x21, 0x41, 0x13, 0x87, 0x78, 0x13}},
+	{largeDataChunk()},
 }
 
 var reverseBitsTests = []*reverseBitsTest{
-	&reverseBitsTest{1, 1, 1},
-	&reverseBitsTest{1, 2, 2},
-	&reverseBitsTest{1, 3, 4},
-	&reverseBitsTest{1, 4, 8},
-	&reverseBitsTest{1, 5, 16},
-	&reverseBitsTest{17, 5, 17},
-	&reverseBitsTest{257, 9, 257},
-	&reverseBitsTest{29, 5, 23},
+	{1, 1, 1},
+	{1, 2, 2},
+	{1, 3, 4},
+	{1, 4, 8},
+	{1, 5, 16},
+	{17, 5, 17},
+	{257, 9, 257},
+	{29, 5, 23},
 }
 
-func getLargeDataChunk() []byte {
+func largeDataChunk() []byte {
 	result := make([]byte, 100000)
 	for i := range result {
-		result[i] = byte(int64(i) * int64(i) & 0xFF)
+		result[i] = byte(i * i & 0xFF)
 	}
 	return result
 }
 
 func TestDeflate(t *testing.T) {
 	for _, h := range deflateTests {
-		buffer := bytes.NewBuffer(nil)
-		w := NewWriter(buffer, h.level)
+		var buf bytes.Buffer
+		w := NewWriter(&buf, h.level)
 		w.Write(h.in)
 		w.Close()
-		if bytes.Compare(buffer.Bytes(), h.out) != 0 {
-			t.Errorf("buffer is wrong; level = %v, buffer.Bytes() = %v, expected output = %v",
-				h.level, buffer.Bytes(), h.out)
+		if !bytes.Equal(buf.Bytes(), h.out) {
+			t.Errorf("Deflate(%d, %x) = %x, want %x", h.level, h.in, buf.Bytes(), h.out)
 		}
 	}
 }
@@ -103,7 +101,7 @@ func newSyncBuffer() *syncBuffer {
 	return &syncBuffer{ready: make(chan bool, 1)}
 }
 
-func (b *syncBuffer) Read(p []byte) (n int, err os.Error) {
+func (b *syncBuffer) Read(p []byte) (n int, err error) {
 	for {
 		b.mu.RLock()
 		n, err = b.buf.Read(p)
@@ -123,7 +121,7 @@ func (b *syncBuffer) signal() {
 	}
 }
 
-func (b *syncBuffer) Write(p []byte) (n int, err os.Error) {
+func (b *syncBuffer) Write(p []byte) (n int, err error) {
 	n, err = b.buf.Write(p)
 	b.signal()
 	return
@@ -138,7 +136,7 @@ func (b *syncBuffer) ReadMode() {
 	b.signal()
 }
 
-func (b *syncBuffer) Close() os.Error {
+func (b *syncBuffer) Close() error {
 	b.closed = true
 	b.signal()
 	return nil
@@ -205,7 +203,7 @@ func testSync(t *testing.T, level int, input []byte, name string) {
 	}
 	buf.ReadMode()
 	out := make([]byte, 10)
-	if n, err := r.Read(out); n > 0 || err != os.EOF {
+	if n, err := r.Read(out); n > 0 || err != io.EOF {
 		t.Errorf("testSync (%d, %d, %s): final Read: %d, %v (hex: %x)", level, len(input), name, n, err, out[0:n])
 	}
 	if buf.buf.Len() != 0 {
@@ -226,8 +224,7 @@ func testSync(t *testing.T, level int, input []byte, name string) {
 	}
 }
 
-
-func testToFromWithLevel(t *testing.T, level int, input []byte, name string) os.Error {
+func testToFromWithLevel(t *testing.T, level int, input []byte, name string) error {
 	buffer := bytes.NewBuffer(nil)
 	w := NewWriter(buffer, level)
 	w.Write(input)
@@ -320,4 +317,16 @@ func TestWriterDict(t *testing.T) {
 	if !bytes.Equal(b1.Bytes(), b.Bytes()) {
 		t.Fatalf("writer wrote %q want %q", b1.Bytes(), b.Bytes())
 	}
+}
+
+// See http://code.google.com/p/go/issues/detail?id=2508
+func TestRegression2508(t *testing.T) {
+	w := NewWriter(ioutil.Discard, 1)
+	buf := make([]byte, 1024)
+	for i := 0; i < 131072; i++ {
+		if _, err := w.Write(buf); err != nil {
+			t.Fatalf("writer failed: %v", err)
+		}
+	}
+	w.Close()
 }

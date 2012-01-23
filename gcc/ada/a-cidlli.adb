@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2004-2010, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2011, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,13 +27,34 @@
 -- This unit was originally developed by Matthew J Heaney.                  --
 ------------------------------------------------------------------------------
 
-with System;  use type System.Address;
 with Ada.Unchecked_Deallocation;
+
+with System; use type System.Address;
 
 package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
    procedure Free is
      new Ada.Unchecked_Deallocation (Element_Type, Element_Access);
+
+   type Iterator is new Limited_Controlled and
+     List_Iterator_Interfaces.Reversible_Iterator with
+   record
+      Container : List_Access;
+      Node      : Node_Access;
+   end record;
+
+   overriding procedure Finalize (Object : in out Iterator);
+
+   overriding function First (Object : Iterator) return Cursor;
+   overriding function Last  (Object : Iterator) return Cursor;
+
+   overriding function Next
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
+
+   overriding function Previous
+     (Object   : Iterator;
+      Position : Cursor) return Cursor;
 
    -----------------------
    -- Local Subprograms --
@@ -153,6 +174,27 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
       Insert (Container, No_Element, New_Item, Count);
    end Append;
 
+   ------------
+   -- Assign --
+   ------------
+
+   procedure Assign (Target : in out List; Source : List) is
+      Node : Node_Access;
+
+   begin
+      if Target'Address = Source'Address then
+         return;
+      end if;
+
+      Target.Clear;
+
+      Node := Source.First;
+      while Node /= null loop
+         Target.Append (Node.Element.all);
+         Node := Node.Next;
+      end loop;
+   end Assign;
+
    -----------
    -- Clear --
    -----------
@@ -200,6 +242,33 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
       Free (X);
    end Clear;
 
+   ------------------------
+   -- Constant_Reference --
+   ------------------------
+
+   function Constant_Reference
+     (Container : aliased List;
+      Position  : Cursor) return Constant_Reference_Type
+   is
+   begin
+      if Position.Container = null then
+         raise Constraint_Error with "Position cursor has no element";
+      end if;
+
+      if Position.Container /= Container'Unrestricted_Access then
+         raise Program_Error with
+           "Position cursor designates wrong container";
+      end if;
+
+      if Position.Node.Element = null then
+         raise Program_Error with "Node has no element";
+      end if;
+
+      pragma Assert (Vet (Position), "bad cursor in Constant_Reference");
+
+      return (Element => Position.Node.Element.all'Access);
+   end Constant_Reference;
+
    --------------
    -- Contains --
    --------------
@@ -211,6 +280,17 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
    begin
       return Find (Container, Item) /= No_Element;
    end Contains;
+
+   ----------
+   -- Copy --
+   ----------
+
+   function Copy (Source : List) return List is
+   begin
+      return Target : List do
+         Target.Assign (Source);
+      end return;
+   end Copy;
 
    ------------
    -- Delete --
@@ -379,6 +459,21 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
       return Position.Node.Element.all;
    end Element;
 
+   --------------
+   -- Finalize --
+   --------------
+
+   procedure Finalize (Object : in out Iterator) is
+   begin
+      if Object.Container /= null then
+         declare
+            B : Natural renames Object.Container.all.Busy;
+         begin
+            B := B - 1;
+         end;
+      end if;
+   end Finalize;
+
    ----------
    -- Find --
    ----------
@@ -409,7 +504,7 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
       while Node /= null loop
          if Node.Element.all = Item then
-            return Cursor'(Container'Unchecked_Access, Node);
+            return Cursor'(Container'Unrestricted_Access, Node);
          end if;
 
          Node := Node.Next;
@@ -428,7 +523,29 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
          return No_Element;
       end if;
 
-      return Cursor'(Container'Unchecked_Access, Container.First);
+      return Cursor'(Container'Unrestricted_Access, Container.First);
+   end First;
+
+   function First (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Node component influences the
+      --  behavior of the First (and Last) selector function.
+
+      --  When the Node component is null, this means the iterator object was
+      --  constructed without a start expression, in which case the (forward)
+      --  iteration starts from the (logical) beginning of the entire sequence
+      --  of items (corresponding to Container.First, for a forward iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items. When
+      --  the Node component is non-null, the iterator object was constructed
+      --  with a start expression, that specifies the position from which the
+      --  (forward) partial iteration begins.
+
+      if Object.Node = null then
+         return Indefinite_Doubly_Linked_Lists.First (Object.Container.all);
+      else
+         return Cursor'(Object.Container, Object.Node);
+      end if;
    end First;
 
    -------------------
@@ -504,8 +621,22 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
          LI, RI : Cursor;
 
       begin
-         if Target'Address = Source'Address then
+
+         --  The semantics of Merge changed slightly per AI05-0021. It was
+         --  originally the case that if Target and Source denoted the same
+         --  container object, then the GNAT implementation of Merge did
+         --  nothing. However, it was argued that RM05 did not precisely
+         --  specify the semantics for this corner case. The decision of the
+         --  ARG was that if Target and Source denote the same non-empty
+         --  container object, then Program_Error is raised.
+
+         if Source.Is_Empty then
             return;
+         end if;
+
+         if Target'Address = Source'Address then
+            raise Program_Error with
+              "Target and Source denote same non-empty container";
          end if;
 
          if Target.Busy > 0 then
@@ -798,9 +929,7 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
      (Container : List;
       Process   : not null access procedure (Position : Cursor))
    is
-      C : List renames Container'Unrestricted_Access.all;
-      B : Natural renames C.Busy;
-
+      B    : Natural renames Container'Unrestricted_Access.all.Busy;
       Node : Node_Access := Container.First;
 
    begin
@@ -808,7 +937,7 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
       begin
          while Node /= null loop
-            Process (Cursor'(Container'Unchecked_Access, Node));
+            Process (Cursor'(Container'Unrestricted_Access, Node));
             Node := Node.Next;
          end loop;
       exception
@@ -818,6 +947,81 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
       end;
 
       B := B - 1;
+   end Iterate;
+
+   function Iterate
+     (Container : List)
+      return List_Iterator_Interfaces.Reversible_Iterator'class
+   is
+      B : Natural renames Container'Unrestricted_Access.all.Busy;
+
+   begin
+      --  The value of the Node component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Node
+      --  component is null (as is the case here), this means the iterator
+      --  object was constructed without a start expression. This is a
+      --  complete iterator, meaning that the iteration starts from the
+      --  (logical) beginning of the sequence of items.
+
+      --  Note: For a forward iterator, Container.First is the beginning, and
+      --  for a reverse iterator, Container.Last is the beginning.
+
+      return It : constant Iterator :=
+                    Iterator'(Limited_Controlled with
+                                Container => Container'Unrestricted_Access,
+                                Node      => null)
+      do
+         B := B + 1;
+      end return;
+   end Iterate;
+
+   function Iterate
+     (Container : List;
+      Start     : Cursor)
+      return List_Iterator_Interfaces.Reversible_Iterator'Class
+   is
+      B  : Natural renames Container'Unrestricted_Access.all.Busy;
+
+   begin
+      --  It was formerly the case that when Start = No_Element, the partial
+      --  iterator was defined to behave the same as for a complete iterator,
+      --  and iterate over the entire sequence of items. However, those
+      --  semantics were unintuitive and arguably error-prone (it is too easy
+      --  to accidentally create an endless loop), and so they were changed,
+      --  per the ARG meeting in Denver on 2011/11. However, there was no
+      --  consensus about what positive meaning this corner case should have,
+      --  and so it was decided to simply raise an exception. This does imply,
+      --  however, that it is not possible to use a partial iterator to specify
+      --  an empty sequence of items.
+
+      if Start = No_Element then
+         raise Constraint_Error with
+           "Start position for iterator equals No_Element";
+      end if;
+
+      if Start.Container /= Container'Unrestricted_Access then
+         raise Program_Error with
+           "Start cursor of Iterate designates wrong list";
+      end if;
+
+      pragma Assert (Vet (Start), "Start cursor of Iterate is bad");
+
+      --  The value of the Node component influences the behavior of the First
+      --  and Last selector functions of the iterator object. When the Node
+      --  component is non-null (as is the case here), it means that this
+      --  is a partial iteration, over a subset of the complete sequence of
+      --  items. The iterator object was constructed with a start expression,
+      --  indicating the position from which the iteration begins. Note that
+      --  the start position has the same value irrespective of whether this
+      --  is a forward or reverse iteration.
+
+      return It : constant Iterator :=
+                    Iterator'(Limited_Controlled with
+                                Container => Container'Unrestricted_Access,
+                                Node      => Start.Node)
+      do
+         B := B + 1;
+      end return;
    end Iterate;
 
    ----------
@@ -830,7 +1034,29 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
          return No_Element;
       end if;
 
-      return Cursor'(Container'Unchecked_Access, Container.Last);
+      return Cursor'(Container'Unrestricted_Access, Container.Last);
+   end Last;
+
+   function Last (Object : Iterator) return Cursor is
+   begin
+      --  The value of the iterator object's Node component influences the
+      --  behavior of the Last (and First) selector function.
+
+      --  When the Node component is null, this means the iterator object was
+      --  constructed without a start expression, in which case the (reverse)
+      --  iteration starts from the (logical) beginning of the entire sequence
+      --  (corresponding to Container.Last, for a reverse iterator).
+
+      --  Otherwise, this is iteration over a partial sequence of items. When
+      --  the Node component is non-null, the iterator object was constructed
+      --  with a start expression, that specifies the position from which the
+      --  (reverse) partial iteration begins.
+
+      if Object.Node = null then
+         return Indefinite_Doubly_Linked_Lists.Last (Object.Container.all);
+      else
+         return Cursor'(Object.Container, Object.Node);
+      end if;
    end Last;
 
    ------------------
@@ -910,6 +1136,20 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
       end;
    end Next;
 
+   function Next (Object : Iterator; Position : Cursor) return Cursor is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Next designates wrong list";
+      end if;
+
+      return Next (Position);
+   end Next;
+
    -------------
    -- Prepend --
    -------------
@@ -949,6 +1189,20 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
          return Cursor'(Position.Container, Prev_Node);
       end;
+   end Previous;
+
+   function Previous (Object : Iterator; Position : Cursor) return Cursor is
+   begin
+      if Position.Container = null then
+         return No_Element;
+      end if;
+
+      if Position.Container /= Object.Container then
+         raise Program_Error with
+           "Position cursor of Previous designates wrong list";
+      end if;
+
+      return Previous (Position);
    end Previous;
 
    -------------------
@@ -1055,6 +1309,49 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
    begin
       raise Program_Error with "attempt to stream list cursor";
    end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   procedure Read
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : out Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Read;
+
+   ---------------
+   -- Reference --
+   ---------------
+
+   function Reference
+     (Container : aliased in out List;
+      Position  : Cursor) return Reference_Type
+   is
+   begin
+      if Position.Container = null then
+         raise Constraint_Error with "Position cursor has no element";
+      end if;
+
+      if Position.Container /= Container'Unrestricted_Access then
+         raise Program_Error with
+           "Position cursor designates wrong container";
+      end if;
+
+      if Position.Node.Element = null then
+         raise Program_Error with "Node has no element";
+      end if;
+
+      pragma Assert (Vet (Position), "bad cursor in function Reference");
+
+      return (Element => Position.Node.Element.all'Access);
+   end Reference;
 
    ---------------------
    -- Replace_Element --
@@ -1213,7 +1510,7 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
       while Node /= null loop
          if Node.Element.all = Item then
-            return Cursor'(Container'Unchecked_Access, Node);
+            return Cursor'(Container'Unrestricted_Access, Node);
          end if;
 
          Node := Node.Prev;
@@ -1240,7 +1537,7 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
 
       begin
          while Node /= null loop
-            Process (Cursor'(Container'Unchecked_Access, Node));
+            Process (Cursor'(Container'Unrestricted_Access, Node));
             Node := Node.Prev;
          end loop;
       exception
@@ -1905,6 +2202,22 @@ package body Ada.Containers.Indefinite_Doubly_Linked_Lists is
    is
    begin
       raise Program_Error with "attempt to stream list cursor";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
+   end Write;
+
+   procedure Write
+     (Stream : not null access Root_Stream_Type'Class;
+      Item   : Constant_Reference_Type)
+   is
+   begin
+      raise Program_Error with "attempt to stream reference";
    end Write;
 
 end Ada.Containers.Indefinite_Doubly_Linked_Lists;

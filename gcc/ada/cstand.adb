@@ -442,8 +442,10 @@ package body CStand is
       begin
          --  Create type definition nodes for predefined float types
 
-         Copy_Float_Type (Standard_Short_Float,
-           Find_Back_End_Float_Type ("float"));
+         Copy_Float_Type
+           (Standard_Short_Float,
+            Find_Back_End_Float_Type ("float"));
+         Set_Is_Implementation_Defined (Standard_Short_Float);
 
          Copy_Float_Type (Standard_Float, Standard_Short_Float);
 
@@ -476,6 +478,7 @@ package body CStand is
                LLF := Standard_Long_Float;
             end if;
 
+            Set_Is_Implementation_Defined (Standard_Long_Long_Float);
             Copy_Float_Type (Standard_Long_Long_Float, LLF);
 
             Append_Elmt (Standard_Long_Long_Float, Predefined_Float_Types);
@@ -670,9 +673,11 @@ package body CStand is
 
       Build_Signed_Integer_Type
         (Standard_Long_Long_Integer, Standard_Long_Long_Integer_Size);
+      Set_Is_Implementation_Defined (Standard_Long_Long_Integer);
 
       Create_Unconstrained_Base_Type
         (Standard_Short_Short_Integer, E_Signed_Integer_Subtype);
+      Set_Is_Implementation_Defined (Standard_Short_Short_Integer);
 
       Create_Unconstrained_Base_Type
         (Standard_Short_Integer, E_Signed_Integer_Subtype);
@@ -685,6 +690,7 @@ package body CStand is
 
       Create_Unconstrained_Base_Type
         (Standard_Long_Long_Integer, E_Signed_Integer_Subtype);
+      Set_Is_Implementation_Defined (Standard_Short_Short_Integer);
 
       Create_Float_Types;
 
@@ -1363,7 +1369,7 @@ package body CStand is
 
       begin
          --  In 32 bit mode, the size is 32 bits, and the delta and
-         --  small values are set to 20 milliseconds (20.0**(10.0**(-3)).
+         --  small values are set to 20 milliseconds (20.0*(10.0**(-3)).
 
          if Duration_32_Bits_On_Target then
             Dlo := Intval (Type_Low_Bound (Standard_Integer_32));
@@ -1371,7 +1377,7 @@ package body CStand is
             Delta_Val := UR_From_Components (UI_From_Int (20), Uint_3, 10);
 
          --  In standard 64-bit mode, the size is 64-bits and the delta and
-         --  small values are set to nanoseconds (1.0**(10.0**(-9))
+         --  small values are set to nanoseconds (1.0*(10.0**(-9))
 
          else
             Dlo := Intval (Type_Low_Bound (Standard_Integer_64));

@@ -434,6 +434,7 @@ static const struct default_options default_options_table[] =
     { OPT_LEVELS_1_PLUS, OPT_fipa_reference, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fipa_profile, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fmerge_constants, NULL, 1 },
+    { OPT_LEVELS_1_PLUS, OPT_fshrink_wrap, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fsplit_wide_types, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_ftree_ccp, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_ftree_bit_ccp, NULL, 1 },
@@ -484,6 +485,8 @@ static const struct default_options default_options_table[] =
     { OPT_LEVELS_2_PLUS, OPT_falign_jumps, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_falign_labels, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_falign_functions, NULL, 1 },
+    { OPT_LEVELS_2_PLUS, OPT_ftree_tail_merge, NULL, 1 },
+    { OPT_LEVELS_2_PLUS_SPEED_ONLY, OPT_foptimize_strlen, NULL, 1 },
 
     /* -O3 optimizations.  */
     { OPT_LEVELS_3_PLUS, OPT_ftree_loop_distribute_patterns, NULL, 1 },
@@ -660,6 +663,9 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
       opts->x_flag_toplevel_reorder = 0;
     }
 
+  if (opts->x_flag_tm && opts->x_flag_non_call_exceptions)
+    sorry ("transactional memory is not supported with non-call exceptions");
+
   /* -Wmissing-noreturn is alias for -Wsuggest-attribute=noreturn.  */
   if (opts->x_warn_missing_noreturn)
     opts->x_warn_suggest_attribute_noreturn = true;
@@ -779,7 +785,9 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
 #else
       error_at (loc, "LTO support has not been enabled in this configuration");
 #endif
-    }
+      if (!opts->x_flag_fat_lto_objects && !HAVE_LTO_PLUGIN)
+        error_at (loc, "-fno-fat-lto-objects are supported only with linker plugin.");
+}
   if ((opts->x_flag_lto_partition_balanced != 0) + (opts->x_flag_lto_partition_1to1 != 0)
        + (opts->x_flag_lto_partition_none != 0) >= 1)
     {
@@ -1125,7 +1133,7 @@ print_specific_help (unsigned int include_flags,
 
   /* Sanity check: Make sure that we do not have more
      languages than we have bits available to enumerate them.  */
-  gcc_assert ((1U << cl_lang_count) < CL_MIN_OPTION_CLASS);
+  gcc_assert ((1U << cl_lang_count) <= CL_MIN_OPTION_CLASS);
 
   /* If we have not done so already, obtain
      the desired maximum width of the output.  */
@@ -1410,6 +1418,10 @@ common_handle_option (struct gcc_options *opts,
     case OPT_Os:
     case OPT_Ofast:
       /* Currently handled in a prescan.  */
+      break;
+
+    case OPT_Werror:
+      dc->warning_as_error_requested = value;
       break;
 
     case OPT_Werror_:

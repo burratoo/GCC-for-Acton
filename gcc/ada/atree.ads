@@ -151,14 +151,14 @@ package Atree is
    --   it is useful to be able to do untyped traversals, and an internal
    --   package in Atree allows for direct untyped accesses in such cases.
 
-   --   Flag4         Sixteen Boolean flags (use depends on Nkind and
+   --   Flag4         Fifteen Boolean flags (use depends on Nkind and
    --   Flag5         Ekind, as described for FieldN). Again the access
    --   Flag6         is usually via subprograms in Sinfo and Einfo which
    --   Flag7         provide high-level synonyms for these flags, and
    --   Flag8         contain debugging code that checks that the values
    --   Flag9         in Nkind and Ekind are appropriate for the access.
    --   Flag10
-   --   Flag11        Note that Flag1-2 are missing from this list. For
+   --   Flag11        Note that Flag1-3 are missing from this list. For
    --   Flag12        historical reasons, these flag names are unused.
    --   Flag13
    --   Flag14
@@ -435,10 +435,15 @@ package Atree is
    --  whose parent field references a copied node (descendants not linked to
    --  a copied node by the parent field are also copied.) The parent pointers
    --  in the copy are properly set. Copy_Separate_Tree (Empty/Error) returns
-   --  Empty/Error. The semantic fields are not copied and the new subtree
-   --  does not share any entity with source subtree.
-   --  But the code *does* copy semantic fields, and the description above
-   --  is in any case unclear on this point ??? (RBKD)
+   --  Empty/Error. The new subtree does not share entities with the source,
+   --  but has new entities with the same name. Most of the time this routine
+   --  is called on an unanalyzed tree, and no semantic information is copied.
+   --  However, to ensure that no entities are shared between the two when the
+   --  source is already analyzed, entity fields in the copy are zeroed out.
+
+   function Copy_Separate_List (Source : List_Id) return List_Id;
+   --  Applies Copy_Separate_Tree to each element of the Source list, returning
+   --  a new list of the results of these copy operations.
 
    procedure Exchange_Entities (E1 : Entity_Id; E2 : Entity_Id);
    --  Exchange the contents of two entities. The parent pointers are switched
@@ -449,16 +454,15 @@ package Atree is
    --  two entities may be list members.
 
    function Extend_Node (Node : Node_Id) return Entity_Id;
-   --  This function returns a copy of its input node with an extension
-   --  added. The fields of the extension are set to Empty. Due to the way
-   --  extensions are handled (as four consecutive array elements), it may
-   --  be necessary to reallocate the node, so that the returned value is
-   --  not the same as the input value, but where possible the returned
-   --  value will be the same as the input value (i.e. the extension will
-   --  occur in place). It is the caller's responsibility to ensure that
-   --  any pointers to the original node are appropriately updated. This
-   --  function is used only by Sinfo.CN to change nodes into their
-   --  corresponding entities.
+   --  This function returns a copy of its input node with an extension added.
+   --  The fields of the extension are set to Empty. Due to the way extensions
+   --  are handled (as four consecutive array elements), it may be necessary
+   --  to reallocate the node, so that the returned value is not the same as
+   --  the input value, but where possible the returned value will be the same
+   --  as the input value (i.e. the extension will occur in place). It is the
+   --  caller's responsibility to ensure that any pointers to the original node
+   --  are appropriately updated. This function is used only by Sinfo.CN to
+   --  change nodes into their corresponding entities.
 
    type Report_Proc is access procedure (Target : Node_Id; Source : Node_Id);
 
@@ -475,7 +479,7 @@ package Atree is
    --  the results of Process calls. See below for details.
 
    generic
-     with function Process (N : Node_Id) return Traverse_Result is <>;
+      with function Process (N : Node_Id) return Traverse_Result is <>;
    function Traverse_Func (Node : Node_Id) return Traverse_Final_Result;
    --  This is a generic function that, given the parent node for a subtree,
    --  traverses all syntactic nodes of this tree, calling the given function
@@ -501,7 +505,7 @@ package Atree is
    --  all calls to process returned either OK, OK_Orig, or Skip).
 
    generic
-     with function Process (N : Node_Id) return Traverse_Result is <>;
+      with function Process (N : Node_Id) return Traverse_Result is <>;
    procedure Traverse_Proc (Node : Node_Id);
    pragma Inline (Traverse_Proc);
    --  This is the same as Traverse_Func except that no result is returned,
@@ -757,6 +761,14 @@ package Atree is
    procedure Set_Has_Aspects (N : Node_Id; Val : Boolean := True);
    pragma Inline (Set_Has_Aspects);
 
+   procedure Set_Original_Node (N : Node_Id; Val : Node_Id);
+   pragma Inline (Set_Original_Node);
+   --  Note that this routine is used only in very peculiar cases. In normal
+   --  cases, the Original_Node link is set by calls to Rewrite. We currently
+   --  use it in ASIS mode to manually set the link from pragma expressions
+   --  to their aspect original source expressions, so that the original source
+   --  expressions accessed by ASIS are also semantically analyzed.
+
    ------------------------------
    -- Entity Update Procedures --
    ------------------------------
@@ -883,9 +895,13 @@ package Atree is
    -----------------------------------
 
    --  This subpackage provides the functions for accessing and procedures for
-   --  setting fields that are normally referenced by their logical synonyms
-   --  defined in packages Sinfo and Einfo. The implementations of these
-   --  packages use the package Atree.Unchecked_Access.
+   --  setting fields that are normally referenced by wrapper subprograms (e.g.
+   --  logical synonyms defined in packages Sinfo and Einfo, or specialized
+   --  routines such as Rewrite (for Original_Node), or the node creation
+   --  routines (for Set_Nkind). The implementations of these wrapper
+   --  subprograms use the package Atree.Unchecked_Access as do various
+   --  special case accesses where no wrapper applies. Documentation is always
+   --  required for such a special case access explaining why it is needed.
 
    package Unchecked_Access is
 

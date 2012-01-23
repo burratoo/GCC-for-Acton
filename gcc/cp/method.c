@@ -339,6 +339,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
   DECL_EXTERNAL (thunk_fndecl) = 0;
   /* The linkage of the function may have changed.  FIXME in linkage
      rewrite.  */
+  gcc_assert (DECL_INTERFACE_KNOWN (function));
   TREE_PUBLIC (thunk_fndecl) = TREE_PUBLIC (function);
   DECL_VISIBILITY (thunk_fndecl) = DECL_VISIBILITY (function);
   DECL_VISIBILITY_SPECIFIED (thunk_fndecl)
@@ -516,7 +517,8 @@ do_build_copy_constructor (tree fndecl)
       for (vbases = CLASSTYPE_VBASECLASSES (current_class_type), i = 0;
 	   VEC_iterate (tree, vbases, i, binfo); i++)
 	{
-	  init = build_base_path (PLUS_EXPR, parm, binfo, 1);
+	  init = build_base_path (PLUS_EXPR, parm, binfo, 1,
+				  tf_warning_or_error);
 	  if (move_p)
 	    init = move (init);
 	  member_init_list
@@ -531,7 +533,8 @@ do_build_copy_constructor (tree fndecl)
 	  if (BINFO_VIRTUAL_P (base_binfo))
 	    continue;
 
-	  init = build_base_path (PLUS_EXPR, parm, base_binfo, 1);
+	  init = build_base_path (PLUS_EXPR, parm, base_binfo, 1,
+				  tf_warning_or_error);
 	  if (move_p)
 	    init = move (init);
 	  member_init_list
@@ -624,7 +627,8 @@ do_build_copy_assign (tree fndecl)
 
 	  /* We must convert PARM directly to the base class
 	     explicitly since the base class may be ambiguous.  */
-	  converted_parm = build_base_path (PLUS_EXPR, parm, base_binfo, 1);
+	  converted_parm = build_base_path (PLUS_EXPR, parm, base_binfo, 1,
+					    tf_warning_or_error);
 	  if (move_p)
 	    converted_parm = move (converted_parm);
 	  /* Call the base class assignment operator.  */
@@ -952,23 +956,14 @@ process_subob_fn (tree fn, bool move_p, tree *spec_p, bool *trivial_p,
       goto bad;
     }
 
-  if (constexpr_p)
+  if (constexpr_p && !DECL_DECLARED_CONSTEXPR_P (fn))
     {
-      /* If this is a specialization of a constexpr template, we need to
-	 force the instantiation now so that we know whether or not it's
-	 really constexpr.  */
-      if (DECL_DECLARED_CONSTEXPR_P (fn) && DECL_TEMPLATE_INSTANTIATION (fn)
-	  && !DECL_TEMPLATE_INSTANTIATED (fn))
-	instantiate_decl (fn, /*defer_ok*/false, /*expl_class*/false);
-      if (!DECL_DECLARED_CONSTEXPR_P (fn))
+      *constexpr_p = false;
+      if (msg)
 	{
-	  *constexpr_p = false;
-	  if (msg)
-	    {
-	      inform (0, "defaulted constructor calls non-constexpr "
-		      "%q+D", fn);
-	      explain_invalid_constexpr_fn (fn);
-	    }
+	  inform (0, "defaulted constructor calls non-constexpr "
+		  "%q+D", fn);
+	  explain_invalid_constexpr_fn (fn);
 	}
     }
 
@@ -1022,32 +1017,54 @@ walk_field_subobs (tree fields, tree fnname, special_function_kind sfk,
 	}
       else if (sfk == sfk_constructor)
 	{
-	  bool bad = true;
+	  bool bad;
+
+	  if (DECL_INITIAL (field))
+	    {
+	      if (msg && DECL_INITIAL (field) == error_mark_node)
+		inform (0, "initializer for %q+#D is invalid", field);
+	      if (trivial_p)
+		*trivial_p = false;
+#if 0
+	      /* Core 1351: If the field has an NSDMI that could throw, the
+		 default constructor is noexcept(false).  FIXME this is
+		 broken by deferred parsing and 1360 saying we can't lazily
+		 declare a non-trivial default constructor.  Also this
+		 needs to do deferred instantiation.  Disable until the
+		 conflict between 1351 and 1360 is resolved.  */
+	      if (spec_p && !expr_noexcept_p (DECL_INITIAL (field), complain))
+		*spec_p = noexcept_false_spec;
+#endif
+
+	      /* Don't do the normal processing.  */
+	      continue;
+	    }
+
+	  bad = false;
 	  if (CP_TYPE_CONST_P (mem_type)
-	      && (!CLASS_TYPE_P (mem_type)
-		  || !type_has_user_provided_default_constructor (mem_type)))
+	      && default_init_uninitialized_part (mem_type))
 	    {
 	      if (msg)
 		error ("uninitialized non-static const member %q#D",
 		       field);
+	      bad = true;
 	    }
 	  else if (TREE_CODE (mem_type) == REFERENCE_TYPE)
 	    {
 	      if (msg)
 		error ("uninitialized non-static reference member %q#D",
 		       field);
+	      bad = true;
 	    }
-	  else
-	    bad = false;
 
 	  if (bad && deleted_p)
 	    *deleted_p = true;
 
 	  /* For an implicitly-defined default constructor to be constexpr,
-	     every member must have a user-provided default constructor.  */
-	  /* FIXME will need adjustment for non-static data member
-	     initializers.  */
-	  if (constexpr_p && !CLASS_TYPE_P (mem_type))
+	     every member must have a user-provided default constructor or
+	     an explicit initializer.  */
+	  if (constexpr_p && !CLASS_TYPE_P (mem_type)
+	      && TREE_CODE (DECL_CONTEXT (field)) != UNION_TYPE)
 	    {
 	      *constexpr_p = false;
 	      if (msg)
@@ -1192,12 +1209,19 @@ synthesized_method_walk (tree ctype, special_function_kind sfk, bool const_p,
      resolution, so a constructor can be trivial even if it would otherwise
      call a non-trivial constructor.  */
   if (expected_trivial
-      && !diag
       && (!copy_arg_p || cxx_dialect < cxx0x))
     {
       if (constexpr_p && sfk == sfk_constructor)
-	*constexpr_p = synthesized_default_constructor_is_constexpr (ctype);
-      return;
+	{
+	  bool cx = trivial_default_constructor_is_constexpr (ctype);
+	  *constexpr_p = cx;
+	  if (diag && !cx && TREE_CODE (ctype) == UNION_TYPE)
+	    /* A trivial constructor doesn't have any NSDMI.  */
+	    inform (input_location, "defaulted default constructor does "
+		    "not initialize any non-static data member");
+	}
+      if (!diag)
+	return;
     }
 
   ++cp_unevaluated_operand;
@@ -1360,18 +1384,31 @@ maybe_explain_implicit_delete (tree decl)
 	{
 	  informed = true;
 	  if (sfk == sfk_constructor)
-	    error ("a lambda closure type has a deleted default constructor");
+	    inform (DECL_SOURCE_LOCATION (decl),
+		    "a lambda closure type has a deleted default constructor");
 	  else if (sfk == sfk_copy_assignment)
-	    error ("a lambda closure type has a deleted copy assignment operator");
+	    inform (DECL_SOURCE_LOCATION (decl),
+		    "a lambda closure type has a deleted copy assignment operator");
 	  else
 	    informed = false;
+	}
+      else if (DECL_ARTIFICIAL (decl)
+	       && (sfk == sfk_copy_assignment
+		   || sfk == sfk_copy_constructor)
+	       && (type_has_user_declared_move_constructor (ctype)
+		   || type_has_user_declared_move_assign (ctype)))
+	{
+	  inform (0, "%q+#D is implicitly declared as deleted because %qT "
+		 "declares a move constructor or move assignment operator",
+		 decl, ctype);
+	  informed = true;
 	}
       if (!informed)
 	{
 	  tree parm_type = TREE_VALUE (FUNCTION_FIRST_USER_PARMTYPE (decl));
 	  bool const_p = CP_TYPE_CONST_P (non_reference (parm_type));
 	  tree scope = push_scope (ctype);
-	  error ("%qD is implicitly deleted because the default "
+	  inform (0, "%q+#D is implicitly deleted because the default "
 		 "definition would be ill-formed:", decl);
 	  pop_scope (scope);
 	  synthesized_method_walk (ctype, sfk, const_p,
@@ -1727,6 +1764,15 @@ lazily_declare_fn (special_function_kind sfk, tree type)
 
   /* Declare the function.  */
   fn = implicitly_declare_fn (sfk, type, const_p);
+
+  /* [class.copy]/8 If the class definition declares a move constructor or
+     move assignment operator, the implicitly declared copy constructor is
+     defined as deleted.... */
+  if ((sfk == sfk_copy_assignment
+       || sfk == sfk_copy_constructor)
+      && (type_has_user_declared_move_constructor (type)
+	  || type_has_user_declared_move_assign (type)))
+    DECL_DELETED_FN (fn) = true;
 
   /* For move variants, rather than declare them as deleted we just
      don't declare them at all.  */

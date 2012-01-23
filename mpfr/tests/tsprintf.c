@@ -2,7 +2,9 @@
    and mpfr_vsnprintf
 
 Copyright 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Cacao projects, INRIA.
+Contributed by the Arenaire and Caramel projects, INRIA.
+
+This file is part of the GNU MPFR Library.
 
 The GNU MPFR Library is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -390,6 +392,40 @@ decimal (void)
   check_sprintf ("1", "%.0RUf", x);
   check_sprintf ("1", "%.0RYf", x);
 
+  /* multiple of 10 with 'g' style */
+  mpfr_set_str (x, "10", 10, MPFR_RNDN);
+  check_sprintf ("10", "%Rg", x);
+  check_sprintf ("1e+01", "%.0Rg", x);
+  check_sprintf ("1e+01", "%.1Rg", x);
+  check_sprintf ("10", "%.2Rg", x);
+
+  mpfr_ui_div (x, 1, x, MPFR_RNDN);
+  check_sprintf ("0.1", "%Rg", x);
+  check_sprintf ("0.1", "%.0Rg", x);
+  check_sprintf ("0.1", "%.1Rg", x);
+
+  mpfr_set_str (x, "1000", 10, MPFR_RNDN);
+  check_sprintf ("1000", "%Rg", x);
+  check_sprintf ("1e+03", "%.0Rg", x);
+  check_sprintf ("1e+03", "%.3Rg", x);
+  check_sprintf ("1000", "%.4Rg", x);
+
+  mpfr_ui_div (x, 1, x, MPFR_RNDN);
+  check_sprintf ("0.001", "%Rg", x);
+  check_sprintf ("0.001", "%.0Rg", x);
+  check_sprintf ("0.001", "%.1Rg", x);
+
+  mpfr_set_str (x, "100000", 10, MPFR_RNDN);
+  check_sprintf ("100000", "%Rg", x);
+  check_sprintf ("1e+05", "%.0Rg", x);
+  check_sprintf ("1e+05", "%.5Rg", x);
+  check_sprintf ("100000", "%.6Rg", x);
+
+  mpfr_ui_div (x, 1, x, MPFR_RNDN);
+  check_sprintf ("1e-05", "%Rg", x);
+  check_sprintf ("1e-05", "%.0Rg", x);
+  check_sprintf ("1e-05", "%.1Rg", x);
+
   /* check rounding mode */
   mpfr_set_str (x, "0.0076", 10, MPFR_RNDN);
   check_sprintf ("0.007", "%.3RDF", x);
@@ -733,7 +769,9 @@ mixed (void)
   int n1;
   int n2;
   int i = 121;
+#ifndef NPRINTF_L
   long double d = 1. / 31.;
+#endif
   mpf_t mpf;
   mpq_t mpq;
   mpz_t mpz;
@@ -1069,7 +1107,11 @@ check_emax_aux (mpfr_exp_t e)
 
   if (strcmp (s1, s2) != 0)
     {
-      printf ("Error in check_emax_aux for emax = %ld\n", e);
+      printf ("Error in check_emax_aux for emax = ");
+      if (e > LONG_MAX)
+        printf ("(>LONG_MAX)\n");
+      else
+        printf ("%ld\n", (long) e);
       printf ("Expected %s\n", s2);
       printf ("Got      %s\n", s1);
       exit (1);
@@ -1084,7 +1126,11 @@ check_emax_aux (mpfr_exp_t e)
 
   if (strcmp (s1, s2) != 0)
     {
-      printf ("Error in check_emax_aux for emax = %ld\n", e);
+      printf ("Error in check_emax_aux for emax = ");
+      if (e > LONG_MAX)
+        printf ("(>LONG_MAX)\n");
+      else
+        printf ("%ld\n", (long) e);
       printf ("Expected %s\n", s2);
       printf ("Got      %s\n", s1);
       exit (1);
@@ -1157,7 +1203,7 @@ int
 main (void)
 {
   /* We have nothing to test. */
-  return 0;
+  return 77;
 }
 
 #endif  /* HAVE_STDARG */

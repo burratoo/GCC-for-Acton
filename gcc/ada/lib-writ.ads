@@ -355,7 +355,7 @@ package Lib.Writ is
 
    --  Subsequent R lines are present only if pragma Restriction No_Dependence
    --  is used. There is one such line for each such pragma appearing in the
-   --  extended main unit. The format is
+   --  extended main unit. The format is:
 
    --    R unit_name
 
@@ -717,10 +717,10 @@ package Lib.Writ is
    --  reference data. See the spec of Par_SCO for full details of the format.
 
    ----------------------
-   -- ALFA Information --
+   -- Alfa Information --
    ----------------------
 
-   --  The ALFA information follows the SCO information. See the spec of Alfa
+   --  The Alfa information follows the SCO information. See the spec of Alfa
    --  for full details of the format.
 
    ----------------------

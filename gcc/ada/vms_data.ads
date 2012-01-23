@@ -1926,6 +1926,12 @@ package VMS_Data is
    --   When using a project file, GNAT MAKE creates a temporary mapping file
    --   and communicates it to the compiler using this switch.
 
+   S_GCC_Multi   : aliased constant S := "/MULTI_UNIT_INDEX=#"             &
+                                            "-gnateI#";
+   --        /MULTI_UNIT_INDEX=nnn
+   --
+   --   Specify the index of the unit to compile in a multi-unit source file.
+
    S_GCC_Mess    : aliased constant S := "/MESSAGES_PROJECT_FILE="         &
                                             "DEFAULT "                     &
                                                "-vP0 "                     &
@@ -3391,12 +3397,6 @@ package VMS_Data is
    --
    --   Inhibit all warning messages of the GCC back-end.
 
-   S_GCC_All_Back : aliased constant S := "/ALL_BACK_END_WARNINGS "        &
-                                            "-Wall";
-   --        /ALL_BACK_END_WARNINGS
-   --
-   --   Activate all warning messages of the GCC back-end.
-
    S_GCC_Wide    : aliased constant S := "/WIDE_CHARACTER_ENCODING="       &
                                              "BRACKETS "                   &
                                                 "-gnatWb "                 &
@@ -3585,6 +3585,7 @@ package VMS_Data is
                      S_GCC_Output  'Access,
                      S_GCC_Machine 'Access,
                      S_GCC_Mapping 'Access,
+                     S_GCC_Multi   'Access,
                      S_GCC_Mess    'Access,
                      S_GCC_Nesting 'Access,
                      S_GCC_Noadc   'Access,
@@ -3627,7 +3628,6 @@ package VMS_Data is
                      S_GCC_Wide    'Access,
                      S_GCC_WideX   'Access,
                      S_GCC_No_Back 'Access,
-                     S_GCC_All_Back'Access,
                      S_GCC_Xdebug  'Access,
                      S_GCC_Lxdebug 'Access,
                      S_GCC_Xref    'Access);
@@ -6119,6 +6119,30 @@ package VMS_Data is
    --   See 'HELP GNAT COMPILE /WIDE_CHARACTER_ENCODING' for an explanation
    --   about the different character encoding methods.
 
+   S_Pretty_Enums     : aliased constant S := "/ENUM_CASING="              &
+                                              "AS_DECLARED "               &
+                                                 "-neD "                   &
+                                              "LOWER_CASE "                &
+                                                 "-neL "                   &
+                                              "UPPER_CASE "                &
+                                                 "-neU "                   &
+                                              "MIXED_CASE "                &
+                                                 "-neM";
+   --        /ENUM_CASING=name-option
+   --
+   --   Specify the casing of enumeration literals. If not specified, the
+   --   casing of enumeration literals is defined by the NAME_CASING option.
+   --   'name-option' may be one of:
+   --
+   --      AS_DECLARED       Literals casing for defining occurrences are
+   --                        as they appear in the source file.
+   --
+   --      LOWER_CASE        Literals are in lower case.
+   --
+   --      UPPER_CASE        Literals are in upper case.
+   --
+   --      MIXED_CASE        Literals are in mixed case.
+
    S_Pretty_Files     : aliased constant S := "/FILES=@"                   &
                                                  "-files=@";
    --      /FILES=filename
@@ -6176,6 +6200,14 @@ package VMS_Data is
    --
    --   Set the maximum line length, nnn from 32 ..256. The default is 79.
 
+   S_Pretty_Maxact    : aliased constant S := "/MAX_ACT=#"                 &
+                                                 "--call_threshold=#";
+   --        /MAX_ACT=nnn
+   --
+   --  If the number of parameter associations is greater than nnn and if at
+   --  least one association uses named notation, start each association from
+   --  a new line
+
    S_Pretty_Maxind    : aliased constant S := "/MAX_INDENT=#"              &
                                                  "-T#";
    --        /MAX_INDENT=nnn
@@ -6184,6 +6216,14 @@ package VMS_Data is
    --   and variants if their number is nnn or more. The default is 10.
    --   If nnn is zero, an additional indentation level is used for any
    --   number of case alternatives and variants.
+
+   S_Pretty_Maxpar    : aliased constant S := "/MAX_PAR=#"                 &
+                                                 "--par_threshold=#";
+   --        /MAX_PAR=nnn
+   --
+   --  If the number of parameter specifications is greater than nnn (or equal
+   --  to nnn in case of a function), start each specification from a new line.
+   --  The default value is 3.
 
    S_Pretty_Mess      : aliased constant S := "/MESSAGES_PROJECT_FILE="    &
                                             "DEFAULT "                     &
@@ -6337,6 +6377,30 @@ package VMS_Data is
    --   of the directory specified in the project file. If the subdirectory
    --   does not exist, it is created automatically.
 
+   S_Pretty_Types     : aliased constant S := "/TYPE_CASING="              &
+                                              "AS_DECLARED "               &
+                                                 "-ntD "                   &
+                                              "LOWER_CASE "                &
+                                                 "-ntL "                   &
+                                              "UPPER_CASE "                &
+                                                 "-ntU "                   &
+                                              "MIXED_CASE "                &
+                                                 "-ntM";
+   --        /TYPE_CASING=name-option
+   --
+   --   Specify the casing of subtype names (including first subtypes from
+   --   type declarations). If not specified, the casing of these names is
+   --   defined by the NAME_CASING option. 'name-option' is one of:
+   --
+   --      AS_DECLARED       Names are cased as they appear in the declaration
+   --                        in the source file.
+   --
+   --      LOWER_CASE        Names are in lower case.
+   --
+   --      UPPER_CASE        Names are in upper case.
+   --
+   --      MIXED_CASE        Names are in mixed case.
+
    S_Pretty_Verbose   : aliased constant S := "/VERBOSE "                  &
                                               "-v";
    --        /NOVERBOSE (D)
@@ -6369,6 +6433,7 @@ package VMS_Data is
                         S_Pretty_Eol              'Access,
                         S_Pretty_Ext              'Access,
                         S_Pretty_Encoding         'Access,
+                        S_Pretty_Enums            'Access,
                         S_Pretty_Files            'Access,
                         S_Pretty_Follow           'Access,
                         S_Pretty_Forced           'Access,
@@ -6376,7 +6441,9 @@ package VMS_Data is
                         S_Pretty_Indent           'Access,
                         S_Pretty_Keyword          'Access,
                         S_Pretty_Maxlen           'Access,
+                        S_Pretty_Maxact           'Access,
                         S_Pretty_Maxind           'Access,
+                        S_Pretty_Maxpar           'Access,
                         S_Pretty_Mess             'Access,
                         S_Pretty_Names            'Access,
                         S_Pretty_No_Labels        'Access,
@@ -6397,6 +6464,7 @@ package VMS_Data is
                         S_Pretty_Stnm_On_Nw_Line  'Access,
                         S_Pretty_Specific         'Access,
                         S_Pretty_Standard         'Access,
+                        S_Pretty_Types            'Access,
                         S_Pretty_Verbose          'Access,
                         S_Pretty_Warnings         'Access);
 

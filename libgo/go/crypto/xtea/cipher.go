@@ -8,10 +8,7 @@ package xtea
 
 // For details, see http://www.cix.co.uk/~klockstone/xtea.pdf
 
-import (
-	"os"
-	"strconv"
-)
+import "strconv"
 
 // The XTEA block size in bytes.
 const BlockSize = 8
@@ -24,14 +21,14 @@ type Cipher struct {
 
 type KeySizeError int
 
-func (k KeySizeError) String() string {
+func (k KeySizeError) Error() string {
 	return "crypto/xtea: invalid key size " + strconv.Itoa(int(k))
 }
 
 // NewCipher creates and returns a new Cipher.
 // The key argument should be the XTEA key.
 // XTEA only supports 128 bit (16 byte) keys.
-func NewCipher(key []byte) (*Cipher, os.Error) {
+func NewCipher(key []byte) (*Cipher, error) {
 	k := len(key)
 	switch k {
 	default:
@@ -47,14 +44,14 @@ func NewCipher(key []byte) (*Cipher, os.Error) {
 }
 
 // BlockSize returns the XTEA block size, 8 bytes.
-// It is necessary to satisfy the Cipher interface in the
-// package "crypto/block".
+// It is necessary to satisfy the Block interface in the
+// package "crypto/cipher".
 func (c *Cipher) BlockSize() int { return BlockSize }
 
 // Encrypt encrypts the 8 byte buffer src using the key and stores the result in dst.
 // Note that for amounts of data larger than a block,
 // it is not safe to just call Encrypt on successive blocks;
-// instead, use an encryption mode like CBC (see crypto/block/cbc.go).
+// instead, use an encryption mode like CBC (see crypto/cipher/cbc.go).
 func (c *Cipher) Encrypt(dst, src []byte) { encryptBlock(c, dst, src) }
 
 // Decrypt decrypts the 8 byte buffer src using the key k and stores the result in dst.

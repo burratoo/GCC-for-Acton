@@ -4,7 +4,6 @@
 
 package math
 
-
 // The original C code, the long comment, and the constants
 // below are from FreeBSD's /usr/src/lib/msun/src/s_expm1.c
 // and came with this notice.  The go code is a simplified
@@ -122,7 +121,12 @@ package math
 //	Expm1(-Inf) = -1
 //	Expm1(NaN) = NaN
 // Very large values overflow to -1 or +Inf.
+func libc_expm1(float64) float64 __asm__("expm1")
 func Expm1(x float64) float64 {
+	return libc_expm1(x)
+}
+
+func expm1(x float64) float64 {
 	const (
 		Othreshold = 7.09782712893383973096e+02 // 0x40862E42FEFA39EF
 		Ln2X56     = 3.88162421113569373274e+01 // 0x4043687a9f1af2b1

@@ -279,7 +279,8 @@ tree_mem_ref_addr (tree type, tree mem_ref)
   if (act_elem)
     {
       if (step)
-	act_elem = fold_build2 (MULT_EXPR, sizetype, act_elem, step);
+	act_elem = fold_build2 (MULT_EXPR, TREE_TYPE (act_elem),
+				act_elem, step);
       addr_off = act_elem;
     }
 
@@ -287,16 +288,17 @@ tree_mem_ref_addr (tree type, tree mem_ref)
   if (act_elem)
     {
       if (addr_off)
-	addr_off = fold_build2 (PLUS_EXPR, sizetype, addr_off, act_elem);
+	addr_off = fold_build2 (PLUS_EXPR, TREE_TYPE (addr_off),
+				addr_off, act_elem);
       else
 	addr_off = act_elem;
     }
 
   if (offset && !integer_zerop (offset))
     {
-      offset = fold_convert (sizetype, offset);
       if (addr_off)
-	addr_off = fold_build2 (PLUS_EXPR, sizetype, addr_off, offset);
+	addr_off = fold_build2 (PLUS_EXPR, TREE_TYPE (addr_off), addr_off,
+				fold_convert (TREE_TYPE (addr_off), offset));
       else
 	addr_off = offset;
     }
@@ -828,6 +830,68 @@ copy_mem_ref_info (tree to, tree from)
   /* And the info about the original reference.  */
   TREE_SIDE_EFFECTS (to) = TREE_SIDE_EFFECTS (from);
   TREE_THIS_VOLATILE (to) = TREE_THIS_VOLATILE (from);
+}
+
+/* Copies the reference information from OLD_REF to NEW_REF, where
+   NEW_REF should be either a MEM_REF or a TARGET_MEM_REF.  */
+
+void
+copy_ref_info (tree new_ref, tree old_ref)
+{
+  tree new_ptr_base = NULL_TREE;
+
+  gcc_assert (TREE_CODE (new_ref) == MEM_REF
+	      || TREE_CODE (new_ref) == TARGET_MEM_REF);
+
+  TREE_SIDE_EFFECTS (new_ref) = TREE_SIDE_EFFECTS (old_ref);
+  TREE_THIS_VOLATILE (new_ref) = TREE_THIS_VOLATILE (old_ref);
+
+  new_ptr_base = TREE_OPERAND (new_ref, 0);
+
+  /* We can transfer points-to information from an old pointer
+     or decl base to the new one.  */
+  if (new_ptr_base
+      && TREE_CODE (new_ptr_base) == SSA_NAME
+      && !SSA_NAME_PTR_INFO (new_ptr_base))
+    {
+      tree base = get_base_address (old_ref);
+      if (!base)
+	;
+      else if ((TREE_CODE (base) == MEM_REF
+		|| TREE_CODE (base) == TARGET_MEM_REF)
+	       && TREE_CODE (TREE_OPERAND (base, 0)) == SSA_NAME
+	       && SSA_NAME_PTR_INFO (TREE_OPERAND (base, 0)))
+	{
+	  struct ptr_info_def *new_pi;
+	  duplicate_ssa_name_ptr_info
+	    (new_ptr_base, SSA_NAME_PTR_INFO (TREE_OPERAND (base, 0)));
+	  new_pi = SSA_NAME_PTR_INFO (new_ptr_base);
+	  /* We have to be careful about transfering alignment information.  */
+	  if (TREE_CODE (old_ref) == MEM_REF
+	      && !(TREE_CODE (new_ref) == TARGET_MEM_REF
+		   && (TMR_INDEX2 (new_ref)
+		       || (TMR_STEP (new_ref)
+			   && (TREE_INT_CST_LOW (TMR_STEP (new_ref))
+			       < new_pi->align)))))
+	    {
+	      new_pi->misalign += double_int_sub (mem_ref_offset (old_ref),
+						  mem_ref_offset (new_ref)).low;
+	      new_pi->misalign &= (new_pi->align - 1);
+	    }
+	  else
+	    {
+	      new_pi->align = 1;
+	      new_pi->misalign = 0;
+	    }
+	}
+      else if (TREE_CODE (base) == VAR_DECL
+	       || TREE_CODE (base) == PARM_DECL
+	       || TREE_CODE (base) == RESULT_DECL)
+	{
+	  struct ptr_info_def *pi = get_ptr_info (new_ptr_base);
+	  pt_solution_set_var (&pi->pt, base);
+	}
+    }
 }
 
 /* Move constants in target_mem_ref REF to offset.  Returns the new target

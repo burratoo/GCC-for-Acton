@@ -1,5 +1,5 @@
 /* Single-image implementation of GNU Fortran Coarray Library
-   Copyright (C) 2011
+   Copyright (C) 2011, 2012
    Free Software Foundation, Inc.
    Contributed by Tobias Burnus <burnus@net-b.de>
 
@@ -71,21 +71,24 @@ _gfortran_caf_finalize (void)
 {
   while (caf_static_list != NULL)
     {
-      free(caf_static_list->token[0]);
-      caf_static_list = caf_static_list->prev;
+      caf_static_t *tmp = caf_static_list->prev;
+      free (caf_static_list->token[0]);
+      free (caf_static_list->token);
+      free (caf_static_list);
+      caf_static_list = tmp;
     }
 }
 
 
 void *
-_gfortran_caf_register (ptrdiff_t size, caf_register_t type, void **token,
+_gfortran_caf_register (ptrdiff_t size, caf_register_t type, void ***token,
 			int *stat, char *errmsg, int errmsg_len)
 {
   void *local;
 
   local = malloc (size);
-  token = malloc (sizeof (void*) * 1);
-  token[0] = local;
+  *token = malloc (sizeof (void*) * 1);
+  (*token)[0] = local;
 
   if (unlikely (local == NULL || token == NULL))
     {
@@ -114,17 +117,23 @@ _gfortran_caf_register (ptrdiff_t size, caf_register_t type, void **token,
     {
       caf_static_t *tmp = malloc (sizeof (caf_static_t));
       tmp->prev  = caf_static_list;
-      tmp->token = token;
+      tmp->token = *token;
       caf_static_list = tmp;
     }
   return local;
 }
 
 
-int
-_gfortran_caf_deregister (void **token __attribute__ ((unused)))
+void
+_gfortran_caf_deregister (void ***token, int *stat,
+			  char *errmsg __attribute__ ((unused)),
+			  int errmsg_len __attribute__ ((unused)))
 {
-  return 0;
+  free ((*token)[0]);
+  free (*token);
+
+  if (stat)
+    *stat = 0;
 }
 
 

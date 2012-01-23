@@ -46,6 +46,7 @@ with Stand;    use Stand;
 with Sinfo;    use Sinfo;
 with Snames;   use Snames;
 with Table;
+with Treepr;   use Treepr;
 with Uintp;    use Uintp;
 
 package body Sem_Type is
@@ -81,7 +82,7 @@ package body Sem_Type is
 
    package All_Interp is new Table.Table (
      Table_Component_Type => Interp,
-     Table_Index_Type     => Int,
+     Table_Index_Type     => Interp_Index,
      Table_Low_Bound      => 0,
      Table_Initial        => Alloc.All_Interp_Initial,
      Table_Increment      => Alloc.All_Interp_Increment,
@@ -570,6 +571,44 @@ package body Sem_Type is
       H            : Entity_Id;
       First_Interp : Interp_Index;
 
+      function Within_Instance (E : Entity_Id) return Boolean;
+      --  Within an instance there can be spurious ambiguities between a local
+      --  entity and one declared outside of the instance. This can only happen
+      --  for subprograms, because otherwise the local entity hides the outer
+      --  one. For an overloadable entity, this predicate determines whether it
+      --  is a candidate within the instance, or must be ignored.
+
+      ---------------------
+      -- Within_Instance --
+      ---------------------
+
+      function Within_Instance (E : Entity_Id) return Boolean is
+         Inst : Entity_Id;
+         Scop : Entity_Id;
+
+      begin
+         if not In_Instance then
+            return False;
+         end if;
+
+         Inst := Current_Scope;
+         while Present (Inst) and then not Is_Generic_Instance (Inst) loop
+            Inst := Scope (Inst);
+         end loop;
+
+         Scop := Scope (E);
+         while Present (Scop) and then Scop /= Standard_Standard loop
+            if Scop = Inst then
+               return True;
+            end if;
+            Scop := Scope (Scop);
+         end loop;
+
+         return False;
+      end Within_Instance;
+
+   --  Start of processing for Collect_Interps
+
    begin
       New_Interps (N);
 
@@ -621,11 +660,14 @@ package body Sem_Type is
 
                      --  A homograph in the same scope can occur within an
                      --  instantiation, the resulting ambiguity has to be
-                     --  resolved later.
+                     --  resolved later. The homographs may both be local
+                     --  functions or actuals, or may be declared at different
+                     --  levels within the instance. The renaming of an actual
+                     --  within the instance must not be included.
 
-                     if Scope (H) = Scope (Ent)
-                        and then In_Instance
-                        and then not Is_Inherited_Operation (H)
+                     if Within_Instance (H)
+                       and then H /= Renamed_Entity (Ent)
+                       and then not Is_Inherited_Operation (H)
                      then
                         All_Interp.Table (All_Interp.Last) :=
                           (H, Etype (H), Empty);
@@ -923,6 +965,19 @@ package body Sem_Type is
       elsif Ekind (BT1) = E_Anonymous_Access_Type
         and then Is_Access_Type (T2)
         and then Covers (Designated_Type (T1), Designated_Type (T2))
+      then
+         return True;
+
+      --  Ada 2012 (AI05-0149): Allow an anonymous access type in the context
+      --  of a named general access type. An implicit conversion will be
+      --  applied. For the resolution, one designated type must cover the
+      --  other.
+
+      elsif Ada_Version >= Ada_2012
+        and then Ekind (BT1) = E_General_Access_Type
+        and then Ekind (BT2) = E_Anonymous_Access_Type
+        and then (Covers (Designated_Type (T1), Designated_Type (T2))
+                   or else Covers (Designated_Type (T2), Designated_Type (T1)))
       then
          return True;
 
@@ -1934,12 +1989,12 @@ package body Sem_Type is
       --  Otherwise, the predefined operator has precedence, or if the user-
       --  defined operation is directly visible we have a true ambiguity.
 
-      --  If this is a fixed-point multiplication and division in Ada83 mode,
+      --  If this is a fixed-point multiplication and division in Ada 83 mode,
       --  exclude the universal_fixed operator, which often causes ambiguities
       --  in legacy code.
 
-      --  Ditto in Ada2012, where an ambiguity may arise for an operation on
-      --  a partial view that is completed with a fixed point type. See
+      --  Ditto in Ada 2012, where an ambiguity may arise for an operation
+      --  on a partial view that is completed with a fixed point type. See
       --  AI05-0020 and AI05-0209. The ambiguity is resolved in favor of the
       --  user-defined subprogram so that a client of the package has the
       --  same resulution as the body of the package.
@@ -3318,18 +3373,28 @@ package body Sem_Type is
 
    function Valid_Boolean_Arg (T : Entity_Id) return Boolean is
    begin
-      return Is_Boolean_Type (T)
-        or else T = Any_Composite
-        or else (Is_Array_Type (T)
-                  and then T /= Any_String
-                  and then Number_Dimensions (T) = 1
-                  and then Is_Boolean_Type (Component_Type (T))
-                  and then (not Is_Private_Composite (T)
-                             or else In_Instance)
-                  and then (not Is_Limited_Composite (T)
-                             or else In_Instance))
+      if Is_Boolean_Type (T)
         or else Is_Modular_Integer_Type (T)
-        or else T = Universal_Integer;
+        or else T = Universal_Integer
+        or else T = Any_Composite
+      then
+         return True;
+
+      elsif Is_Array_Type (T)
+        and then T /= Any_String
+        and then Number_Dimensions (T) = 1
+        and then Is_Boolean_Type (Component_Type (T))
+        and then
+         ((not Is_Private_Composite (T)
+            and then not Is_Limited_Composite (T))
+           or else In_Instance
+           or else Available_Full_View_Of_Component (T))
+      then
+         return True;
+
+      else
+         return False;
+      end if;
    end Valid_Boolean_Arg;
 
    --------------------------
@@ -3341,10 +3406,12 @@ package body Sem_Type is
 
       if T = Any_Composite then
          return False;
+
       elsif Is_Discrete_Type (T)
         or else Is_Real_Type (T)
       then
          return True;
+
       elsif Is_Array_Type (T)
           and then Number_Dimensions (T) = 1
           and then Is_Discrete_Type (Component_Type (T))
@@ -3354,12 +3421,34 @@ package body Sem_Type is
                      or else In_Instance)
       then
          return True;
+
+      elsif Is_Array_Type (T)
+        and then Number_Dimensions (T) = 1
+        and then Is_Discrete_Type (Component_Type (T))
+        and then Available_Full_View_Of_Component (T)
+      then
+         return True;
+
       elsif Is_String_Type (T) then
          return True;
       else
          return False;
       end if;
    end Valid_Comparison_Arg;
+
+   ------------------
+   -- Write_Interp --
+   ------------------
+
+   procedure Write_Interp (It : Interp) is
+   begin
+      Write_Str ("Nam: ");
+      Print_Tree_Node (It.Nam);
+      Write_Str ("Typ: ");
+      Print_Tree_Node (It.Typ);
+      Write_Str ("Abstract_Op: ");
+      Print_Tree_Node (It.Abstract_Op);
+   end Write_Interp;
 
    ----------------------
    -- Write_Interp_Ref --
@@ -3386,6 +3475,13 @@ package body Sem_Type is
       Nam : Entity_Id;
 
    begin
+      Write_Str ("Overloads: ");
+      Print_Node_Briefly (N);
+
+      if Nkind (N) not in N_Has_Entity then
+         return;
+      end if;
+
       if not Is_Overloaded (N) then
          Write_Str ("Non-overloaded entity ");
          Write_Eol;

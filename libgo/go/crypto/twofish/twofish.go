@@ -12,10 +12,7 @@ package twofish
 // LibTomCrypt is free for all purposes under the public domain.
 // It was heavily inspired by the go blowfish package.
 
-import (
-	"os"
-	"strconv"
-)
+import "strconv"
 
 // BlockSize is the constant block size of Twofish.
 const BlockSize = 16
@@ -31,13 +28,13 @@ type Cipher struct {
 
 type KeySizeError int
 
-func (k KeySizeError) String() string {
+func (k KeySizeError) Error() string {
 	return "crypto/twofish: invalid key size " + strconv.Itoa(int(k))
 }
 
 // NewCipher creates and returns a Cipher.
 // The key argument should be the Twofish key, 16, 24 or 32 bytes.
-func NewCipher(key []byte) (*Cipher, os.Error) {
+func NewCipher(key []byte) (*Cipher, error) {
 	keylen := len(key)
 
 	if keylen != 16 && keylen != 24 && keylen != 32 {
@@ -116,7 +113,7 @@ func (c *Cipher) Reset() {
 		c.k[i] = 0
 	}
 	for i := range c.s {
-		for j := 0; j < 265; j++ {
+		for j := 0; j < 256; j++ {
 			c.s[i][j] = 0
 		}
 	}
@@ -269,7 +266,7 @@ func h(in, key []byte, offset int) uint32 {
 // Encrypt encrypts a 16-byte block from src to dst, which may overlap.
 // Note that for amounts of data larger than a block,
 // it is not safe to just call Encrypt on successive blocks;
-// instead, use an encryption mode like CBC (see crypto/block/cbc.go).
+// instead, use an encryption mode like CBC (see crypto/cipher/cbc.go).
 func (c *Cipher) Encrypt(dst, src []byte) {
 	S1 := c.s[0]
 	S2 := c.s[1]

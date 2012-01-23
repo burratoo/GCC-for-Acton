@@ -105,6 +105,9 @@ package body Prj.Attr is
    "SVlibrary_kind#" &
    "SVlibrary_version#" &
    "LVlibrary_interface#" &
+   "SVlibrary_standalone#" &
+   "LVlibrary_encapsulated_options#" &
+   "SVlibrary_encapsulated_supported#" &
    "SVlibrary_auto_init#" &
    "LVleading_library_options#" &
    "LVlibrary_options#" &
@@ -183,11 +186,14 @@ package body Prj.Attr is
    --  Configuration - Compiling
 
    "Sadriver#" &
+   "Salanguage_kind#" &
+   "Sadependency_kind#" &
    "Larequired_switches#" &
    "Laleading_required_switches#" &
    "Latrailing_required_switches#" &
    "Lapic_option#" &
    "Sapath_syntax#" &
+   "Lasource_file_switches#" &
    "Saobject_file_suffix#" &
    "Laobject_file_switches#" &
    "Lamulti_unit_switches#" &

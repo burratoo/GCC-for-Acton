@@ -25,6 +25,7 @@
 
 with ALI;      use ALI;
 with Gnatvsn;  use Gnatvsn;
+with Makeutl;  use Makeutl;
 with MLib.Fil; use MLib.Fil;
 with MLib.Tgt; use MLib.Tgt;
 with MLib.Utl; use MLib.Utl;
@@ -68,9 +69,6 @@ package body MLib.Prj is
 
    S_Dec_Ads : File_Name_Type := No_File;
    --  Name_Id for "dec.ads"
-
-   G_Trasym_Ads : File_Name_Type := No_File;
-   --  Name_Id for "g-trasym.ads"
 
    Arguments : String_List_Access := No_Argument;
    --  Used to accumulate arguments for the invocation of gnatbind and of the
@@ -312,17 +310,11 @@ package body MLib.Prj is
       Libgnarl_Needed   : Yes_No_Unknown := For_Project.Libgnarl_Needed;
       --  Set True if library needs to be linked with libgnarl
 
-      Libdecgnat_Needed : Boolean := False;
-      --  On OpenVMS, set True if library needs to be linked with libdecgnat
-
-      Gtrasymobj_Needed : Boolean := False;
-      --  On OpenVMS, set rue if library needs to be linked with g-trasym.obj
-
       Object_Directory_Path : constant String :=
                                 Get_Name_String
                                   (For_Project.Object_Directory.Display_Name);
 
-      Standalone   : constant Boolean := For_Project.Standalone_Library;
+      Standalone   : constant Boolean := For_Project.Standalone_Library /= No;
 
       Project_Name : constant String := Get_Name_String (For_Project.Name);
 
@@ -374,8 +366,7 @@ package body MLib.Prj is
       --  to link with -lgnarl (this is the case when there is a dependency
       --  on s-osinte.ads). On OpenVMS, set Libdecgnat_Needed if the ALI file
       --  indicates that there is a need to link with -ldecgnat (this is the
-      --  case when there is a dependency on dec.ads). Set Gtrasymobj_Needed
-      --  if there is a dependency on g-trasym.ads.
+      --  case when there is a dependency on dec.ads).
 
       procedure Process (The_ALI : File_Name_Type);
       --  Check if the closure of a library unit which is or should be in the
@@ -512,8 +503,7 @@ package body MLib.Prj is
          if Libgnarl_Needed /= Yes
            or else
             (Main_Project
-              and then OpenVMS_On_Target
-              and then ((not Libdecgnat_Needed) or (not Gtrasymobj_Needed)))
+              and then OpenVMS_On_Target)
          then
             --  Scan the ALI file
 
@@ -542,14 +532,6 @@ package body MLib.Prj is
                      For_Project.Libgnarl_Needed := Yes;
                   else
                      exit;
-                  end if;
-
-               elsif OpenVMS_On_Target then
-                  if ALI.Sdep.Table (Index).Sfile = S_Dec_Ads then
-                     Libdecgnat_Needed := True;
-
-                  elsif ALI.Sdep.Table (Index).Sfile = G_Trasym_Ads then
-                     Gtrasymobj_Needed := True;
                   end if;
                end if;
             end loop;
@@ -802,6 +784,9 @@ package body MLib.Prj is
          end loop;
       end Process_Imported_Libraries;
 
+      Path_FD : File_Descriptor := Invalid_FD;
+      --  Used for setting the source and object paths
+
    --  Start of processing for Build_Library
 
    begin
@@ -832,12 +817,6 @@ package body MLib.Prj is
          Name_Len := 0;
          Add_Str_To_Name_Buffer ("dec.ads");
          S_Dec_Ads := Name_Find;
-      end if;
-
-      if G_Trasym_Ads = No_File then
-         Name_Len := 0;
-         Add_Str_To_Name_Buffer ("g-trasym.ads");
-         G_Trasym_Ads := Name_Find;
       end if;
 
       --  We work in the object directory
@@ -1044,10 +1023,54 @@ package body MLib.Prj is
 
             --  Set the paths
 
-            Set_Ada_Paths
-              (Project             => For_Project,
-               In_Tree             => In_Tree,
-               Including_Libraries => True);
+            --  First the source path
+
+            if For_Project.Include_Path_File = No_Path then
+               Get_Directories
+                 (Project_Tree => In_Tree,
+                  For_Project  => For_Project,
+                  Activity     => Compilation,
+                  Languages    => Ada_Only);
+
+               Create_New_Path_File
+                 (In_Tree.Shared, Path_FD, For_Project.Include_Path_File);
+
+               Write_Path_File (Path_FD);
+               Path_FD := Invalid_FD;
+            end if;
+
+            if Current_Source_Path_File_Of (In_Tree.Shared) /=
+                                                For_Project.Include_Path_File
+            then
+               Set_Current_Source_Path_File_Of
+                 (In_Tree.Shared, For_Project.Include_Path_File);
+               Set_Path_File_Var
+                 (Project_Include_Path_File,
+                  Get_Name_String (For_Project.Include_Path_File));
+            end if;
+
+            --  Then, the object path
+
+            Get_Directories
+              (Project_Tree => In_Tree,
+               For_Project  => For_Project,
+               Activity     => SAL_Binding,
+               Languages    => Ada_Only);
+
+            declare
+               Path_File_Name : Path_Name_Type;
+
+            begin
+               Create_New_Path_File (In_Tree.Shared, Path_FD, Path_File_Name);
+
+               Write_Path_File (Path_FD);
+               Path_FD := Invalid_FD;
+
+               Set_Path_File_Var
+                 (Project_Objects_Path_File, Get_Name_String (Path_File_Name));
+               Set_Current_Source_Path_File_Of
+                 (In_Tree.Shared, Path_File_Name);
+            end;
 
             --  Display the gnatbind command, if not in quiet output
 
@@ -1066,9 +1089,9 @@ package body MLib.Prj is
                   Arguments (1 .. Argument_Number),
                   Success);
 
-            else
-               --  Otherwise create a temporary response file
+            --  Otherwise create a temporary response file
 
+            else
                declare
                   FD            : File_Descriptor;
                   Path          : Path_Name_Type;
@@ -1508,8 +1531,7 @@ package body MLib.Prj is
                                           ALIs.Append (new String'(ALI_Path));
 
                                           --  Find out if for this ALI file,
-                                          --  libgnarl or libdecgnat or
-                                          --  g-trasym.obj (on OpenVMS) is
+                                          --  libgnarl or libdecgnat is
                                           --  necessary.
 
                                           Check_Libs (ALI_Path, True);
@@ -1583,12 +1605,6 @@ package body MLib.Prj is
                   end if;
                end if;
             end;
-         end if;
-
-         if Gtrasymobj_Needed then
-            Opts.Increment_Last;
-            Opts.Table (Opts.Last) :=
-              new String'(Lib_Directory & "/g-trasym.obj");
          end if;
 
          if The_Build_Mode = Static then

@@ -149,6 +149,14 @@ package Exp_Util is
    -- Other Subprograms --
    -----------------------
 
+   procedure Activate_Atomic_Synchronization (N : Node_Id);
+   --  N is a node for which atomic synchronization may be required (it is
+   --  either an identifier, expanded name, or selected/indexed component or
+   --  an explicit dereference). The caller has checked the basic conditions
+   --  (atomic variable appearing and Atomic_Sync not disabled). This function
+   --  checks if atomic synchronization is required and if so sets the flag
+   --  and if appropriate generates a warning (in -gnatw.n mode).
+
    procedure Adjust_Condition (N : Node_Id);
    --  The node N is an expression whose root-type is Boolean, and which
    --  represents a boolean value used as a condition (i.e. a True/False
@@ -198,25 +206,16 @@ package Exp_Util is
      (N           : Node_Id;
       Is_Allocate : Boolean);
    --  Create a custom Allocate/Deallocate to be associated with an allocation
-   --  or deallocation of a controlled or class-wide object. In the case of
-   --  allocation, N is the declaration of the temporary variable which
+   --  or deallocation:
+   --
+   --    1) controlled objects
+   --    2) class-wide objects
+   --    3) any kind of object on a subpool
+   --
+   --  N must be an allocator or the declaration of a temporary variable which
    --  represents the expression of the original allocator node, otherwise N
    --  must be a free statement. If flag Is_Allocate is set, the generated
-   --  routine is allocate, deallocate otherwise. The generated routine is:
-   --
-   --     F : constant Boolean :=                          --  CW case
-   --           Ada.Tags.Needs_Finalization (<Expr>'Tag);  --  CW case
-   --
-   --     procedure Allocate / Deallocate
-   --       (P : Storage_Pool;
-   --        A : [out] Address;  --  out is present for Allocate
-   --        S : Storage_Count;
-   --        L : Storage_Count)
-   --     is
-   --     begin
-   --        Allocate / Deallocate
-   --          (<Ptr_Typ collection>, A, S, L, [Needs_Header => F]);
-   --     end Allocate;
+   --  routine is allocate, deallocate otherwise.
 
    function Build_Runtime_Call (Loc : Source_Ptr; RE : RE_Id) return Node_Id;
    --  Build an N_Procedure_Call_Statement calling the given runtime entity.
@@ -351,6 +350,11 @@ package Exp_Util is
    --  Determine whether it is appropriate to dynamically allocate strings
    --  which represent entry [family member] names. These strings are created
    --  by the compiler and used by GDB.
+
+   procedure Evaluate_Name (Nam : Node_Id);
+   --  Remove the all side effects from a name which appears as part of an
+   --  object renaming declaration. More comments are needed here that explain
+   --  how this differs from Force_Evaluation and Remove_Side_Effects ???
 
    procedure Evolve_And_Then (Cond : in out Node_Id; Cond1 : Node_Id);
    --  Rewrites Cond with the expression: Cond and then Cond1. If Cond is
