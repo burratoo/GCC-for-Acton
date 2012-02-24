@@ -107,6 +107,19 @@ package Exp_Ch9 is
    --  External is False if the call is to another protected subprogram within
    --  the same object.
 
+   procedure Build_Service_PO_Barriers_Call
+     (N             : Node_Id;
+      Statements    : List_Id;
+      Decls         : List_Id;
+      B_Except_Flag : out Node_Id);
+   --  Creates the procedure call to the protected body's, N, object
+   --  service barriers subprogram and appends the new call to the Statement
+   --  list. When a protected object has more than one entry a new variable
+   --  represented by B_Except_Flag is created and appended to Decls and the
+   --  procedure call is wrapped in a block with an exception handler that set
+   --  The flag to true. This flag is then used to signal to the runtime that
+   --  an exception occured in the barrier.
+
    procedure Build_Task_Activation_Call (N : Node_Id);
    --  This procedure is called for constructs that can be task activators,
    --  i.e. task bodies, subprogram bodies, package bodies and blocks. If the

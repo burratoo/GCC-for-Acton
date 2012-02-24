@@ -1654,7 +1654,8 @@ package body Bindgen is
       for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
          Set_String ("      Scheduler_Agent_");
          Set_Int (Int (J));
-         Set_String (" : aliased Oak.Oak_Task.Oak_Task;");
+         Set_String (" : aliased Oak.Oak_Task.Oak_Task " &
+                     "(0, Oak.Oak_Task.Scheduler); ");
          Write_Statement_Buffer;
       end loop;
 

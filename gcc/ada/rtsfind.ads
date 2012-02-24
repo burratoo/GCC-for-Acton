@@ -403,6 +403,7 @@ package Rtsfind is
 
       --  Children of ARPART
 
+      ARPART_Protected_Objects,
       ARPART_Tasks,
 
       --  Oak
@@ -421,7 +422,8 @@ package Rtsfind is
 
       --  Children of Oak.Oak_Task
 
-      Oak_Oak_Task_Data_Access);
+      Oak_Oak_Task_Data_Access,
+      Oak_Oak_Task_Protected_Object);
 
    subtype Ada_Child is RTU_Id
      range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -502,18 +504,18 @@ package Rtsfind is
    --  Range of values for children of System.Tasking.Async_Delays
 
    subtype ARPART_Child is RTU_Id
-      range ARPART_Tasks .. ARPART_Tasks;
+      range ARPART_Protected_Objects .. ARPART_Tasks;
    --  Range of values of children of ARPART
 
    subtype Oak_Child is RTU_Id
-      range Oak_Memory .. Oak_Oak_Task_Data_Access;
+      range Oak_Memory .. Oak_Oak_Task_Protected_Object;
    --  Range of values of children of Oak
 
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
 
    subtype Oak_Oak_Task_Child is Oak_Child
-      range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Data_Access;
+      range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Protected_Object;
 
    --------------------------
    -- Runtime Entity Table --
@@ -1737,6 +1739,10 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Enter_Protected_Object,          -- ARPART.Protected_Objects
+     RE_Exit_Protected_Object,           -- ARPART.Protected_Objects
+     RE_Entry_Count,                     -- ARPART.Protected_Objects
+
      RE_Activate_Tasks,                  -- ARPART.Tasks
      RE_Change_Cycle_Period,             -- ARPART.Tasks
      RE_Change_Relative_Deadline,        -- ARPART.Tasks
@@ -1749,10 +1755,19 @@ package Rtsfind is
 
      RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
 
+     RE_Initialise_Protected_Object,     -- Oak.Oak_Task.Protected_Object
+
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
+     RE_Entry_Barrier_Wrapper,           -- Oak_Oak_Task
+     RE_Entry_Index,                     -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
+     RE_Protected_Function,              -- Oak.Oak_Task
+     RE_Protected_Procedure,             -- Oak.Oak_Task
+     RE_Protected_Entry,                 -- Oak.Oak_Task
+     RE_Regular,                         -- Oak_Oak_Task
+     RE_Scheduler,                       -- Oak_Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
 
    --  The following declarations build a table that is indexed by the RTE
@@ -2987,6 +3002,10 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Enter_Protected_Object           => ARPART_Protected_Objects,
+     RE_Exit_Protected_Object            => ARPART_Protected_Objects,
+     RE_Entry_Count                      => ARPART_Protected_Objects,
+
      RE_Activate_Tasks                   => ARPART_Tasks,
      RE_Change_Cycle_Period              => ARPART_Tasks,
      RE_Change_Relative_Deadline         => ARPART_Tasks,
@@ -2999,10 +3018,19 @@ package Rtsfind is
 
      RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
 
+     RE_Initialise_Protected_Object      => Oak_Oak_Task_Protected_Object,
+
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
+     RE_Entry_Barrier_Wrapper            => Oak_Oak_Task,
+     RE_Entry_Index                      => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
+     RE_Protected_Function               => Oak_Oak_Task,
+     RE_Protected_Procedure              => Oak_Oak_Task,
+     RE_Protected_Entry                  => Oak_Oak_Task,
+     RE_Regular                          => Oak_Oak_Task,
+     RE_Scheduler                        => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);
 
    --------------------------------

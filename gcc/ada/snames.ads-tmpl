@@ -154,6 +154,7 @@ package Snames is
    Name_uAbort_Signal                  : constant Name_Id := N + $;
    Name_uAlignment                     : constant Name_Id := N + $;
    Name_uAssign                        : constant Name_Id := N + $;
+   Name_uBarriers                      : constant Name_Id := N + $;
    Name_uATCB                          : constant Name_Id := N + $;
    Name_uChain                         : constant Name_Id := N + $;
    Name_uController                    : constant Name_Id := N + $;
@@ -161,6 +162,7 @@ package Snames is
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uDispatching_Domain            : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
+   Name_uEntry_Id                      : constant Name_Id := N + $;
    Name_uExpunge                       : constant Name_Id := N + $;
    Name_uFinalizer                     : constant Name_Id := N + $;
    Name_uIdepth                        : constant Name_Id := N + $;

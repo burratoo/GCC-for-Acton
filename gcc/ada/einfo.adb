@@ -118,7 +118,6 @@ package body Einfo is
    --    Discriminant_Number             Uint15
    --    DT_Position                     Uint15
    --    DT_Entry_Count                  Uint15
-   --    Entry_Bodies_Array              Node15
    --    Entry_Parameters_Type           Node15
    --    Extra_Formal                    Node15
    --    Lit_Indexes                     Node15
@@ -226,6 +225,7 @@ package body Einfo is
    --    Overridden_Operation            Node26
    --    Package_Instantiation           Node26
    --    Relative_Deadline_Variable      Node26
+   --    Service_Entry_Barriers_Function Node26
    --    Static_Initialization           Node26
 
    --    Current_Use_Clause              Node27
@@ -948,11 +948,6 @@ package body Einfo is
       pragma Assert (Is_Entry (Id));
       return Flag152 (Id);
    end Entry_Accepted;
-
-   function Entry_Bodies_Array (Id : E) return E is
-   begin
-      return Node15 (Id);
-   end Entry_Bodies_Array;
 
    function Entry_Cancel_Parameter (Id : E) return E is
    begin
@@ -2636,6 +2631,11 @@ package body Einfo is
       return Flag167 (Id);
    end Sec_Stack_Needed_For_Return;
 
+   function Service_Entry_Barriers_Function (Id : E) return E is
+   begin
+      return Node26 (Id);
+   end Service_Entry_Barriers_Function;
+
    function Shadow_Entities (Id : E) return S is
    begin
       pragma Assert (Ekind_In (Id, E_Package, E_Generic_Package));
@@ -3435,11 +3435,6 @@ package body Einfo is
       pragma Assert (Is_Entry (Id));
       Set_Flag152 (Id, V);
    end Set_Entry_Accepted;
-
-   procedure Set_Entry_Bodies_Array (Id : E; V : E) is
-   begin
-      Set_Node15 (Id, V);
-   end Set_Entry_Bodies_Array;
 
    procedure Set_Entry_Cancel_Parameter (Id : E; V : E) is
    begin
@@ -5192,6 +5187,11 @@ package body Einfo is
    begin
       Set_Flag167 (Id, V);
    end Set_Sec_Stack_Needed_For_Return;
+
+   procedure Set_Service_Entry_Barriers_Function (Id : E; V : E) is
+   begin
+      Set_Node26 (Id, V);
+   end Set_Service_Entry_Barriers_Function;
 
    procedure Set_Shadow_Entities (Id : E; V : S) is
    begin
@@ -8098,9 +8098,6 @@ package body Einfo is
               E_Procedure                                  =>
             Write_Str ("DT_Position");
 
-         when E_Protected_Type                             =>
-            Write_Str ("Entry_Bodies_Array");
-
          when Entry_Kind                                   =>
             Write_Str ("Entry_Parameters_Type");
 
@@ -8672,9 +8669,17 @@ package body Einfo is
               and then not Is_Dispatching_Operation (Id)
             then
                Write_Str ("Static_Initialization");
+            elsif Present (Scope (Id))
+              and then Is_Protected_Type (Scope (Id))
+            then
+               Write_Str ("Service_Entry_Barriers_Function");
             else
                Write_Str ("Overridden_Operation");
             end if;
+
+         when E_Protected_Type                             |
+              E_Protected_Subtype                          =>
+            Write_Str ("Service_Entry_Barriers_Function");
 
          when others                                       =>
             Write_Str ("Field26??");
