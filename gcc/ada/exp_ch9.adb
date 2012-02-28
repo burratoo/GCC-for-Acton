@@ -266,7 +266,13 @@ package body Exp_Ch9 is
       Concval : Node_Id;
       Ename   : Node_Id;
       Index   : Node_Id);
-   --  Some comments here would be useful ???
+   --  The node N is an entry call to a task or protected entry. This procedure
+   --  rewrites this call with the appropriate expansion. Ename is the name of
+   --  the entry, and Concval is the record corresponding to the protected
+   --  object or task. If the targeted entry is a member of an entry family,
+   --  Index stores that index associated with that entry.
+   --  NOTE: Build_Simple_Entry_Call currently only implements entry calls to
+   --  protected objects. Entry calls to tasks are not supported.
 
    function Build_Task_Proc_Specification (T : Entity_Id) return Node_Id;
    --  This routine constructs a specification for the procedure that we will
@@ -3568,54 +3574,8 @@ package body Exp_Ch9 is
    -- Build_Simple_Entry_Call --
    -----------------------------
 
-   --  A task entry call is converted to a call to Call_Simple
-
-   --    declare
-   --       P : parms := (parm, parm, parm);
-   --    begin
-   --       Call_Simple (acceptor-task, entry-index, P'Address);
-   --       parm := P.param;
-   --       parm := P.param;
-   --       ...
-   --    end;
-
-   --  Here Pnn is an aggregate of the type constructed for the entry to hold
-   --  the parameters, and the constructed aggregate value contains either the
-   --  parameters or, in the case of non-elementary types, references to these
-   --  parameters. Then the address of this aggregate is passed to the runtime
-   --  routine, along with the task id value and the task entry index value.
-   --  Pnn is only required if parameters are present.
-
-   --  The assignments after the call are present only in the case of in-out
-   --  or out parameters for elementary types, and are used to assign back the
-   --  resulting values of such parameters.
-
-   --  Note: the reason that we insert a block here is that in the context
-   --  of selects, conditional entry calls etc. the entry call statement
-   --  appears on its own, not as an element of a list.
-
-   --  A protected entry call is converted to a Protected_Entry_Call:
-
-   --  declare
-   --     P   : E1_Params := (param, param, param);
-   --     Pnn : Boolean;
-   --     Bnn : Communications_Block;
-
-   --  declare
-   --     P   : E1_Params := (param, param, param);
-   --     Bnn : Communications_Block;
-
-   --  begin
-   --     Protected_Entry_Call (
-   --       Object => po._object'Access,
-   --       E => <entry index>;
-   --       Uninterpreted_Data => P'Address;
-   --       Mode => Simple_Call;
-   --       Block => Bnn);
-   --     parm := P.param;
-   --     parm := P.param;
-   --       ...
-   --  end;
+   --  The expansion of entry calls to protected objects is based off the
+   --  implementation of Build_Protected_Subprogram_Call.
 
    procedure Build_Simple_Entry_Call
      (N       : Node_Id;
@@ -3632,39 +3592,24 @@ package body Exp_Ch9 is
          return;
       end if;
 
-      --  Convert entry call to Call_Simple call
+      --  Convert entry call to a call to the entry's protected procedure
 
       declare
          Loc       : constant Source_Ptr := Sloc (N);
-         Parms     : constant List_Id    := Parameter_Associations (N);
-         Stats     : constant List_Id    := New_List;
-         Actual    : Node_Id;
-         Call      : Node_Id;
-         Comm_Name : Entity_Id;
          Conctyp   : Node_Id;
-         Decls     : List_Id;
          Ent       : Entity_Id;
-         Ent_Acc   : Entity_Id;
-         Formal    : Node_Id;
-         Iface_Tag : Entity_Id;
-         Iface_Typ : Entity_Id;
-         N_Node    : Node_Id;
-         N_Var     : Node_Id;
-         P         : Entity_Id;
-         Parm1     : Node_Id;
-         Parm2     : Node_Id;
-         Parm3     : Node_Id;
-         Pdecl     : Node_Id;
-         Plist     : List_Id;
-         X         : Entity_Id;
-         Xdecl     : Node_Id;
-
+         New_Sub   : Node_Id;
+         Params    : List_Id;
       begin
          --  Simple entry and entry family cases merge here
 
          Ent     := Entity (Ename);
-         Ent_Acc := Entry_Parameters_Type (Ent);
          Conctyp := Etype (Concval);
+
+         if not Is_Protected_Type (Entity (Concval)) then
+            raise Program_Error
+              with "Calls to task entries are not supported.";
+         end if;
 
          --  If prefix is an access type, dereference to obtain the task type
 
@@ -3672,373 +3617,37 @@ package body Exp_Ch9 is
             Conctyp := Designated_Type (Conctyp);
          end if;
 
-         --  Special case for protected subprogram calls
+         New_Sub :=
+           New_Occurrence_Of (Protected_Body_Subprogram (Ent), Loc);
 
-         if Is_Protected_Type (Conctyp)
-           and then Is_Subprogram (Entity (Ename))
+         if Present (Parameter_Associations (N)) then
+            Params := New_Copy_List_Tree (Parameter_Associations (N));
+         else
+            Params := New_List;
+         end if;
+
+         --  Prepend the entry id of the entry to the parameter list.
+         Prepend_To (Params,
+           Actual_Index_Expression (Loc, Entity (Ename), Index, Concval));
+
+         --  If the type is an untagged derived type, convert to the root type,
+         --  which is the one on which the operations are defined.
+
+         if Nkind (Concval) = N_Unchecked_Type_Conversion
+           and then not Is_Tagged_Type (Etype (Concval))
+           and then Is_Derived_Type (Etype (Concval))
          then
-            if not Is_Eliminated (Entity (Ename)) then
-               Build_Protected_Subprogram_Call
-                 (N, Ename, Convert_Concurrent (Concval, Conctyp));
-               Analyze (N);
-            end if;
-
-            return;
+            Set_Etype (Concval, Root_Type (Etype (Concval)));
+            Set_Subtype_Mark (Concval,
+              New_Occurrence_Of (Root_Type (Etype (Concval)), Sloc (N)));
          end if;
 
-         --  First parameter is the Task_Id value from the task value or the
-         --  Object from the protected object value, obtained by selecting
-         --  the _Task_Id or _Object from the result of doing an unchecked
-         --  conversion to convert the value to the corresponding record type.
-
-         if Nkind (Concval) = N_Function_Call
-           and then Is_Task_Type (Conctyp)
-           and then Ada_Version >= Ada_2005
-         then
-            declare
-               ExpR : constant Node_Id   := Relocate_Node (Concval);
-               Obj  : constant Entity_Id := Make_Temporary (Loc, 'F', ExpR);
-               Decl : Node_Id;
-
-            begin
-               Decl :=
-                 Make_Object_Declaration (Loc,
-                   Defining_Identifier => Obj,
-                   Object_Definition   => New_Occurrence_Of (Conctyp, Loc),
-                   Expression          => ExpR);
-               Set_Etype (Obj, Conctyp);
-               Decls := New_List (Decl);
-               Rewrite (Concval, New_Occurrence_Of (Obj, Loc));
-            end;
-
-         else
-            Decls := New_List;
-         end if;
-
-         Parm1 := Concurrent_Ref (Concval);
-
-         --  Second parameter is the entry index, computed by the routine
-         --  provided for this purpose. The value of this expression is
-         --  assigned to an intermediate variable to assure that any entry
-         --  family index expressions are evaluated before the entry
-         --  parameters.
-
-         if Abort_Allowed
-           or else Restriction_Active (No_Entry_Queue) = False
-           or else not Is_Protected_Type (Conctyp)
-           or else Number_Entries (Conctyp) > 1
-           or else (Has_Attach_Handler (Conctyp)
-                     and then not Restricted_Profile)
-         then
-            X := Make_Defining_Identifier (Loc, Name_uX);
-
-            Xdecl :=
-              Make_Object_Declaration (Loc,
-                Defining_Identifier => X,
-                Object_Definition =>
-                  New_Reference_To (RTE (RE_Task_Entry_Index), Loc),
-                Expression => Actual_Index_Expression (
-                  Loc, Entity (Ename), Index, Concval));
-
-            Append_To (Decls, Xdecl);
-            Parm2 := New_Reference_To (X, Loc);
-
-         else
-            Xdecl := Empty;
-            Parm2 := Empty;
-         end if;
-
-         --  The third parameter is the packaged parameters. If there are
-         --  none, then it is just the null address, since nothing is passed.
-
-         if No (Parms) then
-            Parm3 := New_Reference_To (RTE (RE_Null_Address), Loc);
-            P := Empty;
-
-         --  Case of parameters present, where third argument is the address
-         --  of a packaged record containing the required parameter values.
-
-         else
-            --  First build a list of parameter values, which are references to
-            --  objects of the parameter types.
-
-            Plist := New_List;
-
-            Actual := First_Actual (N);
-            Formal := First_Formal (Ent);
-
-            while Present (Actual) loop
-
-               --  If it is a by_copy_type, copy it to a new variable. The
-               --  packaged record has a field that points to this variable.
-
-               if Is_By_Copy_Type (Etype (Actual)) then
-                  N_Node :=
-                    Make_Object_Declaration (Loc,
-                      Defining_Identifier => Make_Temporary (Loc, 'J'),
-                      Aliased_Present     => True,
-                      Object_Definition   =>
-                        New_Reference_To (Etype (Formal), Loc));
-
-                  --  Mark the object as not needing initialization since the
-                  --  initialization is performed separately, avoiding errors
-                  --  on cases such as formals of null-excluding access types.
-
-                  Set_No_Initialization (N_Node);
-
-                  --  We must make an assignment statement separate for the
-                  --  case of limited type. We cannot assign it unless the
-                  --  Assignment_OK flag is set first. An out formal of an
-                  --  access type must also be initialized from the actual,
-                  --  as stated in RM 6.4.1 (13).
-
-                  if Ekind (Formal) /= E_Out_Parameter
-                    or else Is_Access_Type (Etype (Formal))
-                  then
-                     N_Var :=
-                       New_Reference_To (Defining_Identifier (N_Node), Loc);
-                     Set_Assignment_OK (N_Var);
-                     Append_To (Stats,
-                       Make_Assignment_Statement (Loc,
-                         Name => N_Var,
-                         Expression => Relocate_Node (Actual)));
-                  end if;
-
-                  Append (N_Node, Decls);
-
-                  Append_To (Plist,
-                    Make_Attribute_Reference (Loc,
-                      Attribute_Name => Name_Unchecked_Access,
-                    Prefix =>
-                      New_Reference_To (Defining_Identifier (N_Node), Loc)));
-
-               --  If it is a VM_By_Copy_Actual, copy it to a new variable
-
-               elsif Is_VM_By_Copy_Actual (Actual) then
-                  N_Node :=
-                    Make_Object_Declaration (Loc,
-                      Defining_Identifier => Make_Temporary (Loc, 'J'),
-                      Aliased_Present     => True,
-                      Object_Definition   =>
-                        New_Reference_To (Etype (Formal), Loc),
-                      Expression => New_Copy_Tree (Actual));
-                  Set_Assignment_OK (N_Node);
-
-                  Append (N_Node, Decls);
-
-                  Append_To (Plist,
-                    Make_Attribute_Reference (Loc,
-                      Attribute_Name => Name_Unchecked_Access,
-                    Prefix =>
-                      New_Reference_To (Defining_Identifier (N_Node), Loc)));
-
-               else
-                  --  Interface class-wide formal
-
-                  if Ada_Version >= Ada_2005
-                    and then Ekind (Etype (Formal)) = E_Class_Wide_Type
-                    and then Is_Interface (Etype (Formal))
-                  then
-                     Iface_Typ := Etype (Etype (Formal));
-
-                     --  Generate:
-                     --    formal_iface_type! (actual.iface_tag)'reference
-
-                     Iface_Tag :=
-                       Find_Interface_Tag (Etype (Actual), Iface_Typ);
-                     pragma Assert (Present (Iface_Tag));
-
-                     Append_To (Plist,
-                       Make_Reference (Loc,
-                         Unchecked_Convert_To (Iface_Typ,
-                           Make_Selected_Component (Loc,
-                             Prefix =>
-                               Relocate_Node (Actual),
-                             Selector_Name =>
-                               New_Reference_To (Iface_Tag, Loc)))));
-                  else
-                     --  Generate:
-                     --    actual'reference
-
-                     Append_To (Plist,
-                       Make_Reference (Loc, Relocate_Node (Actual)));
-                  end if;
-               end if;
-
-               Next_Actual (Actual);
-               Next_Formal_With_Extras (Formal);
-            end loop;
-
-            --  Now build the declaration of parameters initialized with the
-            --  aggregate containing this constructed parameter list.
-
-            P := Make_Defining_Identifier (Loc, Name_uP);
-
-            Pdecl :=
-              Make_Object_Declaration (Loc,
-                Defining_Identifier => P,
-                Object_Definition =>
-                  New_Reference_To (Designated_Type (Ent_Acc), Loc),
-                Expression =>
-                  Make_Aggregate (Loc, Expressions => Plist));
-
-            Parm3 :=
-              Make_Attribute_Reference (Loc,
-                Prefix => New_Reference_To (P, Loc),
-                Attribute_Name => Name_Address);
-
-            Append (Pdecl, Decls);
-         end if;
-
-         --  Now we can create the call, case of protected type
-
-         if Is_Protected_Type (Conctyp) then
-            case Corresponding_Runtime_Package (Conctyp) is
-               when System_Tasking_Protected_Objects_Entries =>
-
-                  --  Change the type of the index declaration
-
-                  Set_Object_Definition (Xdecl,
-                    New_Reference_To (RTE (RE_Protected_Entry_Index), Loc));
-
-                  --  Some additional declarations for protected entry calls
-
-                  if No (Decls) then
-                     Decls := New_List;
-                  end if;
-
-                  --  Bnn : Communications_Block;
-
-                  Comm_Name := Make_Temporary (Loc, 'B');
-
-                  Append_To (Decls,
-                    Make_Object_Declaration (Loc,
-                      Defining_Identifier => Comm_Name,
-                      Object_Definition   =>
-                        New_Reference_To (RTE (RE_Communication_Block), Loc)));
-
-                  --  Some additional statements for protected entry calls
-
-                  --     Protected_Entry_Call (
-                  --       Object => po._object'Access,
-                  --       E => <entry index>;
-                  --       Uninterpreted_Data => P'Address;
-                  --       Mode => Simple_Call;
-                  --       Block => Bnn);
-
-                  Call :=
-                    Make_Procedure_Call_Statement (Loc,
-                      Name =>
-                        New_Reference_To (RTE (RE_Protected_Entry_Call), Loc),
-
-                      Parameter_Associations => New_List (
-                        Make_Attribute_Reference (Loc,
-                          Attribute_Name => Name_Unchecked_Access,
-                          Prefix         => Parm1),
-                        Parm2,
-                        Parm3,
-                        New_Reference_To (RTE (RE_Simple_Call), Loc),
-                        New_Occurrence_Of (Comm_Name, Loc)));
-
-               when System_Tasking_Protected_Objects_Single_Entry =>
-                  --     Protected_Single_Entry_Call (
-                  --       Object => po._object'Access,
-                  --       Uninterpreted_Data => P'Address;
-                  --       Mode => Simple_Call);
-
-                  Call :=
-                    Make_Procedure_Call_Statement (Loc,
-                      Name => New_Reference_To (
-                        RTE (RE_Protected_Single_Entry_Call), Loc),
-
-                      Parameter_Associations => New_List (
-                        Make_Attribute_Reference (Loc,
-                          Attribute_Name => Name_Unchecked_Access,
-                          Prefix         => Parm1),
-                        Parm3,
-                        New_Reference_To (RTE (RE_Simple_Call), Loc)));
-
-               when others =>
-                  raise Program_Error;
-            end case;
-
-         --  Case of task type
-
-         else
-            Call :=
-              Make_Procedure_Call_Statement (Loc,
-                Name => New_Reference_To (RTE (RE_Call_Simple), Loc),
-                Parameter_Associations => New_List (Parm1, Parm2, Parm3));
-
-         end if;
-
-         Append_To (Stats, Call);
-
-         --  If there are out or in/out parameters by copy add assignment
-         --  statements for the result values.
-
-         if Present (Parms) then
-            Actual := First_Actual (N);
-            Formal := First_Formal (Ent);
-
-            Set_Assignment_OK (Actual);
-            while Present (Actual) loop
-               if (Is_By_Copy_Type (Etype (Actual))
-                     or else Is_VM_By_Copy_Actual (Actual))
-                 and then Ekind (Formal) /= E_In_Parameter
-               then
-                  N_Node :=
-                    Make_Assignment_Statement (Loc,
-                      Name => New_Copy (Actual),
-                      Expression =>
-                        Make_Explicit_Dereference (Loc,
-                          Make_Selected_Component (Loc,
-                            Prefix => New_Reference_To (P, Loc),
-                            Selector_Name =>
-                              Make_Identifier (Loc, Chars (Formal)))));
-
-                  --  In all cases (including limited private types) we want
-                  --  the assignment to be valid.
-
-                  Set_Assignment_OK (Name (N_Node));
-
-                  --  If the call is the triggering alternative in an
-                  --  asynchronous select, or the entry_call alternative of a
-                  --  conditional entry call, the assignments for in-out
-                  --  parameters are incorporated into the statement list that
-                  --  follows, so that there are executed only if the entry
-                  --  call succeeds.
-
-                  if (Nkind (Parent (N)) = N_Triggering_Alternative
-                       and then N = Triggering_Statement (Parent (N)))
-                    or else
-                     (Nkind (Parent (N)) = N_Entry_Call_Alternative
-                       and then N = Entry_Call_Statement (Parent (N)))
-                  then
-                     if No (Statements (Parent (N))) then
-                        Set_Statements (Parent (N), New_List);
-                     end if;
-
-                     Prepend (N_Node, Statements (Parent (N)));
-
-                  else
-                     Insert_After (Call, N_Node);
-                  end if;
-               end if;
-
-               Next_Actual (Actual);
-               Next_Formal_With_Extras (Formal);
-            end loop;
-         end if;
-
-         --  Finally, create block and analyze it
+         Prepend (Concval, Params);
 
          Rewrite (N,
-           Make_Block_Statement (Loc,
-             Declarations => Decls,
-             Handled_Statement_Sequence =>
-               Make_Handled_Sequence_Of_Statements (Loc,
-                 Statements => Stats)));
+           Make_Procedure_Call_Statement (Loc,
+             Name                   => New_Sub,
+             Parameter_Associations => Params));
 
          Analyze (N);
       end;
