@@ -499,12 +499,14 @@ package body Exp_Ch7 is
 
       elsif Is_Protected_Body then
          declare
-            Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
-            Conc_Typ  : Entity_Id;
-            Nam       : Node_Id;
-            Param     : Node_Id;
-            Param_Typ : Entity_Id;
+            Spec         : constant Node_Id := Parent (Corresponding_Spec (N));
+            Conc_Typ      : Entity_Id;
+            Nam           : Node_Id;
+            Param         : Node_Id;
+            Param_Typ     : Entity_Id;
+            B             : Node_Id;
             B_Except_Flag : Node_Id;
+            Block_Stmts   : List_Id := New_List;
          begin
             --  Find the _object parameter representing the protected object
 
@@ -526,22 +528,28 @@ package body Exp_Ch7 is
             --  procedure or entry has to service entry queues. In this case
             --  generate :
 
-            --    nameS (_object._object);
+            --    nameS (_object);
 
-            if Nkind (Specification (N)) = N_Procedure_Specification
-              and then Has_Entries (Conc_Typ)
+            if Present (Service_Entry_Barriers_Function
+                         (Defining_Unit_Name (Specification (N))))
             then
-               Build_Service_PO_Barriers_Call
-                 (N, Stmts, Declarations (N), B_Except_Flag);
-
+               B_Except_Flag := Make_Temporary (Loc, 'F');
+               B := New_Reference_To (B_Except_Flag, Loc);
+               Append_To (Block_Stmts,
+                 Make_Procedure_Call_Statement (Loc,
+                   Name =>
+                     New_Reference_To (Service_Entry_Barriers_Function (
+                       Defining_Unit_Name (Specification (N))), Loc),
+                   Parameter_Associations => New_List (
+                      Make_Identifier (Loc, Name_uObject))));
             else
                B_Except_Flag := New_Reference_To (Standard_False, Loc);
+               B := B_Except_Flag;
             end if;
 
             --  Generate:
             --    Exit_Protected_Object (_object._object'Unchecked_Access, F));
-
-            Append_To (Stmts,
+            Append_To (Block_Stmts,
               Make_Procedure_Call_Statement (Loc,
                 Name                   =>
                   New_Reference_To (RTE (RE_Exit_Protected_Object), Loc),
@@ -554,9 +562,31 @@ package body Exp_Ch7 is
                           New_Reference_To (Defining_Identifier (Param), Loc),
                         Selector_Name =>
                           Make_Identifier (Loc, Name_uObject))),
-                  B_Except_Flag)));
-         end;
+                  B)));
 
+            --  If we are making a call to the barrier service function, we
+            --  wrap the call and the call to Exit_Protected_Object in a block
+            --  where the F flag is defined since we cannot easily define it in
+            --  the freeze procedure.
+            if Present (Service_Entry_Barriers_Function
+                         (Defining_Unit_Name (Specification (N))))
+            then
+               Append_To (Stmts,
+                  Make_Block_Statement (Loc,
+                    Declarations               => New_List (
+                      Make_Object_Declaration (Loc,
+                        Defining_Identifier => B_Except_Flag,
+                        Object_Definition   =>
+                          New_Reference_To (Standard_Boolean, Loc),
+                       Expression          =>
+                         New_Reference_To (Standard_False, Loc))),
+                    Handled_Statement_Sequence =>
+                      Make_Handled_Sequence_Of_Statements (Loc,
+                        Statements => Block_Stmts)));
+            else
+               Append_List_To (Stmts, Block_Stmts);
+            end if;
+         end;
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
       --  tasks. Other unactivated tasks are completed by Complete_Task or
       --  Complete_Master.

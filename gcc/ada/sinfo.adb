@@ -657,6 +657,7 @@ package body Sinfo is
       (N : Node_Id) return Node_Id is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Entry_Body_Formal_Part
         or else NT (N).Nkind = N_Expression_Function
         or else NT (N).Nkind = N_Package_Body
         or else NT (N).Nkind = N_Protected_Body
@@ -3764,6 +3765,7 @@ package body Sinfo is
       (N : Node_Id; Val : Node_Id) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Entry_Body_Formal_Part
         or else NT (N).Nkind = N_Expression_Function
         or else NT (N).Nkind = N_Package_Body
         or else NT (N).Nkind = N_Protected_Body

@@ -302,6 +302,7 @@ package body Exp_Ch13 is
    procedure Expand_N_Freeze_Entity (N : Node_Id) is
       E              : constant Entity_Id := Entity (N);
       E_Scope        : Entity_Id;
+      In_Inner_Scope : Boolean;
       In_Other_Scope : Boolean;
       In_Outer_Scope : Boolean;
       Decl           : Node_Id;
@@ -375,17 +376,17 @@ package body Exp_Ch13 is
 
       Inside_Freezing_Actions := Inside_Freezing_Actions + 1;
 
-      --  If we are freezing entities defined in protected types, they belong
-      --  in the enclosing scope, given that the original type has been
-      --  expanded away. The same is true for entities in task types, in
-      --  particular the parameter records of entries (Entities in bodies are
-      --  all frozen within the body). If we are in the task body, this is a
-      --  proper scope. If we are within a subprogram body, the proper scope
+      --  If we are freezing entities defined in task types, they belong in the
+      --  enclosing scope, given that the original type has been expanded away,
+      --  in particular the parameter records of entries (Entities in bodies
+      --  are all frozen within the body). If we are in the task body, this is
+      --  a proper scope. For protected objects, even though the orignal type
+      --  has been expanded away similar to task types, we keep the scope
+      --  present. If we are within a subprogram body, the proper scope
       --  is the corresponding spec. This may happen for itypes generated in
       --  the bodies of protected operations.
 
-      if Ekind (E_Scope) = E_Protected_Type
-        or else (Ekind (E_Scope) = E_Task_Type
+      if (Ekind (E_Scope) = E_Task_Type
                   and then not Has_Completion (E_Scope))
       then
          E_Scope := Scope (E_Scope);
@@ -396,14 +397,22 @@ package body Exp_Ch13 is
 
       --  If the scope of the entity is in open scopes, it is the current one
       --  or an enclosing one, including a loop, a block, or a subprogram.
+      --  The scope can be a child of an open scope and this occurs for
+      --  protected subprograms.
 
       if In_Open_Scopes (E_Scope) then
+         In_Inner_Scope := False;
          In_Other_Scope := False;
          In_Outer_Scope := E_Scope /= Current_Scope;
-
       --  Otherwise it is a local package or a different compilation unit
 
+      elsif In_Open_Scopes (Scope (E_Scope)) then
+         In_Inner_Scope := True;
+         In_Other_Scope := False;
+         In_Outer_Scope := False;
+
       else
+         In_Inner_Scope := False;
          In_Other_Scope := True;
          In_Outer_Scope := False;
       end if;
@@ -455,12 +464,12 @@ package body Exp_Ch13 is
             Install_Private_Declarations (E_Scope);
          end if;
 
-      --  If the entity is in an outer scope, then that scope needs to
+      --  If the entity is in an outer or inner scope, then that scope needs to
       --  temporarily become the current scope so that operations created
       --  during type freezing will be declared in the right scope and
       --  can properly override any corresponding inherited operations.
 
-      elsif In_Outer_Scope then
+      elsif In_Outer_Scope or In_Inner_Scope then
          Push_Scope (E_Scope);
       end if;
 
@@ -559,7 +568,7 @@ package body Exp_Ch13 is
             End_Scope;
          end if;
 
-      elsif In_Outer_Scope then
+      elsif In_Outer_Scope or In_Inner_Scope then
          Pop_Scope;
       end if;
 

@@ -2633,6 +2633,8 @@ package body Einfo is
 
    function Service_Entry_Barriers_Function (Id : E) return E is
    begin
+      pragma Assert (Ekind_In (Id, E_Protected_Type, E_Protected_Subtype,
+                               E_Subprogram_Body));
       return Node26 (Id);
    end Service_Entry_Barriers_Function;
 
@@ -5190,6 +5192,8 @@ package body Einfo is
 
    procedure Set_Service_Entry_Barriers_Function (Id : E; V : E) is
    begin
+      pragma Assert (Ekind_In (Id, E_Void, E_Protected_Type,
+                     E_Protected_Subtype, E_Subprogram_Body));
       Set_Node26 (Id, V);
    end Set_Service_Entry_Barriers_Function;
 
@@ -8669,15 +8673,12 @@ package body Einfo is
               and then not Is_Dispatching_Operation (Id)
             then
                Write_Str ("Static_Initialization");
-            elsif Present (Scope (Id))
-              and then Is_Protected_Type (Scope (Id))
-            then
-               Write_Str ("Service_Entry_Barriers_Function");
             else
                Write_Str ("Overridden_Operation");
             end if;
 
-         when E_Protected_Type                             |
+         when E_Subprogram_Body                            |
+              E_Protected_Type                             |
               E_Protected_Subtype                          =>
             Write_Str ("Service_Entry_Barriers_Function");
 

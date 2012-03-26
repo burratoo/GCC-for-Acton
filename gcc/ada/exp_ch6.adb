@@ -6370,10 +6370,11 @@ package body Exp_Ch6 is
       then
          if Nkind (Name (N)) = N_Selected_Component then
             Rec := Prefix (Name (N));
-
-         else
-            pragma Assert (Nkind (Name (N)) = N_Indexed_Component);
+         elsif Nkind (Name (N)) = N_Indexed_Component then
             Rec := Prefix (Prefix (Name (N)));
+         else
+            pragma Assert (Nkind (Name (N)) = N_Identifier);
+            return;
          end if;
 
          Build_Protected_Subprogram_Call (N,

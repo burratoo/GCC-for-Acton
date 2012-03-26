@@ -1692,7 +1692,6 @@ package Rtsfind is
      RE_Protected_Single_Entry_Caller,   -- Protected_Objects.Single_Entry
      RE_Timed_Protected_Single_Entry_Call,
 
-     RE_Protected_Entry_Index,           -- System.Tasking.Protected_Objects
      RE_Entry_Body,                      -- System.Tasking.Protected_Objects
      RE_Protection,                      -- System.Tasking.Protected_Objects
      RE_Initialize_Protection,           -- System.Tasking.Protected_Objects
@@ -1760,12 +1759,12 @@ package Rtsfind is
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
      RE_Entry_Barrier_Wrapper,           -- Oak_Oak_Task
-     RE_Entry_Index,                     -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Protected_Function,              -- Oak.Oak_Task
      RE_Protected_Procedure,             -- Oak.Oak_Task
      RE_Protected_Entry,                 -- Oak.Oak_Task
+     RE_Protected_Entry_Index,           -- Oak.Oak_Task
      RE_Regular,                         -- Oak_Oak_Task
      RE_Scheduler,                       -- Oak_Oak_Task
      RE_Unspecified_Priority);           -- Oak.Oak_Task
@@ -2952,7 +2951,6 @@ package Rtsfind is
      RE_Timed_Protected_Single_Entry_Call =>
        System_Tasking_Protected_Objects_Single_Entry,
 
-     RE_Protected_Entry_Index            => System_Tasking_Protected_Objects,
      RE_Entry_Body                       => System_Tasking_Protected_Objects,
      RE_Protection                       => System_Tasking_Protected_Objects,
      RE_Initialize_Protection            => System_Tasking_Protected_Objects,
@@ -3023,12 +3021,12 @@ package Rtsfind is
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
      RE_Entry_Barrier_Wrapper            => Oak_Oak_Task,
-     RE_Entry_Index                      => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Protected_Function               => Oak_Oak_Task,
      RE_Protected_Procedure              => Oak_Oak_Task,
      RE_Protected_Entry                  => Oak_Oak_Task,
+     RE_Protected_Entry_Index            => Oak_Oak_Task,
      RE_Regular                          => Oak_Oak_Task,
      RE_Scheduler                        => Oak_Oak_Task,
      RE_Unspecified_Priority             => Oak_Oak_Task);

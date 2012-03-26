@@ -5545,7 +5545,6 @@ package Einfo is
    --    Interface_Alias                     (Node25)
    --    Static_Initialization               (Node26)   (init_proc only)
    --    Overridden_Operation                (Node26)   (never for init proc)
-   --    Service_Entry_Barriers_Function     (Node26)   (for protected proc)
    --    Wrapped_Entity                      (Node27)   (non-generic case only)
    --    Extra_Formals                       (Node28)
    --    Body_Needed_For_SAL                 (Flag40)
@@ -5710,6 +5709,7 @@ package Einfo is
    --    Corresponding_Protected_Entry       (Node18)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
+   --    Service_Entry_Barriers_Function     (Node26)
    --    Extra_Formals                       (Node28)
    --    Scope_Depth                         (synth)
 
