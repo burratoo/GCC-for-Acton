@@ -257,16 +257,18 @@ package body Exp_Ch9 is
    --  a cleanup handler that unlocks the object in all cases.
    --  (see Exp_Ch7.Expand_Cleanup_Actions).
 
-   function Build_Protected_Name
-     (Selector    : Entity_Id;
+   function Build_Selected_Name
+     (Prefix      : Entity_Id;
+      Selector    : Entity_Id;
       Append_Char : Character := ' ') return Name_Id;
-   --  Build a name in the form of Selector, with an optional character
-   --  appended. This is used for internal subprograms generated for operations
-   --  of protected types, including barrier functions. For the subprograms
-   --  generated for entry bodies and entry barriers, the generated name
-   --  includes a sequence number that makes names unique in the presence of
-   --  entry overloading. This is necessary because entry body procedures and
-   --  barrier functions all have the same signature.
+   --  Build a name in the form of Prefix__Selector, with an optional
+   --  character appended. This is used for internal subprograms generated
+   --  for operations of protected types, including barrier functions.
+   --  For the subprograms generated for entry bodies and entry barriers,
+   --  the generated name includes a sequence number that makes names
+   --  unique in the presence of entry overloading. This is necessary
+   --  because entry body procedures and barrier functions all have the
+   --  same signature.
 
    procedure Build_Simple_Entry_Call
      (N       : Node_Id;
@@ -3028,7 +3030,7 @@ package body Exp_Ch9 is
       Insert_After (First (New_Plist), New_Pram);
       New_Id :=
         Make_Defining_Identifier (Loc,
-          Chars => Build_Protected_Name (Def_Id, Append_Chr (Mode)));
+          Chars => Build_Selected_Name (Prot_Typ, Def_Id, Append_Chr (Mode)));
 
       --  The unprotected operation carries the user code, and debugging
       --  information must be generated for it, even though this spec does
@@ -3146,7 +3148,7 @@ package body Exp_Ch9 is
            Mode = Unprotected_Mode);
       New_Id :=
         Make_Defining_Identifier (Loc,
-          Chars => Build_Protected_Name (Def_Id, Append_Chr (Mode)));
+          Chars => Build_Selected_Name (Prot_Typ, Def_Id, Append_Chr (Mode)));
 
       --  The unprotected operation carries the user code, and debugging
       --  information must be generated for it, even though this spec does
@@ -3473,40 +3475,6 @@ package body Exp_Ch9 is
       Sub     : constant Entity_Id  := Entity (Name);
       New_Sub : Node_Id;
       Params  : List_Id;
-
-      function Build_Selected_Name
-        (Prefix   : Entity_Id;
-         Selector : Entity_Id) return Name_Id;
-      --  Builds a new name combining the Prefix and Selector.
-
-      function Build_Selected_Name
-        (Prefix        : Entity_Id;
-         Selector      : Entity_Id) return Name_Id
-      is
-         Select_Buffer : String (1 .. Hostparm.Max_Name_Length);
-         Select_Len    : Natural;
-
-      begin
-         Get_Name_String (Chars (Selector));
-         Select_Len := Name_Len;
-         Select_Buffer (1 .. Select_Len) := Name_Buffer (1 .. Name_Len);
-         Get_Name_String (Chars (Prefix));
-
-         --  If scope is anonymous type, discard suffix to recover name of
-         --  single protected object. Otherwise use protected type name.
-
-         if Name_Buffer (Name_Len) = 'T' then
-            Name_Len := Name_Len - 1;
-         end if;
-
-         Add_Str_To_Name_Buffer ("__");
-         for J in 1 .. Select_Len loop
-            Add_Char_To_Name_Buffer (Select_Buffer (J));
-         end loop;
-
-         return Name_Find;
-      end Build_Selected_Name;
-
    begin
       if External then
          New_Sub := New_Occurrence_Of (External_Subprogram (Sub), Loc);
@@ -3560,15 +3528,34 @@ package body Exp_Ch9 is
    end Build_Protected_Subprogram_Call;
 
    -------------------------
-   -- Build_Protected_Name --
+   -- Build_Selected_Name --
    -------------------------
 
-   function Build_Protected_Name
-     (Selector    : Entity_Id;
+   function Build_Selected_Name
+     (Prefix      : Entity_Id;
+      Selector    : Entity_Id;
       Append_Char : Character := ' ') return Name_Id
    is
+      Select_Buffer : String (1 .. Hostparm.Max_Name_Length);
+      Select_Len    : Natural;
+
    begin
       Get_Name_String (Chars (Selector));
+      Select_Len := Name_Len;
+      Select_Buffer (1 .. Select_Len) := Name_Buffer (1 .. Name_Len);
+      Get_Name_String (Chars (Prefix));
+
+      --  If scope is anonymous type, discard suffix to recover name of
+      --  single protected object. Otherwise use protected type name.
+
+      if Name_Buffer (Name_Len) = 'T' then
+         Name_Len := Name_Len - 1;
+      end if;
+
+      Add_Str_To_Name_Buffer ("__");
+      for J in 1 .. Select_Len loop
+         Add_Char_To_Name_Buffer (Select_Buffer (J));
+      end loop;
 
       --  Now add the Append_Char if specified. The encoding to follow
       --  depends on the type of entity. If Append_Char is either 'N' or 'P',
@@ -3579,7 +3566,7 @@ package body Exp_Ch9 is
       --  It would be better to encapsulate this as a routine in Exp_Dbug ???
 
       if Append_Char /= ' ' then
-         if Append_Char = 'P' or Append_Char = 'N' then
+         if Append_Char = 'P' or Append_Char = 'N' or Append_Char = 'S' then
             Add_Char_To_Name_Buffer (Append_Char);
             return Name_Find;
          else
@@ -3589,7 +3576,7 @@ package body Exp_Ch9 is
       else
          return Name_Find;
       end if;
-   end Build_Protected_Name;
+   end Build_Selected_Name;
 
    -----------------------------
    -- Build_Simple_Entry_Call --
@@ -3782,7 +3769,8 @@ package body Exp_Ch9 is
 
       Service_Id  : constant Node_Id :=
                       Make_Defining_Identifier (Loc,
-                        Chars => New_External_Name (Chars (Prot_Type), 'S'));
+                        Chars =>
+                          Build_Selected_Name (Prot_Type, Prot_Type, 'S'));
 
       procedure Build_Simple_Entry_Barrier_Service_Statements
         (Statements  : in out List_Id;
@@ -7621,22 +7609,6 @@ package body Exp_Ch9 is
       Rewrite (N, Make_Null_Statement (Sloc (N)));
       Analyze (N);
 
-      Push_Scope (Pid);
-
-      --  Restore visibility to the protected type's subprgroam declarations
-
-      declare
-         E : Entity_Id := First_Entity (Pid);
-      begin
-         while Present (E) loop
-            if Ekind (E) in Subprogram_Kind then
-               Set_Is_Immediately_Visible (E);
-               Set_Name_Entity_Id (Chars (E), E);
-            end if;
-            Next_Entity (E);
-         end loop;
-      end;
-
       while Present (Op_Body) loop
          case Nkind (Op_Body) is
             when N_Subprogram_Declaration =>
@@ -7780,7 +7752,6 @@ package body Exp_Ch9 is
             Analyze (New_Op_Body);
          end;
       end if;
-      End_Scope;
    end Expand_N_Protected_Body;
 
    -----------------------------------------
@@ -8227,9 +8198,6 @@ package body Exp_Ch9 is
       --  array. If subprogram is flagged as eliminated, do not generate any
       --  internal operations.
 
-      --  The new subprograms occur in the scope of the protected object.
-      Push_Scope (Prot_Typ);
-
       E_Count := 0;
 
       Comp := First (Visible_Declarations (Pdef));
@@ -8334,7 +8302,7 @@ package body Exp_Ch9 is
 
             Bdef :=
               Make_Defining_Identifier (Loc,
-                Chars => Build_Protected_Name (Comp_Id, 'B'));
+                Chars => Build_Selected_Name (Prot_Typ, Comp_Id, 'B'));
             Sub :=
               Make_Subprogram_Declaration (Loc,
                 Specification =>
@@ -8393,7 +8361,7 @@ package body Exp_Ch9 is
 
                Bdef :=
                  Make_Defining_Identifier (Loc,
-                   Chars => Build_Protected_Name (Comp_Id, 'B'));
+                   Chars => Build_Selected_Name (Prot_Typ, Comp_Id, 'B'));
                Sub :=
                  Make_Subprogram_Declaration (Loc,
                    Specification =>
@@ -8419,7 +8387,7 @@ package body Exp_Ch9 is
          declare
             Service_Id  : constant Node_Id :=
               Make_Defining_Identifier (Loc,
-                Chars => New_External_Name (Chars (Prot_Typ), 'S'));
+                Chars => Build_Selected_Name (Prot_Typ, Prot_Typ, 'S'));
          begin
             Sub :=
               Make_Subprogram_Declaration (Loc,
@@ -8433,9 +8401,6 @@ package body Exp_Ch9 is
               (Prot_Typ, Defining_Unit_Name (Specification (Sub)));
          end;
       end if;
-
-      --  Restore orignal scope.
-      End_Scope;
    end Expand_N_Protected_Type_Declaration;
 
    --------------------------------
