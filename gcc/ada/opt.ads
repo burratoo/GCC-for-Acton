@@ -120,7 +120,7 @@ package Opt is
    --  Think twice before using "="; Ada_Version >= Ada_2012 is more likely
    --  what you want, because it will apply to future versions of the language.
 
-   Ada_Version_Default : constant Ada_Version_Type := Ada_2005;
+   Ada_Version_Default : constant Ada_Version_Type := Ada_2012;
    pragma Warnings (Off, Ada_Version_Default);
    --  GNAT
    --  Default Ada version if no switch given. The Warnings off is to kill
