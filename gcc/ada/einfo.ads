@@ -3626,10 +3626,10 @@ package Einfo is
 --       returned value of a function and thus should not be released on
 --       scope exit.
 
---    Service_Entry_Barriers_Function (Node26)
+--    Barrier_Service_Function (Node26)
 --       Present in protected types and subtypes and the generated protected
 --       procedure for protected object procedures and entries. References the
---       entity for the serivce barriers function constructed by the expander
+--       entity for the barrier serivce function constructed by the expander
 --       (see Exp_Ch9). Uses the same field as Static_Initialization and
 --       Overridden_Operation, neither which are used in the generated
 --       protected subprogram.
@@ -3724,7 +3724,7 @@ package Einfo is
 --       when available in object declarations to eliminate the call to the
 --       initialization procedure, and to minimize elaboration code. Note:
 --       This attribute uses the same field as Overridden_Operation and
---       Service_Entry_Barriers_Function, which are irrelevant in init_procs.
+--       Barrier_Service_Function, which are irrelevant in init_procs.
 
 --    Stored_Constraint (Elist23)
 --       Present in entities that can have discriminants (concurrent types
@@ -5607,7 +5607,7 @@ package Einfo is
    --    Scope_Depth_Value                   (Uint22)
    --    Scope_Depth                         (synth)
    --    Stored_Constraint                   (Elist23)
-   --    Service_Entry_Barriers_Function     (Node26)
+   --    Barrier_Service_Function            (Node26)
    --    Has_Interrupt_Handler               (synth)
    --    Sec_Stack_Needed_For_Return         (Flag167)  ???
    --    Uses_Sec_Stack                      (Flag95)   ???
@@ -5709,7 +5709,7 @@ package Einfo is
    --    Corresponding_Protected_Entry       (Node18)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
-   --    Service_Entry_Barriers_Function     (Node26)
+   --    Barrier_Service_Function            (Node26)
    --    Extra_Formals                       (Node28)
    --    Scope_Depth                         (synth)
 
@@ -6384,7 +6384,7 @@ package Einfo is
    function Scale_Value                         (Id : E) return U;
    function Scope_Depth_Value                   (Id : E) return U;
    function Sec_Stack_Needed_For_Return         (Id : E) return B;
-   function Service_Entry_Barriers_Function     (Id : E) return E;
+   function Barrier_Service_Function            (Id : E) return E;
    function Shadow_Entities                     (Id : E) return S;
    function Shared_Var_Procs_Instance           (Id : E) return E;
    function Size_Check_Code                     (Id : E) return N;
@@ -6980,7 +6980,7 @@ package Einfo is
    procedure Set_Scale_Value                     (Id : E; V : U);
    procedure Set_Scope_Depth_Value               (Id : E; V : U);
    procedure Set_Sec_Stack_Needed_For_Return     (Id : E; V : B := True);
-   procedure Set_Service_Entry_Barriers_Function (Id : E; V : E);
+   procedure Set_Barrier_Service_Function        (Id : E; V : E);
    procedure Set_Shadow_Entities                 (Id : E; V : S);
    procedure Set_Shared_Var_Procs_Instance       (Id : E; V : E);
    procedure Set_Size_Check_Code                 (Id : E; V : N);
@@ -7725,7 +7725,7 @@ package Einfo is
    pragma Inline (Scale_Value);
    pragma Inline (Scope_Depth_Value);
    pragma Inline (Sec_Stack_Needed_For_Return);
-   pragma Inline (Service_Entry_Barriers_Function);
+   pragma Inline (Barrier_Service_Function);
    pragma Inline (Shadow_Entities);
    pragma Inline (Shared_Var_Procs_Instance);
    pragma Inline (Size_Check_Code);
@@ -8123,7 +8123,7 @@ package Einfo is
    pragma Inline (Set_Return_Applies_To);
    pragma Inline (Set_Returns_By_Ref);
    pragma Inline (Set_Reverse_Bit_Order);
-   pragma Inline (Set_Service_Entry_Barriers_Function);
+   pragma Inline (Set_Barrier_Service_Function);
    pragma Inline (Set_Scalar_Range);
    pragma Inline (Set_Scale_Value);
    pragma Inline (Set_Scope_Depth_Value);

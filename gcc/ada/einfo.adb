@@ -225,7 +225,7 @@ package body Einfo is
    --    Overridden_Operation            Node26
    --    Package_Instantiation           Node26
    --    Relative_Deadline_Variable      Node26
-   --    Service_Entry_Barriers_Function Node26
+   --    Barrier_Service_Function        Node26
    --    Static_Initialization           Node26
 
    --    Current_Use_Clause              Node27
@@ -2631,12 +2631,12 @@ package body Einfo is
       return Flag167 (Id);
    end Sec_Stack_Needed_For_Return;
 
-   function Service_Entry_Barriers_Function (Id : E) return E is
+   function Barrier_Service_Function (Id : E) return E is
    begin
       pragma Assert (Ekind_In (Id, E_Protected_Type, E_Protected_Subtype,
                                E_Subprogram_Body));
       return Node26 (Id);
-   end Service_Entry_Barriers_Function;
+   end Barrier_Service_Function;
 
    function Shadow_Entities (Id : E) return S is
    begin
@@ -5190,12 +5190,12 @@ package body Einfo is
       Set_Flag167 (Id, V);
    end Set_Sec_Stack_Needed_For_Return;
 
-   procedure Set_Service_Entry_Barriers_Function (Id : E; V : E) is
+   procedure Set_Barrier_Service_Function (Id : E; V : E) is
    begin
       pragma Assert (Ekind_In (Id, E_Void, E_Protected_Type,
                      E_Protected_Subtype, E_Subprogram_Body));
       Set_Node26 (Id, V);
-   end Set_Service_Entry_Barriers_Function;
+   end Set_Barrier_Service_Function;
 
    procedure Set_Shadow_Entities (Id : E; V : S) is
    begin
@@ -8680,7 +8680,7 @@ package body Einfo is
          when E_Subprogram_Body                            |
               E_Protected_Type                             |
               E_Protected_Subtype                          =>
-            Write_Str ("Service_Entry_Barriers_Function");
+            Write_Str ("Barrier_Service_Function");
 
          when others                                       =>
             Write_Str ("Field26??");
