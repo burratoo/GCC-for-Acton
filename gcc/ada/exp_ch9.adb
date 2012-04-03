@@ -12239,8 +12239,14 @@ package body Exp_Ch9 is
       --  the protected object makes use of the Count attribute. This requires
       --  Oak to reevaluate an object's barriers after a task is placed on a
       --  barrier queue
-      Append_To (Args,
-        New_Reference_To (Standard_False, Loc));
+
+      if Has_Count_Attribute (Defining_Identifier (Pdec)) then
+         Append_To (Args,
+           New_Reference_To (Standard_True, Loc));
+      else
+         Append_To (Args,
+           New_Reference_To (Standard_False, Loc));
+      end if;
 
       --  Object Record Parameter. The address of the protected object's record
       --  to enable it to be referenced from the protected object's OTCR.

@@ -1350,11 +1350,6 @@ package Einfo is
 --       be RCI entities, so the flag Is_Remote_Call_Interface will always
 --       be set if this flag is set.
 
---    Has_Anon_Block_Suffix (Flag201)
---       Present in all entities. Set if the entity is nested within one or
---       more anonymous blocks and the Chars field contains a name with an
---       anonymous block suffix (see Exp_Dbug for further details).
-
 --    Has_Anonymous_Master (Flag253)
 --       Present in units (top-level functions and procedures, library-level
 --       packages). Set to True if the associated unit contains a heterogeneous
@@ -1443,6 +1438,10 @@ package Einfo is
 --       Present in all entities. Set true for an entity for which a valid
 --       Convention, Import, or Export pragma has been given. Used to prevent
 --       more than one such pragma appearing for a given entity (RM B.1(45)).
+
+--    Has_Count_Attribute (Flag201)
+--       Present in protected types. Set if the protected type has an entry
+--       that uses the Count attribute as part of its barrier.
 
 --    Has_Delayed_Aspects (Flag200) Present in all entities. Set true if the
 --       Rep_Item chain for the entity has one or more N_Aspect_Definition
@@ -4783,7 +4782,6 @@ package Einfo is
    --    Can_Never_Be_Null                   (Flag38)
    --    Checks_May_Be_Suppressed            (Flag31)
    --    Debug_Info_Off                      (Flag166)
-   --    Has_Anon_Block_Suffix               (Flag201)
    --    Has_Convention_Pragma               (Flag119)
    --    Has_Delayed_Aspects                 (Flag200)
    --    Has_Delayed_Freeze                  (Flag18)
@@ -5608,6 +5606,7 @@ package Einfo is
    --    Scope_Depth                         (synth)
    --    Stored_Constraint                   (Elist23)
    --    Barrier_Service_Function            (Node26)
+   --    Has_Count_Attribute                 (Flag201)
    --    Has_Interrupt_Handler               (synth)
    --    Sec_Stack_Needed_For_Return         (Flag167)  ???
    --    Uses_Sec_Stack                      (Flag95)   ???
@@ -6127,7 +6126,6 @@ package Einfo is
    function Has_Aliased_Components              (Id : E) return B;
    function Has_Alignment_Clause                (Id : E) return B;
    function Has_All_Calls_Remote                (Id : E) return B;
-   function Has_Anon_Block_Suffix               (Id : E) return B;
    function Has_Anonymous_Master                (Id : E) return B;
    function Has_Atomic_Components               (Id : E) return B;
    function Has_Biased_Representation           (Id : E) return B;
@@ -6140,6 +6138,7 @@ package Einfo is
    function Has_Controlled_Component            (Id : E) return B;
    function Has_Controlling_Result              (Id : E) return B;
    function Has_Convention_Pragma               (Id : E) return B;
+   function Has_Count_Attribute                 (Id : E) return B;
    function Has_Default_Aspect                  (Id : E) return B;
    function Has_Delayed_Aspects                 (Id : E) return B;
    function Has_Delayed_Freeze                  (Id : E) return B;
@@ -6717,7 +6716,6 @@ package Einfo is
    procedure Set_Has_Aliased_Components          (Id : E; V : B := True);
    procedure Set_Has_Alignment_Clause            (Id : E; V : B := True);
    procedure Set_Has_All_Calls_Remote            (Id : E; V : B := True);
-   procedure Set_Has_Anon_Block_Suffix           (Id : E; V : B := True);
    procedure Set_Has_Anonymous_Master            (Id : E; V : B := True);
    procedure Set_Has_Atomic_Components           (Id : E; V : B := True);
    procedure Set_Has_Biased_Representation       (Id : E; V : B := True);
@@ -6730,6 +6728,7 @@ package Einfo is
    procedure Set_Has_Controlled_Component        (Id : E; V : B := True);
    procedure Set_Has_Controlling_Result          (Id : E; V : B := True);
    procedure Set_Has_Convention_Pragma           (Id : E; V : B := True);
+   procedure Set_Has_Count_Attribute             (Id : E; V : B := True);
    procedure Set_Has_Default_Aspect              (Id : E; V : B := True);
    procedure Set_Has_Delayed_Aspects             (Id : E; V : B := True);
    procedure Set_Has_Delayed_Freeze              (Id : E; V : B := True);
@@ -7420,7 +7419,6 @@ package Einfo is
    pragma Inline (Has_Aliased_Components);
    pragma Inline (Has_Alignment_Clause);
    pragma Inline (Has_All_Calls_Remote);
-   pragma Inline (Has_Anon_Block_Suffix);
    pragma Inline (Has_Anonymous_Master);
    pragma Inline (Has_Atomic_Components);
    pragma Inline (Has_Biased_Representation);
@@ -7433,6 +7431,7 @@ package Einfo is
    pragma Inline (Has_Controlled_Component);
    pragma Inline (Has_Controlling_Result);
    pragma Inline (Has_Convention_Pragma);
+   pragma Inline (Has_Count_Attribute);
    pragma Inline (Has_Default_Aspect);
    pragma Inline (Has_Delayed_Aspects);
    pragma Inline (Has_Delayed_Freeze);
@@ -7866,7 +7865,6 @@ package Einfo is
    pragma Inline (Set_Has_Aliased_Components);
    pragma Inline (Set_Has_Alignment_Clause);
    pragma Inline (Set_Has_All_Calls_Remote);
-   pragma Inline (Set_Has_Anon_Block_Suffix);
    pragma Inline (Set_Has_Anonymous_Master);
    pragma Inline (Set_Has_Atomic_Components);
    pragma Inline (Set_Has_Biased_Representation);
@@ -7879,6 +7877,7 @@ package Einfo is
    pragma Inline (Set_Has_Controlled_Component);
    pragma Inline (Set_Has_Controlling_Result);
    pragma Inline (Set_Has_Convention_Pragma);
+   pragma Inline (Set_Has_Count_Attribute);
    pragma Inline (Set_Has_Default_Aspect);
    pragma Inline (Set_Has_Delayed_Aspects);
    pragma Inline (Set_Has_Delayed_Freeze);

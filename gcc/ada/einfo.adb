@@ -465,7 +465,7 @@ package body Einfo is
    --    Is_Ada_2012_Only                Flag199
 
    --    Has_Delayed_Aspects             Flag200
-   --    Has_Anon_Block_Suffix           Flag201
+   --    Has_Count_Attribute             Flag201
    --    Itype_Printed                   Flag202
    --    Has_Pragma_Pure                 Flag203
    --    Is_Known_Null                   Flag204
@@ -1179,11 +1179,6 @@ package body Einfo is
       return Flag79 (Id);
    end Has_All_Calls_Remote;
 
-   function Has_Anon_Block_Suffix (Id : E) return B is
-   begin
-      return Flag201 (Id);
-   end Has_Anon_Block_Suffix;
-
    function Has_Anonymous_Master (Id : E) return B is
    begin
       pragma Assert
@@ -1249,6 +1244,11 @@ package body Einfo is
    begin
       return Flag119 (Id);
    end Has_Convention_Pragma;
+
+   function Has_Count_Attribute (Id : E) return B is
+   begin
+      return Flag201 (Id);
+   end Has_Count_Attribute;
 
    function Has_Default_Aspect (Id : E) return B is
    begin
@@ -3678,11 +3678,6 @@ package body Einfo is
       Set_Flag79 (Id, V);
    end Set_Has_All_Calls_Remote;
 
-   procedure Set_Has_Anon_Block_Suffix (Id : E; V : B := True) is
-   begin
-      Set_Flag201 (Id, V);
-   end Set_Has_Anon_Block_Suffix;
-
    procedure Set_Has_Anonymous_Master (Id : E; V : B := True) is
    begin
       pragma Assert
@@ -3752,6 +3747,11 @@ package body Einfo is
    begin
       Set_Flag119 (Id, V);
    end Set_Has_Convention_Pragma;
+
+   procedure Set_Has_Count_Attribute (Id : E; V : B := True) is
+   begin
+      Set_Flag201 (Id, V);
+   end Set_Has_Count_Attribute;
 
    procedure Set_Has_Default_Aspect (Id : E; V : B := True) is
    begin
@@ -7457,7 +7457,6 @@ package body Einfo is
       W ("Has_Aliased_Components",          Flag135 (Id));
       W ("Has_Alignment_Clause",            Flag46  (Id));
       W ("Has_All_Calls_Remote",            Flag79  (Id));
-      W ("Has_Anon_Block_Suffix",           Flag201 (Id));
       W ("Has_Anonymous_Master",            Flag253 (Id));
       W ("Has_Atomic_Components",           Flag86  (Id));
       W ("Has_Biased_Representation",       Flag139 (Id));
@@ -7469,6 +7468,7 @@ package body Einfo is
       W ("Has_Controlled_Component",        Flag43  (Id));
       W ("Has_Controlling_Result",          Flag98  (Id));
       W ("Has_Convention_Pragma",           Flag119 (Id));
+      W ("Has_Count_Attribute",             Flag201 (Id));
       W ("Has_Default_Aspect",              Flag39  (Id));
       W ("Has_Delayed_Aspects",             Flag200 (Id));
       W ("Has_Delayed_Freeze",              Flag18  (Id));
