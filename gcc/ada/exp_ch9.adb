@@ -10308,22 +10308,20 @@ package body Exp_Ch9 is
               Subtype_Indication => New_Reference_To (
                                       RTE (RE_Oak_Task_Handler), Loc))));
 
-      --  Declare static OTCR (that is, created by the expander) if we are
-      --  using the Restricted run time.
+      --  Declare static OTCR (that is, created by the expander)
+      --  TODO: We should only do this for the Restricted run time. Otherwise
+      --  we should create the OTCR on the heap.
 
-      if Restricted_Profile then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier  =>
-               Make_Defining_Identifier (Loc, Name_uOTCR),
+		Append_To (Cdecls,
+		  Make_Component_Declaration (Loc,
+			 Defining_Identifier  =>
+				Make_Defining_Identifier (Loc, Name_uOTCR),
 
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present     => True,
-                 Subtype_Indication  =>
-                   New_Reference_To (RTE (RE_Oak_Task), Loc))));
-
-      end if;
+			 Component_Definition =>
+				Make_Component_Definition (Loc,
+				  Aliased_Present     => True,
+				  Subtype_Indication  =>
+					 New_Reference_To (RTE (RE_Oak_Task), Loc))));
 
       --  Declare static stack (that is, created by the expander) if we are
       --  using the Restricted run time on a bare board configuration.
