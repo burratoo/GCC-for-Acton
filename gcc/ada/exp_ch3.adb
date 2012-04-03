@@ -2689,23 +2689,23 @@ package body Exp_Ch3 is
 
             --  In the case of the restricted run time the OTCR has already
             --  been preallocated.
+            --  TODO: We currently always preallocate the OTCR. In the future
+            --  it won't be preallocated if restricted run-time is being used.
 
-            if Restricted_Profile then
-               Append_To (Stmts,
-                 Make_Assignment_Statement (Loc,
-                   Name       =>
-                     Make_Selected_Component (Loc,
-                       Prefix        => Make_Identifier (Loc, Name_uInit),
-                       Selector_Name => Make_Identifier (Loc,
-                                                         Name_uTask_Handler)),
-                   Expression =>
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        => Make_Identifier (Loc, Name_uInit),
-                           Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
-                       Attribute_Name => Name_Unchecked_Access)));
-            end if;
+            Append_To (Stmts,
+              Make_Assignment_Statement (Loc,
+                Name       =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => Make_Identifier (Loc, Name_uInit),
+                    Selector_Name => Make_Identifier (Loc,
+                                                      Name_uTask_Handler)),
+                Expression =>
+                  Make_Attribute_Reference (Loc,
+                    Prefix         =>
+                      Make_Selected_Component (Loc,
+                        Prefix        => Make_Identifier (Loc, Name_uInit),
+                        Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
+                    Attribute_Name => Name_Unchecked_Access)));
 
             Append_To (Stmts, Make_Task_Create_Call (Rec_Type));
 
@@ -2773,18 +2773,6 @@ package body Exp_Ch3 is
          if Is_Protected_Record_Type (Rec_Type) then
             Append_List_To (Stmts,
               Make_Initialize_Protection (Rec_Type));
-
-            --  Generate the statements which map a string entry name to a
-            --  protected entry index. Note that the protected type may not
-            --  have entries.
-
-            if Entry_Names_OK then
-               Names := Build_Entry_Names (Rec_Type);
-
-               if Present (Names) then
-                  Append_To (Stmts, Names);
-               end if;
-            end if;
          end if;
 
          --  Second pass: components with per-object constraints
