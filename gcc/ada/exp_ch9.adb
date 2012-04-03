@@ -1108,7 +1108,10 @@ package body Exp_Ch9 is
                                                Loc),
                            Parameter_Associations =>
                              New_List (
-                               Make_Identifier (Loc, Name_uObject),
+                               Unchecked_Convert_To (
+                                 Corresponding_Record_Type (Typ),
+                                 Make_Explicit_Dereference (Loc,
+                                   Make_Identifier (Loc, Name_uObject))),
                                Make_Integer_Literal (Loc, Index + 1)))));
 
       begin
@@ -1184,6 +1187,8 @@ package body Exp_Ch9 is
    begin
       Spec := Build_Barrier_Service_Function_Spec (Typ);
 
+      Add_Object_Pointer (Loc, Typ, Decls);
+
       --  Suppose entries e1, e2, ... have size l1, l2, ... we generate
       --  the following:
       --
@@ -1214,8 +1219,7 @@ package body Exp_Ch9 is
          --  so we pluck the return statement out of the if statement we
          --  created above.
 
-         Decls := New_List;
-         Ret := First (Then_Statements (Ret));
+         Ret := Remove_Head (Then_Statements (Ret));
 
       elsif Nkind (Ret) = N_If_Statement then
 
@@ -1248,8 +1252,7 @@ package body Exp_Ch9 is
       Id    : constant Entity_Id :=
                Make_Defining_Identifier (Loc,
                  Chars => Build_Selected_Name (Typ, Typ, 'S'));
-      Parm1 : constant Entity_Id := Make_Defining_Identifier
-                                      (Loc, Name_uObject);
+      Parm1 : constant Entity_Id := Make_Defining_Identifier (Loc, Name_uO);
       Parm2 : constant Entity_Id := Make_Defining_Identifier (Loc, Name_uE);
 
    begin
@@ -1266,8 +1269,8 @@ package body Exp_Ch9 is
               Defining_Identifier => Parm2,
               Parameter_Type =>
                 New_Reference_To (RTE (RE_Protected_Entry_Index), Loc))),
-          Result_Definition => New_Occurrence_Of (
-            RTE (RE_Protected_Entry_Index), Loc));
+          Result_Definition =>
+            New_Reference_To (Standard_Boolean, Loc));
    end Build_Barrier_Service_Function_Spec;
 
    --------------------------
@@ -12220,12 +12223,17 @@ package body Exp_Ch9 is
       --  function for the protected object that evaluates the barrier fo a
       --  given entry.
 
-      Append_To (Args,
-        Make_Attribute_Reference (Loc,
-          Prefix =>
-            New_Reference_To (Barrier_Service_Function
-              (Defining_Identifier (Pdec)), Loc),
-          Attribute_Name => Name_Access));
+      if Present (Barrier_Service_Function (Defining_Identifier (Pdec))) then
+         Append_To (Args,
+           Make_Attribute_Reference (Loc,
+             Prefix =>
+               New_Reference_To (Barrier_Service_Function
+                 (Defining_Identifier (Pdec)), Loc),
+             Attribute_Name => Name_Unrestricted_Access));
+      else
+         Append_To (Args,
+           Make_Null (Loc));
+      end if;
 
       --  Has Count Attribute Flag. Used to identify that an entry barrier in
       --  the protected object makes use of the Count attribute. This requires
