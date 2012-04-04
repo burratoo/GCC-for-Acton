@@ -7664,6 +7664,10 @@ package body Exp_Ch9 is
       --  need to be checked before checking to see if the entry barrier is
       --  open (See RM 6.1.1, par 23.3).
 
+      function Flag_If_Count_Attribute (N : Node_Id) return Traverse_Result;
+      --  If Node is a Count attribute mark the protected object as having
+      --  a barrier that uses it, that is Has_Count_Attribute.
+
       --------------------
       -- Check_Inlining --
       --------------------
@@ -7751,6 +7755,21 @@ package body Exp_Ch9 is
       begin
          Set_Contract (Defining_Unit_Name (Specification (To_Subprogram)), C);
       end Move_PPC_List;
+
+      function Flag_If_Count_Attribute (N : Node_Id) return Traverse_Result is
+      begin
+         if Nkind (N) = N_Attribute_Reference and then
+           Get_Attribute_Id (Attribute_Name (N)) = Attribute_Count
+         then
+            Set_Has_Count_Attribute (Prot_Typ);
+            return Abandon;
+         end if;
+
+         return OK;
+      end Flag_If_Count_Attribute;
+
+      procedure Check_For_Count_Attribute is
+        new Traverse_Proc (Flag_If_Count_Attribute);
 
       --  Start of processing for Expand_N_Protected_Type_Declaration
 
@@ -8092,8 +8111,21 @@ package body Exp_Ch9 is
             Analyze (Sub);
             Set_Protected_Body_Subprogram (Bdef, Bdef);
             Set_Barrier_Function (Comp_Id, Bdef);
-            --  Set_Scope (Bdef, Scope (Comp_Id));
+            Set_Scope (Bdef, Scope (Comp_Id));
             Current_Node := Sub;
+
+            --  Check if the entry's barrier uses the Count attribute. We have
+            --  to check this here are the protected object's initialisation
+            --  function (that needs this information) is generated shortly
+            --  after the protected type's definition is expanded and well
+            --  before the barrier is analysed.
+
+            if not Has_Count_Attribute (Prot_Typ) then
+               Check_For_Count_Attribute (
+                 Condition (
+                   Entry_Body_Formal_Part (
+                     Corresponding_Body (Comp))));
+            end if;
          end if;
 
          Next (Comp);
@@ -8151,8 +8183,22 @@ package body Exp_Ch9 is
                Analyze (Sub);
                Set_Protected_Body_Subprogram (Bdef, Bdef);
                Set_Barrier_Function (Comp_Id, Bdef);
-               --  Set_Scope (Bdef, Scope (Comp_Id));
+               Set_Scope (Bdef, Scope (Comp_Id));
                Current_Node := Sub;
+
+               --  Check if the entry's barrier uses the Count attribute. We
+               --  have to check this here are the protected object's
+               --  initialisation function (that needs this information) is
+               --  generated shortly after the protected type's definition is
+               --  expanded and well before the barrier is analysed.
+
+               if not Has_Count_Attribute (Prot_Typ) then
+                  Check_For_Count_Attribute (
+                    Condition (
+                      Entry_Body_Formal_Part (
+                        Corresponding_Body (Comp))));
+               end if;
+
             end if;
 
             Next (Comp);
@@ -10312,16 +10358,16 @@ package body Exp_Ch9 is
       --  TODO: We should only do this for the Restricted run time. Otherwise
       --  we should create the OTCR on the heap.
 
-		Append_To (Cdecls,
-		  Make_Component_Declaration (Loc,
-			 Defining_Identifier  =>
-				Make_Defining_Identifier (Loc, Name_uOTCR),
+      Append_To (Cdecls,
+        Make_Component_Declaration (Loc,
+          Defining_Identifier  =>
+            Make_Defining_Identifier (Loc, Name_uOTCR),
 
-			 Component_Definition =>
-				Make_Component_Definition (Loc,
-				  Aliased_Present     => True,
-				  Subtype_Indication  =>
-					 New_Reference_To (RTE (RE_Oak_Task), Loc))));
+          Component_Definition =>
+            Make_Component_Definition (Loc,
+              Aliased_Present     => True,
+              Subtype_Indication  =>
+                New_Reference_To (RTE (RE_Oak_Task), Loc))));
 
       --  Declare static stack (that is, created by the expander) if we are
       --  using the Restricted run time on a bare board configuration.
@@ -12238,7 +12284,7 @@ package body Exp_Ch9 is
       --  Oak to reevaluate an object's barriers after a task is placed on a
       --  barrier queue
 
-      if Has_Count_Attribute (Defining_Identifier (Pdec)) then
+      if Has_Count_Attribute (Ptyp) then
          Append_To (Args,
            New_Reference_To (Standard_True, Loc));
       else

@@ -2950,15 +2950,6 @@ package body Sem_Attr is
             end if;
          end loop;
 
-         for J in reverse 0 .. Scope_Stack.Last loop
-            S := Scope_Stack.Table (J).Entity;
-
-            if Is_Protected_Type (S) then
-               Set_Has_Count_Attribute (S);
-               exit;
-            end if;
-         end loop;
-
          if Is_Overloaded (P) then
             declare
                Index : Interp_Index;
