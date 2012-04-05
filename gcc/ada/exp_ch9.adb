@@ -7664,10 +7664,6 @@ package body Exp_Ch9 is
       --  need to be checked before checking to see if the entry barrier is
       --  open (See RM 6.1.1, par 23.3).
 
-      function Flag_If_Count_Attribute (N : Node_Id) return Traverse_Result;
-      --  If Node is a Count attribute mark the protected object as having
-      --  a barrier that uses it, that is Has_Count_Attribute.
-
       --------------------
       -- Check_Inlining --
       --------------------
@@ -7755,21 +7751,6 @@ package body Exp_Ch9 is
       begin
          Set_Contract (Defining_Unit_Name (Specification (To_Subprogram)), C);
       end Move_PPC_List;
-
-      function Flag_If_Count_Attribute (N : Node_Id) return Traverse_Result is
-      begin
-         if Nkind (N) = N_Attribute_Reference and then
-           Get_Attribute_Id (Attribute_Name (N)) = Attribute_Count
-         then
-            Set_Has_Count_Attribute (Prot_Typ);
-            return Abandon;
-         end if;
-
-         return OK;
-      end Flag_If_Count_Attribute;
-
-      procedure Check_For_Count_Attribute is
-        new Traverse_Proc (Flag_If_Count_Attribute);
 
       --  Start of processing for Expand_N_Protected_Type_Declaration
 
@@ -8113,19 +8094,6 @@ package body Exp_Ch9 is
             Set_Barrier_Function (Comp_Id, Bdef);
             Set_Scope (Bdef, Scope (Comp_Id));
             Current_Node := Sub;
-
-            --  Check if the entry's barrier uses the Count attribute. We have
-            --  to check this here are the protected object's initialisation
-            --  function (that needs this information) is generated shortly
-            --  after the protected type's definition is expanded and well
-            --  before the barrier is analysed.
-
-            if not Has_Count_Attribute (Prot_Typ) then
-               Check_For_Count_Attribute (
-                 Condition (
-                   Entry_Body_Formal_Part (
-                     Corresponding_Body (Comp))));
-            end if;
          end if;
 
          Next (Comp);
@@ -8185,19 +8153,6 @@ package body Exp_Ch9 is
                Set_Barrier_Function (Comp_Id, Bdef);
                Set_Scope (Bdef, Scope (Comp_Id));
                Current_Node := Sub;
-
-               --  Check if the entry's barrier uses the Count attribute. We
-               --  have to check this here are the protected object's
-               --  initialisation function (that needs this information) is
-               --  generated shortly after the protected type's definition is
-               --  expanded and well before the barrier is analysed.
-
-               if not Has_Count_Attribute (Prot_Typ) then
-                  Check_For_Count_Attribute (
-                    Condition (
-                      Entry_Body_Formal_Part (
-                        Corresponding_Body (Comp))));
-               end if;
 
             end if;
 
@@ -12277,19 +12232,6 @@ package body Exp_Ch9 is
       else
          Append_To (Args,
            Make_Null (Loc));
-      end if;
-
-      --  Has Count Attribute Flag. Used to identify that an entry barrier in
-      --  the protected object makes use of the Count attribute. This requires
-      --  Oak to reevaluate an object's barriers after a task is placed on a
-      --  barrier queue
-
-      if Has_Count_Attribute (Ptyp) then
-         Append_To (Args,
-           New_Reference_To (Standard_True, Loc));
-      else
-         Append_To (Args,
-           New_Reference_To (Standard_False, Loc));
       end if;
 
       --  Object Record Parameter. The address of the protected object's record
