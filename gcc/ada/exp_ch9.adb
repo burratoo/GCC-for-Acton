@@ -128,6 +128,15 @@ package body Exp_Ch9 is
    --  Build a specification for a function implementing the protected entry
    --  barrier of the specified entry body.
 
+   function Build_Barrier_Service_Function (Typ : Entity_Id) return Node_Id;
+   --  Build the function that takes the entry index in the call (which depends
+   --  on the size of entry families) and calls its respective barrier
+   --  function. A pointer to this function appears in every protected object.
+
+   function Build_Barrier_Service_Function_Spec (Typ : Entity_Id)
+     return Node_Id;
+   --  Build subprogram declaration for previous one
+
    function Build_Corresponding_Record
      (N    : Node_Id;
       Ctyp : Node_Id;
@@ -182,19 +191,6 @@ package body Exp_Ch9 is
    --  In Ada 2012, if the formal is an incomplete tagged type, the renaming
    --  does not dereference the corresponding component to prevent an illegal
    --  use of the incomplete type (AI05-0151).
-
-   function Build_Service_PO_Barriers_Body
-     (Protected_N : Node_Id) return Node_Id;
-   --  Builds the procedure that reevaluates all the protected object's entry
-   --  barrier states.
-
-   function Build_Service_PO_Barriers_Spec
-     (Protected_N : Node_Id;
-      Def_Id      : Node_Id)
-      return Node_Id;
-   --  Returns the specification for the Service_PO_Barriers function for
-   --  the Protected Object definition Protecte_N for the Defining_Identifier
-   --  Def_Id.
 
    procedure Build_Wrapper_Bodies
      (Loc : Source_Ptr;
@@ -1070,6 +1066,212 @@ package body Exp_Ch9 is
         Result_Definition =>
           New_Reference_To (Standard_Boolean, Loc));
    end Build_Barrier_Function_Specification;
+
+   ------------------------------------
+   -- Build_Barrier_Service_Function --
+   ------------------------------------
+
+   function Build_Barrier_Service_Function (Typ : Entity_Id) return Node_Id is
+      Loc   : constant Source_Ptr := Sloc (Typ);
+      Ent   : Entity_Id;
+      E_Typ : Entity_Id;
+      Has_F : Boolean := False;
+      Index : Nat;
+      If_St : Node_Id := Empty;
+      Lo    : Node_Id;
+      Hi    : Node_Id;
+      Decls : List_Id := New_List;
+      Ret   : Node_Id;
+      Spec  : Node_Id;
+      Siz   : Node_Id := Empty;
+
+      procedure Add_If_Clause (Expr : Node_Id);
+      --  Add test for range of current entry
+
+      function Convert_Discriminant_Ref (Bound : Node_Id) return Node_Id;
+      --  If a bound of an entry is given by a discriminant, retrieve the
+      --  actual value of the discriminant from the enclosing object.
+
+      -------------------
+      -- Add_If_Clause --
+      -------------------
+
+      procedure Add_If_Clause (Expr : Node_Id) is
+         Cond  : Node_Id;
+         Stats : constant List_Id :=
+                   New_List (
+                     Make_Simple_Return_Statement (Loc,
+                       Expression =>
+                         Make_Function_Call (Loc,
+                           Name                   =>
+                             New_Reference_To (Barrier_Function (Ent),
+                                               Loc),
+                           Parameter_Associations =>
+                             New_List (
+                               Unchecked_Convert_To (
+                                 Corresponding_Record_Type (Typ),
+                                 Make_Explicit_Dereference (Loc,
+                                   Make_Identifier (Loc, Name_uObject))),
+                               Make_Integer_Literal (Loc, Index + 1)))));
+
+      begin
+         --  Index for current entry body
+
+         Index := Index + 1;
+
+         --  Compute total length of entry queues so far
+
+         if No (Siz) then
+            Siz := Expr;
+         else
+            Siz :=
+              Make_Op_Add (Loc,
+                Left_Opnd => Siz,
+                Right_Opnd => Expr);
+         end if;
+
+         Cond :=
+           Make_Op_Le (Loc,
+             Left_Opnd  => Make_Identifier (Loc, Name_uE),
+             Right_Opnd => Siz);
+
+         --  Map entry queue indexes in the range of the current family
+         --  into the current index, that designates the entry body.
+
+         if No (If_St) then
+            If_St :=
+              Make_Implicit_If_Statement (Typ,
+                Condition => Cond,
+                Then_Statements => Stats,
+                Elsif_Parts   => New_List);
+
+            Ret := If_St;
+
+         else
+            Append (
+              Make_Elsif_Part (Loc,
+                Condition => Cond,
+                Then_Statements => Stats),
+              Elsif_Parts (If_St));
+         end if;
+      end Add_If_Clause;
+
+      ------------------------------
+      -- Convert_Discriminant_Ref --
+      ------------------------------
+
+      function Convert_Discriminant_Ref (Bound : Node_Id) return Node_Id is
+         B   : Node_Id;
+
+      begin
+         if Is_Entity_Name (Bound)
+           and then Ekind (Entity (Bound)) = E_Discriminant
+         then
+            B :=
+              Make_Selected_Component (Loc,
+               Prefix =>
+                 Unchecked_Convert_To (Corresponding_Record_Type (Typ),
+                   Make_Explicit_Dereference (Loc,
+                     Make_Identifier (Loc, Name_uObject))),
+               Selector_Name => Make_Identifier (Loc, Chars (Bound)));
+            Set_Etype (B, Etype (Entity (Bound)));
+         else
+            B := New_Copy_Tree (Bound);
+         end if;
+
+         return B;
+      end Convert_Discriminant_Ref;
+
+   --  Start of processing for Build_Barrier_Service_Function
+
+   begin
+      Spec := Build_Barrier_Service_Function_Spec (Typ);
+
+      Add_Object_Pointer (Loc, Typ, Decls);
+
+      --  Suppose entries e1, e2, ... have size l1, l2, ... we generate
+      --  the following:
+      --
+      --  if E <= l1 then return 1;
+      --  elsif E <= l1 + l2 then return 2;
+      --  ...
+
+      Index := 0;
+      Siz   := Empty;
+      Ent   := First_Entity (Typ);
+
+      while Present (Ent) loop
+         if Ekind (Ent) = E_Entry then
+            Add_If_Clause (Make_Integer_Literal (Loc, 1));
+
+         elsif Ekind (Ent) = E_Entry_Family then
+            E_Typ := Etype (Discrete_Subtype_Definition (Parent (Ent)));
+            Hi := Convert_Discriminant_Ref (Type_High_Bound (E_Typ));
+            Lo := Convert_Discriminant_Ref (Type_Low_Bound  (E_Typ));
+            Add_If_Clause (Family_Size (Loc, Hi, Lo, Typ, False));
+         end if;
+
+         Next_Entity (Ent);
+      end loop;
+
+      if Index = 1 then
+         --  If we only have one entry then we do not need the if statement
+         --  so we pluck the return statement out of the if statement we
+         --  created above.
+
+         Ret := Remove_Head (Then_Statements (Ret));
+
+      elsif Nkind (Ret) = N_If_Statement then
+
+         --  Ranges are in increasing order, so last one doesn't need guard
+
+         declare
+            Nod : constant Node_Id := Last (Elsif_Parts (Ret));
+         begin
+            Remove (Nod);
+            Set_Else_Statements (Ret, Then_Statements (Nod));
+         end;
+      end if;
+
+      return
+        Make_Subprogram_Body (Loc,
+          Specification => Spec,
+          Declarations  => Decls,
+          Handled_Statement_Sequence =>
+            Make_Handled_Sequence_Of_Statements (Loc,
+              Statements => New_List (Ret)));
+   end Build_Barrier_Service_Function;
+
+   -----------------------------------------
+   -- Build_Barrier_Service_Function_Spec --
+   ------------------------------------------
+
+   function Build_Barrier_Service_Function_Spec (Typ : Entity_Id)
+     return Node_Id is
+      Loc   : constant Source_Ptr := Sloc (Typ);
+      Id    : constant Entity_Id :=
+               Make_Defining_Identifier (Loc,
+                 Chars => Build_Selected_Name (Typ, Typ, 'S'));
+      Parm1 : constant Entity_Id := Make_Defining_Identifier (Loc, Name_uO);
+      Parm2 : constant Entity_Id := Make_Defining_Identifier (Loc, Name_uE);
+
+   begin
+      return
+        Make_Function_Specification (Loc,
+          Defining_Unit_Name => Id,
+          Parameter_Specifications => New_List (
+            Make_Parameter_Specification (Loc,
+              Defining_Identifier => Parm1,
+              Parameter_Type =>
+                New_Reference_To (RTE (RE_Address), Loc)),
+
+            Make_Parameter_Specification (Loc,
+              Defining_Identifier => Parm2,
+              Parameter_Type =>
+                New_Reference_To (RTE (RE_Protected_Entry_Index), Loc))),
+          Result_Definition =>
+            New_Reference_To (Standard_Boolean, Loc));
+   end Build_Barrier_Service_Function_Spec;
 
    --------------------------
    -- Build_Call_With_Task --
@@ -2970,10 +3172,6 @@ package body Exp_Ch9 is
 
       Append (Unprot_Call, Stmts);
 
-      Set_Service_Entry_Barriers_Function (
-        Defining_Unit_Name (P_Op_Spec),
-        Service_Entry_Barriers_Function (Pid));
-
       Sub_Body :=
         Make_Subprogram_Body (Loc,
           Declarations => Decls,
@@ -3399,15 +3597,6 @@ package body Exp_Ch9 is
 
       Stmts := New_List (Lock_Stmt);
 
-      --  Set the subprogram's Service_Entry_Barrier attribute if the protected
-      --  object has entries.
-
-      if Has_Entries (Pid) then
-         Set_Service_Entry_Barriers_Function (
-           Defining_Unit_Name (P_Op_Spec),
-           Service_Entry_Barriers_Function (Pid));
-      end if;
-
       --  Build call to Exit_Protected_Object when the subprogram is exception
       --  free.
 
@@ -3417,15 +3606,8 @@ package body Exp_Ch9 is
          if Nkind (Op_Spec) = N_Function_Specification then
             Pre_Stmts     := Stmts;
             Stmts         := Empty_List;
-            B_Except_Flag := New_Reference_To (Standard_False, Loc);
          else
             Append (Unprot_Call, Stmts);
-            if Has_Entries (Defining_Identifier (Pid)) then
-               Build_Service_PO_Barriers_Call
-                 (N, Stmts, Decls, B_Except_Flag);
-            else
-               B_Except_Flag := New_Reference_To (Standard_False, Loc);
-            end if;
          end if;
 
          Append (
@@ -3433,7 +3615,7 @@ package body Exp_Ch9 is
              Name                   =>
                New_Reference_To (RTE (RE_Exit_Protected_Object), Loc),
              Parameter_Associations =>
-               New_List (New_Copy_Tree (Object_Parm), B_Except_Flag)),
+               New_List (New_Copy_Tree (Object_Parm))),
            Stmts);
 
          if Nkind (Op_Spec) = N_Function_Specification then
@@ -3674,382 +3856,6 @@ package body Exp_Ch9 is
          Analyze (N);
       end;
    end Build_Simple_Entry_Call;
-
-   ----------------------------------------
-   --  Build_Service_PO_Barriers_Call --
-   ----------------------------------------
-
-   procedure Build_Service_PO_Barriers_Call
-     (N             : Node_Id;
-      Statements    : List_Id;
-      Decls         : List_Id;
-      B_Except_Flag : out Node_Id)
-   is
-      Loc         : constant Source_Ptr := Sloc (N);
-      Han_Loc     : Source_Ptr;
-      Flag        : Node_Id    := Make_Temporary (Loc, 'F');
-      Stand_False : constant Node_Id
-        :=  New_Reference_To (Standard_False, Loc);
-   begin
-      pragma Assert (False);
-      --  If exceptions cannot be propagated we have no way of knowing if an
-      --  exception was raised inside a barrier evaluation. So there is no
-      --  point building the block when it cannot be used.
-      --  ??? Should we fail here instead of violating the RM?
-      --  if No_Exception_Handlers_Set then
-      --     B_Except_Flag := New_Reference_To (Standard_False, Loc);
-      --  else
-         --  Set the source location on the exception handler only when
-         --  debugging the expanded code (see Make_Implicit_Exception_Handler).
-
-      if Debug_Generated_Code then
-         Han_Loc := Loc;
-
-         --  Otherwise the inserted code should not be visible to the
-         --  debugger
-
-      else
-         Han_Loc := No_Location;
-      end if;
-
-      Append_To (Decls,
-        Make_Object_Declaration (Loc,
-          Defining_Identifier => Flag,
-          Object_Definition   => New_Reference_To (Standard_Boolean, Loc),
-          Expression          => Stand_False));
-      B_Except_Flag := New_Reference_To (Flag, Loc);
-
-      Append_To (Statements,
-        Make_Block_Statement (Loc,
-          Handled_Statement_Sequence =>
-            Make_Handled_Sequence_Of_Statements (Loc,
-              Statements => New_List (
-                Make_Procedure_Call_Statement (Loc,
-                  Name =>
-                    New_Reference_To (Service_Entry_Barriers_Function (
-                     Defining_Unit_Name (Specification (N))), Loc),
-                  Parameter_Associations => New_List (
-                     Make_Selected_Component (Loc,
-                       Prefix        =>
-                         Make_Identifier (Loc, Name_uObject),
-                       Selector_Name =>
-                         Make_Identifier (Loc, Name_uObject))))),
-              Exception_Handlers => New_List (
-                Make_Implicit_Exception_Handler (Han_Loc,
-                  Exception_Choices =>
-                    New_List (Make_Others_Choice (Han_Loc)),
-                  Statements =>  New_List (
-                    Make_Assignment_Statement (Han_Loc,
-                      Name       => B_Except_Flag,
-                      Expression =>
-                        New_Reference_To (Standard_True, Han_Loc))))))));
-      --  end if;
-   end Build_Service_PO_Barriers_Call;
-
-   -------------------------------------------
-   -- Build_Service_PO_Barriers_Body --
-   -------------------------------------------
-
-   function Build_Service_PO_Barriers_Body
-     (Protected_N : Node_Id) return Node_Id
-   is
-      Loc         : constant Source_Ptr := Sloc (Protected_N);
-
-      B_Eval_Stms : List_Id := New_List;
-      Comp        : Node_Id;
-      Decls       : List_Id := New_List;
-      Ent         : Entity_Id;
-      Entry_Count : Nat := 0;
-      Eval_Body   : Node_Id;
-      E_Count_Var : Entity_Id := Make_Temporary (Loc, 'J');
-      Sub         : Node_Id;
-      Sub_Spec    : Node_Id;
-      Prot_Def    : constant Node_Id    := Protected_Definition (Protected_N);
-      Prot_Type   : constant Entity_Id  := Defining_Identifier (Protected_N);
-
-      Service_Id  : constant Node_Id :=
-                      Make_Defining_Identifier (Loc,
-                        Chars =>
-                          Build_Selected_Name (Prot_Type, Prot_Type, 'S'));
-
-      procedure Build_Simple_Entry_Barrier_Service_Statements
-        (Statements  : in out List_Id;
-         Entry_Count : in out Nat;
-         Decl        : Node_Id;
-         Prot_Type   : Entity_Id;
-         Loc         : Source_Ptr);
-      --  Loops through the list of declarations pointed to by Decl and
-      --  identifies the simple entries. For each simple entry a new call to
-      --  its barrier function is created and appended to the Statements List.
-
-      procedure Build_Entry_Family_Barrier_Service_Statements
-        (Statements      : in out List_Id;
-         Entry_Count_Var : Entity_Id;
-         Decl            : Node_Id;
-         Prot_Type       : Entity_Id;
-         Loc             : Source_Ptr);
-      --  Loops through the list of declarations pointed to by Decl and
-      --  identifies the simple entries. For each simple entry a new call to
-      --  its barrier function is created and appended to the Statements List.
-
-      procedure Build_Simple_Entry_Barrier_Service_Statements
-        (Statements  : in out List_Id;
-         Entry_Count : in out Nat;
-         Decl        : Node_Id;
-         Prot_Type   : Entity_Id;
-         Loc         : Source_Ptr)
-      is
-         Comp      : Node_Id := Decl;
-         Comp_Id   : Entity_Id;
-         Eval_Body : Node_Id;
-      begin
-         while Present (Comp) loop
-            if Nkind (Comp) = N_Entry_Declaration then
-               Comp_Id := Defining_Identifier (Comp);
-
-               if Ekind (Comp_Id) = E_Entry then
-                  Entry_Count := Entry_Count + 1;
-
-                  Append (
-                    Make_Assignment_Statement (Loc,
-                      Name       =>
-                        Make_Indexed_Component (Loc,
-                          Prefix      =>
-                            Make_Selected_Component (Loc,
-                              Prefix        =>
-                                Make_Selected_Component (Loc,
-                                  Prefix        =>
-                                    Make_Identifier (Loc, Name_uObject),
-                                  Selector_Name =>
-                                    Make_Identifier (Loc, Name_uBarriers)),
-                              Selector_Name =>
-                                Make_Identifier (Loc, Name_State)),
-                          Expressions =>
-                            New_List (
-                              Make_Integer_Literal (Loc, Entry_Count))),
-                      Expression =>
-                        Make_Function_Call (Loc,
-                          Name                   =>
-                           New_Reference_To (Barrier_Function (Comp_Id), Loc),
-                          Parameter_Associations =>
-                            New_List (
-                              Make_Identifier (Loc, Name_uObject),
-                              Make_Integer_Literal (Loc, Entry_Count)))),
-                    Statements);
-               end if;
-            end if;
-            Next (Comp);
-         end loop;
-      end Build_Simple_Entry_Barrier_Service_Statements;
-
-      procedure Build_Entry_Family_Barrier_Service_Statements
-        (Statements      : in out List_Id;
-         Entry_Count_Var : Entity_Id;
-         Decl            : Node_Id;
-         Prot_Type       : Entity_Id;
-         Loc             : Source_Ptr)
-      is
-         Comp                  : Node_Id := Decl;
-         Comp_Id               : Entity_Id;
-         High_Bound_Expr       : Node_Id;
-         Iterator              : Entity_Id := Make_Temporary (Loc, 'K');
-         Loop_Body             : Node_Id;
-         Loop_Iteration_Scheme : Node_Id;
-         Loop_Stm              : Node_Id;
-
-         Large : Boolean;
-         Low   : Node_Id;
-         Hi    : Node_Id;
-         Typ   : Entity_Id;
-      begin
-         while Present (Comp) loop
-            if Nkind (Comp) = N_Entry_Declaration then
-               Comp_Id := Defining_Identifier (Comp);
-
-               if Ekind (Comp_Id) = E_Entry_Family then
-                  --  Calculate the high bound of the loop. This is the sum of
-                  --  the current value of the Entry_Count_Var and range of the
-                  --  entry family. We only calcuate the expression here and do
-                  --  not bother to store the result into a variable.
-                  Typ := Etype (Discrete_Subtype_Definition (Comp));
-                  Hi  := Type_High_Bound (Typ);
-                  Low := Type_Low_Bound  (Typ);
-                  Large := Is_Potentially_Large_Family
-                    (Base_Type (Typ), Decl, Low, Hi);
-
-                  High_Bound_Expr :=
-                    Make_Op_Add (Loc,
-                      Left_Opnd  => New_Reference_To (Entry_Count_Var, Loc),
-                      Right_Opnd =>
-                        Family_Offset (Loc, Hi, Low, Prot_Type, Large));
-
-                  --  Build loop that creates each call to the entry family's
-                  --  barrier function.
-
-                  Loop_Body :=
-                    Make_Assignment_Statement (Loc,
-                      Name       =>
-                        Make_Indexed_Component (Loc,
-                          Prefix     =>
-                            Make_Selected_Component (Loc,
-                              Prefix        =>
-                                Make_Identifier (Loc, Name_uObject),
-                              Selector_Name =>
-                                Make_Identifier (Loc, Name_uBarriers)),
-                          Expressions =>
-                            New_List (New_Reference_To (Iterator, Loc))),
-                      Expression =>
-                        Make_Function_Call (Loc,
-                          Name                   =>
-                            New_Reference_To (Barrier_Function (Comp_Id), Loc),
-                          Parameter_Associations =>
-                            New_List (
-                              Make_Identifier (Loc, Name_uObject),
-                              New_Reference_To (Iterator, Loc))));
-
-                  Loop_Iteration_Scheme :=
-                    Make_Iteration_Scheme (Loc,
-                      Loop_Parameter_Specification =>
-                        Make_Loop_Parameter_Specification (Loc,
-                          Defining_Identifier         =>
-                            New_Reference_To (Iterator, Loc),
-                          Discrete_Subtype_Definition =>
-                            Make_Range (Loc,
-                              Low_Bound  =>
-                                New_Reference_To (Entry_Count_Var, Loc),
-                              High_Bound =>
-                                Make_Op_Add (Loc,
-                                  Left_Opnd  =>
-                                    New_Reference_To (Entry_Count_Var, Loc),
-                                  Right_Opnd => High_Bound_Expr))));
-
-                  Loop_Stm :=
-                    Make_Implicit_Loop_Statement
-                      (Decl,
-                       Identifier       => Empty,
-                       Iteration_Scheme => Loop_Iteration_Scheme,
-                       Statements       => New_List (Loop_Body));
-
-                  Append_To (Statements, Loop_Stm);
-
-                  --  Entry_Count := Entry_Count + Family_Upper_Bound + 1
-                  Append
-                    (Make_Assignment_Statement (Loc,
-                     Name       =>
-                       New_Reference_To (Entry_Count_Var, Loc),
-                     Expression =>
-                       Make_Op_Add (Loc,
-                         Left_Opnd  =>
-                           New_Reference_To (Entry_Count_Var, Loc),
-                         Right_Opnd =>
-                           Make_Op_Add (Loc,
-                             Left_Opnd  => High_Bound_Expr,
-                             Right_Opnd => Make_Integer_Literal (Loc, 1)))),
-                     Statements);
-
-               end if;
-            end if;
-            Next (Comp);
-         end loop;
-      end Build_Entry_Family_Barrier_Service_Statements;
-
-      --  Start of Build_Service_PO_Barriers_Body
-
-   begin
-      --  First we loop through the visible and private declarations of the
-      --  protected type for a simple entries and add calls to their barrier
-      --  function to the body barrier evaluation function.
-
-      if Present (Visible_Declarations (Prot_Def)) then
-         Comp := First (Visible_Declarations (Prot_Def));
-         Build_Simple_Entry_Barrier_Service_Statements
-           (Statements  => B_Eval_Stms,
-            Entry_Count => Entry_Count,
-            Decl        => Comp,
-            Prot_Type   => Prot_Type,
-            Loc         => Loc);
-      end if;
-
-      if Present (Private_Declarations (Prot_Def)) then
-         Comp := First (Private_Declarations (Prot_Def));
-         Build_Simple_Entry_Barrier_Service_Statements
-           (Statements  => B_Eval_Stms,
-            Entry_Count => Entry_Count,
-            Decl        => Comp,
-            Prot_Type   => Prot_Type,
-            Loc         => Loc);
-      end if;
-
-      --  Set up the counter variable J
-      Append_To (Decls,
-        Make_Object_Declaration (Loc,
-          Defining_Identifier => E_Count_Var,
-          Object_Definition   => New_Reference_To (Standard_Natural, Loc)));
-      Append_To (B_Eval_Stms,
-        Make_Assignment_Statement (Loc,
-          Name       => New_Reference_To (E_Count_Var, Loc),
-             Expression => Make_Integer_Literal (Loc, Entry_Count)));
-
-      --  Loop again through the visible and private declarations of the
-      --  protected type, this time selecting the entry families and generating
-      --  calls to their barrier functions. For each member of the entry family
-      --  a unquie call is made to the barrier function.
-
-      if Present (Visible_Declarations (Prot_Def)) then
-         Comp := First (Visible_Declarations (Prot_Def));
-         Build_Entry_Family_Barrier_Service_Statements
-           (Statements      => B_Eval_Stms,
-            Entry_Count_Var => E_Count_Var,
-            Decl            => Comp,
-            Prot_Type       => Prot_Type,
-            Loc             => Loc);
-      end if;
-
-      if Present (Private_Declarations (Prot_Def)) then
-         Comp := First (Private_Declarations (Prot_Def));
-         Build_Entry_Family_Barrier_Service_Statements
-           (Statements      => B_Eval_Stms,
-            Entry_Count_Var => E_Count_Var,
-            Decl            => Comp,
-            Prot_Type       => Prot_Type,
-            Loc             => Loc);
-      end if;
-
-      return
-        Make_Subprogram_Body (Loc,
-          Specification =>
-            Build_Service_PO_Barriers_Spec (Protected_N, Service_Id),
-          Declarations  => Decls,
-          Handled_Statement_Sequence =>
-            Make_Handled_Sequence_Of_Statements (Loc,
-              Statements => B_Eval_Stms));
-
-   end Build_Service_PO_Barriers_Body;
-
-   ------------------------------------
-   -- Build_Service_PO_Barriers_Spec --
-   ------------------------------------
-
-   function Build_Service_PO_Barriers_Spec
-     (Protected_N : Node_Id;
-      Def_Id      : Node_Id)
-      return Node_Id is
-      Loc         : constant Source_Ptr := Sloc (Protected_N);
-      Prot_Type   : constant Entity_Id  := Defining_Identifier (Protected_N);
-   begin
-      return
-        Make_Procedure_Specification (Loc,
-          Defining_Unit_Name       => Def_Id,
-          Parameter_Specifications => New_List (
-            Make_Parameter_Specification (Loc,
-              Defining_Identifier =>
-                Make_Defining_Identifier (Loc, Name_uObject),
-              In_Present          => True,
-              Out_Present         => True,
-              Parameter_Type       =>
-                New_Reference_To
-                  (Corresponding_Record_Type (Prot_Type), Loc))));
-   end Build_Service_PO_Barriers_Spec;
 
    --------------------------------
    -- Build_Task_Activation_Call --
@@ -7738,19 +7544,10 @@ package body Exp_Ch9 is
       --  Build the body of the protected object's service barrier subprogram
 
       if Has_Entries (Pid) then
-         declare
-            P          : Node_Id := Parent (Pid);
-            Service_Id : Entity_Id := Service_Entry_Barriers_Function (Pid);
-         begin
-            New_Op_Body := Build_Service_PO_Barriers_Body (P);
-            Set_Corresponding_Spec (New_Op_Body, Service_Id);
-            Set_Corresponding_Body
-             (Parent (Parent (Service_Id)),
-              Defining_Unit_Name (Specification (New_Op_Body)));
-
-            Insert_After (Current_Node, New_Op_Body);
-            Analyze (New_Op_Body);
-         end;
+         New_Op_Body := Build_Barrier_Service_Function (Pid);
+         Insert_After (Current_Node, New_Op_Body);
+         Current_Node := New_Op_Body;
+         Analyze (New_Op_Body);
       end if;
    end Expand_N_Protected_Body;
 
@@ -8008,7 +7805,6 @@ package body Exp_Ch9 is
       --  number of Attach_Handler pragmas.
 
       declare
-         Barrier_Comp       : Node_Id;
          Protection_Subtype : Node_Id;
          Entry_Count_Expr   : constant Node_Id :=
                                 Build_Entry_Count_Expression
@@ -8033,23 +7829,6 @@ package body Exp_Ch9 is
                Make_Component_Definition (Loc,
                  Aliased_Present    => True,
                  Subtype_Indication => Protection_Subtype));
-
-         Barrier_Comp :=
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uBarriers),
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => True,
-                 Subtype_Indication =>
-                   Make_Subtype_Indication (Loc,
-                     Subtype_Mark =>
-                       New_Reference_To (RTE (RE_Entry_Barrier_Wrapper), Loc),
-                     Constraint    =>
-                       Make_Index_Or_Discriminant_Constraint (Loc,
-                         Constraints => New_List (
-                           Copy_Separate_Tree (Entry_Count_Expr))))));
-         Append_To (Cdecls, Barrier_Comp);
       end;
 
       pragma Assert (Present (Pdef));
@@ -8313,7 +8092,7 @@ package body Exp_Ch9 is
             Analyze (Sub);
             Set_Protected_Body_Subprogram (Bdef, Bdef);
             Set_Barrier_Function (Comp_Id, Bdef);
-            --  Set_Scope (Bdef, Scope (Comp_Id));
+            Set_Scope (Bdef, Scope (Comp_Id));
             Current_Node := Sub;
          end if;
 
@@ -8372,8 +8151,9 @@ package body Exp_Ch9 is
                Analyze (Sub);
                Set_Protected_Body_Subprogram (Bdef, Bdef);
                Set_Barrier_Function (Comp_Id, Bdef);
-               --  Set_Scope (Bdef, Scope (Comp_Id));
+               Set_Scope (Bdef, Scope (Comp_Id));
                Current_Node := Sub;
+
             end if;
 
             Next (Comp);
@@ -8384,22 +8164,13 @@ package body Exp_Ch9 is
       --  subprogram.
 
       if Has_Entries (Prot_Typ) then
-         declare
-            Service_Id  : constant Node_Id :=
-              Make_Defining_Identifier (Loc,
-                Chars => Build_Selected_Name (Prot_Typ, Prot_Typ, 'S'));
-         begin
-            Sub :=
-              Make_Subprogram_Declaration (Loc,
-                Specification =>
-                  Build_Service_PO_Barriers_Spec (N, Service_Id));
-            Insert_After (Current_Node, Sub);
-            Analyze (Sub);
-            --  Set_Scope (Service_Id, Prot_Typ);
-            Set_Protected_Body_Subprogram (Service_Id, Service_Id);
-            Set_Service_Entry_Barriers_Function
-              (Prot_Typ, Defining_Unit_Name (Specification (Sub)));
-         end;
+         Sub :=
+           Make_Subprogram_Declaration (Loc,
+             Specification => Build_Barrier_Service_Function_Spec (Prot_Typ));
+         Insert_After (Current_Node, Sub);
+         Analyze (Sub);
+         Set_Barrier_Service_Function
+           (Prot_Typ, Defining_Unit_Name (Specification (Sub)));
       end if;
    end Expand_N_Protected_Type_Declaration;
 
@@ -10538,22 +10309,20 @@ package body Exp_Ch9 is
               Subtype_Indication => New_Reference_To (
                                       RTE (RE_Oak_Task_Handler), Loc))));
 
-      --  Declare static OTCR (that is, created by the expander) if we are
-      --  using the Restricted run time.
+      --  Declare static OTCR (that is, created by the expander)
+      --  TODO: We should only do this for the Restricted run time. Otherwise
+      --  we should create the OTCR on the heap.
 
-      if Restricted_Profile then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier  =>
-               Make_Defining_Identifier (Loc, Name_uOTCR),
+      Append_To (Cdecls,
+        Make_Component_Declaration (Loc,
+          Defining_Identifier  =>
+            Make_Defining_Identifier (Loc, Name_uOTCR),
 
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present     => True,
-                 Subtype_Indication  =>
-                   New_Reference_To (RTE (RE_Oak_Task), Loc))));
-
-      end if;
+          Component_Definition =>
+            Make_Component_Definition (Loc,
+              Aliased_Present     => True,
+              Subtype_Indication  =>
+                New_Reference_To (RTE (RE_Oak_Task), Loc))));
 
       --  Declare static stack (that is, created by the expander) if we are
       --  using the Restricted run time on a bare board configuration.
@@ -12449,16 +12218,29 @@ package body Exp_Ch9 is
            New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
       end if;
 
-      --  Barrier Parameter. Pointer to barrier state array that is housed in
-      --  the protected object's value record.
+      --  Barrier Service Function Parameter. Pointer to the barrier service
+      --  function for the protected object that evaluates the barrier fo a
+      --  given entry.
 
+      if Present (Barrier_Service_Function (Defining_Identifier (Pdec))) then
+         Append_To (Args,
+           Make_Attribute_Reference (Loc,
+             Prefix =>
+               New_Reference_To (Barrier_Service_Function
+                 (Defining_Identifier (Pdec)), Loc),
+             Attribute_Name => Name_Unrestricted_Access));
+      else
+         Append_To (Args,
+           Make_Null (Loc));
+      end if;
+
+      --  Object Record Parameter. The address of the protected object's record
+      --  to enable it to be referenced from the protected object's OTCR.
+      --  Currently used for calling an entry's barrier function.
       Append_To (Args,
         Make_Attribute_Reference (Loc,
-          Prefix =>
-            Make_Selected_Component (Loc,
-              Prefix        => Make_Identifier (Loc, Name_uInit),
-              Selector_Name => Make_Identifier (Loc, Name_uBarriers)),
-          Attribute_Name => Name_Unchecked_Access));
+          Prefix         => Make_Identifier (Loc, Name_uInit),
+          Attribute_Name => Name_Address));
 
       Append_To (L,
         Make_Procedure_Call_Statement (Loc,

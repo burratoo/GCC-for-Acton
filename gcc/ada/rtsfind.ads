@@ -1758,7 +1758,6 @@ package Rtsfind is
 
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
-     RE_Entry_Barrier_Wrapper,           -- Oak_Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
      RE_Oak_Task_Handler,                -- Oak.Oak_Task
      RE_Protected_Function,              -- Oak.Oak_Task
@@ -3020,7 +3019,6 @@ package Rtsfind is
 
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
-     RE_Entry_Barrier_Wrapper            => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
      RE_Oak_Task_Handler                 => Oak_Oak_Task,
      RE_Protected_Function               => Oak_Oak_Task,
