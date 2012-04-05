@@ -977,6 +977,7 @@ package body Sem_Aux is
       --  Isn't there some better way to express the following ???
 
       while Nkind (N) /= N_Abstract_Subprogram_Declaration
+        and then Nkind (N) /= N_Entry_Declaration
         and then Nkind (N) /= N_Formal_Package_Declaration
         and then Nkind (N) /= N_Function_Instantiation
         and then Nkind (N) /= N_Generic_Package_Declaration

@@ -667,6 +667,11 @@ package Einfo is
 --       Present in subprogram bodies. Set for subprogram bodies that implement
 --       a protected type entry to point to the entity for the entry.
 
+--       * GCC for Acton Note:
+--          This does not actually get used anywhere so we don't set it. Plus
+--          since we use our own protected type entry code it would probably do
+--          something that we did not want anyway.
+
 --    Corresponding_Record_Type (Node18)
 --       Present in protected and task types and subtypes. References the
 --       entity for the corresponding record type constructed by the expander
@@ -969,12 +974,6 @@ package Einfo is
 --       Present in E_Entry and E_Entry_Family entities. Set if there is
 --       at least one accept for this entry in the task body. Used to
 --       generate warnings for missing accepts.
-
---    Entry_Bodies_Array (Node15)
---       Present in protected types for which Has_Entries is true.
---       This is the defining identifier for the array of entry body
---       action procedures and barrier functions used by the runtime to
---       execute the user code associated with each entry.
 
 --    Entry_Cancel_Parameter (Node23)
 --       Present in blocks. This only applies to a block statement for
@@ -3292,10 +3291,13 @@ package Einfo is
 --    Overridden_Operation (Node26)
 --       Present in subprograms. For overriding operations, points to the
 --       user-defined parent subprogram that is being overridden. Note: this
---       attribute uses the same field as Static_Initialization. The latter
---       is only defined for internal initialization procedures, for which
---       Overridden_Operation is irrelevant. Thus this attribute must not be
---       set for init_procs.
+--       attribute uses the same field as Service_Entry_Barriers and
+--       Static_Initialization. The latter is only defined for internal
+--       initialization procedures, while the former is only defined for
+--       expander generated protected procedures that call the unprotected
+--       procedures and enteries of protected objects. In both cases
+--       Overridden_Operation is irrelevant and Thus this attribute must not be
+--       set for init_procs and expanded protected procedures.
 
 --    Package_Instantiation (Node26)
 --       Present in packages and generic packages. When present, this field
@@ -3624,6 +3626,14 @@ package Einfo is
 --       returned value of a function and thus should not be released on
 --       scope exit.
 
+--    Barrier_Service_Function (Node26)
+--       Present in protected types and subtypes and the generated protected
+--       procedure for protected object procedures and entries. References the
+--       entity for the barrier serivce function constructed by the expander
+--       (see Exp_Ch9). Uses the same field as Static_Initialization and
+--       Overridden_Operation, neither which are used in the generated
+--       protected subprogram.
+
 --    Shadow_Entities (List14)
 --       Present in package and generic package entities. Points to a list
 --       of entities that correspond to private types. For each private type
@@ -3713,8 +3723,8 @@ package Einfo is
 --       aggregate whose components are compile-time static values. Used
 --       when available in object declarations to eliminate the call to the
 --       initialization procedure, and to minimize elaboration code. Note:
---       This attribute uses the same field as Overridden_Operation, which is
---       irrelevant in init_procs.
+--       This attribute uses the same field as Overridden_Operation and
+--       Barrier_Service_Function, which are irrelevant in init_procs.
 
 --    Stored_Constraint (Elist23)
 --       Present in entities that can have discriminants (concurrent types
@@ -5589,7 +5599,6 @@ package Einfo is
    --  E_Protected_Type
    --  E_Protected_Subtype
    --    Direct_Primitive_Operations         (Elist10)
-   --    Entry_Bodies_Array                  (Node15)
    --    First_Private_Entity                (Node16)
    --    First_Entity                        (Node17)
    --    Corresponding_Record_Type           (Node18)
@@ -5598,6 +5607,7 @@ package Einfo is
    --    Scope_Depth_Value                   (Uint22)
    --    Scope_Depth                         (synth)
    --    Stored_Constraint                   (Elist23)
+   --    Barrier_Service_Function            (Node26)
    --    Has_Interrupt_Handler               (synth)
    --    Sec_Stack_Needed_For_Return         (Flag167)  ???
    --    Uses_Sec_Stack                      (Flag95)   ???
@@ -5699,6 +5709,7 @@ package Einfo is
    --    Corresponding_Protected_Entry       (Node18)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
+   --    Barrier_Service_Function            (Node26)
    --    Extra_Formals                       (Node28)
    --    Scope_Depth                         (synth)
 
@@ -6076,7 +6087,6 @@ package Einfo is
    function Elaboration_Entity_Required         (Id : E) return B;
    function Enclosing_Scope                     (Id : E) return E;
    function Entry_Accepted                      (Id : E) return B;
-   function Entry_Bodies_Array                  (Id : E) return E;
    function Entry_Cancel_Parameter              (Id : E) return E;
    function Entry_Component                     (Id : E) return E;
    function Entry_Formal                        (Id : E) return E;
@@ -6374,6 +6384,7 @@ package Einfo is
    function Scale_Value                         (Id : E) return U;
    function Scope_Depth_Value                   (Id : E) return U;
    function Sec_Stack_Needed_For_Return         (Id : E) return B;
+   function Barrier_Service_Function            (Id : E) return E;
    function Shadow_Entities                     (Id : E) return S;
    function Shared_Var_Procs_Instance           (Id : E) return E;
    function Size_Check_Code                     (Id : E) return N;
@@ -6667,7 +6678,6 @@ package Einfo is
    procedure Set_Elaboration_Entity_Required     (Id : E; V : B := True);
    procedure Set_Enclosing_Scope                 (Id : E; V : E);
    procedure Set_Entry_Accepted                  (Id : E; V : B := True);
-   procedure Set_Entry_Bodies_Array              (Id : E; V : E);
    procedure Set_Entry_Cancel_Parameter          (Id : E; V : E);
    procedure Set_Entry_Component                 (Id : E; V : E);
    procedure Set_Entry_Formal                    (Id : E; V : E);
@@ -6970,6 +6980,7 @@ package Einfo is
    procedure Set_Scale_Value                     (Id : E; V : U);
    procedure Set_Scope_Depth_Value               (Id : E; V : U);
    procedure Set_Sec_Stack_Needed_For_Return     (Id : E; V : B := True);
+   procedure Set_Barrier_Service_Function        (Id : E; V : E);
    procedure Set_Shadow_Entities                 (Id : E; V : S);
    procedure Set_Shared_Var_Procs_Instance       (Id : E; V : E);
    procedure Set_Size_Check_Code                 (Id : E; V : N);
@@ -7372,7 +7383,6 @@ package Einfo is
    pragma Inline (Elaboration_Entity_Required);
    pragma Inline (Enclosing_Scope);
    pragma Inline (Entry_Accepted);
-   pragma Inline (Entry_Bodies_Array);
    pragma Inline (Entry_Cancel_Parameter);
    pragma Inline (Entry_Component);
    pragma Inline (Entry_Formal);
@@ -7715,6 +7725,7 @@ package Einfo is
    pragma Inline (Scale_Value);
    pragma Inline (Scope_Depth_Value);
    pragma Inline (Sec_Stack_Needed_For_Return);
+   pragma Inline (Barrier_Service_Function);
    pragma Inline (Shadow_Entities);
    pragma Inline (Shared_Var_Procs_Instance);
    pragma Inline (Size_Check_Code);
@@ -7820,7 +7831,6 @@ package Einfo is
    pragma Inline (Set_Elaboration_Entity_Required);
    pragma Inline (Set_Enclosing_Scope);
    pragma Inline (Set_Entry_Accepted);
-   pragma Inline (Set_Entry_Bodies_Array);
    pragma Inline (Set_Entry_Cancel_Parameter);
    pragma Inline (Set_Entry_Component);
    pragma Inline (Set_Entry_Formal);
@@ -8113,6 +8123,7 @@ package Einfo is
    pragma Inline (Set_Return_Applies_To);
    pragma Inline (Set_Returns_By_Ref);
    pragma Inline (Set_Reverse_Bit_Order);
+   pragma Inline (Set_Barrier_Service_Function);
    pragma Inline (Set_Scalar_Range);
    pragma Inline (Set_Scale_Value);
    pragma Inline (Set_Scope_Depth_Value);

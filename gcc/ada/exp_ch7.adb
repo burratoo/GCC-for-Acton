@@ -499,12 +499,11 @@ package body Exp_Ch7 is
 
       elsif Is_Protected_Body then
          declare
-            Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
-            Conc_Typ  : Entity_Id;
-            Nam       : Node_Id;
-            Param     : Node_Id;
-            Param_Typ : Entity_Id;
-
+            Spec         : constant Node_Id := Parent (Corresponding_Spec (N));
+            Conc_Typ      : Entity_Id;
+            Nam           : Node_Id;
+            Param         : Node_Id;
+            Param_Typ     : Entity_Id;
          begin
             --  Find the _object parameter representing the protected object
 
@@ -522,83 +521,22 @@ package body Exp_Ch7 is
 
             pragma Assert (Present (Param));
 
-            --  If the associated protected object has entries, a protected
-            --  procedure has to service entry queues. In this case generate:
-
-            --    Service_Entries (_object._object'Access);
-
-            if Nkind (Specification (N)) = N_Procedure_Specification
-              and then Has_Entries (Conc_Typ)
-            then
-               case Corresponding_Runtime_Package (Conc_Typ) is
-                  when System_Tasking_Protected_Objects_Entries =>
-                     Nam := New_Reference_To (RTE (RE_Service_Entries), Loc);
-
-                  when System_Tasking_Protected_Objects_Single_Entry =>
-                     Nam := New_Reference_To (RTE (RE_Service_Entry), Loc);
-
-                  when others =>
-                     raise Program_Error;
-               end case;
-
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   => Nam,
-                   Parameter_Associations => New_List (
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        => New_Reference_To (
-                             Defining_Identifier (Param), Loc),
-                           Selector_Name =>
-                             Make_Identifier (Loc, Name_uObject)),
-                       Attribute_Name => Name_Unchecked_Access))));
-
-            else
-               --  Generate:
-               --    Unlock (_object._object'Access);
-
-               case Corresponding_Runtime_Package (Conc_Typ) is
-                  when System_Tasking_Protected_Objects_Entries =>
-                     Nam := New_Reference_To (RTE (RE_Unlock_Entries), Loc);
-
-                  when System_Tasking_Protected_Objects_Single_Entry =>
-                     Nam := New_Reference_To (RTE (RE_Unlock_Entry), Loc);
-
-                  when System_Tasking_Protected_Objects =>
-                     Nam := New_Reference_To (RTE (RE_Unlock), Loc);
-
-                  when others =>
-                     raise Program_Error;
-               end case;
-
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   => Nam,
-                   Parameter_Associations => New_List (
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        =>
-                             New_Reference_To
-                               (Defining_Identifier (Param), Loc),
-                           Selector_Name =>
-                             Make_Identifier (Loc, Name_uObject)),
-                       Attribute_Name => Name_Unchecked_Access))));
-            end if;
-
             --  Generate:
-            --    Abort_Undefer;
-
-            if Abort_Allowed then
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   =>
-                     New_Reference_To (RTE (RE_Abort_Undefer), Loc),
-                   Parameter_Associations => Empty_List));
-            end if;
+            --    Exit_Protected_Object (_object._object'Unchecked_Access));
+            Append_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   =>
+                  New_Reference_To (RTE (RE_Exit_Protected_Object), Loc),
+                Parameter_Associations => New_List (
+                  Make_Attribute_Reference (Loc,
+                    Attribute_Name => Name_Unchecked_Access,
+                    Prefix         =>
+                      Make_Selected_Component (Loc,
+                        Prefix        =>
+                          New_Reference_To (Defining_Identifier (Param), Loc),
+                        Selector_Name =>
+                          Make_Identifier (Loc, Name_uObject))))));
          end;
-
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
       --  tasks. Other unactivated tasks are completed by Complete_Task or
       --  Complete_Master.

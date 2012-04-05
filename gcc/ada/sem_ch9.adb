@@ -617,6 +617,7 @@ package body Sem_Ch9 is
          then
             Entry_Name := E;
             Set_Convention (Id, Convention (E));
+            Set_Corresponding_Spec (Entry_Body_Formal_Part (N), Entry_Name);
             Set_Corresponding_Body (Parent (Entry_Name), Id);
             Check_Fully_Conformant (Id, E, N);
 
@@ -2600,9 +2601,11 @@ package body Sem_Ch9 is
       E := First_Entity (Spec);
       while Present (E) loop
          Prev := Current_Entity (E);
-         Set_Current_Entity (E);
-         Set_Is_Immediately_Visible (E);
-         Set_Homonym (E, Prev);
+         if Prev /= E then
+            Set_Current_Entity (E);
+            Set_Is_Immediately_Visible (E);
+            Set_Homonym (E, Prev);
+         end if;
          Next_Entity (E);
       end loop;
    end Install_Declarations;

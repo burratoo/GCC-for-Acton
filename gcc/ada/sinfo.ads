@@ -5311,9 +5311,10 @@ package Sinfo is
 
       --  ENTRY_BARRIER ::= when CONDITION
 
-      --  Note: we store the CONDITION of the ENTRY_BARRIER in the node for
-      --  the ENTRY_BODY_FORMAL_PART to avoid the N_Entry_Body node getting
-      --  too full (it would otherwise have too many fields)
+      --  Note: we store the CONDITION of the ENTRY_BARRIER and the
+      --  Corresponding_Spec in the node for the ENTRY_BODY_FORMAL_PART to
+      --  avoid the N_Entry_Body node getting too full (it would otherwise have
+      --  too many fields)
 
       --  Gigi restriction: This node never appears
 
@@ -5336,7 +5337,7 @@ package Sinfo is
       --  empty. This reflects the grammar, in which it is the components of
       --  the entry body formal part that are optional, not the entry body
       --  formal part itself. Also this means that the barrier condition
-      --  always has somewhere to be stored.
+      --  and the body's corresponding spec always has somewhere to be stored.
 
       --  Gigi restriction: This node never appears
 
@@ -5345,6 +5346,7 @@ package Sinfo is
       --  Entry_Index_Specification (Node4) (set to Empty if not present)
       --  Parameter_Specifications (List3) (set to No_List if no formal part)
       --  Condition (Node1) from entry barrier of entry body
+      --  Corresponding_Spec (Node5-Sem) of the entry body
 
       --------------------------
       -- 9.5.2  Entry Barrier --

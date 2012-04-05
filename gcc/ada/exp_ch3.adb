@@ -1359,6 +1359,15 @@ package body Exp_Ch3 is
 
       if Has_Task (Full_Type) then
          Append_To (Args, Make_Identifier (Loc, Name_uChain));
+      end if;
+
+      --  Build task name. Since tasks and protected objects are represented by
+      --  by the same kernel primitives, task names are also generated for
+      --  protected types.
+
+      if Has_Task (Full_Type) or Ekind (Full_Type) = E_Protected_Type or
+        Ekind (Full_Type) = E_Protected_Subtype
+      then
 
          --  Ada 2005 (AI-287): In case of default initialized components
          --  with tasks, we generate a null string actual parameter.
@@ -2680,23 +2689,23 @@ package body Exp_Ch3 is
 
             --  In the case of the restricted run time the OTCR has already
             --  been preallocated.
+            --  TODO: We currently always preallocate the OTCR. In the future
+            --  it won't be preallocated if restricted run-time is being used.
 
-            if Restricted_Profile then
-               Append_To (Stmts,
-                 Make_Assignment_Statement (Loc,
-                   Name       =>
-                     Make_Selected_Component (Loc,
-                       Prefix        => Make_Identifier (Loc, Name_uInit),
-                       Selector_Name => Make_Identifier (Loc,
-                                                         Name_uTask_Handler)),
-                   Expression =>
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        => Make_Identifier (Loc, Name_uInit),
-                           Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
-                       Attribute_Name => Name_Unchecked_Access)));
-            end if;
+            Append_To (Stmts,
+              Make_Assignment_Statement (Loc,
+                Name       =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => Make_Identifier (Loc, Name_uInit),
+                    Selector_Name => Make_Identifier (Loc,
+                                                      Name_uTask_Handler)),
+                Expression =>
+                  Make_Attribute_Reference (Loc,
+                    Prefix         =>
+                      Make_Selected_Component (Loc,
+                        Prefix        => Make_Identifier (Loc, Name_uInit),
+                        Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
+                    Attribute_Name => Name_Unchecked_Access)));
 
             Append_To (Stmts, Make_Task_Create_Call (Rec_Type));
 
@@ -2764,18 +2773,6 @@ package body Exp_Ch3 is
          if Is_Protected_Record_Type (Rec_Type) then
             Append_List_To (Stmts,
               Make_Initialize_Protection (Rec_Type));
-
-            --  Generate the statements which map a string entry name to a
-            --  protected entry index. Note that the protected type may not
-            --  have entries.
-
-            if Entry_Names_OK then
-               Names := Build_Entry_Names (Rec_Type);
-
-               if Present (Names) then
-                  Append_To (Stmts, Names);
-               end if;
-            end if;
          end if;
 
          --  Second pass: components with per-object constraints
@@ -7185,7 +7182,7 @@ package body Exp_Ch3 is
           Parameter_Type => New_Reference_To (Typ, Loc)));
 
       --  For task record value, or type that contains tasks, add two more
-      --  formals, Task_Name : String.
+      --  formals, _Chain : Activation_Chain and Task_Name : String.
       --  We also add these parameters for the task record type case.
 
       if Has_Task (Typ)
@@ -7199,7 +7196,12 @@ package body Exp_Ch3 is
              Out_Present => True,
              Parameter_Type =>
                New_Reference_To (RTE (RE_Activation_Chain), Loc)));
+      end if;
 
+      if Has_Task (Typ)
+        or else (Is_Record_Type (Typ) and then (Is_Task_Record_Type (Typ)
+          or Is_Protected_Record_Type (Typ)))
+      then
          Append_To (Formals,
            Make_Parameter_Specification (Loc,
              Defining_Identifier =>

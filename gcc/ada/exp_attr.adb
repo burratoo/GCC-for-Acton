@@ -1747,36 +1747,23 @@ package body Exp_Attr is
          --  Protected case
 
          if Is_Protected_Type (Conctyp) then
-            case Corresponding_Runtime_Package (Conctyp) is
-               when System_Tasking_Protected_Objects_Entries =>
-                  Name := New_Reference_To (RTE (RE_Protected_Count), Loc);
+            Name := New_Reference_To (RTE (RE_Entry_Count), Loc);
 
-                  Call :=
-                    Make_Function_Call (Loc,
-                      Name => Name,
-                      Parameter_Associations => New_List (
-                        New_Reference_To
-                          (Find_Protection_Object (Current_Scope), Loc),
-                        Entry_Index_Expression
-                          (Loc, Entry_Id, Index, Scope (Entry_Id))));
+            Call :=
+              Make_Function_Call (Loc,
+                Name => Name,
+                Parameter_Associations => New_List (
+                  Make_Attribute_Reference (Loc,
+                    Prefix =>
+                      New_Reference_To
+                        (Find_Protection_Object (Current_Scope), Loc),
+                   Attribute_Name =>
+                     Name_Unchecked_Access),
 
-               when System_Tasking_Protected_Objects_Single_Entry =>
-                  Name :=
-                    New_Reference_To (RTE (RE_Protected_Count_Entry), Loc);
-
-                  Call :=
-                    Make_Function_Call (Loc,
-                      Name => Name,
-                      Parameter_Associations => New_List (
-                        New_Reference_To
-                          (Find_Protection_Object (Current_Scope), Loc)));
-
-               when others =>
-                  raise Program_Error;
-            end case;
+                  Entry_Index_Expression
+                    (Loc, Entry_Id, Index, Scope (Entry_Id))));
 
          --  Task case
-
          else
             Call :=
               Make_Function_Call (Loc,
