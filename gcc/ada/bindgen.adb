@@ -1707,7 +1707,7 @@ package body Bindgen is
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
-            WBI ("         (Oak.Processor_Support_Package." &
+            WBI ("         (Oak.Core_Support_Package." &
                  "Call_Stack.Main_Task_Call_Stack_Size,");
          else
             Set_String ("         ");
@@ -2239,7 +2239,7 @@ package body Bindgen is
       if Bind_Main_Program then
          WBI ("with Ada.Real_Time;");
          WBI ("with Oak.Oak_Task.Data_Access;");
-         WBI ("with Oak.Processor_Support_Package.Call_Stack;");
+         WBI ("with Oak.Core_Support_Package.Call_Stack;");
          WBI ("with System.Storage_Elements;");
       end if;
 
