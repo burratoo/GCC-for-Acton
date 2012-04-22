@@ -12248,7 +12248,7 @@ package body Exp_Ch9 is
                               Make_Identifier (Loc, Name_uInit),
                               Duplicate_Subexpr_No_Checks
                                 (Expression (Handler))),
-                           Attribute_Name => Name_Access))));
+                           Attribute_Name => Name_Unprotected_Access))));
                   end;
                end if;
 
