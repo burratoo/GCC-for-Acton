@@ -351,6 +351,14 @@ package Einfo is
 --       used to expand dispatching calls through the primary dispatch table.
 --       For a non-tagged record, contains No_Elist.
 
+--    Access_Unprotected_Subprogram (Flag201)
+--       Present in E_Access_Protected_Subprogram_Type entities. Set if these
+--       entities were created by the Unprotected_Access attribute. The access-
+--       to-protected-subprogram pointer in this case points to the protected
+--       subprogram's unprotected version. It is an Acton only flag used only
+--       for pointing to interrupt handlers, where we need access the
+--       unprotected subprogram directly. It is erroneous to use it otherwise.
+
 --    Actual_Subtype (Node17)
 --       Present in variables, constants, and formal parameters. This is the
 --       subtype imposed by the value of the object, as opposed to its nominal
@@ -1349,11 +1357,6 @@ package Einfo is
 --       has an All_Calls_Remote pragma. Note that such entities must also
 --       be RCI entities, so the flag Is_Remote_Call_Interface will always
 --       be set if this flag is set.
-
---    Has_Anon_Block_Suffix (Flag201)
---       Present in all entities. Set if the entity is nested within one or
---       more anonymous blocks and the Chars field contains a name with an
---       anonymous block suffix (see Exp_Dbug for further details).
 
 --    Has_Anonymous_Master (Flag253)
 --       Present in units (top-level functions and procedures, library-level
@@ -4779,11 +4782,11 @@ package Einfo is
    --    First_Rep_Item                      (Node6)
    --    Freeze_Node                         (Node7)
 
+   --    Access_Unprotected_Subprogram       (Flag201)
    --    Address_Taken                       (Flag104)
    --    Can_Never_Be_Null                   (Flag38)
    --    Checks_May_Be_Suppressed            (Flag31)
    --    Debug_Info_Off                      (Flag166)
-   --    Has_Anon_Block_Suffix               (Flag201)
    --    Has_Convention_Pragma               (Flag119)
    --    Has_Delayed_Aspects                 (Flag200)
    --    Has_Delayed_Freeze                  (Flag18)
@@ -4972,6 +4975,7 @@ package Einfo is
    --    Equivalent_Type                     (Node18)
    --    Directly_Designated_Type            (Node20)
    --    Needs_No_Actuals                    (Flag22)
+   --    Access_Unprotected_Subprogram       (Flag201)
    --    Can_Use_Internal_Rep                (Flag229)
    --    (plus type attributes)
 
@@ -6127,7 +6131,7 @@ package Einfo is
    function Has_Aliased_Components              (Id : E) return B;
    function Has_Alignment_Clause                (Id : E) return B;
    function Has_All_Calls_Remote                (Id : E) return B;
-   function Has_Anon_Block_Suffix               (Id : E) return B;
+   function Access_Unprotected_Subprogram       (Id : E) return B;
    function Has_Anonymous_Master                (Id : E) return B;
    function Has_Atomic_Components               (Id : E) return B;
    function Has_Biased_Representation           (Id : E) return B;
@@ -6619,6 +6623,7 @@ package Einfo is
 
    procedure Set_Accept_Address                  (Id : E; V : L);
    procedure Set_Access_Disp_Table               (Id : E; V : L);
+   procedure Set_Access_Unprotected_Subprogram   (Id : E; V : B := True);
    procedure Set_Dispatch_Table_Wrappers         (Id : E; V : L);
    procedure Set_Actual_Subtype                  (Id : E; V : E);
    procedure Set_Address_Taken                   (Id : E; V : B := True);
@@ -6717,7 +6722,6 @@ package Einfo is
    procedure Set_Has_Aliased_Components          (Id : E; V : B := True);
    procedure Set_Has_Alignment_Clause            (Id : E; V : B := True);
    procedure Set_Has_All_Calls_Remote            (Id : E; V : B := True);
-   procedure Set_Has_Anon_Block_Suffix           (Id : E; V : B := True);
    procedure Set_Has_Anonymous_Master            (Id : E; V : B := True);
    procedure Set_Has_Atomic_Components           (Id : E; V : B := True);
    procedure Set_Has_Biased_Representation       (Id : E; V : B := True);
@@ -7323,6 +7327,7 @@ package Einfo is
 
    pragma Inline (Accept_Address);
    pragma Inline (Access_Disp_Table);
+   pragma Inline (Access_Unprotected_Subprogram);
    pragma Inline (Actual_Subtype);
    pragma Inline (Address_Taken);
    pragma Inline (Alias);
@@ -7420,7 +7425,6 @@ package Einfo is
    pragma Inline (Has_Aliased_Components);
    pragma Inline (Has_Alignment_Clause);
    pragma Inline (Has_All_Calls_Remote);
-   pragma Inline (Has_Anon_Block_Suffix);
    pragma Inline (Has_Anonymous_Master);
    pragma Inline (Has_Atomic_Components);
    pragma Inline (Has_Biased_Representation);
@@ -7770,6 +7774,7 @@ package Einfo is
 
    pragma Inline (Set_Accept_Address);
    pragma Inline (Set_Access_Disp_Table);
+   pragma Inline (Set_Access_Unprotected_Subprogram);
    pragma Inline (Set_Actual_Subtype);
    pragma Inline (Set_Address_Taken);
    pragma Inline (Set_Alias);
@@ -7866,7 +7871,6 @@ package Einfo is
    pragma Inline (Set_Has_Aliased_Components);
    pragma Inline (Set_Has_Alignment_Clause);
    pragma Inline (Set_Has_All_Calls_Remote);
-   pragma Inline (Set_Has_Anon_Block_Suffix);
    pragma Inline (Set_Has_Anonymous_Master);
    pragma Inline (Set_Has_Atomic_Components);
    pragma Inline (Set_Has_Biased_Representation);

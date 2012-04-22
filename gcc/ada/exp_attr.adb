@@ -692,6 +692,7 @@ package body Exp_Attr is
 
       when Attribute_Access              |
            Attribute_Unchecked_Access    |
+           Attribute_Unprotected_Access  |
            Attribute_Unrestricted_Access =>
 
          Access_Cases : declare
@@ -915,7 +916,7 @@ package body Exp_Attr is
             --  come from a renaming, possibly in a different scope, and the
             --  check must be associated with the attribute itself.
 
-            elsif Id = Attribute_Access
+            elsif (Id = Attribute_Access or Id = Attribute_Unprotected_Access)
               and then Nkind (Enc_Object) = N_Explicit_Dereference
               and then Is_Entity_Name (Prefix (Enc_Object))
               and then (Ekind (Btyp) = E_General_Access_Type

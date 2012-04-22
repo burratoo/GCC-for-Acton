@@ -4974,13 +4974,25 @@ package body Exp_Ch9 is
       D_T    : constant Entity_Id  := Designated_Type (T);
       D_T2   : constant Entity_Id  := Make_Temporary (Loc, 'D');
       E_T    : constant Entity_Id  := Make_Temporary (Loc, 'E');
-      P_List : constant List_Id    := Build_Protected_Spec
-                                        (N, RTE (RE_Address), D_T, False);
+      P_List : List_Id;
       Decl1  : Node_Id;
       Decl2  : Node_Id;
       Def1   : Node_Id;
 
    begin
+      --  Build the specification
+      declare
+         External : Boolean;
+      begin
+         if Access_Unprotected_Subprogram (T) then
+            External := True;
+         else
+            External := False;
+         end if;
+
+         P_List := Build_Protected_Spec (N, RTE (RE_Address), D_T, External);
+      end;
+
       --  Create access to subprogram with full signature
 
       if Etype (D_T) /= Standard_Void_Type then
@@ -12248,7 +12260,7 @@ package body Exp_Ch9 is
                               Make_Identifier (Loc, Name_uInit),
                               Duplicate_Subexpr_No_Checks
                                 (Expression (Handler))),
-                           Attribute_Name => Name_Access))));
+                           Attribute_Name => Name_Unprotected_Access))));
                   end;
                end if;
 
