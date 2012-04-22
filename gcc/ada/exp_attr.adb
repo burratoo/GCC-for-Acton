@@ -252,7 +252,10 @@ package body Exp_Attr is
       --  flow analysis, and a subsequent call that uses this 'Access may
       --  lead to a bounded error (trying to seize locks twice, e.g.). For
       --  now we treat 'Access as a potential external call if it is an actual
-      --  in a call to an outside subprogram.
+      --  in a call to an outside subprogram. Acton introduces an exception
+      --  through the use of 'Unprotected_Access that treats the call as a
+      --  local. This attribute is only for interrupt handlers where it is safe
+      --  for them to call the unprotected subprogram directly.
 
       --------------------------
       -- May_Be_External_Call --
@@ -340,6 +343,23 @@ package body Exp_Attr is
                         (Protected_Body_Subprogram (Curr)), Loc),
                 Attribute_Name => Name_Address);
          end if;
+
+      --  Case where the prefix is not an entity name and 'Unprotected_Access
+      --  is present and we use the unprotected version of the protected
+      --  subprogram.
+
+      elsif Get_Attribute_Id (Attribute_Name (N)) =
+        Attribute_Unprotected_Access
+      then
+         Sub :=
+           New_Occurrence_Of
+             (Protected_Body_Subprogram
+               (Entity (Selector_Name (Pref))), Loc);
+
+         Obj_Ref :=
+           Make_Attribute_Reference (Loc,
+             Prefix => Relocate_Node (Prefix (Pref)),
+               Attribute_Name => Name_Address);
 
       --  Case where the prefix is not an entity name. Find the
       --  version of the protected operation to be called from

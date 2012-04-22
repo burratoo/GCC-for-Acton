@@ -465,7 +465,7 @@ package body Einfo is
    --    Is_Ada_2012_Only                Flag199
 
    --    Has_Delayed_Aspects             Flag200
-   --    Access_Unprotected_Subprogram   Flag201
+   --    Has_Anon_Block_Suffix           Flag201
    --    Itype_Printed                   Flag202
    --    Has_Pragma_Pure                 Flag203
    --    Is_Known_Null                   Flag204
@@ -580,11 +580,6 @@ package body Einfo is
                                    E_Record_Subtype));
       return Elist16 (Implementation_Base_Type (Id));
    end Access_Disp_Table;
-
-   function Access_Unprotected_Subprogram (Id : E) return B is
-   begin
-      return Flag201 (Id);
-   end Access_Unprotected_Subprogram;
 
    function Actual_Subtype (Id : E) return E is
    begin
@@ -1183,6 +1178,11 @@ package body Einfo is
    begin
       return Flag79 (Id);
    end Has_All_Calls_Remote;
+
+   function Has_Anon_Block_Suffix (Id : E) return B is
+   begin
+      return Flag201 (Id);
+   end Has_Anon_Block_Suffix;
 
    function Has_Anonymous_Master (Id : E) return B is
    begin
@@ -3072,12 +3072,6 @@ package body Einfo is
       Set_Elist16 (Id, V);
    end Set_Access_Disp_Table;
 
-   procedure Set_Access_Unprotected_Subprogram (Id : E; V : B := True) is
-   begin
-      pragma Assert (Ekind (Id) = E_Access_Protected_Subprogram_Type);
-      Set_Flag201 (Id, V);
-   end Set_Access_Unprotected_Subprogram;
-
    procedure Set_Associated_Formal_Package (Id : E; V : E) is
    begin
       Set_Node12 (Id, V);
@@ -3683,6 +3677,11 @@ package body Einfo is
    begin
       Set_Flag79 (Id, V);
    end Set_Has_All_Calls_Remote;
+
+   procedure Set_Has_Anon_Block_Suffix (Id : E; V : B := True) is
+   begin
+      Set_Flag201 (Id, V);
+   end Set_Has_Anon_Block_Suffix;
 
    procedure Set_Has_Anonymous_Master (Id : E; V : B := True) is
    begin
@@ -7438,7 +7437,6 @@ package body Einfo is
          Write_Eol;
       end if;
 
-      W ("Access_Unprotected_Subprogram",   Flag201 (Id));
       W ("Address_Taken",                   Flag104 (Id));
       W ("Body_Needed_For_SAL",             Flag40  (Id));
       W ("C_Pass_By_Copy",                  Flag125 (Id));
@@ -7459,6 +7457,7 @@ package body Einfo is
       W ("Has_Aliased_Components",          Flag135 (Id));
       W ("Has_Alignment_Clause",            Flag46  (Id));
       W ("Has_All_Calls_Remote",            Flag79  (Id));
+      W ("Has_Anon_Block_Suffix",           Flag201 (Id));
       W ("Has_Anonymous_Master",            Flag253 (Id));
       W ("Has_Atomic_Components",           Flag86  (Id));
       W ("Has_Biased_Representation",       Flag139 (Id));
