@@ -443,11 +443,6 @@ package body Sem_Attr is
             function Get_Kind (E : Entity_Id) return Entity_Kind;
             --  Distinguish between access to regular/protected subprograms
 
-            procedure Process_Unprotected_Access
-              (E    : Entity_Id);
-            --  Decorate access-to-protected-subprogram nodes with additional
-            --  information regarding which version of the subprogram to access
-
             ------------------------
             -- Check_Local_Access --
             ------------------------
@@ -473,19 +468,6 @@ package body Sem_Attr is
                   return E_Access_Subprogram_Type;
                end if;
             end Get_Kind;
-
-            --------------------------------
-            -- Process_Unprotected_Access --
-            --------------------------------
-
-            procedure Process_Unprotected_Access
-              (E    : Entity_Id) is
-            begin
-               if Attr_Id = Attribute_Unprotected_Access and then
-                 Ekind (E) = E_Access_Protected_Subprogram_Type then
-                  Set_Access_Unprotected_Subprogram (E);
-               end if;
-            end Process_Unprotected_Access;
 
          --  Start of processing for Build_Access_Subprogram_Type
 
@@ -527,7 +509,6 @@ package body Sem_Attr is
                   Set_Etype (Acc_Type, Acc_Type);
                   Set_Convention (Acc_Type, Convention (Entity (P)));
                   Set_Directly_Designated_Type (Acc_Type, Entity (P));
-                  Process_Unprotected_Access (Acc_Type);
                   Set_Etype (N, Acc_Type);
                   Freeze_Before (N, Acc_Type);
                end if;
@@ -543,7 +524,6 @@ package body Sem_Attr is
                      Set_Etype (Acc_Type, Acc_Type);
                      Set_Convention (Acc_Type, Convention (It.Nam));
                      Set_Directly_Designated_Type (Acc_Type, It.Nam);
-                     Process_Unprotected_Access (Acc_Type);
                      Add_One_Interp (N, Acc_Type, Acc_Type);
                      Freeze_Before (N, Acc_Type);
                   end if;
