@@ -7934,13 +7934,6 @@ package body Exp_Ch9 is
                Analyze (Sub);
                Current_Node := Sub;
 
-               if Is_Interrupt_Handler
-                 (Defining_Unit_Name (Specification (Priv)))
-               then
-                  if not Restricted_Profile then
-                     Register_Handler;
-                  end if;
-               end if;
             end if;
 
             Next (Priv);
@@ -8030,20 +8023,6 @@ package body Exp_Ch9 is
                Analyze (Sub);
 
                Current_Node := Sub;
-            end if;
-
-            --  If a pragma Interrupt_Handler applies, build and add a call to
-            --  Register_Interrupt_Handler to the freezing actions of the
-            --  protected version (Current_Node) of the subprogram:
-
-            --    system.interrupts.register_interrupt_handler
-            --       (prot_procP'address);
-
-            if not Restricted_Profile
-              and then Is_Interrupt_Handler
-                         (Defining_Unit_Name (Specification (Comp)))
-            then
-               Register_Handler;
             end if;
 
          elsif Nkind (Comp) = N_Entry_Declaration then
@@ -11791,23 +11770,7 @@ package body Exp_Ch9 is
          begin
             Set_Protection_Object (Spec_Id, Prot_Ent);
 
-            --  Determine the proper protection type
-
-            if Has_Attach_Handler (Conc_Typ)
-              and then not Restricted_Profile
-              and then not Restriction_Active (No_Dynamic_Attachment)
-            then
-               Prot_Typ := RE_Static_Interrupt_Protection;
-
-            elsif Has_Interrupt_Handler (Conc_Typ)
-              and then not Restriction_Active (No_Dynamic_Attachment)
-            then
-               Prot_Typ := RE_Dynamic_Interrupt_Protection;
-            else
-            --  The type has explicit entries or generated primitive entry
-            --  wrappers.
-               Prot_Typ := RE_Oak_Task;
-            end if;
+            Prot_Typ := RE_Oak_Task;
 
             --  Generate:
             --    conc_typR : protection_typ renames _object._object;
@@ -12247,6 +12210,74 @@ package body Exp_Ch9 is
           Name                   =>
             New_Reference_To (RTE (RE_Initialise_Protected_Object), Loc),
           Parameter_Associations => Args));
+
+      if Has_Attach_Handler (Ptyp) then
+
+         --  We have a list of N Attach_Handler (ProcI, ExprI), and we have to
+         --  make the following call:
+
+         --  Install_Handlers (_object,
+         --    ((Expr1, Proc1'access), ...., (ExprN, ProcN'access));
+
+         declare
+            Args  : constant List_Id := New_List;
+            Table : constant List_Id := New_List;
+            Ritem : Node_Id          := First_Rep_Item (Ptyp);
+
+         begin
+            --  Build the Attach_Handler table argument
+
+            while Present (Ritem) loop
+               if Nkind (Ritem) = N_Pragma
+                 and then Pragma_Name (Ritem) = Name_Attach_Handler
+               then
+                  declare
+                     Handler : constant Node_Id :=
+                                 First (Pragma_Argument_Associations (Ritem));
+
+                     Interrupt : constant Node_Id := Next (Handler);
+                     Expr      : constant Node_Id := Expression (Interrupt);
+
+                  begin
+                     Append_To (Table,
+                       Make_Aggregate (Loc, Expressions => New_List (
+                         Unchecked_Convert_To
+                          (RTE (RE_Oak_Interrupt_Id), Expr),
+                         Make_Attribute_Reference (Loc,
+                           Prefix => Make_Selected_Component (Loc,
+                              Make_Identifier (Loc, Name_uInit),
+                              Duplicate_Subexpr_No_Checks
+                                (Expression (Handler))),
+                           Attribute_Name => Name_Unprotected_Access))));
+                  end;
+               end if;
+
+               Next_Rep_Item (Ritem);
+            end loop;
+
+            --  Append the table argument we just built
+
+            Append_To (Args, Make_Aggregate (Loc, Table));
+
+            --  Append the Attach_Handlers call to the statements.
+            --  First, prepends the _object argument
+
+            Prepend_To (Args,
+              Make_Attribute_Reference (Loc,
+               Prefix =>
+                Make_Selected_Component (Loc,
+                  Prefix        => Make_Identifier (Loc, Name_uInit),
+                  Selector_Name => Make_Identifier (Loc, Name_uObject)),
+               Attribute_Name => Name_Unchecked_Access));
+
+            --  Then, insert call to Install_Handlers
+
+            Append_To (L,
+              Make_Procedure_Call_Statement (Loc,
+               Name => New_Reference_To (RTE (RE_Attach_Handlers), Loc),
+               Parameter_Associations => Args));
+         end;
+      end if;
 
       return L;
    end Make_Initialize_Protection;

@@ -116,6 +116,7 @@ package System.Rident is
       No_Unchecked_Access,                     -- (RM H.4(18))
       No_Unchecked_Conversion,                 -- (RM H.4(16))
       No_Unchecked_Deallocation,               -- (RM H.4(9))
+      No_Unprotected_Access,                   -- ACTON
       Static_Priorities,                       -- GNAT
       Static_Storage_Size,                     -- GNAT
 

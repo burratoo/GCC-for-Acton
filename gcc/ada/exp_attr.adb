@@ -252,7 +252,10 @@ package body Exp_Attr is
       --  flow analysis, and a subsequent call that uses this 'Access may
       --  lead to a bounded error (trying to seize locks twice, e.g.). For
       --  now we treat 'Access as a potential external call if it is an actual
-      --  in a call to an outside subprogram.
+      --  in a call to an outside subprogram. Acton introduces an exception
+      --  through the use of 'Unprotected_Access that treats the call as a
+      --  local. This attribute is only for interrupt handlers where it is safe
+      --  for them to call the unprotected subprogram directly.
 
       --------------------------
       -- May_Be_External_Call --
@@ -340,6 +343,23 @@ package body Exp_Attr is
                         (Protected_Body_Subprogram (Curr)), Loc),
                 Attribute_Name => Name_Address);
          end if;
+
+      --  Case where the prefix is not an entity name and 'Unprotected_Access
+      --  is present and we use the unprotected version of the protected
+      --  subprogram.
+
+      elsif Get_Attribute_Id (Attribute_Name (N)) =
+        Attribute_Unprotected_Access
+      then
+         Sub :=
+           New_Occurrence_Of
+             (Protected_Body_Subprogram
+               (Entity (Selector_Name (Pref))), Loc);
+
+         Obj_Ref :=
+           Make_Attribute_Reference (Loc,
+             Prefix => Relocate_Node (Prefix (Pref)),
+               Attribute_Name => Name_Address);
 
       --  Case where the prefix is not an entity name. Find the
       --  version of the protected operation to be called from
@@ -692,6 +712,7 @@ package body Exp_Attr is
 
       when Attribute_Access              |
            Attribute_Unchecked_Access    |
+           Attribute_Unprotected_Access  |
            Attribute_Unrestricted_Access =>
 
          Access_Cases : declare
@@ -915,7 +936,7 @@ package body Exp_Attr is
             --  come from a renaming, possibly in a different scope, and the
             --  check must be associated with the attribute itself.
 
-            elsif Id = Attribute_Access
+            elsif (Id = Attribute_Access or Id = Attribute_Unprotected_Access)
               and then Nkind (Enc_Object) = N_Explicit_Dereference
               and then Is_Entity_Name (Prefix (Enc_Object))
               and then (Ekind (Btyp) = E_General_Access_Type

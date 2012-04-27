@@ -403,6 +403,7 @@ package Rtsfind is
 
       --  Children of ARPART
 
+      ARPART_Interrupts,
       ARPART_Protected_Objects,
       ARPART_Tasks,
 
@@ -413,8 +414,8 @@ package Rtsfind is
       --  Children of Oak
 
       Oak_Memory,
-      Oak_Processor_Support_Package,
       Oak_Oak_Task,
+      Oak_Processor_Support_Package,
 
       --  Children of Oak.Memory
 
@@ -423,7 +424,11 @@ package Rtsfind is
       --  Children of Oak.Oak_Task
 
       Oak_Oak_Task_Data_Access,
-      Oak_Oak_Task_Protected_Object);
+      Oak_Oak_Task_Protected_Object,
+
+      --  Children of Oak.Processor_Support_Package
+
+      Oak_Processor_Support_Package_Interrupts);
 
    subtype Ada_Child is RTU_Id
      range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -504,11 +509,11 @@ package Rtsfind is
    --  Range of values for children of System.Tasking.Async_Delays
 
    subtype ARPART_Child is RTU_Id
-      range ARPART_Protected_Objects .. ARPART_Tasks;
+      range ARPART_Interrupts .. ARPART_Tasks;
    --  Range of values of children of ARPART
 
    subtype Oak_Child is RTU_Id
-      range Oak_Memory .. Oak_Oak_Task_Protected_Object;
+      range Oak_Memory .. Oak_Processor_Support_Package_Interrupts;
    --  Range of values of children of Oak
 
    subtype Oak_Memory_Child is Oak_Child
@@ -516,6 +521,10 @@ package Rtsfind is
 
    subtype Oak_Oak_Task_Child is Oak_Child
       range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Protected_Object;
+
+   subtype Oak_Processor_Support_Package_Child is Oak_Child
+      range  Oak_Processor_Support_Package_Interrupts ..
+        Oak_Processor_Support_Package_Interrupts;
 
    --------------------------
    -- Runtime Entity Table --
@@ -901,7 +910,6 @@ package Rtsfind is
      RE_Image_Wide_Wide_Character,       -- System.Img_WChar
 
      RE_Bind_Interrupt_To_Entry,         -- System.Interrupts
-     RE_Default_Interrupt_Priority,      -- System.Interrupts
      RE_Dynamic_Interrupt_Protection,    -- System.Interrupts
      RE_Install_Handlers,                -- System.Interrupts
      RE_Install_Restricted_Handlers,     -- System.Interrupts
@@ -1738,6 +1746,8 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Attach_Handlers,                 -- ARPART.Interrupts
+
      RE_Enter_Protected_Object,          -- ARPART.Protected_Objects
      RE_Exit_Protected_Object,           -- ARPART.Protected_Objects
      RE_Entry_Count,                     -- ARPART.Protected_Objects
@@ -1752,10 +1762,6 @@ package Rtsfind is
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Unspecified_Call_Stack_Size,     -- Oak.Memory.Call_Stack
 
-     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
-
-     RE_Initialise_Protected_Object,     -- Oak.Oak_Task.Protected_Object
-
      RE_Activation_Chain,                -- Oak.Oak_Task
      RE_Activation_Chain_Access,         -- Oak.Oak_Task
      RE_Oak_Task,                        -- Oak.Oak_Task
@@ -1766,7 +1772,14 @@ package Rtsfind is
      RE_Protected_Entry_Index,           -- Oak.Oak_Task
      RE_Regular,                         -- Oak_Oak_Task
      RE_Scheduler,                       -- Oak_Oak_Task
-     RE_Unspecified_Priority);           -- Oak.Oak_Task
+     RE_Unspecified_Priority,            -- Oak.Oak_Task
+
+     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
+
+     RE_Initialise_Protected_Object,     -- Oak.Oak_Task.Protected_Object
+
+     RE_Default_Interrupt_Priority, -- Oak.Processor_Support_Package.Interrupts
+     RE_Oak_Interrupt_Id);          -- Oak.Processor_Support_Package.Interrupts
 
    --  The following declarations build a table that is indexed by the RTE
    --  function to determine the unit containing the given entity. This table
@@ -2124,7 +2137,6 @@ package Rtsfind is
      RE_Image_Wide_Wide_Character        => System_Img_WChar,
 
      RE_Bind_Interrupt_To_Entry          => System_Interrupts,
-     RE_Default_Interrupt_Priority       => System_Interrupts,
      RE_Dynamic_Interrupt_Protection     => System_Interrupts,
      RE_Install_Handlers                 => System_Interrupts,
      RE_Install_Restricted_Handlers      => System_Interrupts,
@@ -2999,6 +3011,8 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Attach_Handlers                  => ARPART_Interrupts,
+
      RE_Enter_Protected_Object           => ARPART_Protected_Objects,
      RE_Exit_Protected_Object            => ARPART_Protected_Objects,
      RE_Entry_Count                      => ARPART_Protected_Objects,
@@ -3013,10 +3027,6 @@ package Rtsfind is
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
-     RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
-
-     RE_Initialise_Protected_Object      => Oak_Oak_Task_Protected_Object,
-
      RE_Activation_Chain                 => Oak_Oak_Task,
      RE_Activation_Chain_Access          => Oak_Oak_Task,
      RE_Oak_Task                         => Oak_Oak_Task,
@@ -3027,7 +3037,16 @@ package Rtsfind is
      RE_Protected_Entry_Index            => Oak_Oak_Task,
      RE_Regular                          => Oak_Oak_Task,
      RE_Scheduler                        => Oak_Oak_Task,
-     RE_Unspecified_Priority             => Oak_Oak_Task);
+     RE_Unspecified_Priority             => Oak_Oak_Task,
+
+     RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
+
+     RE_Initialise_Protected_Object      => Oak_Oak_Task_Protected_Object,
+
+     RE_Default_Interrupt_Priority       =>
+       Oak_Processor_Support_Package_Interrupts,
+     RE_Oak_Interrupt_Id                 =>
+       Oak_Processor_Support_Package_Interrupts);
 
    --------------------------------
    -- Configurable Run-Time Mode --

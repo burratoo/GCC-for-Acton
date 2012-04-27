@@ -153,7 +153,8 @@ package body Sem_Attr is
       Attribute_Input                  |
       Attribute_Read                   |
       Attribute_Unchecked_Access       |
-      Attribute_Unrestricted_Access    => True,
+      Attribute_Unrestricted_Access    |
+      Attribute_Unprotected_Access     => True,
       others                           => False);
 
    -----------------------
@@ -650,6 +651,15 @@ package body Sem_Attr is
 
             Build_Access_Subprogram_Type (Selector_Name (P));
             return;
+         end if;
+
+         --  If the Unprotected_Access attribute still exists at this point it
+         --  has not been applied to an access-to-subprogram and thus has been
+         --  used incorrectly.
+
+         if Attr_Id = Attribute_Unprotected_Access then
+            Error_Attr_P ("prefix of % attribute must be a protected "
+                          & "subprogram");
          end if;
 
          --  Deal with incorrect reference to a type, but note that some
@@ -2008,6 +2018,7 @@ package body Sem_Attr is
                   then
                      if Attr_Id /= Attribute_Access
                        and then Attr_Id /= Attribute_Unchecked_Access
+                       and then Attr_Id /= Attribute_Unprotected_Access
                        and then Attr_Id /= Attribute_Unrestricted_Access
                      then
                         Error_Msg_N
@@ -4956,6 +4967,22 @@ package body Sem_Attr is
             end;
          end if;
       end Universal_Literal_String;
+
+      -------------------------
+      --  Unprotected_Access --
+      -------------------------
+
+      --  This is an ACTON specific attribute that is like Access except it is
+      --  only used for access-to-protected-subprogram types and points to the
+      --  unprotected subprogram rather than the protected subprogram. For use
+      --  only by interrupt handlers and should not normall be used.
+
+      when Attribute_Unprotected_Access =>
+         if Comes_From_Source (N) then
+            Check_Restriction (No_Unprotected_Access, N);
+         end if;
+
+         Analyze_Access_Attribute;
 
       -------------------------
       -- Unrestricted_Access --
@@ -7924,6 +7951,7 @@ package body Sem_Attr is
            Attribute_UET_Address                |
            Attribute_Unchecked_Access           |
            Attribute_Universal_Literal_String   |
+           Attribute_Unprotected_Access         |
            Attribute_Unrestricted_Access        |
            Attribute_Valid                      |
            Attribute_Value                      |
@@ -8100,6 +8128,7 @@ package body Sem_Attr is
 
          when Attribute_Access
             | Attribute_Unchecked_Access
+            | Attribute_Unprotected_Access
             | Attribute_Unrestricted_Access =>
 
          Access_Attribute :
@@ -8233,7 +8262,9 @@ package body Sem_Attr is
                   --  instantiation. This rule does not apply to anonymous
                   --  access-to-subprogram types in access parameters.
 
-                  elsif Attr_Id = Attribute_Access
+                  elsif (Attr_Id = Attribute_Access
+                           or
+                         Attr_Id = Attribute_Unprotected_Access)
                     and then not In_Instance_Body
                     and then
                       (Ekind (Btyp) = E_Access_Subprogram_Type
@@ -8292,7 +8323,9 @@ package body Sem_Attr is
                   --  separate switch to relax this rule, and enable this
                   --  switch in CodePeer mode.
 
-                  elsif Attr_Id = Attribute_Access
+                  elsif (Attr_Id = Attribute_Access
+                           or
+                         Attr_Id = Attribute_Unprotected_Access)
                     and then not CodePeer_Mode
                     and then not In_Instance
                     and then Present (Enclosing_Generic_Unit (Entity (P)))
@@ -8473,7 +8506,9 @@ package body Sem_Attr is
 
             if (Attr_Id = Attribute_Access
                   or else
-                Attr_Id = Attribute_Unchecked_Access)
+                Attr_Id = Attribute_Unchecked_Access
+                  or else
+                Attr_Id = Attribute_Unprotected_Access)
               and then (Ekind (Btyp) = E_General_Access_Type
                           or else Ekind (Btyp) = E_Anonymous_Access_Type)
             then
@@ -8493,7 +8528,9 @@ package body Sem_Attr is
                                                         N_Object_Declaration)
                  and then Object_Access_Level (P)
                           > Deepest_Type_Access_Level (Btyp)
-                 and then Attr_Id = Attribute_Access
+                 and then (Attr_Id = Attribute_Access
+                             or
+                           Attr_Id = Attribute_Unprotected_Access)
                then
                   --  In an instance, this is a runtime check, but one we
                   --  know will fail, so generate an appropriate warning.

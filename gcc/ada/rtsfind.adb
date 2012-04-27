@@ -380,6 +380,9 @@ package body Rtsfind is
             Name_Buffer (13) := '.';
          end if;
 
+         if U_Id in Oak_Processor_Support_Package_Child then
+            Name_Buffer (30) := '.';
+         end if;
       end if;
 
       --  Add %s at end for spec

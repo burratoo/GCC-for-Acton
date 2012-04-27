@@ -39,7 +39,7 @@ package body GNAT.Compiler_Version is
    --  This is logically a reference to Gnatvsn.Ver_Len_Max but we cannot
    --  import this directly since run-time units cannot WITH compiler units.
 
-   Ver_Prefix : constant String := "GNAT Version: ";
+   Ver_Prefix : constant String := "Acton Version: ";
    --  This is logically a reference to Gnatvsn.Ver_Prefix but we cannot
    --  import this directly since run-time units cannot WITH compiler units.
 
