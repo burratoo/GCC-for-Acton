@@ -1527,6 +1527,10 @@ package body Bindgen is
          WBI ("   pragma Import (Ada, Initialise_Oak," &
                " ""__oak_initialise"");");
 
+         WBI ("   procedure Complete_Oak_Initialisation;");
+         WBI ("   pragma Import (Ada, Complete_Oak_Initialisation," &
+               " ""__oak_complete_initialisation"");");
+
          WBI ("");
 
          WBI ("   procedure Start_Oak;");
@@ -1576,6 +1580,7 @@ package body Bindgen is
          WBI ("   procedure Main_Task is");
          WBI ("   begin");
          WBI ("      " & Ada_Init_Name.all & ";");
+         WBI ("      Complete_Oak_Initialisation;");
          WBI ("      Ada_Main_Program;");
          WBI ("   end Main_Task;");
          WBI ("");
