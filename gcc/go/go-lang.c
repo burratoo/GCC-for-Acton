@@ -1,5 +1,5 @@
 /* go-lang.c -- Go frontend gcc interface.
-   Copyright (C) 2009, 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2009, 2010, 2011, 2012 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -81,6 +81,11 @@ struct GTY(()) language_function
   int dummy;
 };
 
+/* Option information we need to pass to go_create_gogo.  */
+
+static const char *go_pkgpath = NULL;
+static const char *go_prefix = NULL;
+
 /* Language hooks.  */
 
 static bool
@@ -96,14 +101,14 @@ go_langhook_init (void)
      to, e.g., unsigned_char_type_node) but before calling
      build_common_builtin_nodes (because it calls, indirectly,
      go_type_for_size).  */
-  go_create_gogo (INT_TYPE_SIZE, POINTER_SIZE);
+  go_create_gogo (INT_TYPE_SIZE, POINTER_SIZE, go_pkgpath, go_prefix);
 
   build_common_builtin_nodes ();
 
   /* The default precision for floating point numbers.  This is used
      for floating point constants with abstract type.  This may
      eventually be controllable by a command line option.  */
-  mpfr_set_default_prec (128);
+  mpfr_set_default_prec (256);
 
   /* Go uses exceptions.  */
   using_eh_for_cleanups ();
@@ -227,8 +232,12 @@ go_langhook_handle_option (
       ret = go_enable_optimize (arg) ? true : false;
       break;
 
+    case OPT_fgo_pkgpath_:
+      go_pkgpath = arg;
+      break;
+
     case OPT_fgo_prefix_:
-      go_set_prefix (arg);
+      go_prefix = arg;
       break;
 
     default:
@@ -277,6 +286,7 @@ go_langhook_type_for_size (unsigned int bits, int unsignedp)
 static tree
 go_langhook_type_for_mode (enum machine_mode mode, int unsignedp)
 {
+  tree type;
   /* Go has no vector types.  Build them here.  FIXME: It does not
      make sense for the middle-end to ask the frontend for a type
      which the frontend does not support.  However, at least for now
@@ -291,7 +301,22 @@ go_langhook_type_for_mode (enum machine_mode mode, int unsignedp)
       return NULL_TREE;
     }
 
-  return go_type_for_mode (mode, unsignedp);
+  type = go_type_for_mode (mode, unsignedp);
+  if (type)
+    return type;
+
+#if HOST_BITS_PER_WIDE_INT >= 64
+  /* The middle-end and some backends rely on TImode being supported
+     for 64-bit HWI.  */
+  if (mode == TImode)
+    {
+      type = build_nonstandard_integer_type (GET_MODE_BITSIZE (TImode),
+					     unsignedp);
+      if (type && TYPE_MODE (type) == TImode)
+	return type;
+    }
+#endif
+  return NULL_TREE;
 }
 
 /* Record a builtin function.  We just ignore builtin functions.  */

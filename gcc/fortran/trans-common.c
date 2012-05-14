@@ -244,7 +244,7 @@ gfc_sym_mangled_common_id (gfc_common_head *com)
   strcpy (name, com->name);
 
   /* If we're suppose to do a bind(c).  */
-  if (com->is_bind_c == 1 && com->binding_label[0] != '\0')
+  if (com->is_bind_c == 1 && com->binding_label)
     return get_identifier (com->binding_label);
 
   if (strcmp (name, BLANK_COMMON_NAME) == 0)
@@ -697,8 +697,6 @@ create_common (gfc_common_head *com, segment_info *head, bool saw_equiv)
 	DECL_IGNORED_P (var_decl) = 1;
       if (s->sym->attr.target)
 	TREE_ADDRESSABLE (var_decl) = 1;
-      /* This is a fake variable just for debugging purposes.  */
-      TREE_ASM_WRITTEN (var_decl) = 1;
       /* Fake variables are not visible from other translation units. */
       TREE_PUBLIC (var_decl) = 0;
 

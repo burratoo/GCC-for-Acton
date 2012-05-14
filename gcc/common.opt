@@ -1,6 +1,6 @@
 ; Options for the language- and target-independent parts of the compiler.
 
-; Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+; Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012
 ; Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
@@ -307,13 +307,13 @@ Common Driver Joined Alias(o) MissingArgError(missing filename after %qs)
 Driver Alias(pass-exit-codes)
 
 -pedantic
-Common Alias(pedantic)
+Common Alias(Wpedantic)
 
 -pedantic-errors
 Common Alias(pedantic-errors)
 
 -pie
-Common Alias(pie)
+Driver Alias(pie)
 
 -pipe
 Driver Alias(pipe)
@@ -367,7 +367,7 @@ Common Alias(p)
 Driver Alias(save-temps)
 
 -shared
-Common Alias(shared)
+Driver Alias(shared)
 
 -specs
 Driver Separate Alias(specs=)
@@ -567,8 +567,7 @@ Common Var(warn_unsafe_loop_optimizations) Warning
 Warn if the loop cannot be optimized due to nontrivial assumptions.
 
 Wmissing-noreturn
-Common Var(warn_missing_noreturn) Warning
-Warn about functions which might be candidates for __attribute__((noreturn))
+Common Alias(Wsuggest-attribute=noreturn)
 
 Woverflow
 Common Var(warn_overflow) Init(1) Warning
@@ -581,6 +580,10 @@ Warn when the packed attribute has no effect on struct layout
 Wpadded
 Common Var(warn_padded) Warning
 Warn when padding is required to align structure members
+
+Wpedantic
+Common Var(pedantic) Warning
+Issue warnings needed for strict compliance to the standard
 
 Wshadow
 Common Var(warn_shadow) Warning
@@ -647,11 +650,11 @@ Common Var(warn_type_limits) Init(-1) Warning
 Warn if a comparison is always true or always false due to the limited range of the data type
 
 Wuninitialized
-Common Var(warn_uninitialized) Init(-1) Warning
+Common Var(warn_uninitialized) Warning EnabledBy(Wextra)
 Warn about uninitialized automatic variables
 
 Wmaybe-uninitialized
-Common Var(warn_maybe_uninitialized) Warning
+Common Var(warn_maybe_uninitialized) Warning EnabledBy(Wuninitialized)
 Warn about maybe uninitialized automatic variables
 
 Wunreachable-code
@@ -667,15 +670,15 @@ Common Var(warn_unused_but_set_parameter) Init(-1) Warning
 Warn when a function parameter is only set, otherwise unused
 
 Wunused-but-set-variable
-Common Var(warn_unused_but_set_variable) Init(-1) Warning
+Common Var(warn_unused_but_set_variable) Warning EnabledBy(Wunused)
 Warn when a variable is only set, otherwise unused
 
 Wunused-function
-Common Var(warn_unused_function) Init(-1) Warning
+Common Var(warn_unused_function) Warning EnabledBy(Wunused)
 Warn when a function is unused
 
 Wunused-label
-Common Var(warn_unused_label) Init(-1) Warning
+Common Var(warn_unused_label) Warning EnabledBy(Wunused)
 Warn when a label is unused
 
 Wunused-parameter
@@ -683,11 +686,11 @@ Common Var(warn_unused_parameter) Init(-1) Warning
 Warn when a function parameter is unused
 
 Wunused-value
-Common Var(warn_unused_value) Init(-1) Warning
+Common Var(warn_unused_value) Warning EnabledBy(Wunused)
 Warn when an expression value is unused
 
 Wunused-variable
-Common Var(warn_unused_variable) Init(-1) Warning
+Common Var(warn_unused_variable) Warning EnabledBy(Wunused)
 Warn when a variable is unused
 
 Wcoverage-mismatch
@@ -788,6 +791,8 @@ Driver Undocumented
 ;    argument.
 ;    First selectable in G++ 4.7.
 ;
+; 7: The version of the ABI that treats nullptr_t as a builtin type.
+;    First selectable in G++ 4.8.
 ; Additional positive integers will be assigned as new versions of
 ; the ABI become the default version of the ABI.
 fabi-version=
@@ -961,7 +966,7 @@ Common Joined RejectNegative Var(common_deferred_options) Defer
 Map one directory name to another in debug information
 
 fdebug-types-section
-Common Report Var(flag_debug_types_section) Init(1)
+Common Report Var(flag_debug_types_section) Init(0)
 Output .debug_types section when using DWARF v4 debuginfo.
 
 ; Nonzero for -fdefer-pop: don't pop args after each function call
@@ -998,6 +1003,10 @@ Enum(diagnostic_prefixing_rule) String(once) Value(DIAGNOSTICS_SHOW_PREFIX_ONCE)
 
 EnumValue
 Enum(diagnostic_prefixing_rule) String(every-line) Value(DIAGNOSTICS_SHOW_PREFIX_EVERY_LINE)
+
+fdiagnostics-show-caret
+Common Var(flag_diagnostics_show_caret) Init(1)
+Show the source line with a caret indicating the column
 
 fdiagnostics-show-option
 Common Var(flag_diagnostics_show_option) Init(1)
@@ -1198,8 +1207,8 @@ Common Report Var(flag_tm)
 Enable support for GNU transactional memory
 
 floop-flatten
-Common Report Var(flag_loop_flatten) Optimization
-Enable Loop Flattening transformation
+Common Ignore
+Does nothing. Preserved for backward compatibility.
 
 fstrict-volatile-bitfields
 Common Report Var(flag_strict_volatile_bitfields) Init(-1)
@@ -1245,26 +1254,23 @@ findirect-inlining
 Common Report Var(flag_indirect_inlining)
 Perform indirect inlining
 
-; Nonzero means that functions declared `inline' will be treated
-; as `static'.  Prevents generation of zillions of copies of unused
-; static inline functions; instead, `inlines' are written out
-; only when actually used.  Used in conjunction with -g.  Also
-; does the right thing with #pragma interface.
+; General flag to enable inlining.  Specifying -fno-inline will disable
+; all inlining apart from always-inline functions.
 finline
 Common Report Var(flag_no_inline,0) Init(0)
-Pay attention to the \"inline\" keyword
+Enable inlining of function declared \"inline\", disabling disables all inlining
 
 finline-small-functions
 Common Report Var(flag_inline_small_functions) Optimization
-Integrate simple functions into their callers when code size is known to not growth
+Integrate functions into their callers when code size is known not to grow
 
 finline-functions
 Common Report Var(flag_inline_functions) Optimization
-Integrate simple functions into their callers
+Integrate functions not declared \"inline\" into their callers when profitable
 
 finline-functions-called-once
 Common Report Var(flag_inline_functions_called_once) Optimization
-Integrate functions called once into their callers
+Integrate functions only required by their single caller
 
 finline-limit-
 Common RejectNegative Joined Alias(finline-limit=)
@@ -1418,7 +1424,7 @@ Common Joined RejectNegative UInteger Var(flag_lto_compression_level) Init(-1)
 -flto-compression-level=<number>	Use zlib compression level <number> for IL
 
 flto-report
-Common Report Var(flag_lto_report) Init(0) Optimization
+Common Report Var(flag_lto_report) Init(0)
 Report various link-time optimization statistics
 
 fmath-errno
@@ -1658,6 +1664,19 @@ fsched-pressure
 Common Report Var(flag_sched_pressure) Init(0) Optimization
 Enable register pressure sensitive insn scheduling
 
+fsched-pressure-algorithm=
+Common Joined RejectNegative Enum(sched_pressure_algorithm) Var(flag_sched_pressure_algorithm) Init(SCHED_PRESSURE_WEIGHTED)
+-fsched-pressure-algorithm=[weighted|model] Set the pressure-scheduling algorithm
+
+Enum
+Name(sched_pressure_algorithm) Type(enum sched_pressure_algorithm) UnknownError(unknown %<fsched-pressure%> algorithm %qs)
+
+EnumValue
+Enum(sched_pressure_algorithm) String(weighted) Value(SCHED_PRESSURE_WEIGHTED)
+
+EnumValue
+Enum(sched_pressure_algorithm) String(model) Value(SCHED_PRESSURE_MODEL)
+
 fsched-spec
 Common Report Var(flag_schedule_speculative) Init(1) Optimization
 Allow speculative motion of non-loads
@@ -1859,6 +1878,10 @@ fstrict-overflow
 Common Report Var(flag_strict_overflow)
 Treat signed overflow as undefined
 
+fsync-libcalls
+Common Report Var(flag_sync_libcalls) Init(1)
+Implement __atomic operations via libcalls to legacy __sync functions
+
 fsyntax-only
 Common Report Var(flag_syntax_only)
 Check for syntax errors, then stop
@@ -2012,6 +2035,10 @@ Enable hoisting loads from conditional pointers.
 ftree-pre
 Common Report Var(flag_tree_pre) Optimization
 Enable SSA-PRE optimization on trees
+
+ftree-partial-pre
+Common Report Var(flag_tree_partial_pre) Optimization
+In SSA-PRE optimization on trees, enable partial-partial redundancy elimination
 
 ftree-pta
 Common Report Var(flag_tree_pta) Init(1) Optimization
@@ -2205,7 +2232,7 @@ Common JoinedOrMissing Negative(gdwarf-)
 Generate debug information in COFF format
 
 gdwarf-
-Common Joined UInteger Var(dwarf_version) Init(2) Negative(gstabs)
+Common Joined UInteger Var(dwarf_version) Init(4) Negative(gstabs)
 Generate debug information in DWARF v2 (or later) format
 
 ggdb
@@ -2213,7 +2240,7 @@ Common JoinedOrMissing
 Generate debug information in default extended format
 
 gno-record-gcc-switches
-Common RejectNegative Var(dwarf_record_gcc_switches,0) Init(0)
+Common RejectNegative Var(dwarf_record_gcc_switches,0) Init(1)
 Don't record gcc command line switches in DWARF DW_AT_producer.
 
 grecord-gcc-switches
@@ -2229,7 +2256,7 @@ Common JoinedOrMissing Negative(gvms)
 Generate debug information in extended STABS format
 
 gno-strict-dwarf
-Common RejectNegative Var(dwarf_strict,0) Init(-1)
+Common RejectNegative Var(dwarf_strict,0) Init(0)
 Emit DWARF additions beyond selected version
 
 gstrict-dwarf
@@ -2289,8 +2316,7 @@ pass-exit-codes
 Driver Var(pass_exit_codes)
 
 pedantic
-Common Var(pedantic)
-Issue warnings needed for strict compliance to the standard
+Common Alias(Wpedantic)
 
 pedantic-errors
 Common Var(flag_pedantic_errors)
@@ -2380,7 +2406,7 @@ x
 Driver Joined Separate
 
 shared
-Common RejectNegative Negative(pie)
+Driver RejectNegative Negative(pie)
 Create a shared library
 
 shared-libgcc
@@ -2413,7 +2439,7 @@ symbolic
 Driver
 
 pie
-Common RejectNegative Negative(shared)
+Driver RejectNegative Negative(shared)
 Create a position independent executable
 
 z

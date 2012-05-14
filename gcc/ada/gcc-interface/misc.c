@@ -6,7 +6,7 @@
  *                                                                          *
  *                           C Implementation File                          *
  *                                                                          *
- *          Copyright (C) 1992-2011, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2012, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -105,6 +105,14 @@ gnat_parse_file (void)
   _ada_gnat1drv ();
 }
 
+/* Return language mask for option processing.  */
+
+static unsigned int
+gnat_option_lang_mask (void)
+{
+  return CL_Ada;
+}
+
 /* Decode all the language specific options that cannot be decoded by GCC.
    The option decoding phase of GCC calls this routine on the flags that
    are marked as Ada-specific.  Return true on success or false on failure.  */
@@ -119,7 +127,10 @@ gnat_handle_option (size_t scode, const char *arg ATTRIBUTE_UNUSED, int value,
   switch (code)
     {
     case OPT_Wall:
-      warn_unused = value;
+      handle_generated_option (&global_options, &global_options_set,
+			       OPT_Wunused, NULL, value,
+			       gnat_option_lang_mask (), kind, loc,
+			       handlers, global_dc);
       warn_uninitialized = value;
       warn_maybe_uninitialized = value;
       break;
@@ -143,14 +154,6 @@ gnat_handle_option (size_t scode, const char *arg ATTRIBUTE_UNUSED, int value,
     }
 
   return true;
-}
-
-/* Return language mask for option processing.  */
-
-static unsigned int
-gnat_option_lang_mask (void)
-{
-  return CL_Ada;
 }
 
 /* Initialize options structure OPTS.  */
@@ -234,6 +237,10 @@ gnat_post_options (const char **pfilename ATTRIBUTE_UNUSED)
 
   /* No psABI change warnings for Ada.  */
   warn_psabi = 0;
+
+  /* No caret by default for Ada.  */
+  if (!global_options_set.x_flag_diagnostics_show_caret)
+    global_dc->show_caret = false;
 
   optimize = global_options.x_optimize;
   optimize_size = global_options.x_optimize_size;
@@ -624,7 +631,7 @@ must_pass_by_ref (tree gnu_type)
      and does not produce compatibility problems with C, since C does
      not have such objects.  */
   return (TREE_CODE (gnu_type) == UNCONSTRAINED_ARRAY_TYPE
-	  || TREE_ADDRESSABLE (gnu_type)
+	  || TYPE_IS_BY_REFERENCE_P (gnu_type)
 	  || (TYPE_SIZE (gnu_type)
 	      && TREE_CODE (TYPE_SIZE (gnu_type)) != INTEGER_CST));
 }

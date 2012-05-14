@@ -155,9 +155,15 @@ class Parse
   // break or continue statement with no label.
   typedef std::vector<std::pair<Statement*, Label*> > Bc_stack;
 
+  // Map from type switch variables to the variables they mask, so
+  // that a use of the type switch variable can become a use of the
+  // real variable.
+  typedef Unordered_map(Named_object*, Named_object*) Type_switch_vars;
+
   // Parser nonterminals.
   void identifier_list(Typed_identifier_list*);
-  Expression_list* expression_list(Expression*, bool may_be_sink);
+  Expression_list* expression_list(Expression*, bool may_be_sink,
+				   bool may_be_composite_lit);
   bool qualified_ident(std::string*, Named_object**);
   Type* type();
   bool type_may_start_here();
@@ -202,6 +208,7 @@ class Parse
 			 bool is_coloneq, bool type_from_init, bool* is_new);
   Named_object* create_dummy_global(Type*, Expression*, Location);
   void simple_var_decl_or_assignment(const std::string&, Location,
+				     bool may_be_composite_lit,
 				     Range_clause*, Type_switch*);
   void function_decl();
   Typed_identifier* receiver();
@@ -234,8 +241,9 @@ class Parse
   void expression_stat(Expression*);
   void send_stmt(Expression*);
   void inc_dec_stat(Expression*);
-  void assignment(Expression*, Range_clause*);
-  void tuple_assignment(Expression_list*, Range_clause*);
+  void assignment(Expression*, bool may_be_composite_lit, Range_clause*);
+  void tuple_assignment(Expression_list*, bool may_be_composite_lit,
+			Range_clause*);
   void send();
   void go_or_defer_stat();
   void return_stat();
@@ -288,6 +296,10 @@ class Parse
   Statement*
   find_bc_statement(const Bc_stack*, const std::string&) const;
 
+  // Mark a variable as used.
+  void
+  mark_var_used(Named_object*);
+
   // The lexer output we are parsing.
   Lex* lex_;
   // The current token.
@@ -296,6 +308,8 @@ class Parse
   Token unget_token_;
   // Whether unget_token_ is valid.
   bool unget_token_valid_;
+  // Whether the function we are parsing had errors in the signature.
+  bool is_erroneous_function_;
   // The code we are generating.
   Gogo* gogo_;
   // A stack of statements for which break may be used.
@@ -307,6 +321,8 @@ class Parse
   // References from the local function to variables defined in
   // enclosing functions.
   Enclosing_vars enclosing_vars_;
+  // Map from type switch variables to real variables.
+  Type_switch_vars type_switch_vars_;
 };
 
 

@@ -70,6 +70,10 @@ static int forall_level;
 
 static bool in_omp_workshare;
 
+/* Keep track of iterators for array constructors.  */
+
+static int iterator_level;
+
 /* Entry point - run all passes for a namespace.  So far, only an
    optimization pass is run.  */
 
@@ -179,6 +183,13 @@ cfe_register_funcs (gfc_expr **e, int *walk_subtrees ATTRIBUTE_UNUSED,
   if (forall_level > 0)
     return 0;
 
+  /* Function elimination inside an iterator could lead to functions which
+     depend on iterator variables being moved outside.  FIXME: We should check
+     if the functions do indeed depend on the iterator variable.  */
+
+  if (iterator_level > 0)
+    return 0;
+
   /* If we don't know the shape at compile time, we create an allocatable
      temporary variable to hold the intermediate result, but only if
      allocation on assignment is active.  */
@@ -260,6 +271,16 @@ create_var (gfc_expr * e)
       inserted_block->ext.block.assoc = NULL;
 
       ns->code = *current_code;
+
+      /* If the statement has a label,  make sure it is transferred to
+	 the newly created block.  */
+
+      if ((*current_code)->here) 
+	{
+	  inserted_block->here = (*current_code)->here;
+	  (*current_code)->here = NULL;
+	}
+
       inserted_block->next = (*current_code)->next;
       changed_statement = &(inserted_block->ext.block.ns->code);
       (*current_code)->next = NULL;
@@ -328,7 +349,8 @@ create_var (gfc_expr * e)
       result->ref->type = REF_ARRAY;
       result->ref->u.ar.type = AR_FULL;
       result->ref->u.ar.where = e->where;
-      result->ref->u.ar.as = symbol->as;
+      result->ref->u.ar.as = symbol->ts.type == BT_CLASS
+			     ? CLASS_DATA (symbol)->as : symbol->as;
       if (gfc_option.warn_array_temp)
 	gfc_warning ("Creating array temporary at %L", &(e->where));
     }
@@ -509,6 +531,69 @@ convert_do_while (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   return 0;
 }
 
+/* Code callback function for converting
+   if (a) then
+   ...
+   else if (b) then
+   end if
+
+   into
+   if (a) then
+   else
+     if (b) then
+     end if
+   end if
+
+   because otherwise common function elimination would place the BLOCKs
+   into the wrong place.  */
+
+static int
+convert_elseif (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
+		void *data ATTRIBUTE_UNUSED)
+{
+  gfc_code *co = *c;
+  gfc_code *c_if1, *c_if2, *else_stmt;
+
+  if (co->op != EXEC_IF)
+    return 0;
+
+  /* This loop starts out with the first ELSE statement.  */
+  else_stmt = co->block->block;
+
+  while (else_stmt != NULL)
+    {
+      gfc_code *next_else;
+
+      /* If there is no condition, we're done.  */
+      if (else_stmt->expr1 == NULL)
+	break;
+
+      next_else = else_stmt->block;
+
+      /* Generate the new IF statement.  */
+      c_if2 = XCNEW (gfc_code);
+      c_if2->op = EXEC_IF;
+      c_if2->expr1 = else_stmt->expr1;
+      c_if2->next = else_stmt->next;
+      c_if2->loc = else_stmt->loc;
+      c_if2->block = next_else;
+
+      /* ... plus the one to chain it to.  */
+      c_if1 = XCNEW (gfc_code);
+      c_if1->op = EXEC_IF;
+      c_if1->block = c_if2;
+      c_if1->loc = else_stmt->loc;
+
+      /* Insert the new IF after the ELSE.  */
+      else_stmt->expr1 = NULL;
+      else_stmt->next = c_if1;
+      else_stmt->block = NULL;
+
+      else_stmt = next_else;
+    }
+  /*  Don't walk subtrees.  */
+  return 0;
+}
 /* Optimize a namespace, including all contained namespaces.  */
 
 static void
@@ -517,9 +602,11 @@ optimize_namespace (gfc_namespace *ns)
 
   current_ns = ns;
   forall_level = 0;
+  iterator_level = 0;
   in_omp_workshare = false;
 
   gfc_code_walker (&ns->code, convert_do_while, dummy_expr_callback, NULL);
+  gfc_code_walker (&ns->code, convert_elseif, dummy_expr_callback, NULL);
   gfc_code_walker (&ns->code, cfe_code, cfe_expr_0, NULL);
   gfc_code_walker (&ns->code, optimize_code, optimize_expr, NULL);
 
@@ -719,20 +806,45 @@ optimize_op (gfc_expr *e)
 {
   gfc_intrinsic_op op = e->value.op.op;
 
+  /* Only use new-style comparisions.  */
+  switch(op)
+    {
+    case INTRINSIC_EQ_OS:
+      op = INTRINSIC_EQ;
+      break;
+
+    case INTRINSIC_GE_OS:
+      op = INTRINSIC_GE;
+      break;
+
+    case INTRINSIC_LE_OS:
+      op = INTRINSIC_LE;
+      break;
+
+    case INTRINSIC_NE_OS:
+      op = INTRINSIC_NE;
+      break;
+
+    case INTRINSIC_GT_OS:
+      op = INTRINSIC_GT;
+      break;
+
+    case INTRINSIC_LT_OS:
+      op = INTRINSIC_LT;
+      break;
+
+    default:
+      break;
+    }
+
   switch (op)
     {
     case INTRINSIC_EQ:
-    case INTRINSIC_EQ_OS:
     case INTRINSIC_GE:
-    case INTRINSIC_GE_OS:
     case INTRINSIC_LE:
-    case INTRINSIC_LE_OS:
     case INTRINSIC_NE:
-    case INTRINSIC_NE_OS:
     case INTRINSIC_GT:
-    case INTRINSIC_GT_OS:
     case INTRINSIC_LT:
-    case INTRINSIC_LT_OS:
       return optimize_comparison (e, op);
 
     default:
@@ -740,6 +852,63 @@ optimize_op (gfc_expr *e)
     }
 
   return false;
+}
+
+
+/* Return true if a constant string contains only blanks.  */
+
+static bool
+empty_string (gfc_expr *e)
+{
+  int i;
+
+  if (e->ts.type != BT_CHARACTER || e->expr_type != EXPR_CONSTANT)
+    return false;
+
+  for (i=0; i < e->value.character.length; i++)
+    {
+      if (e->value.character.string[i] != ' ')
+	return false;
+    }
+
+  return true;
+}
+
+
+/* Insert a call to the intrinsic len_trim. Use a different name for
+   the symbol tree so we don't run into trouble when the user has
+   renamed len_trim for some reason.  */
+
+static gfc_expr*
+get_len_trim_call (gfc_expr *str, int kind)
+{
+  gfc_expr *fcn;
+  gfc_actual_arglist *actual_arglist, *next;
+
+  fcn = gfc_get_expr ();
+  fcn->expr_type = EXPR_FUNCTION;
+  fcn->value.function.isym = gfc_intrinsic_function_by_id (GFC_ISYM_LEN_TRIM);
+  actual_arglist = gfc_get_actual_arglist ();
+  actual_arglist->expr = str;
+  next = gfc_get_actual_arglist ();
+  next->expr = gfc_get_int_expr (gfc_default_integer_kind, NULL, kind);
+  actual_arglist->next = next;
+
+  fcn->value.function.actual = actual_arglist;
+  fcn->where = str->where;
+  fcn->ts.type = BT_INTEGER;
+  fcn->ts.kind = gfc_charlen_int_kind;
+
+  gfc_get_sym_tree ("__internal_len_trim", current_ns, &fcn->symtree, false);
+  fcn->symtree->n.sym->ts = fcn->ts;
+  fcn->symtree->n.sym->attr.flavor = FL_PROCEDURE;
+  fcn->symtree->n.sym->attr.function = 1;
+  fcn->symtree->n.sym->attr.elemental = 1;
+  fcn->symtree->n.sym->attr.referenced = 1;
+  fcn->symtree->n.sym->attr.access = ACCESS_PRIVATE;
+  gfc_commit_symbol (fcn->symtree->n.sym);
+
+  return fcn;
 }
 
 /* Optimize expressions for equality.  */
@@ -784,6 +953,45 @@ optimize_comparison (gfc_expr *e, gfc_intrinsic_op op)
      argument. For example the any intrinsic. See PR 45380.  */
   if (e->rank > 0)
     return change;
+
+  /* Replace a == '' with len_trim(a) == 0 and a /= '' with
+     len_trim(a) != 0 */
+  if (op1->ts.type == BT_CHARACTER && op2->ts.type == BT_CHARACTER
+      && (op == INTRINSIC_EQ || op == INTRINSIC_NE))
+    {
+      bool empty_op1, empty_op2;
+      empty_op1 = empty_string (op1);
+      empty_op2 = empty_string (op2);
+
+      if (empty_op1 || empty_op2)
+	{
+	  gfc_expr *fcn;
+	  gfc_expr *zero;
+	  gfc_expr *str;
+
+	  /* This can only happen when an error for comparing
+	     characters of different kinds has already been issued.  */
+	  if (empty_op1 && empty_op2)
+	    return false;
+
+	  zero = gfc_get_int_expr (gfc_charlen_int_kind, &e->where, 0);
+	  str = empty_op1 ? op2 : op1;
+
+	  fcn = get_len_trim_call (str, gfc_charlen_int_kind);
+
+
+	  if (empty_op1)
+	    gfc_free_expr (op1);
+	  else
+	    gfc_free_expr (op2);
+
+	  op1 = fcn;
+	  op2 = zero;
+	  e->value.op.op1 = fcn;
+	  e->value.op.op2 = zero;
+	}
+    }
+
 
   /* Don't compare REAL or COMPLEX expressions when honoring NaNs.  */
 
@@ -858,32 +1066,26 @@ optimize_comparison (gfc_expr *e, gfc_intrinsic_op op)
 	  switch (op)
 	    {
 	    case INTRINSIC_EQ:
-	    case INTRINSIC_EQ_OS:
 	      result = eq == 0;
 	      break;
 	      
 	    case INTRINSIC_GE:
-	    case INTRINSIC_GE_OS:
 	      result = eq >= 0;
 	      break;
 
 	    case INTRINSIC_LE:
-	    case INTRINSIC_LE_OS:
 	      result = eq <= 0;
 	      break;
 
 	    case INTRINSIC_NE:
-	    case INTRINSIC_NE_OS:
 	      result = eq != 0;
 	      break;
 
 	    case INTRINSIC_GT:
-	    case INTRINSIC_GT_OS:
 	      result = eq > 0;
 	      break;
 
 	    case INTRINSIC_LT:
-	    case INTRINSIC_LT_OS:
 	      result = eq < 0;
 	      break;
 	      
@@ -915,7 +1117,6 @@ optimize_trim (gfc_expr *e)
   gfc_expr *a;
   gfc_ref *ref;
   gfc_expr *fcn;
-  gfc_actual_arglist *actual_arglist, *next;
   gfc_ref **rr = NULL;
 
   /* Don't do this optimization within an argument list, because
@@ -964,17 +1165,7 @@ optimize_trim (gfc_expr *e)
 
   /* Build the function call to len_trim(x, gfc_defaul_integer_kind).  */
 
-  fcn = gfc_get_expr ();
-  fcn->expr_type = EXPR_FUNCTION;
-  fcn->value.function.isym =
-    gfc_intrinsic_function_by_id (GFC_ISYM_LEN_TRIM);
-  actual_arglist = gfc_get_actual_arglist ();
-  actual_arglist->expr = gfc_copy_expr (e);
-  next = gfc_get_actual_arglist ();
-  next->expr = gfc_get_int_expr (gfc_default_integer_kind, NULL,
-				 gfc_default_integer_kind);
-  actual_arglist->next = next;
-  fcn->value.function.actual = actual_arglist;
+  fcn = get_len_trim_call (gfc_copy_expr (e), gfc_default_integer_kind);
 
   /* Set the end of the reference to the call to len_trim.  */
 
@@ -1075,9 +1266,13 @@ gfc_expr_walker (gfc_expr **e, walk_expr_fn_t exprfn, void *data)
 	    for (c = gfc_constructor_first ((*e)->value.constructor); c;
 		 c = gfc_constructor_next (c))
 	      {
-		WALK_SUBEXPR (c->expr);
-		if (c->iterator != NULL)
+		if (c->iterator == NULL)
+		  WALK_SUBEXPR (c->expr);
+		else
 		  {
+		    iterator_level ++;
+		    WALK_SUBEXPR (c->expr);
+		    iterator_level --;
 		    WALK_SUBEXPR (c->iterator->var);
 		    WALK_SUBEXPR (c->iterator->start);
 		    WALK_SUBEXPR (c->iterator->end);

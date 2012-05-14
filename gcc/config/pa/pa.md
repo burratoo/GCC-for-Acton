@@ -6349,7 +6349,7 @@
   ""
   "*
 {
-  int x = INTVAL (operands[1]);
+  unsigned HOST_WIDE_INT x = UINTVAL (operands[1]);
   operands[2] = GEN_INT (4 + exact_log2 ((x >> 4) + 1));
   operands[1] = GEN_INT ((x & 0xf) - 0x10);
   return \"{zvdepi %1,%2,%0|depwi,z %1,%%sar,%2,%0}\";
@@ -6367,7 +6367,7 @@
   "exact_log2 (INTVAL (operands[1]) + 1) > 0"
   "*
 {
-  int x = INTVAL (operands[1]);
+  HOST_WIDE_INT x = INTVAL (operands[1]);
   operands[2] = GEN_INT (exact_log2 (x + 1));
   return \"{vdepi -1,%2,%0|depwi -1,%%sar,%2,%0}\";
 }"
@@ -6384,7 +6384,7 @@
   "INTVAL (operands[1]) == -2"
   "*
 {
-  int x = INTVAL (operands[1]);
+  HOST_WIDE_INT x = INTVAL (operands[1]);
   operands[2] = GEN_INT (exact_log2 ((~x) + 1));
   return \"{vdepi 0,%2,%0|depwi 0,%%sar,%2,%0}\";
 }"
@@ -6448,7 +6448,7 @@
   "TARGET_64BIT"
   "*
 {
-  int x = INTVAL (operands[1]);
+  unsigned HOST_WIDE_INT x = UINTVAL (operands[1]);
   operands[2] = GEN_INT (4 + exact_log2 ((x >> 4) + 1));
   operands[1] = GEN_INT ((x & 0x1f) - 0x20);
   return \"depdi,z %1,%%sar,%2,%0\";
@@ -6466,7 +6466,7 @@
   "TARGET_64BIT && exact_log2 (INTVAL (operands[1]) + 1) > 0"
   "*
 {
-  int x = INTVAL (operands[1]);
+  HOST_WIDE_INT x = INTVAL (operands[1]);
   operands[2] = GEN_INT (exact_log2 (x + 1));
   return \"depdi -1,%%sar,%2,%0\";
 }"
@@ -6483,7 +6483,7 @@
   "TARGET_64BIT && INTVAL (operands[1]) == -2"
   "*
 {
-  int x = INTVAL (operands[1]);
+  HOST_WIDE_INT x = INTVAL (operands[1]);
   operands[2] = GEN_INT (exact_log2 ((~x) + 1));
   return \"depdi 0,%%sar,%2,%0\";
 }"
@@ -6870,7 +6870,7 @@
      of the virtual stack variables and the hard frame pointer.  */
   if (GET_CODE (fp) != REG)
     fp = force_reg (Pmode, fp);
-  emit_move_insn (hard_frame_pointer_rtx, plus_constant (fp, -8));
+  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
 
   emit_stack_restore (SAVE_NONLOCAL, stack);
 
@@ -8300,9 +8300,9 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
 {
   /* The elements of the buffer are, in order:  */
   rtx fp = gen_rtx_MEM (Pmode, operands[0]);
-  rtx lab = gen_rtx_MEM (Pmode, plus_constant (operands[0],
+  rtx lab = gen_rtx_MEM (Pmode, plus_constant (Pmode, operands[0],
 			 POINTER_SIZE / BITS_PER_UNIT));
-  rtx stack = gen_rtx_MEM (Pmode, plus_constant (operands[0],
+  rtx stack = gen_rtx_MEM (Pmode, plus_constant (Pmode, operands[0],
 			   (POINTER_SIZE * 2) / BITS_PER_UNIT));
   rtx pv = gen_rtx_REG (Pmode, 1);
 
@@ -8314,7 +8314,7 @@ add,l %2,%3,%3\;bv,n %%r0(%3)"
      to adjust for the offset between these two values.  */
   if (GET_CODE (fp) != REG)
     fp = force_reg (Pmode, fp);
-  emit_move_insn (hard_frame_pointer_rtx, plus_constant (fp, -8));
+  emit_move_insn (hard_frame_pointer_rtx, plus_constant (Pmode, fp, -8));
 
   /* This bit is the same as expand_builtin_longjmp.  */
   emit_stack_restore (SAVE_NONLOCAL, stack);

@@ -863,7 +863,7 @@ legitimize_pic_address (rtx orig, enum machine_mode mode, rtx reg)
       if (GET_CODE (orig) == CONST_INT)
 	{
 	  if (INT_14_BITS (orig))
-	    return plus_constant (base, INTVAL (orig));
+	    return plus_constant (Pmode, base, INTVAL (orig));
 	  orig = force_reg (Pmode, orig);
 	}
       pic_ref = gen_rtx_PLUS (Pmode, base, orig);
@@ -1073,7 +1073,7 @@ hppa_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
       if (! VAL_14_BITS_P (newoffset)
 	  && GET_CODE (XEXP (x, 0)) == SYMBOL_REF)
 	{
-	  rtx const_part = plus_constant (XEXP (x, 0), newoffset);
+	  rtx const_part = plus_constant (Pmode, XEXP (x, 0), newoffset);
 	  rtx tmp_reg
 	    = force_reg (Pmode,
 			 gen_rtx_HIGH (Pmode, const_part));
@@ -1094,7 +1094,7 @@ hppa_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
 					     force_reg (Pmode, XEXP (x, 0)),
 					     int_part));
 	}
-      return plus_constant (ptr_reg, offset - newoffset);
+      return plus_constant (Pmode, ptr_reg, offset - newoffset);
     }
 
   /* Handle (plus (mult (a) (shadd_constant)) (b)).  */
@@ -3484,7 +3484,7 @@ store_reg (int reg, HOST_WIDE_INT disp, int base)
   basereg = gen_rtx_REG (Pmode, base);
   if (VAL_14_BITS_P (disp))
     {
-      dest = gen_rtx_MEM (word_mode, plus_constant (basereg, disp));
+      dest = gen_rtx_MEM (word_mode, plus_constant (Pmode, basereg, disp));
       insn = emit_move_insn (dest, src);
     }
   else if (TARGET_64BIT && !VAL_32_BITS_P (disp))
@@ -3568,7 +3568,8 @@ set_reg_plus_d (int reg, int base, HOST_WIDE_INT disp, int note)
   if (VAL_14_BITS_P (disp))
     {
       insn = emit_move_insn (gen_rtx_REG (Pmode, reg),
-			     plus_constant (gen_rtx_REG (Pmode, base), disp));
+			     plus_constant (Pmode,
+					    gen_rtx_REG (Pmode, base), disp));
     }
   else if (TARGET_64BIT && !VAL_32_BITS_P (disp))
     {
@@ -4007,16 +4008,19 @@ pa_expand_prologue (void)
 		  if (TARGET_64BIT)
 		    {
 		      rtx mem = gen_rtx_MEM (DFmode,
-					     plus_constant (base, offset));
+					     plus_constant (Pmode, base,
+							    offset));
 		      add_reg_note (insn, REG_FRAME_RELATED_EXPR,
 				    gen_rtx_SET (VOIDmode, mem, reg));
 		    }
 		  else
 		    {
 		      rtx meml = gen_rtx_MEM (SFmode,
-					      plus_constant (base, offset));
+					      plus_constant (Pmode, base,
+							     offset));
 		      rtx memr = gen_rtx_MEM (SFmode,
-					      plus_constant (base, offset + 4));
+					      plus_constant (Pmode, base,
+							     offset + 4));
 		      rtx regl = gen_rtx_REG (SFmode, i);
 		      rtx regr = gen_rtx_REG (SFmode, i + 1);
 		      rtx setl = gen_rtx_SET (VOIDmode, meml, regl);
@@ -4048,7 +4052,7 @@ load_reg (int reg, HOST_WIDE_INT disp, int base)
   rtx src;
 
   if (VAL_14_BITS_P (disp))
-    src = gen_rtx_MEM (word_mode, plus_constant (basereg, disp));
+    src = gen_rtx_MEM (word_mode, plus_constant (Pmode, basereg, disp));
   else if (TARGET_64BIT && !VAL_32_BITS_P (disp))
     {
       rtx delta = GEN_INT (disp);
@@ -4501,7 +4505,7 @@ pa_return_addr_rtx (int count, rtx frameaddr)
   rtx saved_rp;
   rtx ins;
 
-  /* Instruction stream at the normal return address for the export stub:
+  /* The instruction stream at the return address of a PA1.X export stub is:
 
 	0x4bc23fd1 | stub+8:   ldw -18(sr0,sp),rp
 	0x004010a1 | stub+12:  ldsid (sr0,rp),r1
@@ -4509,10 +4513,16 @@ pa_return_addr_rtx (int count, rtx frameaddr)
 	0xe0400002 | stub+20:  be,n 0(sr0,rp)
 
      0xe0400002 must be specified as -532676606 so that it won't be
-     rejected as an invalid immediate operand on 64-bit hosts.  */
+     rejected as an invalid immediate operand on 64-bit hosts.
 
-  HOST_WIDE_INT insns[4] = {0x4bc23fd1, 0x004010a1, 0x00011820, -532676606};
-  int i;
+     The instruction stream at the return address of a PA2.0 export stub is:
+
+	0x4bc23fd1 | stub+8:   ldw -18(sr0,sp),rp
+	0xe840d002 | stub+12:  bve,n (rp)
+  */
+
+  HOST_WIDE_INT insns[4];
+  int i, len;
 
   if (count != 0)
     return NULL_RTX;
@@ -4535,13 +4545,28 @@ pa_return_addr_rtx (int count, rtx frameaddr)
   ins = copy_to_reg (gen_rtx_AND (Pmode, rp, MASK_RETURN_ADDR));
   label = gen_label_rtx ();
 
+  if (TARGET_PA_20)
+    {
+      insns[0] = 0x4bc23fd1;
+      insns[1] = -398405630;
+      len = 2;
+    }
+  else
+    {
+      insns[0] = 0x4bc23fd1;
+      insns[1] = 0x004010a1;
+      insns[2] = 0x00011820;
+      insns[3] = -532676606;
+      len = 4;
+    }
+
   /* Check the instruction stream at the normal return address for the
      export stub.  If it is an export stub, than our return address is
      really in -24[frameaddr].  */
 
-  for (i = 0; i < 3; i++)
+  for (i = 0; i < len; i++)
     {
-      rtx op0 = gen_rtx_MEM (SImode, plus_constant (ins, i * 4)); 
+      rtx op0 = gen_rtx_MEM (SImode, plus_constant (Pmode, ins, i * 4));
       rtx op1 = GEN_INT (insns[i]);
       emit_cmp_and_jump_insns (op0, op1, NE, NULL, SImode, 0, label);
     }
@@ -4554,7 +4579,7 @@ pa_return_addr_rtx (int count, rtx frameaddr)
   emit_move_insn (saved_rp,
 		  gen_rtx_MEM (Pmode,
 			       memory_address (Pmode,
-					       plus_constant (frameaddr,
+					       plus_constant (Pmode, frameaddr,
 							      -24))));
 
   emit_label (label);
@@ -6059,7 +6084,7 @@ hppa_builtin_saveregs (void)
 		? UNITS_PER_WORD : 0);
 
   if (argadj)
-    offset = plus_constant (crtl->args.arg_offset_rtx, argadj);
+    offset = plus_constant (Pmode, crtl->args.arg_offset_rtx, argadj);
   else
     offset = crtl->args.arg_offset_rtx;
 
@@ -6069,7 +6094,7 @@ hppa_builtin_saveregs (void)
 
       /* Adjust for varargs/stdarg differences.  */
       if (argadj)
-	offset = plus_constant (crtl->args.arg_offset_rtx, -argadj);
+	offset = plus_constant (Pmode, crtl->args.arg_offset_rtx, -argadj);
       else
 	offset = crtl->args.arg_offset_rtx;
 
@@ -6077,7 +6102,8 @@ hppa_builtin_saveregs (void)
 	 from the incoming arg pointer and growing to larger addresses.  */
       for (i = 26, off = -64; i >= 19; i--, off += 8)
 	emit_move_insn (gen_rtx_MEM (word_mode,
-				     plus_constant (arg_pointer_rtx, off)),
+				     plus_constant (Pmode,
+						    arg_pointer_rtx, off)),
 			gen_rtx_REG (word_mode, i));
 
       /* The incoming args pointer points just beyond the flushback area;
@@ -6085,7 +6111,7 @@ hppa_builtin_saveregs (void)
 	 varargs/stdargs we want to make the arg pointer point to the start
 	 of the incoming argument area.  */
       emit_move_insn (virtual_incoming_args_rtx,
-		      plus_constant (arg_pointer_rtx, -64));
+		      plus_constant (Pmode, arg_pointer_rtx, -64));
 
       /* Now return a pointer to the first anonymous argument.  */
       return copy_to_reg (expand_binop (Pmode, add_optab,
@@ -6095,7 +6121,7 @@ hppa_builtin_saveregs (void)
 
   /* Store general registers on the stack.  */
   dest = gen_rtx_MEM (BLKmode,
-		      plus_constant (crtl->args.internal_arg_pointer,
+		      plus_constant (Pmode, crtl->args.internal_arg_pointer,
 				     -16));
   set_mem_alias_set (dest, get_varargs_alias_set ());
   set_mem_align (dest, BITS_PER_WORD);
@@ -10105,7 +10131,8 @@ pa_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
 	 cache lines to minimize the number of lines flushed.  */
       emit_insn (gen_andsi3 (start_addr, r_tramp,
 			     GEN_INT (-MIN_CACHELINE_SIZE)));
-      tmp = force_reg (Pmode, plus_constant (r_tramp, TRAMPOLINE_CODE_SIZE-1));
+      tmp = force_reg (Pmode, plus_constant (Pmode, r_tramp,
+					     TRAMPOLINE_CODE_SIZE-1));
       emit_insn (gen_andsi3 (end_addr, tmp,
 			     GEN_INT (-MIN_CACHELINE_SIZE)));
       emit_move_insn (line_length, GEN_INT (MIN_CACHELINE_SIZE));
@@ -10123,7 +10150,8 @@ pa_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
 
       /* Create a fat pointer for the trampoline.  */
       tmp = adjust_address (m_tramp, Pmode, 16);
-      emit_move_insn (tmp, force_reg (Pmode, plus_constant (r_tramp, 32)));
+      emit_move_insn (tmp, force_reg (Pmode, plus_constant (Pmode,
+							    r_tramp, 32)));
       tmp = adjust_address (m_tramp, Pmode, 24);
       emit_move_insn (tmp, gen_rtx_REG (Pmode, 27));
 
@@ -10131,10 +10159,11 @@ pa_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
 	 they do not accept integer displacements.  We align the
 	 start and end addresses to the beginning of their respective
 	 cache lines to minimize the number of lines flushed.  */
-      tmp = force_reg (Pmode, plus_constant (r_tramp, 32));
+      tmp = force_reg (Pmode, plus_constant (Pmode, r_tramp, 32));
       emit_insn (gen_anddi3 (start_addr, tmp,
 			     GEN_INT (-MIN_CACHELINE_SIZE)));
-      tmp = force_reg (Pmode, plus_constant (tmp, TRAMPOLINE_CODE_SIZE - 1));
+      tmp = force_reg (Pmode, plus_constant (Pmode, tmp,
+					     TRAMPOLINE_CODE_SIZE - 1));
       emit_insn (gen_anddi3 (end_addr, tmp,
 			     GEN_INT (-MIN_CACHELINE_SIZE)));
       emit_move_insn (line_length, GEN_INT (MIN_CACHELINE_SIZE));
@@ -10153,7 +10182,7 @@ static rtx
 pa_trampoline_adjust_address (rtx addr)
 {
   if (!TARGET_64BIT)
-    addr = memory_address (Pmode, plus_constant (addr, 46));
+    addr = memory_address (Pmode, plus_constant (Pmode, addr, 46));
   return addr;
 }
 
@@ -10309,9 +10338,6 @@ pa_legitimate_constant_p (enum machine_mode mode, rtx x)
       && !reload_completed
       && !LEGITIMATE_64BIT_CONST_INT_P (INTVAL (x))
       && !pa_cint_ok_for_move (INTVAL (x)))
-    return false;
-
-  if (function_label_operand (x, mode))
     return false;
 
   return true;

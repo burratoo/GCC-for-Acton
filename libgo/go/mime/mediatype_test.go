@@ -244,12 +244,53 @@ func TestParseMediaType(t *testing.T) {
 	}
 }
 
+type badMediaTypeTest struct {
+	in  string
+	err string
+}
+
+var badMediaTypeTests = []badMediaTypeTest{
+	{"bogus ;=========", "mime: invalid media parameter"},
+	{"bogus/<script>alert</script>", "mime: expected token after slash"},
+	{"bogus/bogus<script>alert</script>", "mime: unexpected content after media subtype"},
+}
+
 func TestParseMediaTypeBogus(t *testing.T) {
-	mt, params, err := ParseMediaType("bogus ;=========")
-	if err == nil {
-		t.Fatalf("expected an error parsing invalid media type; got type %q, params %#v", mt, params)
+	for _, tt := range badMediaTypeTests {
+		mt, params, err := ParseMediaType(tt.in)
+		if err == nil {
+			t.Errorf("ParseMediaType(%q) = nil error; want parse error", tt.in)
+			continue
+		}
+		if err.Error() != tt.err {
+			t.Errorf("ParseMediaType(%q) = err %q; want %q", tt.in, err.Error(), tt.err)
+		}
+		if params != nil {
+			t.Errorf("ParseMediaType(%q): got non-nil params on error", tt.in)
+		}
+		if mt != "" {
+			t.Errorf("ParseMediaType(%q): got non-empty media type string on error", tt.in)
+		}
 	}
-	if err.Error() != "mime: invalid media parameter" {
-		t.Errorf("expected invalid media parameter; got error %q", err)
+}
+
+type formatTest struct {
+	typ    string
+	params map[string]string
+	want   string
+}
+
+var formatTests = []formatTest{
+	{"noslash", nil, ""},
+	{"foo/BAR", nil, "foo/bar"},
+	{"foo/BAR", map[string]string{"X": "Y"}, "foo/bar; x=Y"},
+}
+
+func TestFormatMediaType(t *testing.T) {
+	for i, tt := range formatTests {
+		got := FormatMediaType(tt.typ, tt.params)
+		if got != tt.want {
+			t.Errorf("%d. FormatMediaType(%q, %v) = %q; want %q", i, tt.typ, tt.params, got, tt.want)
+		}
 	}
 }

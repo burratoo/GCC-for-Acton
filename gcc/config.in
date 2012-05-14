@@ -350,6 +350,11 @@
 #undef HAVE_AS_IX86_SAHF
 #endif
 
+/* Define if your assembler supports HLE prefixes. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_IX86_HLE
+#endif
+
 
 /* Define if your assembler supports the swap suffix. */
 #ifndef USED_FOR_TARGET
@@ -1123,7 +1128,7 @@
 
 /* Define .init_array/.fini_array sections are available and working. */
 #ifndef USED_FOR_TARGET
-#undef HAVE_INITFINI_ARRAY
+#undef HAVE_INITFINI_ARRAY_SUPPORT
 #endif
 
 
@@ -1606,12 +1611,6 @@
 #endif
 
 
-/* Define to the linker flags to use for -pthread. */
-#ifndef USED_FOR_TARGET
-#undef LIB_THREAD_LDFLAGS_SPEC
-#endif
-
-
 /* Define to the library containing __tls_get_addr/___tls_get_addr. */
 #ifndef USED_FOR_TARGET
 #undef LIB_TLS_SPEC
@@ -1694,7 +1693,7 @@
 
 /* Specify plugin linker */
 #ifndef USED_FOR_TARGET
-#undef PLUGIN_LD
+#undef PLUGIN_LD_SUFFIX
 #endif
 
 
