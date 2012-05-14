@@ -370,7 +370,7 @@ mark_stmt_if_obviously_necessary (gimple stmt, bool aggressive)
       return;
     }
 
-  if (is_hidden_global_store (stmt))
+  if (stmt_may_clobber_global_p (stmt))
     {
       mark_stmt_necessary (stmt, true);
       return;
@@ -965,6 +965,13 @@ propagate_necessity (struct edge_list *el)
 		    mark_aliased_reaching_defs_necessary (stmt, op);
 		}
 	    }
+	  else if (gimple_code (stmt) == GIMPLE_TRANSACTION)
+	    {
+	      /* The beginning of a transaction is a memory barrier.  */
+	      /* ??? If we were really cool, we'd only be a barrier
+		 for the memories touched within the transaction.  */
+	      mark_all_reaching_defs_necessary (stmt);
+	    }
 	  else
 	    gcc_unreachable ();
 
@@ -1035,12 +1042,10 @@ static bool
 remove_dead_phis (basic_block bb)
 {
   bool something_changed = false;
-  gimple_seq phis;
   gimple phi;
   gimple_stmt_iterator gsi;
-  phis = phi_nodes (bb);
 
-  for (gsi = gsi_start (phis); !gsi_end_p (gsi);)
+  for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi);)
     {
       stats.total_phis++;
       phi = gsi_stmt (gsi);

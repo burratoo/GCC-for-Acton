@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package html provides functions for escaping and unescaping HTML text.
 package html
 
 import (
@@ -9,6 +10,10 @@ import (
 	"strings"
 	"unicode/utf8"
 )
+
+type writer interface {
+	WriteString(string) (int, error)
+}
 
 // These replacements permit compatibility with old numeric entities that 
 // assumed Windows-1252 encoding.
@@ -205,13 +210,15 @@ func escape(w writer, s string) error {
 		case '&':
 			esc = "&amp;"
 		case '\'':
-			esc = "&apos;"
+			// "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+			esc = "&#39;"
 		case '<':
 			esc = "&lt;"
 		case '>':
 			esc = "&gt;"
 		case '"':
-			esc = "&quot;"
+			// "&#34;" is shorter than "&quot;".
+			esc = "&#34;"
 		default:
 			panic("unrecognized escape character")
 		}
@@ -226,15 +233,15 @@ func escape(w writer, s string) error {
 }
 
 // EscapeString escapes special characters like "<" to become "&lt;". It
-// escapes only five such characters: amp, apos, lt, gt and quot.
+// escapes only five such characters: <, >, &, ' and ".
 // UnescapeString(EscapeString(s)) == s always holds, but the converse isn't
 // always true.
 func EscapeString(s string) string {
 	if strings.IndexAny(s, escapedChars) == -1 {
 		return s
 	}
-	buf := bytes.NewBuffer(nil)
-	escape(buf, s)
+	var buf bytes.Buffer
+	escape(&buf, s)
 	return buf.String()
 }
 

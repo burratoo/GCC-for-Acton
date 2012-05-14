@@ -11,6 +11,7 @@
 
 #include "go-c.h"
 #include "gogo.h"
+#include "lex.h"
 #include "types.h"
 #include "export.h"
 #include "import.h"
@@ -32,11 +33,6 @@ go_add_search_path(const char* path)
 {
   search_path.push_back(std::string(path));
 }
-
-// The name used for parameters, receivers, and results in imported
-// function types.
-
-const char* const Import::import_marker = "*imported*";
 
 // Find import data.  This searches the file system for FILENAME and
 // returns a pointer to a Stream object to read the data that it
@@ -285,13 +281,24 @@ Import::import(Gogo* gogo, const std::string& local_name,
       std::string package_name = this->read_identifier();
       this->require_c_string(";\n");
 
-      this->require_c_string("prefix ");
-      std::string unique_prefix = this->read_identifier();
-      this->require_c_string(";\n");
+      std::string pkgpath;
+      if (this->match_c_string("prefix "))
+	{
+	  this->advance(7);
+	  std::string unique_prefix = this->read_identifier();
+	  this->require_c_string(";\n");
+	  pkgpath = unique_prefix + '.' + package_name;
+	}
+      else
+	{
+	  this->require_c_string("pkgpath ");
+	  pkgpath = this->read_identifier();
+	  this->require_c_string(";\n");
+	}
 
       this->package_ = gogo->add_imported_package(package_name, local_name,
 						  is_local_name_exported,
-						  unique_prefix,
+						  pkgpath,
 						  this->location_,
 						  &this->add_to_globals_);
       if (this->package_ == NULL)
@@ -308,7 +315,10 @@ Import::import(Gogo* gogo, const std::string& local_name,
       this->package_->set_priority(prio);
       this->require_c_string(";\n");
 
-      if (stream->match_c_string("import "))
+      while (stream->match_c_string("import"))
+	this->read_one_import();
+
+      if (stream->match_c_string("init"))
 	this->read_import_init_fns(gogo);
 
       // Loop over all the input data for this package.
@@ -348,12 +358,32 @@ Import::import(Gogo* gogo, const std::string& local_name,
   return this->package_;
 }
 
+// Read an import line.  We don't actually care about these.
+
+void
+Import::read_one_import()
+{
+  this->require_c_string("import ");
+  std::string package_name = this->read_identifier();
+  this->require_c_string(" ");
+  std::string pkgpath = this->read_identifier();
+  this->require_c_string(" \"");
+  Stream* stream = this->stream_;
+  while (stream->peek_char() != '"')
+    stream->advance(1);
+  this->require_c_string("\";\n");
+
+  Package* p = this->gogo_->register_package(pkgpath,
+					     Linemap::unknown_location());
+  p->set_package_name(package_name, this->location());
+}
+
 // Read the list of import control functions.
 
 void
 Import::read_import_init_fns(Gogo* gogo)
 {
-  this->require_c_string("import");
+  this->require_c_string("init");
   while (!this->match_c_string(";"))
     {
       this->require_c_string(" ");
@@ -441,12 +471,29 @@ Import::import_func(Package* package)
   Named_object* no;
   if (fntype->is_method())
     {
-      Type* rtype = receiver->type()->deref();
+      Type* rtype = receiver->type();
+
+      // We may still be reading the definition of RTYPE, so we have
+      // to be careful to avoid calling base or convert.  If RTYPE is
+      // a named type or a forward declaration, then we know that it
+      // is not a pointer, because we are reading a method on RTYPE
+      // and named pointers can't have methods.
+
+      if (rtype->classification() == Type::TYPE_POINTER)
+	rtype = rtype->points_to();
+
       if (rtype->is_error_type())
 	return NULL;
-      Named_type* named_rtype = rtype->named_type();
-      go_assert(named_rtype != NULL);
-      no = named_rtype->add_method_declaration(name, package, fntype, loc);
+      else if (rtype->named_type() != NULL)
+	no = rtype->named_type()->add_method_declaration(name, package, fntype,
+							 loc);
+      else if (rtype->forward_declaration_type() != NULL)
+	no = rtype->forward_declaration_type()->add_method_declaration(name,
+								       package,
+								       fntype,
+								       loc);
+      else
+	go_unreachable();
     }
   else
     {
@@ -544,55 +591,50 @@ Import::read_type()
   while ((c = stream->get_char()) != '"')
     type_name += c;
 
-  // If this type is in the current package, the name will be
-  // .PREFIX.PACKAGE.NAME or simply NAME with no dots.  Otherwise, a
-  // non-hidden symbol will be PREFIX.PACKAGE.NAME and a hidden symbol
-  // will be .PREFIX.PACKAGE.NAME.
-  std::string package_name;
-  std::string unique_prefix;
+  // If this type is in the package we are currently importing, the
+  // name will be .PKGPATH.NAME or simply NAME with no dots.
+  // Otherwise, a non-hidden symbol will be PKGPATH.NAME and a hidden
+  // symbol will be .PKGPATH.NAME.
+  std::string pkgpath;
   if (type_name.find('.') != std::string::npos)
     {
-      bool is_hidden = false;
       size_t start = 0;
       if (type_name[0] == '.')
-	{
-	  ++start;
-	  is_hidden = true;
-	}
-      size_t dot1 = type_name.find('.', start);
-      size_t dot2;
-      if (dot1 == std::string::npos)
-	dot2 = std::string::npos;
-      else
-	dot2 = type_name.find('.', dot1 + 1);
-      if (dot1 == std::string::npos || dot2 == std::string::npos)
-	{
-	  error_at(this->location_,
-		   ("error at import data at %d: missing dot in type name"),
-		   stream->pos());
-	  stream->set_saw_error();
-	}
-      else
-	{
-	  unique_prefix = type_name.substr(start, dot1 - start);
-	  package_name = type_name.substr(dot1 + 1, dot2 - (dot1 + 1));
-	}
-      if (!is_hidden)
-	type_name.erase(0, dot2 + 1);
+	start = 1;
+      size_t dot = type_name.rfind('.');
+      pkgpath = type_name.substr(start, dot - start);
+      if (type_name[0] != '.')
+	type_name.erase(0, dot + 1);
     }
 
   this->require_c_string(" ");
+
+  // The package name may follow.  This is the name of the package in
+  // the package clause of that package.  The type name will include
+  // the pkgpath, which may be different.
+  std::string package_name;
+  if (stream->peek_char() == '"')
+    {
+      stream->advance(1);
+      while ((c = stream->get_char()) != '"')
+	package_name += c;
+      this->require_c_string(" ");
+    }
 
   // Declare the type in the appropriate package.  If we haven't seen
   // it before, mark it as invisible.  We declare it before we read
   // the actual definition of the type, since the definition may refer
   // to the type itself.
   Package* package;
-  if (package_name.empty())
+  if (pkgpath.empty() || pkgpath == this->gogo_->pkgpath())
     package = this->package_;
   else
-    package = this->gogo_->register_package(package_name, unique_prefix,
-					    Linemap::unknown_location());
+    {
+      package = this->gogo_->register_package(pkgpath,
+					      Linemap::unknown_location());
+      if (!package_name.empty())
+	package->set_package_name(package_name, this->location());
+    }
 
   Named_object* no = package->bindings()->lookup(type_name);
   if (no == NULL)
@@ -600,8 +642,7 @@ Import::read_type()
   else if (!no->is_type_declaration() && !no->is_type())
     {
       error_at(this->location_, "imported %<%s.%s%> both type and non-type",
-	       Gogo::message_name(package->name()).c_str(),
-	       Gogo::message_name(type_name).c_str());
+	       pkgpath.c_str(), Gogo::message_name(type_name).c_str());
       stream->set_saw_error();
       return Type::make_error_type();
     }
@@ -641,14 +682,17 @@ Import::read_type()
 	  // This type has not yet been imported.
 	  ntype->clear_is_visible();
 
+	  if (!type->is_undefined() && type->interface_type() != NULL)
+	    this->gogo_->record_interface_type(type->interface_type());
+
 	  type = ntype;
 	}
       else if (no->is_type())
 	{
 	  // We have seen this type before.  FIXME: it would be a good
 	  // idea to check that the two imported types are identical,
-	  // but we have not finalized the methds yet, which means
-	  // that we can nt reliably compare interface types.
+	  // but we have not finalized the methods yet, which means
+	  // that we can not reliably compare interface types.
 	  type = no->type_value();
 
 	  // Don't change the visibility of the existing type.
@@ -696,6 +740,8 @@ Import::register_builtin_types(Gogo* gogo)
   this->register_builtin_type(gogo, "bool", BUILTIN_BOOL);
   this->register_builtin_type(gogo, "string", BUILTIN_STRING);
   this->register_builtin_type(gogo, "error", BUILTIN_ERROR);
+  this->register_builtin_type(gogo, "byte", BUILTIN_BYTE);
+  this->register_builtin_type(gogo, "rune", BUILTIN_RUNE);
 }
 
 // Register a single builtin type.
@@ -727,6 +773,19 @@ Import::read_identifier()
       ret += c;
       stream->advance(1);
     }
+  return ret;
+}
+
+// Read a name from the stream.
+
+std::string
+Import::read_name()
+{
+  std::string ret = this->read_identifier();
+  if (ret == "?")
+    ret.clear();
+  else if (!Lex::is_exported_name(ret))
+    ret = '.' + this->package_->pkgpath() + '.' + ret;
   return ret;
 }
 

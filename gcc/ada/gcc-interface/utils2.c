@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *          Copyright (C) 1992-2011, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2012, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -789,16 +789,28 @@ build_binary_op (enum tree_code op_code, tree result_type,
       else if (TYPE_IS_PADDING_P (left_type)
 	       && TREE_CONSTANT (TYPE_SIZE (left_type))
 	       && ((TREE_CODE (right_operand) == COMPONENT_REF
-		    && TYPE_IS_PADDING_P
-		       (TREE_TYPE (TREE_OPERAND (right_operand, 0)))
-		    && gnat_types_compatible_p
-		       (left_type,
-			TREE_TYPE (TREE_OPERAND (right_operand, 0))))
+		    && TYPE_MAIN_VARIANT (left_type)
+		       == TYPE_MAIN_VARIANT
+			  (TREE_TYPE (TREE_OPERAND (right_operand, 0))))
 		   || (TREE_CODE (right_operand) == CONSTRUCTOR
 		       && !CONTAINS_PLACEHOLDER_P
 			   (DECL_SIZE (TYPE_FIELDS (left_type)))))
 	       && !integer_zerop (TYPE_SIZE (right_type)))
-	operation_type = left_type;
+	{
+	  /* We make an exception for a BLKmode type padding a non-BLKmode
+	     inner type and do the conversion of the LHS right away, since
+	     unchecked_convert wouldn't do it properly.  */
+	  if (TYPE_MODE (left_type) == BLKmode
+	      && TYPE_MODE (right_type) != BLKmode
+	      && TREE_CODE (right_operand) != CONSTRUCTOR)
+	    {
+	      operation_type = right_type;
+	      left_operand = convert (operation_type, left_operand);
+	      left_type = operation_type;
+	    }
+	  else
+	    operation_type = left_type;
+	}
 
       /* If we have a call to a function that returns an unconstrained type
 	 with default discriminant on the RHS, use the RHS type (which is
@@ -1365,8 +1377,8 @@ build_unary_op (enum tree_code op_code, tree result_type, tree operand)
 	default:
 	common:
 
-	  /* If we are taking the address of a padded record whose field is
-	     contains a template, take the address of the template.  */
+	  /* If we are taking the address of a padded record whose field
+	     contains a template, take the address of the field.  */
 	  if (TYPE_IS_PADDING_P (type)
 	      && TREE_CODE (TREE_TYPE (TYPE_FIELDS (type))) == RECORD_TYPE
 	      && TYPE_CONTAINS_TEMPLATE_P (TREE_TYPE (TYPE_FIELDS (type))))
@@ -1387,14 +1399,29 @@ build_unary_op (enum tree_code op_code, tree result_type, tree operand)
 	tree t = remove_conversions (operand, false);
 	bool can_never_be_null = DECL_P (t) && DECL_CAN_NEVER_BE_NULL_P (t);
 
-	/* If TYPE is a thin pointer, first convert to the fat pointer.  */
-	if (TYPE_IS_THIN_POINTER_P (type)
-	    && TYPE_UNCONSTRAINED_ARRAY (TREE_TYPE (type)))
+	/* If TYPE is a thin pointer, either first retrieve the base if this
+	   is an expression with an offset built for the initialization of an
+	   object with an unconstrained nominal subtype, or else convert to
+	   the fat pointer.  */
+	if (TYPE_IS_THIN_POINTER_P (type))
 	  {
-	    operand = convert
-		      (TREE_TYPE (TYPE_UNCONSTRAINED_ARRAY (TREE_TYPE (type))),
-		       operand);
-	    type = TREE_TYPE (operand);
+	    tree rec_type = TREE_TYPE (type);
+
+	    if (TREE_CODE (operand) == POINTER_PLUS_EXPR
+		&& TREE_OPERAND (operand, 1)
+		   == byte_position (DECL_CHAIN (TYPE_FIELDS (rec_type)))
+		&& TREE_CODE (TREE_OPERAND (operand, 0)) == NOP_EXPR)
+	      {
+		operand = TREE_OPERAND (TREE_OPERAND (operand, 0), 0);
+		type = TREE_TYPE (operand);
+	      }
+	    else if (TYPE_UNCONSTRAINED_ARRAY (rec_type))
+	      {
+		operand
+		  = convert (TREE_TYPE (TYPE_UNCONSTRAINED_ARRAY (rec_type)),
+			     operand);
+		type = TREE_TYPE (operand);
+	      }
 	  }
 
 	/* If we want to refer to an unconstrained array, use the appropriate
@@ -1538,8 +1565,9 @@ build_cond_expr (tree result_type, tree condition_operand,
 
   /* If the result type is unconstrained, take the address of the operands and
      then dereference the result.  Likewise if the result type is passed by
-     reference, but this is natively handled in the gimplifier.  */
+     reference, because creating a temporary of this type is not allowed.  */
   if (TREE_CODE (result_type) == UNCONSTRAINED_ARRAY_TYPE
+      || TYPE_IS_BY_REFERENCE_P (result_type)
       || CONTAINS_PLACEHOLDER_P (TYPE_SIZE (result_type)))
     {
       result_type = build_pointer_type (result_type);
@@ -2003,9 +2031,10 @@ build_call_alloc_dealloc_proc (tree gnu_obj, tree gnu_size, tree gnu_type,
   tree gnu_proc = gnat_to_gnu (gnat_proc);
   tree gnu_call;
 
-  /* The storage pools are obviously always tagged types, but the
-     secondary stack uses the same mechanism and is not tagged.  */
-  if (Is_Tagged_Type (Etype (gnat_pool)))
+  /* A storage pool's underlying type is a record type (for both predefined
+     storage pools and GNAT simple storage pools). The secondary stack uses
+     the same mechanism, but its pool object (SS_Pool) is an integer.  */
+  if (Is_Record_Type (Underlying_Type (Etype (gnat_pool))))
     {
       /* The size is the third parameter; the alignment is the
 	 same type.  */
