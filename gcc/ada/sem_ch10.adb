@@ -4827,10 +4827,14 @@ package body Sem_Ch10 is
 
          else
 
-            --  If in package declaration, nonlimited view brought in from
-            --  parent unit or some error condition.
+            --  If in package declaration, we have two cases, outside another
+            --  error:
+            --  1. A nonlimited view brought in from the parent unit. This
+            --     should have already been picked up and we should not have to
+            --     handle it here.
+            --  2.
 
-            return;
+            null;
          end if;
       end if;
 
