@@ -369,8 +369,22 @@ package body Sem_Ch6 is
          --  For navigation purposes, indicate that the function is a body
 
          Generate_Reference (Prev, Defining_Entity (N), 'b', Force => True);
-         Rewrite (N, New_Body);
-         Analyze (N);
+         declare
+            Decls : List_Id            := List_Containing (N);
+            Par   : constant Node_Id   := Parent (Decls);
+
+         begin
+            if Nkind (Par) = N_Package_Specification
+               and then Decls = Visible_Declarations (Par)
+               and then Present (Private_Declarations (Par))
+               and then not Is_Empty_List (Private_Declarations (Par))
+            then
+               Decls := Private_Declarations (Par);
+            end if;
+
+            Insert_After (Last (Decls), New_Body);
+         end;
+         Rewrite (N, Make_Null_Statement (Sloc (N)));
 
          --  Prev is the previous entity with the same name, but it is can
          --  be an unrelated spec that is not completed by the expression
