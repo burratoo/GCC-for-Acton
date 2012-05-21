@@ -4828,11 +4828,17 @@ package body Sem_Ch10 is
          else
 
             --  If in package declaration, we have two cases, outside another
-            --  error:
-            --  1. A nonlimited view brought in from the parent unit. This
-            --     should have already been picked up and we should not have to
-            --     handle it here.
-            --  2.
+            --  unforeseen error:
+            --
+            --  1. A nonlimited view brought in from the parent unit.
+            --  2. The limited view is being used as a limited and non-limited
+            --     view for units indirectly brought in by the current unit.
+
+            --  The first case should have already been picked up and we should
+            --  not have to handle it here. In the second case the package is
+            --  not visible here and so we should continue with the processing.
+            --  ??? Should we instead clear the Is_Immediately_Visible flag
+            --  if that is the case?
 
             null;
          end if;
