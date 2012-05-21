@@ -292,6 +292,26 @@ package body Sem_Ch6 is
       New_Spec : Node_Id;
       Ret      : Node_Id;
 
+      procedure Insert_At_End (New_Node : Node_Id);
+      --  Inserts Node into the end of the current declarations,
+      --  or at the end of the package spec.
+
+      procedure Insert_At_End (New_Node : Node_Id) is
+         Decls : List_Id            := List_Containing (N);
+         Par   : constant Node_Id   := Parent (Decls);
+
+      begin
+         if Nkind (Par) = N_Package_Specification
+            and then Decls = Visible_Declarations (Par)
+            and then Present (Private_Declarations (Par))
+            and then not Is_Empty_List (Private_Declarations (Par))
+         then
+            Decls := Private_Declarations (Par);
+         end if;
+
+         Insert_After (Last (Decls), New_Node);
+      end Insert_At_End;
+
    begin
       --  This is one of the occasions on which we transform the tree during
       --  semantic analysis. If this is a completion, transform the expression
@@ -366,24 +386,10 @@ package body Sem_Ch6 is
       then
          Set_Has_Completion (Prev, False);
 
-         --  For navigation purposes, indicate that the function is a body
+         --  To prevent premature freeze action, insert the new body at the end
+         --  of the current declarations, or at the end of the package spec.
 
-         Generate_Reference (Prev, Defining_Entity (N), 'b', Force => True);
-         declare
-            Decls : List_Id            := List_Containing (N);
-            Par   : constant Node_Id   := Parent (Decls);
-
-         begin
-            if Nkind (Par) = N_Package_Specification
-               and then Decls = Visible_Declarations (Par)
-               and then Present (Private_Declarations (Par))
-               and then not Is_Empty_List (Private_Declarations (Par))
-            then
-               Decls := Private_Declarations (Par);
-            end if;
-
-            Insert_After (Last (Decls), New_Body);
-         end;
+         Insert_At_End (New_Body);
          Rewrite (N, Make_Null_Statement (Sloc (N)));
 
          --  Prev is the previous entity with the same name, but it is can
@@ -433,21 +439,12 @@ package body Sem_Ch6 is
          --  However, resolve usage names now, to prevent spurious visibility
          --  on later entities.
 
+         Insert_At_End (New_Body);
+
          declare
-            Decls : List_Id            := List_Containing (N);
-            Par   : constant Node_Id   := Parent (Decls);
             Id    : constant Entity_Id := Defining_Entity (New_Decl);
 
          begin
-            if Nkind (Par) = N_Package_Specification
-               and then Decls = Visible_Declarations (Par)
-               and then Present (Private_Declarations (Par))
-               and then not Is_Empty_List (Private_Declarations (Par))
-            then
-               Decls := Private_Declarations (Par);
-            end if;
-
-            Insert_After (Last (Decls), New_Body);
             Push_Scope (Id);
             Install_Formals (Id);
             Preanalyze_Spec_Expression (Expression  (Ret), Etype (Id));
