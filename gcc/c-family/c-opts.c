@@ -397,9 +397,9 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	  if (warn_main == -1)
 	    warn_main = (value ? 2 : 0);
 
-	  /* In C, -Wall turns on -Wenum-compare, which we do here.
-	     In C++ it is on by default, which is done in
-	     c_common_post_options.  */
+	  /* In C, -Wall and -Wc++-compat turns on -Wenum-compare,
+	     which we do here.  In C++ it is on by default, which is
+	     done in c_common_post_options.  */
           if (warn_enum_compare == -1)
             warn_enum_compare = value;
 	}
@@ -407,9 +407,6 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	{
 	  /* C++-specific warnings.  */
           warn_sign_compare = value;
-	  warn_reorder = value;
-          warn_cxx0x_compat = value;
-          warn_delnonvdtor = value;
 	  warn_narrowing = value;
 	}
 
@@ -434,10 +431,6 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	 implies -Wenum-compare.  */
       if (warn_enum_compare == -1 && value)
 	warn_enum_compare = value;
-      /* Because C++ always warns about a goto which misses an
-	 initialization, -Wc++-compat turns on -Wjump-misses-init.  */
-      if (warn_jump_misses_init == -1 && value)
-	warn_jump_misses_init = value;
       cpp_opts->warn_cxx_operator_names = value;
       break;
 
@@ -517,10 +510,6 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	  break;
 	}
 
-    case OPT_Wreturn_type:
-      warn_return_type = value;
-      break;
-
     case OPT_Wtraditional:
       cpp_opts->cpp_warn_traditional = value;
       break;
@@ -547,12 +536,7 @@ c_common_handle_option (size_t scode, const char *arg, int value,
       warn_variadic_macros = value;
       break;
 
-    case OPT_Wwrite_strings:
-      warn_write_strings = value;
-      break;
-
     case OPT_Weffc__:
-      warn_ecpp = value;
       if (value)
         warn_nonvdtor = true;
       break;
@@ -747,10 +731,9 @@ c_common_handle_option (size_t scode, const char *arg, int value,
 	error ("output filename specified twice");
       break;
 
-      /* We need to handle the -Wpedantic switches here, rather than in
+      /* We need to handle the -Wpedantic switch here, rather than in
 	 c_common_post_options, so that a subsequent -Wno-endif-labels
 	 is not overridden.  */
-    case OPT_pedantic_errors:
     case OPT_Wpedantic:
       cpp_opts->cpp_pedantic = 1;
       cpp_opts->warn_endif_labels = 1;
@@ -836,6 +819,40 @@ c_common_handle_option (size_t scode, const char *arg, int value,
       break;
     }
 
+  switch (c_language)
+    {
+    case clk_c:
+      C_handle_option_auto (&global_options, &global_options_set, 
+                            scode, arg, value, 
+                            c_family_lang_mask, kind,
+                            loc, handlers, global_dc);
+      break;
+
+    case clk_objc:
+      ObjC_handle_option_auto (&global_options, &global_options_set,
+                               scode, arg, value, 
+                               c_family_lang_mask, kind,
+                               loc, handlers, global_dc);
+      break;
+
+    case clk_cxx:
+      CXX_handle_option_auto (&global_options, &global_options_set,
+                              scode, arg, value,
+                              c_family_lang_mask, kind,
+                              loc, handlers, global_dc);
+      break;
+
+    case clk_objcxx:
+      ObjCXX_handle_option_auto (&global_options, &global_options_set,
+                                 scode, arg, value,
+                                 c_family_lang_mask, kind,
+                                 loc, handlers, global_dc);
+      break;
+
+    default:
+      gcc_unreachable ();
+    }
+  
   return result;
 }
 
@@ -912,24 +929,10 @@ c_common_post_options (const char **pfilename)
 
   /* -Wextra implies the following flags
      unless explicitly overridden.  */
-  if (warn_type_limits == -1)
-    warn_type_limits = extra_warnings;
-  if (warn_clobbered == -1)
-    warn_clobbered = extra_warnings;
-  if (warn_empty_body == -1)
-    warn_empty_body = extra_warnings;
+
+  /* Wsign-compare is also enabled by -Wall in C++. */
   if (warn_sign_compare == -1)
     warn_sign_compare = extra_warnings;
-  if (warn_missing_field_initializers == -1)
-    warn_missing_field_initializers = extra_warnings;
-  if (warn_missing_parameter_type == -1)
-    warn_missing_parameter_type = extra_warnings;
-  if (warn_old_style_declaration == -1)
-    warn_old_style_declaration = extra_warnings;
-  if (warn_override_init == -1)
-    warn_override_init = extra_warnings;
-  if (warn_ignored_qualifiers == -1)
-    warn_ignored_qualifiers = extra_warnings;
 
   /* -Wpointer-sign is disabled by default, but it is enabled if any
      of -Wall or -Wpedantic are given.  */
@@ -940,8 +943,6 @@ c_common_post_options (const char **pfilename)
     warn_strict_aliasing = 0;
   if (warn_strict_overflow == -1)
     warn_strict_overflow = 0;
-  if (warn_jump_misses_init == -1)
-    warn_jump_misses_init = 0;
 
   /* -Woverlength-strings is off by default, but is enabled by -Wpedantic.
      It is never enabled in C++, as the minimum limit is not normative
