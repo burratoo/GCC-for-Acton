@@ -819,8 +819,8 @@ begin
       --  add them here.
 
       Add_Scheduler_Agent_ALIs : declare
-         Base_ALI_Str : constant String := "acton-scheduler_agent";
-         Base_ALI_Str_Length : constant := 21;
+         Base_ALI_Str : constant String := "acton-scheduler_agents";
+         Base_ALI_Str_Length : constant := 22;
       begin
          Name_Buffer (1 .. Base_ALI_Str_Length) := Base_ALI_Str;
          Name_Len := Base_ALI_Str_Length;

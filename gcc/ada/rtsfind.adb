@@ -379,12 +379,16 @@ package body Rtsfind is
       elsif U_Id in Oak_Child then
          Name_Buffer (4) := '.';
 
-         if U_Id in Oak_Memory_Child then
-            Name_Buffer (11) := '.';
+         if U_Id in Oak_Agent_Child then
+            Name_Buffer (10) := '.';
          end if;
 
-         if U_Id in Oak_Oak_Task_Child then
-            Name_Buffer (13) := '.';
+         if U_Id in Oak_Agent_Tasks_Child then
+            Name_Buffer (16) := '.';
+         end if;
+
+         if U_Id in Oak_Memory_Child then
+            Name_Buffer (11) := '.';
          end if;
 
          if U_Id in Oak_Processor_Support_Package_Child then

@@ -8070,7 +8070,7 @@ package body Exp_Ch9 is
    --  The general form of this type declaration is
 
    --    type poV (discriminants) is record
-   --      _Object       : aliased <kind>Oak_Task
+   --      _Object       : aliased <kind>Task_Agent
    --         [Regular, (<entry count>)];
    --      [_barriers   : aliased Protected_Object_Barriers (bounds)];
    --      [entry_family  : array (bounds) of Void;]
@@ -8090,7 +8090,7 @@ package body Exp_Ch9 is
 
    --  The barrier field is present when the protected object has entries. The
    --  length of the barrier array is equal to the number of each individual
-   --  entry. It is aliased as it is referenced directly by Oak_Task.
+   --  entry. It is aliased as it is referenced directly by Oak_Agent.
 
    --  One entry_family component is present for each entry family in the
    --  task definition (see Expand_N_Task_Type_Declaration).
@@ -8437,12 +8437,11 @@ package body Exp_Ch9 is
             Protection_Subtype :=
               Make_Subtype_Indication (Loc,
                 Subtype_Mark =>
-                  New_Reference_To (RTE (RE_Oak_Task), Loc),
+                  New_Reference_To (RTE (RE_Task_Agent), Loc),
                 Constraint   =>
                   Make_Index_Or_Discriminant_Constraint (
                     Sloc        => Loc,
-                    Constraints => New_List (Entry_Count_Expr,
-                      New_Reference_To (RTE (RE_Regular), Loc))));
+                    Constraints => New_List (Entry_Count_Expr)));
 
             Object_Comp :=
               Make_Component_Declaration (Loc,
@@ -10661,7 +10660,7 @@ package body Exp_Ch9 is
    --  values of this task. The general form of this type declaration is
 
    --    type taskV (discriminants) is record
-   --      _OTCR              : Oak_Task;
+   --      _OTCR              : Task_Agent;
    --      entry_family       : array (bounds) of Void;
    --      _Priority          : Integer         := priority_expression;
    --      _Size              : Storage_Count
@@ -10851,9 +10850,11 @@ package body Exp_Ch9 is
             Make_Defining_Identifier (Loc, Name_uTask_Handler),
           Component_Definition =>
             Make_Component_Definition (Loc,
-              Aliased_Present    => False,
-              Subtype_Indication => New_Reference_To (
-                                      RTE (RE_Oak_Task_Handler), Loc))));
+              Aliased_Present   => False,
+              Access_Definition =>
+                Make_Access_Definition (Loc,
+                  Subtype_Mark  =>
+                    New_Reference_To (RTE (RE_Task_Agent), Loc)))));
 
       --  Declare static OTCR (that is, created by the expander)
       --  TODO: We should only do this for the Restricted run time. Otherwise
@@ -10868,7 +10869,7 @@ package body Exp_Ch9 is
             Make_Component_Definition (Loc,
               Aliased_Present     => True,
               Subtype_Indication  =>
-                New_Reference_To (RTE (RE_Oak_Task), Loc))));
+                New_Reference_To (RTE (RE_Task_Agent), Loc))));
 
       --  Declare static stack (that is, created by the expander) if we are
       --  using the Restricted run time on a bare board configuration.
@@ -12342,7 +12343,7 @@ package body Exp_Ch9 is
          begin
             Set_Protection_Object (Spec_Id, Prot_Ent);
 
-            Prot_Typ := RE_Oak_Task;
+            Prot_Typ := RE_Protected_Agent;
 
             --  Generate:
             --    conc_typR : protection_typ renames _object._object;
@@ -12880,7 +12881,7 @@ package body Exp_Ch9 is
       Append_To (L,
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
-            New_Reference_To (RTE (RE_Initialise_Protected_Object), Loc),
+            New_Reference_To (RTE (RE_Initialise_Protected_Agent), Loc),
           Parameter_Associations => Args));
 
       if Has_Attach_Handler (Ptyp) then
@@ -12998,7 +12999,7 @@ package body Exp_Ch9 is
 
       Args := New_List;
 
-      --  Oak Task Handler
+      --  Oak Task Agent
 
       Append_To (Args,
          Make_Selected_Component (Loc,
@@ -13174,7 +13175,7 @@ package body Exp_Ch9 is
           Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
           Attribute_Name => Name_Unchecked_Access));
 
-      Name := New_Reference_To (RTE (RE_Initialise_Task), Loc);
+      Name := New_Reference_To (RTE (RE_Initialise_Task_Agent), Loc);
 
       return
         Make_Procedure_Call_Statement (Loc,

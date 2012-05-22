@@ -428,18 +428,24 @@ package Rtsfind is
 
       --  Children of Oak
 
+      Oak_Agent,
+      Oak_Entries,
       Oak_Memory,
-      Oak_Oak_Task,
       Oak_Processor_Support_Package,
+      Oak_Protected_Objects,
+
+      --  Children of Oak.Agent
+
+      Oak_Agent_Schedulers,
+      Oak_Agent_Tasks,
+
+      --  Children of Oak.Agent.Tasks
+
+      Oak_Agent_Tasks_Protected_Objects,
 
       --  Children of Oak.Memory
 
       Oak_Memory_Call_Stack,
-
-      --  Children of Oak.Oak_Task
-
-      Oak_Oak_Task_Data_Access,
-      Oak_Oak_Task_Protected_Object,
 
       --  Children of Oak.Processor_Support_Package
 
@@ -537,18 +543,26 @@ package Rtsfind is
    --  Range of values of children of ARPART
 
    subtype Oak_Child is RTU_Id
-      range Oak_Memory .. Oak_Processor_Support_Package_Interrupts;
+      range Oak_Agent .. Oak_Protected_Objects;
    --  Range of values of children of Oak
+
+   subtype Oak_Agent_Child is Oak_Child
+      range Oak_Agent_Schedulers .. Oak_Agent_Tasks_Protected_Objects;
+   --  Range of values of children of Oak.Agent
+
+   subtype Oak_Agent_Tasks_Child is Oak_Child
+      range Oak_Agent_Tasks_Protected_Objects ..
+        Oak_Agent_Tasks_Protected_Objects;
+   --  Range of values of children of Oak.Agent.Tasks
 
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
-
-   subtype Oak_Oak_Task_Child is Oak_Child
-      range Oak_Oak_Task_Data_Access .. Oak_Oak_Task_Protected_Object;
+   --  Range of values of children of Oak.Memory
 
    subtype Oak_Processor_Support_Package_Child is Oak_Child
       range  Oak_Processor_Support_Package_Interrupts ..
         Oak_Processor_Support_Package_Interrupts;
+   --  Range of values of children of Oak.Processor_Support_Package
 
    --------------------------
    -- Runtime Entity Table --
@@ -1804,28 +1818,28 @@ package Rtsfind is
      RE_Complete_Activation,             -- ARPART.Tasks
      RE_Complete_Task,                   -- ARPART.Tasks
 
+     RE_Activation_Chain,                -- Oak.Agent.Tasks
+     RE_Activation_Chain_Access,         -- Oak.Agent.Tasks
+     RE_Initialise_Task_Agent,           -- Oak.Agent.Tasks
+     RE_Task_Agent,                      -- Oak.Agent.Tasks
+     RE_Unspecified_Priority,            -- Oak.Agent.Tasks
+
+     RE_Initialise_Protected_Agent,      -- Oak.Agent.Tasks.Protected_Objects
+     RE_Protected_Agent,                 -- Oak.Agent.Tasks.Protected_Objects
+
+     RE_Protected_Entry_Index,           -- Oak.Entries
+
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Unspecified_Call_Stack_Size,     -- Oak.Memory.Call_Stack
 
-     RE_Activation_Chain,                -- Oak.Oak_Task
-     RE_Activation_Chain_Access,         -- Oak.Oak_Task
-     RE_Oak_Task,                        -- Oak.Oak_Task
-     RE_Oak_Task_Handler,                -- Oak.Oak_Task
-     RE_Protected_Function,              -- Oak.Oak_Task
-     RE_Protected_Procedure,             -- Oak.Oak_Task
-     RE_Protected_Entry,                 -- Oak.Oak_Task
-     RE_Protected_Entry_Index,           -- Oak.Oak_Task
-     RE_Regular,                         -- Oak_Oak_Task
-     RE_Scheduler,                       -- Oak_Oak_Task
-     RE_Unspecified_Priority,            -- Oak.Oak_Task
-
-     RE_Initialise_Task,                 -- Oak.Oak_Task.Data_Access
-
-     RE_Initialise_Protected_Object,     -- Oak.Oak_Task.Protected_Object
-
      RE_Default_Interrupt_Priority, -- Oak.Processor_Support_Package.Interrupts
-     RE_Oak_Interrupt_Id);          -- Oak.Processor_Support_Package.Interrupts
+     RE_Oak_Interrupt_Id,           -- Oak.Processor_Support_Package.Interrupts
+
+     RE_Protected_Function,              -- Oak.Protected_Objects
+     RE_Protected_Procedure,             -- Oak.Protected_Objects
+     RE_Protected_Entry                  -- Oak.Protected_Objects
+     );
 
    --  The following declarations build a table that is indexed by the RTE
    --  function to determine the unit containing the given entity. This table
@@ -3091,30 +3105,29 @@ package Rtsfind is
      RE_Complete_Activation              => ARPART_Tasks,
      RE_Complete_Task                    => ARPART_Tasks,
 
+     RE_Activation_Chain                 => Oak_Agent_Tasks,
+     RE_Activation_Chain_Access          => Oak_Agent_Tasks,
+     RE_Initialise_Task_Agent            => Oak_Agent_Tasks,
+     RE_Task_Agent                       => Oak_Agent_Tasks,
+     RE_Unspecified_Priority             => Oak_Agent_Tasks,
+
+     RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
+     RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
+
+     RE_Protected_Entry_Index            => Oak_Entries,
+
      RE_Call_Stack_Size                  => Oak_Memory_Call_Stack,
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
-     RE_Activation_Chain                 => Oak_Oak_Task,
-     RE_Activation_Chain_Access          => Oak_Oak_Task,
-     RE_Oak_Task                         => Oak_Oak_Task,
-     RE_Oak_Task_Handler                 => Oak_Oak_Task,
-     RE_Protected_Function               => Oak_Oak_Task,
-     RE_Protected_Procedure              => Oak_Oak_Task,
-     RE_Protected_Entry                  => Oak_Oak_Task,
-     RE_Protected_Entry_Index            => Oak_Oak_Task,
-     RE_Regular                          => Oak_Oak_Task,
-     RE_Scheduler                        => Oak_Oak_Task,
-     RE_Unspecified_Priority             => Oak_Oak_Task,
-
-     RE_Initialise_Task                  => Oak_Oak_Task_Data_Access,
-
-     RE_Initialise_Protected_Object      => Oak_Oak_Task_Protected_Object,
-
      RE_Default_Interrupt_Priority       =>
        Oak_Processor_Support_Package_Interrupts,
      RE_Oak_Interrupt_Id                 =>
-       Oak_Processor_Support_Package_Interrupts);
+       Oak_Processor_Support_Package_Interrupts,
+
+     RE_Protected_Function               => Oak_Protected_Objects,
+     RE_Protected_Procedure              => Oak_Protected_Objects,
+     RE_Protected_Entry                  => Oak_Protected_Objects);
 
    --------------------------------
    -- Configurable Run-Time Mode --

@@ -1540,13 +1540,14 @@ package body Bindgen is
                Set_String (Policy_Str);
                Set_String (" (");
                Write_Statement_Buffer;
-               WBI ("     Agent        : Oak.Oak_Task.Oak_Task_Handler;");
+               WBI ("     Agent        : in out Oak.Agent.Schedulers" &
+                                                    ".Scheduler_Agent'Class;");
                WBI ("     Min_Priority : System.Any_Priority;");
                WBI ("     Max_Priority : System.Any_Priority);");
 
                Set_String ("   pragma Import (Ada, Create_Scheduler_Agent_");
                Set_String (Policy_Str);
-               Set_String (", ""__acton_scheduler_agent_");
+               Set_String (", ""__acton_scheduler_agents_");
                Set_String (Policy_Str);
                Set_String (""");");
                Write_Statement_Buffer;
@@ -1637,8 +1638,7 @@ package body Bindgen is
       for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
          Set_String ("      Scheduler_Agent_");
          Set_Int (Int (J));
-         Set_String (" : aliased Oak.Oak_Task.Oak_Task " &
-                     "(0, Oak.Oak_Task.Scheduler); ");
+         Set_String (" : aliased Oak.Agent.Schedulers.Scheduler_Agent;");
          Write_Statement_Buffer;
       end loop;
 
@@ -1686,7 +1686,7 @@ package body Bindgen is
          end loop;
 
          --  Initalise main task call
-         WBI ("      Oak.Oak_Task.Data_Access.Initialise_Main_Task");
+         WBI ("      Oak.Agent.Tasks.Initialise_Main_Task");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
@@ -2085,12 +2085,14 @@ package body Bindgen is
          end if;
       end if;
 
-      --  Generate "with Oak.Oak_Task" so that we can reference
-      --  Oak.Oak_Task.Oak_Task to create the main task and the scheduler
-      --  agents OTCR. This only happens when we bind the main program.
+      --  Generate "with Oak.Agent.Tasks" and "with Oak.Agent.Schedulers" so
+      --  that we can reference Task_Agent and Scheduler_Agent to create the
+      --  main task and the scheduler agents OTCR. This only happens when we
+      --  bind the main program.
 
       if Bind_Main_Program then
-         WBI ("with Oak.Oak_Task;");
+         WBI ("with Oak.Agent.Schedulers;");
+         WBI ("with Oak.Agent.Tasks;");
       end if;
 
       WBI ("package " & Ada_Main & " is");
@@ -2221,7 +2223,6 @@ package body Bindgen is
 
       if Bind_Main_Program then
          WBI ("with Ada.Real_Time;");
-         WBI ("with Oak.Oak_Task.Data_Access;");
          WBI ("with Oak.Core_Support_Package.Call_Stack;");
          WBI ("with System.Storage_Elements;");
       end if;
