@@ -8437,7 +8437,7 @@ package body Exp_Ch9 is
             Protection_Subtype :=
               Make_Subtype_Indication (Loc,
                 Subtype_Mark =>
-                  New_Reference_To (RTE (RE_Task_Agent), Loc),
+                  New_Reference_To (RTE (RE_Protected_Agent), Loc),
                 Constraint   =>
                   Make_Index_Or_Discriminant_Constraint (
                     Sloc        => Loc,
@@ -10854,7 +10854,10 @@ package body Exp_Ch9 is
               Access_Definition =>
                 Make_Access_Definition (Loc,
                   Subtype_Mark  =>
-                    New_Reference_To (RTE (RE_Task_Agent), Loc)))));
+                    Make_Attribute_Reference (Loc,
+                      Prefix         =>
+                        New_Reference_To (RTE (RE_Task_Agent), Loc),
+                      Attribute_Name => Name_Class)))));
 
       --  Declare static OTCR (that is, created by the expander)
       --  TODO: We should only do this for the Restricted run time. Otherwise
@@ -13091,30 +13094,43 @@ package body Exp_Ch9 is
 
       if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
          Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        =>
-               Make_Identifier (Loc, Name_uInit),
-             Selector_Name =>
-               Make_Identifier (Loc, Name_uRelative_Deadline)));
+           Make_Function_Call (Loc,
+             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+             Parameter_Associations => New_List (
+               Make_Selected_Component (Loc,
+                 Prefix        =>
+                   Make_Identifier (Loc, Name_uInit),
+                 Selector_Name =>
+                   Make_Identifier (Loc, Name_uRelative_Deadline)))));
 
       --  No pragma Relative_Deadline apply to the task
 
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+            Make_Function_Call (Loc,
+              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+              Parameter_Associations => New_List (
+                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
       end if;
 
-      --  Cycle_Period parameter. Set to Time_Span_Zerp unless there is a
+      --  Cycle_Period parameter. Set to Time_Span_Zero unless there is a
       --  Cycle_Period pragma,in which case we take the value from the pragma.
 
       if Present (Tdef) and then Has_Pragma_Cycle_Period (Tdef) then
          Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uCycle_Period)));
+           Make_Function_Call (Loc,
+             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+             Parameter_Associations => New_List (
+               Make_Selected_Component (Loc,
+                 Prefix        => Make_Identifier (Loc, Name_uInit),
+                 Selector_Name =>
+                   Make_Identifier (Loc, Name_uCycle_Period)))));
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+            Make_Function_Call (Loc,
+              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+              Parameter_Associations => New_List (
+                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
       end if;
 
       --  Phase parameter. Set to Time_Span_Zero unless there is a
@@ -13122,12 +13138,18 @@ package body Exp_Ch9 is
 
       if Present (Tdef) and then Has_Pragma_Phase (Tdef) then
          Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uPhase)));
+           Make_Function_Call (Loc,
+             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+             Parameter_Associations => New_List (
+               Make_Selected_Component (Loc,
+               Prefix        => Make_Identifier (Loc, Name_uInit),
+               Selector_Name => Make_Identifier (Loc, Name_uPhase)))));
       else
          Append_To (Args,
-           New_Reference_To (RTE (RE_Time_Span_Zero), Loc));
+            Make_Function_Call (Loc,
+              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+              Parameter_Associations => New_List (
+                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
       end if;
 
       --  CPU parameter. Set to Unspecified_CPU unless there is a CPU pragma,

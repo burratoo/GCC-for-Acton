@@ -431,6 +431,7 @@ package Rtsfind is
       Oak_Agent,
       Oak_Entries,
       Oak_Memory,
+      Oak_Oak_Time,
       Oak_Processor_Support_Package,
       Oak_Protected_Objects,
 
@@ -447,9 +448,14 @@ package Rtsfind is
 
       Oak_Memory_Call_Stack,
 
+      --  Children of Oak.Oak_Time
+
+      Oak_Oak_Time_Conversion,
+
       --  Children of Oak.Processor_Support_Package
 
-      Oak_Processor_Support_Package_Interrupts);
+      Oak_Processor_Support_Package_Interrupts
+      );
 
    subtype Ada_Child is RTU_Id
      range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -543,7 +549,7 @@ package Rtsfind is
    --  Range of values of children of ARPART
 
    subtype Oak_Child is RTU_Id
-      range Oak_Agent .. Oak_Protected_Objects;
+      range Oak_Agent .. Oak_Processor_Support_Package_Interrupts;
    --  Range of values of children of Oak
 
    subtype Oak_Agent_Child is Oak_Child
@@ -558,6 +564,10 @@ package Rtsfind is
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
    --  Range of values of children of Oak.Memory
+
+   subtype Oak_Oak_Time_Child is Oak_Child
+      range Oak_Oak_Time_Conversion .. Oak_Oak_Time_Conversion;
+   --  Range of values of children of Oak.Oak_Time
 
    subtype Oak_Processor_Support_Package_Child is Oak_Child
       range  Oak_Processor_Support_Package_Interrupts ..
@@ -1838,7 +1848,10 @@ package Rtsfind is
 
      RE_Protected_Function,              -- Oak.Protected_Objects
      RE_Protected_Procedure,             -- Oak.Protected_Objects
-     RE_Protected_Entry                  -- Oak.Protected_Objects
+     RE_Protected_Entry,                 -- Oak.Protected_Objects
+
+     RE_To_Oak_Time,                     -- Oak.Oak_Time.Conversion
+     RE_To_Oak_Time_Span                 -- Oak.Oak_Time.Conversion
      );
 
    --  The following declarations build a table that is indexed by the RTE
@@ -3127,7 +3140,10 @@ package Rtsfind is
 
      RE_Protected_Function               => Oak_Protected_Objects,
      RE_Protected_Procedure              => Oak_Protected_Objects,
-     RE_Protected_Entry                  => Oak_Protected_Objects);
+     RE_Protected_Entry                  => Oak_Protected_Objects,
+
+     RE_To_Oak_Time                      => Oak_Oak_Time_Conversion,
+     RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion);
 
    --------------------------------
    -- Configurable Run-Time Mode --
