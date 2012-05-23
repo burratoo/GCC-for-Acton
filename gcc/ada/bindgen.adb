@@ -1677,7 +1677,7 @@ package body Bindgen is
                           (Scheduler_Agents.Table (J).Dispatching_Policy));
             Set_String (" (Scheduler_Agent_");
             Set_Int (Int (J));
-            Set_String ("'Unchecked_Access, ");
+            Set_String (", ");
             Set_Int (Scheduler_Agents.Table (J).First_Priority);
             Set_String (", ");
             Set_Int (Scheduler_Agents.Table (J).Last_Priority);
