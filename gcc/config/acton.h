@@ -29,3 +29,7 @@ ecrti.o%s acton-crt0.a%s"
 
 #undef	LINK_START_DEFAULT_SPEC
 #define LINK_START_DEFAULT_SPEC "-T acton.ld%s"
+
+/* Suppress the generation of -lgcc and -lc flags cause we're awesome. */
+#undef  LINK_GCC_C_SEQUENCE_SPEC 
+#define LINK_GCC_C_SEQUENCE_SPEC ""
