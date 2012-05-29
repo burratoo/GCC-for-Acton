@@ -1686,7 +1686,7 @@ package body Bindgen is
          end loop;
 
          --  Initalise main task call
-         WBI ("      Oak.Agent.Tasks.Initialise_Main_Task");
+         WBI ("      Oak.Agent.Tasks.Main_Task.Initialise_Main_Task");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
@@ -2085,14 +2085,15 @@ package body Bindgen is
          end if;
       end if;
 
-      --  Generate "with Oak.Agent.Tasks" and "with Oak.Agent.Schedulers" so
-      --  that we can reference Task_Agent and Scheduler_Agent to create the
-      --  main task and the scheduler agents OTCR. This only happens when we
-      --  bind the main program.
+      --  Generate "with Oak.Agent.Tasks", "with Oak.Agent.Tasks.Main_Tasks"
+      --  and "with Oak.Agent.Schedulers" so that we can reference Task_Agent
+      --  and Scheduler_Agent to create the main task and the scheduler agents
+      --  OTCR. This only happens when we bind the main program.
 
       if Bind_Main_Program then
          WBI ("with Oak.Agent.Schedulers;");
          WBI ("with Oak.Agent.Tasks;");
+         WBI ("with Oak.Agent.Tasks.Main_Task;");
       end if;
 
       WBI ("package " & Ada_Main & " is");
