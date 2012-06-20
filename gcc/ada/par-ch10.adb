@@ -296,9 +296,10 @@ package body Ch10 is
            or else Bad_Spelling_Of (Tok_Separate)
            or else Bad_Spelling_Of (Tok_Procedure);
 
-         --  Allow task and protected for nice error recovery purposes
+         --  Allow atomic, task and protected for nice error recovery purposes
 
-         exit when Token = Tok_Task
+         exit when Token = Tok_Atomic
+           or else Token = Tok_Task
            or else Token = Tok_Protected;
 
          if Token = Tok_With then
@@ -449,8 +450,32 @@ package body Ch10 is
             Set_Unit (Comp_Unit_Node, Unit_Node);
          end if;
 
-      --  Otherwise we have TASK. This is not really an acceptable token,
-      --  but we accept it to improve error recovery.
+      --  Otherwise we have ATOMIC, TASK or PROTECTED. These are not really an
+      --  acceptable tokens, but we accept it to improve error recovery.
+
+      elsif Token = Tok_Atomic then
+         Scan; -- Past ATOMIC
+
+         if Token = Tok_Type then
+            Error_Msg_SP
+              ("atomic type cannot be used as compilation unit");
+         else
+            Error_Msg_SP
+              ("atomic declaration cannot be used as compilation unit");
+         end if;
+
+         --  If in check syntax mode, accept the task anyway. This is done
+         --  particularly to improve the behavior of GNATCHOP in this case.
+
+         if Operating_Mode = Check_Syntax then
+            Set_Unit (Comp_Unit_Node, P_Atomic);
+
+         --  If not in syntax only mode, treat this as horrible error
+
+         else
+            Cunit_Error_Flag := True;
+            return Error;
+         end if;
 
       elsif Token = Tok_Task then
          Scan; -- Past TASK
@@ -1024,6 +1049,12 @@ package body Ch10 is
 
    --  Parsed by P_Protected (9.4)
 
+   ------------------------------
+   -- 10.1.3  Atomic Body Stub --
+   ------------------------------
+
+   --  Parsed by P_Atomic (9.4)
+
    ---------------------
    -- 10.1.3  Subunit --
    ---------------------
@@ -1076,6 +1107,16 @@ package body Ch10 is
 
          if Token = Tok_Body then
             Body_Node := P_Task;
+         else
+            Error_Msg_AP ("BODY expected");
+            return Error;
+         end if;
+
+      elsif Token = Tok_Atomic then
+         Scan; -- past ATOMIC
+
+         if Token = Tok_Body then
+            Body_Node := P_Atomic;
          else
             Error_Msg_AP ("BODY expected");
             return Error;

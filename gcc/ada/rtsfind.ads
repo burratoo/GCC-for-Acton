@@ -429,6 +429,7 @@ package Rtsfind is
       --  Children of Oak
 
       Oak_Agent,
+      Oak_Atomic_Actions,
       Oak_Entries,
       Oak_Memory,
       Oak_Oak_Time,
@@ -1837,6 +1838,8 @@ package Rtsfind is
      RE_Initialise_Protected_Agent,      -- Oak.Agent.Tasks.Protected_Objects
      RE_Protected_Agent,                 -- Oak.Agent.Tasks.Protected_Objects
 
+     RE_Atomic_Action_State,             -- Oak.Atomic_Actions
+
      RE_Protected_Entry_Index,           -- Oak.Entries
 
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
@@ -3126,6 +3129,8 @@ package Rtsfind is
 
      RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
      RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
+
+     RE_Atomic_Action_State              => Oak_Atomic_Actions,
 
      RE_Protected_Entry_Index            => Oak_Entries,
 

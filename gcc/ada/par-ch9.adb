@@ -33,6 +33,7 @@ package body Ch9 is
    --  Local subprograms, used only in this chapter
 
    function P_Accept_Alternative                   return Node_Id;
+   function P_Action_Call_Alternative              return Node_Id;
    function P_Delay_Alternative                    return Node_Id;
    function P_Delay_Relative_Statement             return Node_Id;
    function P_Delay_Until_Statement                return Node_Id;
@@ -1346,6 +1347,18 @@ package body Ch9 is
 
    --  TRIGGERING_STATEMENT ::= ENTRY_CALL_STATEMENT | DELAY_STATEMENT
 
+   --  ALTERNATIVE_ACTION_CALL ::=
+   --    select
+   --      ACTION_CALL_ALTERNATIVE
+   --    {else
+   --      ACTION_CALL_ALTERNATIVE}
+   --    [else
+   --      SEQUENCE_OF_STATEMENTS]
+   --    end select;
+
+   --  ACTION_CALL_ALTERNATIVE ::=
+   --    ACTION_CALL_STATEMENT [SEQUENCE_OF_STATEMENTS]
+
    --  The caller has checked that the initial token is SELECT
 
    --  Error recovery: can raise Error_Resync
@@ -1362,6 +1375,7 @@ package body Ch9 is
       Alt_List       : List_Id;
       Cond_Expr      : Node_Id;
       Delay_Stmnt    : Node_Id;
+      Scan_State     : Saved_Scan_State;
 
    begin
       Push_Scope_Stack;
@@ -1506,10 +1520,65 @@ package body Ch9 is
 
          End_Statements;
 
-      --  Here we have a selective accept or an asynchronous select (first
-      --  token after SELECT is other than a designator token).
+      --  Here we have a selective accept, an asynchronous select or an
+      --  alternative action call (first token after SELECT is other than a
+      --  designator token).
 
       else
+
+         --  If ACTION follows SELECT, we have an alternative action call
+
+         if Token = Tok_Action then
+            Scan; -- past ACTION
+            Alt_List := New_List;
+            Select_Node := New_Node (N_Alternative_Action_Select, Select_Sloc);
+            Set_Action_Call_Alternatives (Select_Node, Alt_List);
+
+            --  On top of the loop we are just past a an ACTION or ELSE token.
+
+            loop
+               if Token in Token_Class_Desig then
+                  Save_Scan_State (Scan_State);
+                  --  at first statement of alternative
+
+                  --  Look ahead to see if this is the last alternative
+
+                  Statement_List := P_Sequence_Of_Statements (SS_Eltm_Sreq);
+
+                  --  The last alternative may either be either an
+                  --  ACTION_CALL_ALTERNATIVE or SEQUENCE_OF_STATEMENTS.
+                  --  We can only resolve which one it is during semantic
+                  --  anaylsis. For now we assume it is a
+                  --  SEQUENCE_OF_STATEMENTS.
+
+                  if Token /= Tok_Else then
+                     Set_Else_Statements (Select_Node, Statement_List);
+                  else
+                     Restore_Scan_State (Scan_State);
+                     Append (P_Action_Call_Alternative, Alt_List);
+                  end if;
+
+                  exit when Token /= Tok_Else;
+
+                  Scan; -- past ELSE
+
+               else
+                  Error_Msg_SC
+                    ("in alternative call " &
+                       "statement, action call required here!");
+                  Scan; -- past junk ABORT
+                  Discard_Junk_List (P_Sequence_Of_Statements (SS_Sreq));
+                  End_Statements;
+                  return Error;
+               end if;
+
+            end loop;
+
+            End_Statements;
+
+            return Select_Node;
+         end if;
+
          --  If we have delay with no guard, could be asynchronous select
 
          if Token = Tok_Delay then
@@ -1822,6 +1891,83 @@ package body Ch9 is
       Set_Statements (Abortable_Part_Node, P_Sequence_Of_Statements (SS_Sreq));
       return Abortable_Part_Node;
    end P_Abortable_Part;
+
+   ------------------------------------
+   -- 9.7.5  Action Call Alternative --
+   ------------------------------------
+
+   --  ACTION_CALL_ALTERNATIVE ::=
+   --    ACTION_CALL_STATEMENT [SEQUENCE_OF_STATEMENTS]
+
+   --  Error_Recovery: Cannot raise Error_Resync
+
+   function P_Action_Call_Alternative return Node_Id is
+      Acall_Node : Node_Id;
+      Alt_Node   : Node_Id;
+
+   begin
+      Alt_Node := New_Node (N_Action_Call_Alternative, Token_Ptr);
+
+      --  Scan action call statement
+
+      begin
+         Acall_Node := P_Name;
+
+         --  ??  The following two clauses exactly parallel code in ch5
+         --      and should be combined sometime
+
+         if Nkind (Acall_Node) = N_Indexed_Component then
+            declare
+               Prefix_Node : constant Node_Id := Prefix (Acall_Node);
+               Exprs_Node  : constant List_Id := Expressions (Acall_Node);
+
+            begin
+               Change_Node (Acall_Node, N_Procedure_Call_Statement);
+               Set_Name (Acall_Node, Prefix_Node);
+               Set_Parameter_Associations (Acall_Node, Exprs_Node);
+            end;
+
+         elsif Nkind (Acall_Node) = N_Function_Call then
+            declare
+               Fname_Node  : constant Node_Id := Name (Acall_Node);
+               Params_List : constant List_Id :=
+                               Parameter_Associations (Acall_Node);
+
+            begin
+               Change_Node (Acall_Node, N_Procedure_Call_Statement);
+               Set_Name (Acall_Node, Fname_Node);
+               Set_Parameter_Associations (Acall_Node, Params_List);
+            end;
+
+         elsif Nkind (Acall_Node) = N_Identifier
+           or else Nkind (Acall_Node) = N_Selected_Component
+         then
+            --  Case of a call to a parameterless entry
+
+            declare
+               C_Node : constant Node_Id :=
+                      New_Node (N_Procedure_Call_Statement, Token_Ptr);
+            begin
+               Set_Name (C_Node, Acall_Node);
+               Set_Parameter_Associations (C_Node, No_List);
+               Acall_Node := C_Node;
+            end;
+         end if;
+
+         TF_Semicolon;
+
+      exception
+         when Error_Resync =>
+            Resync_Past_Semicolon;
+            return Error;
+      end;
+
+      Set_Action_Call_Statement (Acall_Node, P_Delay_Statement);
+
+      Set_Statements
+        (Alt_Node, P_Sequence_Of_Statements (SS_Eltm));
+      return Alt_Node;
+   end P_Action_Call_Alternative;
 
    --------------------------
    -- 9.8  Abort Statement --

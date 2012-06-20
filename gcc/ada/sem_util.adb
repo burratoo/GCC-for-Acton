@@ -4735,6 +4735,15 @@ package body Sem_Util is
             Nam := Empty;
          end if;
 
+      --  For an action call, the prefix of the call is a selected component.
+
+      elsif Nkind (Nod) = N_Action_Call_Statement then
+         if Nkind (Name (Nod)) = N_Selected_Component then
+            Nam := Entity (Selector_Name (Name (Nod)));
+         else
+            Nam := Empty;
+         end if;
+
       else
          Nam := Name (Nod);
       end if;
@@ -9311,6 +9320,7 @@ package body Sem_Util is
          when N_Function_Call            |
               N_Procedure_Call_Statement |
               N_Entry_Call_Statement     |
+              N_Action_Call_Statement    |
               N_Accept_Statement
          =>
             if Nkind (P) = N_Function_Call and then Ada_Version < Ada_2012 then
@@ -10098,6 +10108,7 @@ package body Sem_Util is
             --  set the corresponding links in the copy.
 
             if (Nkind (Old_Node) = N_Function_Call
+                 or else Nkind (Old_Node) = N_Action_Call_Statement
                  or else Nkind (Old_Node) = N_Entry_Call_Statement
                  or else
                    Nkind (Old_Node) = N_Procedure_Call_Statement)

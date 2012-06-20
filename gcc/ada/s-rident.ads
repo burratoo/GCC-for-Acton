@@ -67,6 +67,7 @@ package System.Rident is
       No_Allocators_After_Elaboration,         -- Ada 2012 (RM D.7(19.1/2))
       No_Anonymous_Allocators,                 -- Ada 2012 (RM H.4(8/1))
       No_Asynchronous_Control,                 -- (RM D.7(10))
+      No_Atomic_Types,                          -- Acton
       No_Calendar,                             -- GNAT
       No_Default_Stream_Attributes,            -- Ada 2012 (RM 13.12.1(4/2))
       No_Delay,                                -- (RM H.4(21))
@@ -156,6 +157,7 @@ package System.Rident is
       --  appropriate minimum value for the partition by taking the maximum
       --  value required by any unit.
 
+      Max_Actions,                             -- Acton
       Max_Protected_Entries,                   -- (RM D.7(14))
       Max_Select_Alternatives,                 -- (RM D.7(12))
       Max_Task_Entries,                        -- (RM D.7(13), H.4(3))

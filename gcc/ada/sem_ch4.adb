@@ -846,8 +846,8 @@ package body Sem_Ch4 is
    -- Analyze_Call --
    ------------------
 
-   --  Function, procedure, and entry calls are checked here. The Name in
-   --  the call may be overloaded. The actuals have been analyzed and may
+   --  Function, procedure, action, and entry calls are checked here. The Name
+   --  in the call may be overloaded. The actuals have been analyzed and may
    --  themselves be overloaded. On exit from this procedure, the node N
    --  may have zero, one or more interpretations. In the first case an
    --  error message is produced. In the last case, the node is flagged
@@ -947,7 +947,7 @@ package body Sem_Ch4 is
                   Nam, Entity (Nam));
             else
                Error_Msg_N
-                 ("procedure or entry name expected", Nam);
+                 ("procedure, action or entry name expected", Nam);
             end if;
 
          --  Check for tasking cases where only an entry call will do
@@ -957,6 +957,13 @@ package body Sem_Ch4 is
                                  N_Triggering_Alternative)
          then
             Error_Msg_N ("entry name expected", Nam);
+
+         --  Check for tasking cases where only an action call will do
+
+         elsif not L
+           and then K = N_Action_Call_Statement
+         then
+            Error_Msg_N ("action name expected", Nam);
 
          --  Otherwise give general error message
 
@@ -1008,13 +1015,14 @@ package body Sem_Ch4 is
             Nam_Ent := Designated_Type (Etype (Nam));
             Insert_Explicit_Dereference (Nam);
 
-         --  Selected component case. Simple entry or protected operation,
-         --  where the entry name is given by the selector name.
+         --  Selected component case. Simple action, entry or protected
+         --  operation, where the entity name is given by the selector name.
 
          elsif Nkind (Nam) = N_Selected_Component then
             Nam_Ent := Entity (Selector_Name (Nam));
 
-            if not Ekind_In (Nam_Ent, E_Entry,
+            if not Ekind_In (Nam_Ent, E_Action,
+                                      E_Entry,
                                       E_Entry_Family,
                                       E_Function,
                                       E_Procedure)
@@ -2788,9 +2796,9 @@ package body Sem_Ch4 is
 
          --  If the prefix of the call is a name, indicate the entity
          --  being called. If it is not a name,  it is an expression that
-         --  denotes an access to subprogram or else an entry or family. In
-         --  the latter case, the name is a selected component, and the entity
-         --  being called is noted on the selector.
+         --  denotes an access to subprogram or else an action, entry or
+         --  family. In the latter cases, the name is a selected component, and
+         --  the entity being called is noted on the selector.
 
          if not Is_Type (Nam) then
             if Is_Entity_Name (Name (N)) then
@@ -3613,8 +3621,8 @@ package body Sem_Ch4 is
    -- Analyze_Selected_Component --
    --------------------------------
 
-   --  Prefix is a record type or a task or protected type. In the latter case,
-   --  the selector must denote a visible entry.
+   --  Prefix is a record type, or a task, protected or atomic type. In the
+   --  latter cases, the selector must denote a visible entry.
 
    procedure Analyze_Selected_Component (N : Node_Id) is
       Name          : constant Node_Id := Prefix (N);
@@ -3633,7 +3641,8 @@ package body Sem_Ch4 is
       --  present in the class-wide type.
 
       Is_Single_Concurrent_Object : Boolean;
-      --  Set True if the prefix is a single task or a single protected object
+      --  Set True if the prefix is a single task, a single protected object,
+      --  or a single atomic object.
 
       procedure Find_Component_In_Instance (Rec : Entity_Id);
       --  In an instance, a component of a private extension may not be visible
@@ -4111,7 +4120,11 @@ package body Sem_Ch4 is
          --  discriminants if the task type is not an enclosing scope. If it
          --  is an enclosing scope (e.g. in an inner task) then all entities
          --  are visible, but the prefix must denote the enclosing scope, i.e.
-         --  can only be a direct name or an expanded name.
+         --  can only be a direct name or an expanded name. For an atomic type,
+         --  the set can only include actions or discriminants if the atomic
+         --  type is not an enclosing scope. The treatment of an enclosing
+         --  scope (e.g. in a nested atomic type) is the same as for a task
+         --  type.
 
          Set_Etype (Sel, Any_Type);
          In_Scope := In_Open_Scopes (Prefix_Type);
@@ -5865,6 +5878,10 @@ package body Sem_Ch4 is
          when Type_Kind =>
             Error_Msg_N
               ("subtype name cannot be used as operand", Enode);
+
+         when E_Action =>
+            Error_Msg_N
+              ("action name cannot be used as operand", Enode);
 
          when Entry_Kind =>
             Error_Msg_N

@@ -673,6 +673,8 @@ package body Repinfo is
             Write_Line ("Ada_Pass_By_Reference");
          when Convention_Intrinsic             =>
             Write_Line ("Intrinsic");
+         when Convention_Action                =>
+            Write_Line ("Action");
          when Convention_Entry                 =>
             Write_Line ("Entry");
          when Convention_Protected             =>

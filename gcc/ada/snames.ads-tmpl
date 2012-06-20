@@ -1291,6 +1291,15 @@ package Snames is
    subtype Ada_2012_Reserved_Words is
      Name_Id range First_2012_Reserved_Word .. Last_2012_Reserved_Word;
 
+   --  Ada Acton reserved words
+
+   First_Acton_Reserved_Word             : constant Name_Id := N + $;
+   Name_Action                           : constant Name_Id := N + $;
+   Last_Acton_Reserved_Word              : constant Name_Id := N + $;
+
+   subtype Acton_Reserved_Words is
+     Name_Id range First_Acton_Reserved_Word .. Last_Acton_Reserved_Word;
+
    --  Mark last defined name for consistency check in Snames body
 
    Last_Predefined_Name                  : constant Name_Id := N + $;
@@ -1505,6 +1514,7 @@ package Snames is
 
       Convention_Ada,
       Convention_Intrinsic,
+      Convention_Action,
       Convention_Entry,
       Convention_Protected,
       Convention_Stubbed,
@@ -1635,6 +1645,9 @@ package Snames is
       Pragma_Atomic,
       Pragma_Atomic_Components,
       Pragma_Attach_Handler,
+      Pragma_Backwards_Recovery,
+      Pragma_Barrier_End,
+      Pragma_Barrier_Start,
       Pragma_Check,
       Pragma_CIL_Constructor,
       Pragma_Comment,
@@ -1720,6 +1733,8 @@ package Snames is
       Pragma_Remote_Access_Type,
       Pragma_Remote_Call_Interface,
       Pragma_Remote_Types,
+      Pragma_Require_All_Actions,
+      Pragma_Save_State,
       Pragma_Share_Generic,
       Pragma_Shared,
       Pragma_Shared_Passive,

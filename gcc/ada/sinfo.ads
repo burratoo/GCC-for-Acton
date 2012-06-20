@@ -628,6 +628,12 @@ package Sinfo is
    --    cannot figure it out. If both flags Forwards_OK and Backwards_OK are
    --    set, it means that the front end can assure no overlap of operands.
 
+   --  Backwards_Recovery (Flag8-Sem)
+   --    A flag present in N_Atomic_Definition and N_Action_Body nodes. For an
+   --    N_Atomic_Definition node, it specifies the default vaule to be used
+   --    in its N_Action_Body nodes. Set by a Backwards_Recovery pragma in the
+   --    declaration sequence.
+
    --  Body_To_Inline (Node3-Sem)
    --    present in subprogram declarations. Denotes analyzed but unexpanded
    --    body of subprogram, to be used when inlining calls. Present when the
@@ -1131,6 +1137,11 @@ package Sinfo is
    --    checks. Why does this occur on N_Subtype_Declaration nodes, what does
    --    it mean in that context???
 
+   --  Has_End_Barrier (Flag7-Sem)
+   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
+   --    has a barrier at the end of the atomic action. Set by a
+   --    Barrier_Start pragma in the declaration sequence.
+
    --  Has_Local_Raise (Flag8-Sem)
    --    Present in exception handler nodes. Set if the handler can be entered
    --    via a local raise that gets transformed to a goto statement. This will
@@ -1164,8 +1175,14 @@ package Sinfo is
    --    private in the task case).
 
    --  Has_Pragma_Phase (Flag11-Sem)
-   --    A flag present in N_Task_Definition nodes to
-   --    flag the presence of a pragma Phase.
+   --    A flag present in N_Task_Definition nodes to flag the presence of a
+   --    pragma Phase.
+
+   --  Has_Pragma_Priority (Flag6-Sem)
+   --    A flag present in N_Subprogram_Body, N_Task_Definition and
+   --    N_Protected_Definition nodes to flag the presence of either a Priority
+   --    or Interrupt_Priority pragma in the declaration sequence (public or
+   --    private in the task and protected cases)
 
    --  Has_Pragma_Suppress_All (Flag14-Sem)
    --    This flag is set in an N_Compilation_Unit node if the Suppress_All
@@ -1175,12 +1192,6 @@ package Sinfo is
    --    allow it anywhere at all, and consider it equivalent to a pragma
    --    Suppress (All_Checks) appearing at the start of the configuration
    --    pragmas for the unit.
-
-   --  Has_Pragma_Priority (Flag6-Sem)
-   --    A flag present in N_Subprogram_Body, N_Task_Definition and
-   --    N_Protected_Definition nodes to flag the presence of either a Priority
-   --    or Interrupt_Priority pragma in the declaration sequence (public or
-   --    private in the task and protected cases)
 
    --  Has_Private_View (Flag11-Sem)
    --    A flag present in generic nodes that have an entity, to indicate that
@@ -1197,6 +1208,11 @@ package Sinfo is
    --    of the expressions contains an access attribute reference to the
    --    enclosing type. Such a self-reference can only appear in default-
    --    initialized aggregate for a record type.
+
+   --  Has_Start_Barrier (Flag6-Sem)
+   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
+   --    has a barrier at the start of the atomic action. Set by a
+   --    Barrier_Start pragma in the declaration sequence.
 
    --  Has_Storage_Size_Pragma (flag18-Sem)
    --    A flag present in N_Subprogram_Body and N_Task_Definition node to
@@ -1699,6 +1715,12 @@ package Sinfo is
    --    object. We use a list (instead of just a pointer to the object decl)
    --    because Analyze wants to insert extra actions on this list.
 
+   --  Require_All_Actions (Flag11-Sem)
+   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
+   --    requires all tasks to be present at the end barrier, or only those
+   --    tasks who are currently inside the atomic action. Set by a
+   --    Require_All_Actions pragma in the declaration sequence.
+
    --  Rounded_Result (Flag18-Sem)
    --    Present in N_Type_Conversion, N_Op_Divide and N_Op_Multiply nodes.
    --    Used in the fixed-point cases to indicate that the result must be
@@ -1708,6 +1730,12 @@ package Sinfo is
    --    than truncated towards zero as usual. These rounded integer operations
    --    are the result of expansion of rounded fixed-point divide, conversion
    --    and multiplication operations.
+
+   --  Save_State (Flag9-Sem)
+   --    A flag present in N_Atomic_Definition and N_Action_Body nodes. For an
+   --    N_Atomic_Definition node, it specifies the default vaule to be used
+   --    in its N_Action_Body nodes. Set by a Save_State pragma in the
+   --    declaration sequence.
 
    --  SCIL_Entity (Node4-Sem)
    --    Present in SCIL nodes. Used to reference the tagged type associated
@@ -1861,6 +1889,8 @@ package Sinfo is
    --    Task Definition            end [task_IDENTIFIER]
    --    Protected Definition       end [protected_IDENTIFIER]
    --    Protected Body             end [protected_IDENTIFIER]
+   --    Atomic Definition          end [atomic_IDENTIFIER]
+   --    Atomic Body                end [atomic_IDENTIFIER]
 
    --    Block Statement            end [block_IDENTIFIER];
    --    Subprogram Body            end [DESIGNATOR];
@@ -1868,6 +1898,7 @@ package Sinfo is
    --    Task Body                  end [task_IDENTIFIER];
    --    Accept Statement           end [entry_IDENTIFIER]];
    --    Entry Body                 end [entry_IDENTIFIER];
+   --    Action Body                end [action_IDENTIFIER];
 
    --    If Statement               end if;
    --    Case Statement             end case;
@@ -2317,12 +2348,14 @@ package Sinfo is
       --        [ASPECT_SPECIFICATIONS];
       --  | SINGLE_TASK_DECLARATION
       --  | SINGLE_PROTECTED_DECLARATION
+      --  | SINGLE_ATOMIC__DECLARATION
 
       --  Note: aliased is not permitted in Ada 83 mode
 
       --  The N_Object_Declaration node is only for the first two cases.
       --  Single task declaration is handled by P_Task (9.1)
       --  Single protected declaration is handled by P_protected (9.5)
+      --  Single atomic declaration is handled by P_atomic (9.x)
 
       --  Although the syntax allows multiple identifiers in the list, the
       --  semantics is as though successive declarations were given with
@@ -4042,7 +4075,7 @@ package Sinfo is
       --  | SIMPLE_RETURN_STATEMENT | ENTRY_CALL_STATEMENT
       --  | REQUEUE_STATEMENT       | DELAY_STATEMENT
       --  | ABORT_STATEMENT         | RAISE_STATEMENT
-      --  | CODE_STATEMENT
+      --  | CODE_STATEMENT          | ACTION_CALL_STATEMENT
 
       -----------------------------
       -- 5.1  Compound Statement --
@@ -5454,6 +5487,7 @@ package Sinfo is
       --  | TIMED_ENTRY_CALL
       --  | CONDITIONAL_ENTRY_CALL
       --  | ASYNCHRONOUS_SELECT
+      --  | ALTERNATIVE_ACTION_SELECT
 
       -----------------------------
       -- 9.7.1  Selective Accept --
@@ -5652,6 +5686,42 @@ package Sinfo is
       --  Sloc points to ABORT
       --  Statements (List3)
 
+      -------------------------------------
+      -- 9.7.5  Alternative Action Calls --
+      -------------------------------------
+
+      --  ALTERNATIVE_ACTION_SELECT ::=
+      --    select
+      --      ACTION_CALL_ALTERNATIVE
+      --    {else
+      --      ACTION_CALL_ALTERNATIVE}
+      --    [else
+      --      SEQUENCE_OF_STATEMENTS]
+      --    end select;
+
+      --  Gigi restriction: This node never appears
+
+      --  Note: alternative action call is only permitted in GCC for Acton
+
+      --  N_Alternative_Action_Select
+      --  Sloc points to SELECT
+      --  Action_Call_Alternatives (List1)
+      --  Else_Statements (List4) (set to No_List if no else part)
+
+      ------------------------------------
+      -- 9.7.5  Action Call Alternative --
+      ------------------------------------
+
+      --  ACTION_CALL_ALTERNATIVE ::=
+      --    ACTION_CALL_STATEMENT [SEQUENCE_OF_STATEMENTS]
+
+      --  Gigi restriction: This node never appears
+
+      --  N_Action_Call_Alternative
+      --  Sloc points to ELSE
+      --  Action_Call_Statement (Node1)
+      --  Statements (List3) (set to Empty_List if no statements)
+
       --------------------------
       -- 9.8  Abort Statement --
       --------------------------
@@ -5663,6 +5733,196 @@ package Sinfo is
       --  N_Abort_Statement
       --  Sloc points to ABORT
       --  Names (List2)
+
+      ----------------------------------
+      -- 9.x  Atomic Type Declaration --
+      ----------------------------------
+
+      --  ATOMIC_TYPE_DECLARATION ::=
+      --    atomic type DEFINING_IDENTIFIER [KNOWN_DISCRIMINANT_PART]
+      --      [ASPECT_SPECIFICATIONS]
+      --    is ATOMIC_DEFINITION;
+
+      --  Note: atomic type declarations are only permitted in GCC for Acton
+
+      --  N_Atomic_Type_Declaration
+      --  Sloc points to ATOMIC
+      --  Defining_Identifier (Node1)
+      --  Discriminant_Specifications (List4) (set to No_List if no
+      --   discriminant part)
+      --  Atomic_Definition (Node3)
+      --  Corresponding_Body (Node5-Sem)
+
+      ------------------------------------
+      -- 9.x  Single Atomic Declaration --
+      ------------------------------------
+
+      --  SINGLE_ATOMIC_DECLARATION ::=
+      --    atomic DEFINING_IDENTIFIER
+      --      [ASPECT_SPECIFICATIONS]
+      --    is ATOMIC_DEFINITION;
+
+      --  Note: single atomic declarations are only permitted in GCC for Acton
+
+      --  N_Single_Atomic_Declaration
+      --  Sloc points to ATOMIC
+      --  Defining_Identifier (Node1)
+      --  Atomic_Definition (Node3)
+
+      ----------------------------
+      -- 9.x  Atomic Definition --
+      ----------------------------
+
+      --  ATOMIC_DEFINITION ::=
+      --      {ATOMIC_OPERATION_DECLARATION} }
+      --    [private
+      --      {ATOMIC_ELEMENT_DECLARATION}]
+      --    end [atomic_IDENTIFIER]
+
+      --  Really all the flags in the node are True by default. It would be
+      --  easier to process them if they and their respective pragmas were the
+      --  negative, e.g Has_No_Start_Barrier. However, that make the node
+      --  very negative overall, so to keep things positive we deal with the
+      --  slightly extra processing.
+
+      --  N_Atomic_Definition
+      --  Sloc points to first token of protected definition
+      --  Visible_Declarations (List2)
+      --  Private_Declarations (List3) (set to No_List if no private part)
+      --  End_Label (Node4)
+      --  Has_Start_Barrier (Flag6-Sem)
+      --  Has_End_Barrier (Flag7-Sem)
+      --  Backwards_Recovery (Flag8-Sem)
+      --  Save_State (Flag9-Sem)
+      --  Require_All_Actions (Flag11-Sem)
+
+      ------------------------------------------
+      -- 9.x  Atomic Operation Declaration --
+      ------------------------------------------
+
+      --  ATOMIC_OPERATION_DECLARATION ::=
+      --    ACTION_DECLARATION
+
+      -------------------------------------
+      -- 9.x  Atomic Element Declaration --
+      -------------------------------------
+
+      --  ATOMIC_ELEMENT_DECLARATION ::=
+      --    COMPONENT_DECLARATION
+
+      -----------------------
+      -- 9.x  Atomic Body --
+      -----------------------
+
+      --  ATOMIC_BODY ::=
+      --    atomic body DEFINING_IDENTIFIER
+      --      [ASPECT_SPECIFICATIONS];
+      --    is
+      --      {ATOMIC_OPERATION_ITEM}
+      --    end [atomic_IDENTIFIER];
+
+      --  Note: atomic bodies are only allowed in GCC for Acton
+
+      --  Gigi restriction: This node never appears
+
+      --  N_Atomic_Body
+      --  Sloc points to ATOMIC
+      --  Defining_Identifier (Node1)
+      --  Declarations (List2) atomic operation items (and pragmas)
+      --  End_Label (Node4)
+      --  Corresponding_Spec (Node5-Sem)
+      --  Was_Originally_Stub (Flag13-Sem)
+
+      -----------------------------------
+      -- 9.x  Atomic Operation Item --
+      -----------------------------------
+
+      --  ATOMIC_OPERATION_ITEM ::=
+      --    SUBPROGRAM_DECLARATION
+      --  | SUBPROGRAM_BODY
+      --  | ACTION_BODY
+      --  | REPRESENTATION_CLAUSE
+
+      -----------------------------
+      -- 9.y  Action Declaration --
+      -----------------------------
+
+      --  ACTION_DECLARATION ::=
+      --    action DEFINING_IDENTIFIER PARAMETER_PROFILE
+      --       [ASPECT_SPECIFICATIONS];
+
+      --  N_Action_Declaration
+      --  Sloc points to ACTION
+      --  Defining_Identifier (Node1)
+      --  Parameter_Specifications (List3) (set to No_List if no formal part)
+      --  Corresponding_Body (Node5-Sem)
+
+      --  Note: overriding indicator is an Ada 2005 feature
+
+      -----------------------
+      -- 9.y  Action Body --
+      -----------------------
+
+      --  ACTION_BODY ::=
+      --    action DEFINING_IDENTIFIER ACTION_BODY_FORMAL_PART is
+      --      DECLARATIVE_PART
+      --    begin
+      --      HANDLED_SEQUENCE_OF_STATEMENTS
+      --    end [action_IDENTIFIER];
+
+      --  Gigi restriction: This node never appears
+
+      --  Note: the Corresponding_Spec in the node for the
+      --  ACTION_BODY_FORMAL_PART to avoid the N_Entry_Body node getting too
+      --  full (it would otherwise have too many fields)
+
+      --  N_Action_Body
+      --  Sloc points to ACTION
+      --  Defining_Identifier (Node1)
+      --  Action_Body_Formal_Part (Node5)
+      --  Declarations (List2)
+      --  Handled_Statement_Sequence (Node4)
+      --  Activation_Chain_Entity (Node3-Sem)
+      --  Backwards_Recovery (Flag8-Sem)
+      --  Save_State (Flag9-Sem)
+
+      ----------------------------------
+      -- 9.y  Action Body Formal Part --
+      ----------------------------------
+
+      --  ACTION_BODY_FORMAL_PART ::=
+      --    PARAMETER_PROFILE
+
+      --  Note that an action body formal part node is present even if it is
+      --  empty. This reflects the grammar, in which it is the components of
+      --  the action body formal part that are optional, not the action body
+      --  formal part itself. Also this means that the body's corresponding
+      --  spec always has somewhere to be stored.
+
+      --  Gigi restriction: This node never appears
+
+      --  N_Action_Body_Formal_Part
+      --  Sloc points to first token
+      --  Parameter_Specifications (List3) (set to No_List if no formal part)
+      --  Corresponding_Spec (Node5-Sem) of the entry body
+
+      --------------------------------
+      -- 9.y  Action Call Statement --
+      --------------------------------
+
+      --  ACTION_CALL_STATEMENT ::= action_NAME [ACTUAL_PARAMETER_PART];
+
+      --  The parser may generate a procedure call for this construct. The
+      --  semantic pass must correct this misidentification where needed.
+
+      --  Gigi restriction: This node never appears
+
+      --  N_Action_Call_Statement
+      --  Sloc points to first token of name
+      --  Name (Node2)
+      --  Parameter_Associations (List3) (set to No_List if no
+      --   actual parameter part)
+      --  First_Named_Actual (Node4-Sem)
 
       -------------------------
       -- 10.1.1  Compilation --
@@ -5857,6 +6117,21 @@ package Sinfo is
       --  | PACKAGE_BODY_STUB
       --  | TASK_BODY_STUB
       --  | PROTECTED_BODY_STUB
+
+      ---------------------------------
+      -- 10.1.3  Atomic Body Stub --
+      ---------------------------------
+
+      --  Atomic_BODY_STUB ::=
+      --    atomic body DEFINING_IDENTIFIER is separate;
+
+      --  Note: atomic body stubs are not allowed in Ada 83 mode
+
+      --  N_Atomic_Body_Stub
+      --  Sloc points to PROTECTED
+      --  Defining_Identifier (Node1)
+      --  Library_Unit (Node4-Sem) points to the subunit
+      --  Corresponding_Body (Node5-Sem)
 
       ----------------------------------
       -- 10.1.3  Subprogram Body Stub --
@@ -7700,6 +7975,8 @@ package Sinfo is
 
       --  N_Declaration
 
+      N_Action_Declaration,
+      N_Atomic_Type_Declaration,
       N_Component_Declaration,
       N_Entry_Declaration,
       N_Expression_Function,
@@ -7731,6 +8008,7 @@ package Sinfo is
 
       --  N_Body_Stub, N_Later_Decl_Item
 
+      N_Atomic_Body_Stub,
       N_Package_Body_Stub,
       N_Protected_Body_Stub,
       N_Subprogram_Body_Stub,
@@ -7753,6 +8031,7 @@ package Sinfo is
 
       --  N_Later_Decl_Item, N_Proper_Body
 
+      N_Atomic_Body,
       N_Protected_Body,
       N_Task_Body,
 
@@ -7805,6 +8084,8 @@ package Sinfo is
 
       --  N_Statement_Other_Than_Procedure_Call
 
+      N_Action_Call_Statement,
+      N_Alternative_Action_Select,
       N_Entry_Call_Statement,
       N_Free_Statement,
       N_Goto_Statement,
@@ -7825,6 +8106,7 @@ package Sinfo is
       --  N_Has_Condition
 
       N_Accept_Alternative,
+      N_Action_Call_Alternative,
       N_Delay_Alternative,
       N_Elsif_Part,
       N_Entry_Body_Formal_Part,
@@ -7860,7 +8142,10 @@ package Sinfo is
       N_Abstract_Subprogram_Declaration,
       N_Access_Definition,
       N_Access_To_Object_Definition,
+      N_Action_Body,
+      N_Action_Body_Formal_Part,
       N_Aspect_Specification,
+      N_Atomic_Definition,
       N_Case_Expression_Alternative,
       N_Case_Statement_Alternative,
       N_Compilation_Unit,
@@ -7913,6 +8198,7 @@ package Sinfo is
       N_Real_Range_Specification,
       N_Record_Definition,
       N_Signed_Integer_Type_Definition,
+      N_Single_Atomic_Declaration,
       N_Single_Protected_Declaration,
       N_Subunit,
       N_Task_Definition,
@@ -7944,11 +8230,11 @@ package Sinfo is
      N_Op_Shift_Right_Arithmetic;
 
    subtype N_Body_Stub is Node_Kind range
-     N_Package_Body_Stub ..
+     N_Atomic_Body_Stub ..
      N_Task_Body_Stub;
 
    subtype N_Declaration is Node_Kind range
-     N_Component_Declaration ..
+     N_Atomic_Type_Declaration ..
      N_Procedure_Specification;
    --  Note: this includes all constructs normally thought of as declarations
    --  except those which are separately grouped as later declarations.
@@ -8146,6 +8432,15 @@ package Sinfo is
    function Access_Types_To_Process
      (N : Node_Id) return Elist_Id;   -- Elist2
 
+   function Action_Body_Formal_Part
+     (N : Node_Id) return Node_Id;    -- Node5
+
+   function Action_Call_Alternatives
+     (N : Node_Id) return List_Id;    -- List1
+
+   function Action_Call_Statement
+     (N : Node_Id) return Node_Id;    -- Node1
+
    function Actions
      (N : Node_Id) return List_Id;    -- List1
 
@@ -8179,6 +8474,9 @@ package Sinfo is
    function Ancestor_Part
      (N : Node_Id) return Node_Id;    -- Node3
 
+   function Atomic_Definition
+     (N : Node_Id) return Node_Id;    -- Node3
+
    function Atomic_Sync_Required
      (N : Node_Id) return Boolean;    -- Flag14
 
@@ -8205,6 +8503,9 @@ package Sinfo is
 
    function Backwards_OK
      (N : Node_Id) return Boolean;    -- Flag6
+
+   function Backwards_Recovery
+     (N : Node_Id) return Boolean;    -- Flag8
 
    function Bad_Is_Detected
      (N : Node_Id) return Boolean;    -- Flag15
@@ -8554,6 +8855,9 @@ package Sinfo is
    function Has_Dynamic_Range_Check
      (N : Node_Id) return Boolean;    -- Flag12
 
+   function Has_End_Barrier
+     (N : Node_Id) return Boolean;    -- Flag7
+
    function Has_Init_Expression
      (N : Node_Id) return Boolean;    -- Flag14
 
@@ -8589,6 +8893,9 @@ package Sinfo is
 
    function Has_Self_Reference
      (N : Node_Id) return Boolean;    -- Flag13
+
+   function Has_Start_Barrier
+     (N : Node_Id) return Boolean;    -- Flag6
 
    function Has_Storage_Size_Pragma
      (N : Node_Id) return Boolean;    -- Flag18
@@ -8950,6 +9257,9 @@ package Sinfo is
    function Renaming_Exception
      (N : Node_Id) return Node_Id;    -- Node2
 
+   function Require_All_Actions
+     (N : Node_Id) return Boolean;    -- Flag11
+
    function Result_Definition
      (N : Node_Id) return Node_Id;    -- Node4
 
@@ -8967,6 +9277,9 @@ package Sinfo is
 
    function Rounded_Result
      (N : Node_Id) return Boolean;    -- Flag18
+
+   function Save_State
+     (N : Node_Id) return Boolean;    -- Flag9
 
    function SCIL_Controlling_Tag
      (N : Node_Id) return Node_Id;    -- Node5
@@ -9142,6 +9455,15 @@ package Sinfo is
    procedure Set_Access_Types_To_Process
      (N : Node_Id; Val : Elist_Id);           -- Elist2
 
+   procedure Set_Action_Body_Formal_Part
+     (N : Node_Id; Val : Node_Id);            -- Node5
+
+   procedure Set_Action_Call_Alternatives
+     (N : Node_Id; Val : List_Id);            -- List1
+
+   procedure Set_Action_Call_Statement
+     (N : Node_Id; Val : Node_Id);            -- Node1
+
    procedure Set_Actions
      (N : Node_Id; Val : List_Id);            -- List1
 
@@ -9175,6 +9497,9 @@ package Sinfo is
    procedure Set_Ancestor_Part
      (N : Node_Id; Val : Node_Id);            -- Node3
 
+   procedure Set_Atomic_Definition
+     (N : Node_Id; Val : Node_Id);            -- Node3
+
    procedure Set_Atomic_Sync_Required
      (N : Node_Id; Val : Boolean := True);    -- Flag14
 
@@ -9201,6 +9526,9 @@ package Sinfo is
 
    procedure Set_Backwards_OK
      (N : Node_Id; Val : Boolean := True);    -- Flag6
+
+   procedure Set_Backwards_Recovery
+     (N : Node_Id; Val : Boolean := True);    -- Flag8
 
    procedure Set_Bad_Is_Detected
      (N : Node_Id; Val : Boolean := True);    -- Flag15
@@ -9547,6 +9875,9 @@ package Sinfo is
    procedure Set_Has_Dynamic_Range_Check
      (N : Node_Id; Val : Boolean := True);    -- Flag12
 
+   procedure Set_Has_End_Barrier
+     (N : Node_Id; Val : Boolean := True);    -- Flag7
+
    procedure Set_Has_Init_Expression
      (N : Node_Id; Val : Boolean := True);    -- Flag14
 
@@ -9582,6 +9913,9 @@ package Sinfo is
 
    procedure Set_Has_Self_Reference
      (N : Node_Id; Val : Boolean := True);    -- Flag13
+
+   procedure Set_Has_Start_Barrier
+     (N : Node_Id; Val : Boolean := True);    -- Flag6
 
    procedure Set_Has_Storage_Size_Pragma
      (N : Node_Id; Val : Boolean := True);    -- Flag18
@@ -9943,6 +10277,9 @@ package Sinfo is
    procedure Set_Renaming_Exception
      (N : Node_Id; Val : Node_Id);            -- Node2
 
+   procedure Set_Require_All_Actions
+     (N : Node_Id; Val : Boolean := True);    -- Flag11
+
    procedure Set_Result_Definition
      (N : Node_Id; Val : Node_Id);            -- Node4
 
@@ -9960,6 +10297,9 @@ package Sinfo is
 
    procedure Set_Rounded_Result
      (N : Node_Id; Val : Boolean := True);    -- Flag18
+
+   procedure Set_Save_State
+     (N : Node_Id; Val : Boolean := True);    -- Flag9
 
    procedure Set_SCIL_Controlling_Tag
      (N : Node_Id; Val : Node_Id);            -- Node5
@@ -11309,6 +11649,76 @@ package Sinfo is
         4 => False,   --  unused
         5 => False),  --  unused
 
+     N_Alternative_Action_Select =>
+       (1 => True,    --  Action_Call_Alternatives (List1)
+        2 => False,   --  unused
+        3 => False,   --  unused
+        4 => True,    --  Else_Statements (List4)
+        5 => False),  --  unused
+
+     N_Action_Call_Alternative =>
+       (1 => False,   --  unused
+        2 => True,    --  Action_Call_Statement (Node2)
+        3 => True,    --  Statements (List3)
+        4 => False,   --  unused
+        5 => False),  --  unusued
+
+     N_Atomic_Type_Declaration =>
+       (1 => True,    --  Defining_Identifier (Node1)
+        2 => False,   --  unused
+        3 => True,    --  Atomic_Definition (Node3)
+        4 => True,    --  Discriminant_Specifications (List4)
+        5 => False),  --  Corresponding_Body (Node5-Sem)
+
+     N_Single_Atomic_Declaration =>
+       (1 => True,    --  Defining_Identifier (Node1)
+        2 => False,   --  unused
+        3 => True,    --  Protected_Definition (Node3)
+        4 => False,   --  unused
+        5 => False),  --  unused
+
+     N_Atomic_Definition =>
+       (1 => False,   --  unused
+        2 => True,    --  Visible_Declarations (List2)
+        3 => True,    --  Private_Declarations (List3)
+        4 => True,    --  End_Label (Node4)
+        5 => False),  --  unused
+
+     N_Atomic_Body =>
+       (1 => True,    --  Defining_Identifier (Node1)
+        2 => True,    --  Declarations (List2)
+        3 => False,   --  unused
+        4 => True,    --  End_Label (Node4)
+        5 => False),  --  Corresponding_Spec (Node5-Sem)
+
+     N_Action_Declaration =>
+       (1 => True,    --  Defining_Identifier (Node1)
+        2 => False,   --  unused
+        3 => True,    --  Parameter_Specifications (List3)
+        4 => False,   --  unused
+        5 => False),  --  Corresponding_Body (Node5-Sem)
+
+     N_Action_Body =>
+       (1 => True,    --  Defining_Identifier (Node1)
+        2 => True,    --  Declarations (List2)
+        3 => False,   --  Activation_Chain_Entity (Node3-Sem)
+        4 => True,    --  Handled_Statement_Sequence (Node4)
+        5 => True),   --  Action_Body_Formal_Part (Node5)
+
+     N_Action_Body_Formal_Part =>
+       (1 => False,   --  unused
+        2 => False,   --  unused
+        3 => True,    --  Parameter_Specifications (List3)
+        4 => False,   --  unused
+        5 => False),  --  Corresponding_Spec (Node5-Sem)
+
+     N_Action_Call_Statement =>
+       (1 => False,   --  unused
+        2 => True,    --  Name (Node2)
+        3 => True,    --  Parameter_Associations (List3)
+        4 => False,   --  First_Named_Actual (Node4-Sem)
+        5 => False),  --  unused
+
      N_Compilation_Unit =>
        (1 => True,    --  Context_Items (List1)
         2 => True,    --  Unit (Node2)
@@ -11329,6 +11739,13 @@ package Sinfo is
         3 => False,   --  unused
         4 => False,   --  Library_Unit (Node4-Sem)
         5 => False),  --  Corresponding_Spec (Node5-Sem)
+
+     N_Atomic_Body_Stub =>
+       (1 => True,    --  Specification (Node1)
+        2 => False,   --  unused
+        3 => False,   --  unused
+        4 => False,   --  Library_Unit (Node4-Sem)
+        5 => False),  --  Corresponding_Body (Node5-Sem)
 
      N_Subprogram_Body_Stub =>
        (1 => True,    --  Specification (Node1)
@@ -11853,6 +12270,9 @@ package Sinfo is
    pragma Inline (Access_Definition);
    pragma Inline (Access_To_Subprogram_Definition);
    pragma Inline (Access_Types_To_Process);
+   pragma Inline (Action_Body_Formal_Part);
+   pragma Inline (Action_Call_Alternatives);
+   pragma Inline (Action_Call_Statement);
    pragma Inline (Actions);
    pragma Inline (Activation_Chain_Entity);
    pragma Inline (Acts_As_Spec);
@@ -11864,6 +12284,7 @@ package Sinfo is
    pragma Inline (All_Present);
    pragma Inline (Alternatives);
    pragma Inline (Ancestor_Part);
+   pragma Inline (Atomic_Definition);
    pragma Inline (Atomic_Sync_Required);
    pragma Inline (Array_Aggregate);
    pragma Inline (Aspect_Rep_Item);
@@ -11873,6 +12294,7 @@ package Sinfo is
    pragma Inline (Attribute_Name);
    pragma Inline (Aux_Decls_Node);
    pragma Inline (Backwards_OK);
+   pragma Inline (Backwards_Recovery);
    pragma Inline (Bad_Is_Detected);
    pragma Inline (Body_To_Inline);
    pragma Inline (Body_Required);
@@ -11989,6 +12411,7 @@ package Sinfo is
    pragma Inline (Has_Dereference_Action);
    pragma Inline (Has_Dynamic_Length_Check);
    pragma Inline (Has_Dynamic_Range_Check);
+   pragma Inline (Has_End_Barrier);
    pragma Inline (Has_Init_Expression);
    pragma Inline (Has_Local_Raise);
    pragma Inline (Has_Self_Reference);
@@ -12001,6 +12424,7 @@ package Sinfo is
    pragma Inline (Has_Pragma_Suppress_All);
    pragma Inline (Has_Private_View);
    pragma Inline (Has_Relative_Deadline_Pragma);
+   pragma Inline (Has_Start_Barrier);
    pragma Inline (Has_Storage_Size_Pragma);
    pragma Inline (Has_Task_Info_Pragma);
    pragma Inline (Has_Task_Name_Pragma);
@@ -12121,12 +12545,14 @@ package Sinfo is
    pragma Inline (Record_Extension_Part);
    pragma Inline (Redundant_Use);
    pragma Inline (Renaming_Exception);
+   pragma Inline (Require_All_Actions);
    pragma Inline (Result_Definition);
    pragma Inline (Return_Object_Declarations);
    pragma Inline (Return_Statement_Entity);
    pragma Inline (Reverse_Present);
    pragma Inline (Right_Opnd);
    pragma Inline (Rounded_Result);
+   pragma Inline (Save_State);
    pragma Inline (SCIL_Controlling_Tag);
    pragma Inline (SCIL_Entity);
    pragma Inline (SCIL_Tag_Value);
@@ -12182,6 +12608,9 @@ package Sinfo is
    pragma Inline (Set_Access_Definition);
    pragma Inline (Set_Access_To_Subprogram_Definition);
    pragma Inline (Set_Access_Types_To_Process);
+   pragma Inline (Set_Action_Body_Formal_Part);
+   pragma Inline (Set_Action_Call_Alternatives);
+   pragma Inline (Set_Action_Call_Statement);
    pragma Inline (Set_Actions);
    pragma Inline (Set_Activation_Chain_Entity);
    pragma Inline (Set_Acts_As_Spec);
@@ -12193,6 +12622,7 @@ package Sinfo is
    pragma Inline (Set_All_Present);
    pragma Inline (Set_Alternatives);
    pragma Inline (Set_Ancestor_Part);
+   pragma Inline (Set_Atomic_Definition);
    pragma Inline (Set_Atomic_Sync_Required);
    pragma Inline (Set_Array_Aggregate);
    pragma Inline (Set_Aspect_Rep_Item);
@@ -12202,6 +12632,7 @@ package Sinfo is
    pragma Inline (Set_Attribute_Name);
    pragma Inline (Set_Aux_Decls_Node);
    pragma Inline (Set_Backwards_OK);
+   pragma Inline (Set_Backwards_Recovery);
    pragma Inline (Set_Bad_Is_Detected);
    pragma Inline (Set_Body_To_Inline);
    pragma Inline (Set_Body_Required);
@@ -12316,6 +12747,7 @@ package Sinfo is
    pragma Inline (Set_Has_Created_Identifier);
    pragma Inline (Set_Has_Dereference_Action);
    pragma Inline (Set_Has_Dynamic_Length_Check);
+   pragma Inline (Set_Has_End_Barrier);
    pragma Inline (Set_Has_Init_Expression);
    pragma Inline (Set_Has_Local_Raise);
    pragma Inline (Set_Has_Dynamic_Range_Check);
@@ -12326,6 +12758,7 @@ package Sinfo is
    pragma Inline (Set_Has_Pragma_Suppress_All);
    pragma Inline (Set_Has_Private_View);
    pragma Inline (Set_Has_Relative_Deadline_Pragma);
+   pragma Inline (Set_Has_Start_Barrier);
    pragma Inline (Set_Has_Storage_Size_Pragma);
    pragma Inline (Set_Has_Task_Info_Pragma);
    pragma Inline (Set_Has_Task_Name_Pragma);
@@ -12446,11 +12879,13 @@ package Sinfo is
    pragma Inline (Set_Record_Extension_Part);
    pragma Inline (Set_Redundant_Use);
    pragma Inline (Set_Renaming_Exception);
+   pragma Inline (Set_Require_All_Actions);
    pragma Inline (Set_Result_Definition);
    pragma Inline (Set_Return_Object_Declarations);
    pragma Inline (Set_Reverse_Present);
    pragma Inline (Set_Right_Opnd);
    pragma Inline (Set_Rounded_Result);
+   pragma Inline (Set_Save_State);
    pragma Inline (Set_SCIL_Controlling_Tag);
    pragma Inline (Set_SCIL_Entity);
    pragma Inline (Set_SCIL_Tag_Value);

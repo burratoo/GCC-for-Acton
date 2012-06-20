@@ -25,6 +25,7 @@
 
 with Types; use Types;
 package Sem_Ch10 is
+   procedure Analyze_Atomic_Body_Stub                   (N : Node_Id);
    procedure Analyze_Compilation_Unit                   (N : Node_Id);
    procedure Analyze_With_Clause                        (N : Node_Id);
    procedure Analyze_Subprogram_Body_Stub               (N : Node_Id);

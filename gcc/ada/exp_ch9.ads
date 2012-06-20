@@ -289,14 +289,14 @@ package Exp_Ch9 is
       Barrier  : Boolean := False;
       Family   : Boolean := False);
    --  This routines generates several types, objects and object renamings used
-   --  in the handling of discriminants and private components of protected and
-   --  task types. It also generates the entry index for entry families. Formal
-   --  Spec_Id denotes an entry, entry family or a subprogram, Conc_Typ is the
-   --  concurrent type where Spec_Id resides, Body_Nod is the corresponding
-   --  body of Spec_Id, Decls are the declarations of the subprogram or entry.
-   --  Flag Barrier denotes whether the context is an entry barrier function.
-   --  Flag Family is used in conjunction with Barrier to denote a barrier for
-   --  an entry family.
+   --  in the handling of discriminants and private components of atomic,
+   --  protected and task types. It also generates the entry index for
+   --  entry families. Formal Spec_Id denotes an entry, entry family or a
+   --  subprogram, Conc_Typ is the concurrent type where Spec_Id resides,
+   --  Body_Nod is the corresponding body of Spec_Id, Decls are the
+   --  declarations of the subprogram or entry. Flag Barrier denotes whether
+   --  the context is an entry barrier function. Flag Family is used in
+   --  conjunction with Barrier to denote a barrier for an entry family.
    --
    --  The generated types, entities and renamings are:
    --
@@ -305,14 +305,19 @@ package Exp_Ch9 is
    --
    --      conc_typR : protection_typ renames _object._object;
    --
+   --  * If Conc_Typ is an atomic type, create a renaming for the Atomic
+   --    field _object:
+   --
+   --      conc_typR : atomic_typ renames _object._object;
+   --
    --  * If Conc_Typ has discriminants, create renamings of the form:
    --
    --      discr_nameD : discr_typ renames _object.discr_name;
    --        or
    --      discr_nameD : discr_typ renames _task.discr_name;
    --
-   --  * If Conc_Typ denotes a protected type and has private components,
-   --    generate renamings of the form:
+   --  * If Conc_Typ denotes an action or protected type and has private
+   --    components, generate renamings of the form:
    --
    --      comp_name : comp_typ renames _object.comp_name;
    --

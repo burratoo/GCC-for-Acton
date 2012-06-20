@@ -223,6 +223,7 @@ GNAT_ADA_OBJS =	\
  ada/exp_ch7.o	\
  ada/exp_ch8.o	\
  ada/exp_ch9.o	\
+ ada/exp_atom.o	\
  ada/exp_code.o	\
  ada/exp_dbug.o	\
  ada/exp_disp.o	\
@@ -355,6 +356,7 @@ GNAT_ADA_OBJS =	\
  ada/sem_ch7.o	\
  ada/sem_ch8.o	\
  ada/sem_ch9.o	\
+ ada/sem_atom.o	\
  ada/sem_dim.o  \
  ada/sem_disp.o	\
  ada/sem_dist.o	\
@@ -1542,7 +1544,7 @@ ada/checks.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_eval.ads ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
    ada/sem_warn.adb ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
@@ -1729,7 +1731,7 @@ ada/exp_aggr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_aggr.adb ada/exp_ch11.ads ada/exp_ch2.ads \
    ada/exp_ch3.ads ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads \
-   ada/exp_ch9.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_pakd.ads \
+   ada/exp_ch9.ads ada/exp_atom.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_pakd.ads \
    ada/exp_tss.ads ada/exp_util.ads ada/exp_util.adb ada/expander.ads \
    ada/fname.ads ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads \
    ada/gnat.ads ada/g-byorma.ads ada/g-hesorg.ads ada/g-htable.ads \
@@ -1743,7 +1745,7 @@ ada/exp_aggr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads ada/sem_eval.adb \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb \
@@ -1809,7 +1811,7 @@ ada/exp_attr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/erroutc.ads ada/eval_fat.ads ada/exp_aggr.ads ada/exp_atag.ads \
    ada/exp_attr.ads ada/exp_attr.adb ada/exp_ch11.ads ada/exp_ch2.ads \
    ada/exp_ch3.ads ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads \
-   ada/exp_ch9.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_imgv.ads \
+   ada/exp_ch9.ads ada/exp_atom.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_imgv.ads \
    ada/exp_pakd.ads ada/exp_strm.ads ada/exp_tss.ads ada/exp_util.ads \
    ada/exp_util.adb ada/exp_vfpt.ads ada/expander.ads ada/fname.ads \
    ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads ada/gnat.ads \
@@ -1823,7 +1825,7 @@ ada/exp_attr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb \
    ada/sinput.ads ada/snames.ads ada/sprint.ads ada/stand.ads \
@@ -1876,7 +1878,7 @@ ada/exp_ch11.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_prag.ads ada/sem_res.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_util.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/sinput.adb ada/snames.ads ada/stand.ads ada/stringt.ads \
    ada/stylesw.ads ada/system.ads ada/s-exctab.ads ada/s-htable.ads \
@@ -1930,7 +1932,7 @@ ada/exp_ch13.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_eval.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_util.ads ada/sem_warn.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads \
    ada/sprint.ads ada/stand.ads ada/system.ads ada/s-exctab.ads \
@@ -1961,7 +1963,7 @@ ada/exp_ch2.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_util.ads ada/sem_warn.ads ada/sem_warn.adb \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/sinput.adb \
    ada/snames.ads ada/sprint.ads ada/stand.ads ada/stringt.ads \
@@ -1983,7 +1985,7 @@ ada/exp_ch3.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_atag.ads ada/exp_cg.ads ada/exp_ch11.ads \
    ada/exp_ch2.ads ada/exp_ch3.ads ada/exp_ch3.adb ada/exp_ch4.ads \
-   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_dbug.ads \
+   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_dbug.ads \
    ada/exp_disp.ads ada/exp_disp.adb ada/exp_dist.ads ada/exp_pakd.ads \
    ada/exp_smem.ads ada/exp_strm.ads ada/exp_tss.ads ada/exp_tss.adb \
    ada/exp_util.ads ada/exp_util.adb ada/expander.ads ada/fname.ads \
@@ -1997,7 +1999,7 @@ ada/exp_ch3.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads ada/sem_mech.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_scil.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb \
@@ -2021,7 +2023,7 @@ ada/exp_ch4.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_atag.ads ada/exp_ch11.ads ada/exp_ch2.ads \
    ada/exp_ch3.ads ada/exp_ch4.ads ada/exp_ch4.adb ada/exp_ch6.ads \
-   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_code.ads ada/exp_disp.ads \
+   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_code.ads ada/exp_disp.ads \
    ada/exp_fixd.ads ada/exp_intr.ads ada/exp_pakd.ads ada/exp_tss.ads \
    ada/exp_util.ads ada/exp_util.adb ada/exp_vfpt.ads ada/expander.ads \
    ada/fname.ads ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads \
@@ -2037,7 +2039,7 @@ ada/exp_ch4.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads \
@@ -2075,7 +2077,7 @@ ada/exp_ch5.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/sprint.ads \
@@ -2099,7 +2101,7 @@ ada/exp_ch6.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_atag.ads ada/exp_cg.ads ada/exp_ch11.ads \
    ada/exp_ch2.ads ada/exp_ch3.ads ada/exp_ch4.ads ada/exp_ch6.ads \
-   ada/exp_ch6.adb ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_dbug.ads \
+   ada/exp_ch6.adb ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_dbug.ads \
    ada/exp_disp.ads ada/exp_disp.adb ada/exp_dist.ads ada/exp_intr.ads \
    ada/exp_pakd.ads ada/exp_tss.ads ada/exp_util.ads ada/exp_util.adb \
    ada/exp_vfpt.ads ada/expander.ads ada/fname.ads ada/fname-uf.ads \
@@ -2115,7 +2117,7 @@ ada/exp_ch6.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads \
    ada/sem_mech.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_scil.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
@@ -2138,7 +2140,7 @@ ada/exp_ch7.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/debug_a.ads ada/einfo.ads ada/einfo.adb ada/elists.ads \
    ada/elists.adb ada/err_vars.ads ada/errout.ads ada/errout.adb \
    ada/erroutc.ads ada/erroutc.adb ada/exp_aggr.ads ada/exp_ch11.ads \
-   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch7.adb ada/exp_ch9.ads \
+   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch7.adb ada/exp_ch9.ads ada/exp_atom.ads \
    ada/exp_dbug.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_tss.ads \
    ada/exp_util.ads ada/exp_util.adb ada/expander.ads ada/fname.ads \
    ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads ada/gnat.ads \
@@ -2152,7 +2154,7 @@ ada/exp_ch7.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/snames.ads ada/stand.ads ada/stringt.ads ada/style.ads \
@@ -2183,7 +2185,7 @@ ada/exp_ch8.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/system.ads ada/s-exctab.ads ada/s-htable.ads \
@@ -2203,7 +2205,7 @@ ada/exp_ch9.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/elists.ads ada/elists.adb ada/err_vars.ads ada/errout.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_ch11.ads ada/exp_ch2.ads ada/exp_ch3.ads \
-   ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads \
+   ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads \
    ada/exp_ch9.adb ada/exp_dbug.ads ada/exp_disp.ads ada/exp_pakd.ads \
    ada/exp_sel.ads ada/exp_smem.ads ada/exp_tss.ads ada/exp_util.ads \
    ada/exp_util.adb ada/expander.ads ada/fname.ads ada/fname-uf.ads \
@@ -2218,7 +2220,7 @@ ada/exp_ch9.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_ch9.adb ada/sem_disp.ads ada/sem_elab.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_ch9.adb ada/sem_disp.ads ada/sem_elab.ads \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/snames.ads \
@@ -2304,7 +2306,7 @@ ada/exp_disp.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/snames.ads ada/sprint.ads ada/stand.ads ada/stringt.ads \
@@ -2338,7 +2340,7 @@ ada/exp_dist.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dist.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dist.ads \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stringt.adb ada/stylesw.ads ada/system.ads \
@@ -2369,7 +2371,7 @@ ada/exp_fixd.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_cat.ads ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads \
    ada/sem_eval.ads ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads \
@@ -2434,7 +2436,7 @@ ada/exp_intr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/sinput.adb ada/snames.ads ada/sprint.ads ada/stand.ads \
@@ -2469,7 +2471,7 @@ ada/exp_pakd.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/snames.ads ada/sprint.ads ada/stand.ads ada/stringt.ads \
@@ -2498,7 +2500,7 @@ ada/exp_prag.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/scans.ads ada/sem.ads ada/sem.adb ada/sem_attr.ads ada/sem_aux.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/snames.ads \
    ada/snames.adb ada/stand.ads ada/stringt.ads ada/stringt.adb \
@@ -2533,7 +2535,7 @@ ada/exp_smem.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/a-uncdea.ads ada/alloc.ads ada/aspects.ads ada/atree.ads \
    ada/atree.adb ada/casing.ads ada/debug.ads ada/debug_a.ads \
    ada/einfo.ads ada/einfo.adb ada/elists.ads ada/err_vars.ads \
-   ada/errout.ads ada/erroutc.ads ada/exp_ch9.ads ada/exp_smem.ads \
+   ada/errout.ads ada/erroutc.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_smem.ads \
    ada/exp_smem.adb ada/exp_tss.ads ada/exp_util.ads ada/expander.ads \
    ada/fname.ads ada/gnat.ads ada/g-htable.ads ada/hostparm.ads \
    ada/inline.ads ada/interfac.ads ada/lib.ads ada/lib-load.ads \
@@ -2543,7 +2545,7 @@ ada/exp_smem.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_prag.ads ada/sem_util.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_prag.ads ada/sem_util.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stringt.adb ada/system.ads ada/s-exctab.ads \
    ada/s-htable.ads ada/s-imenne.ads ada/s-memory.ads ada/s-os_lib.ads \
@@ -2616,7 +2618,7 @@ ada/exp_util.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/snames.ads \
@@ -2657,7 +2659,7 @@ ada/expander.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/erroutc.adb ada/exp_aggr.ads ada/exp_alfa.ads ada/exp_attr.ads \
    ada/exp_ch11.ads ada/exp_ch12.ads ada/exp_ch13.ads ada/exp_ch2.ads \
    ada/exp_ch3.ads ada/exp_ch4.ads ada/exp_ch5.ads ada/exp_ch6.ads \
-   ada/exp_ch7.ads ada/exp_ch8.ads ada/exp_ch9.ads ada/exp_prag.ads \
+   ada/exp_ch7.ads ada/exp_ch8.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_prag.ads \
    ada/exp_tss.ads ada/expander.ads ada/expander.adb ada/fname.ads \
    ada/gnat.ads ada/g-htable.ads ada/gnatvsn.ads ada/hostparm.ads \
    ada/inline.ads ada/interfac.ads ada/lib.ads ada/lib-load.ads \
@@ -2667,7 +2669,7 @@ ada/expander.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stylesw.ads ada/system.ads ada/s-exctab.ads ada/s-htable.ads \
    ada/s-imenne.ads ada/s-memory.ads ada/s-os_lib.ads ada/s-parame.ads \
@@ -2733,7 +2735,7 @@ ada/freeze.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_elab.ads \
    ada/sem_elim.ads ada/sem_eval.ads ada/sem_intr.ads ada/sem_mech.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads \
@@ -2775,7 +2777,7 @@ ada/frontend.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_elab.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_elab.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_scil.ads ada/sem_util.ads ada/sem_warn.ads \
    ada/sem_warn.adb ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/sinput.adb ada/sinput-l.ads ada/snames.ads ada/sprint.ads \
@@ -2831,7 +2833,7 @@ ada/gnat1drv.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/debug_a.ads ada/einfo.ads ada/einfo.adb ada/elists.ads \
    ada/elists.adb ada/err_vars.ads ada/errout.ads ada/errout.adb \
    ada/erroutc.ads ada/erroutc.adb ada/exp_cg.ads ada/exp_ch6.ads \
-   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_disp.ads ada/exp_tss.ads \
+   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_disp.ads ada/exp_tss.ads \
    ada/exp_util.ads ada/expander.ads ada/fmap.ads ada/fname.ads \
    ada/fname-uf.ads ada/freeze.ads ada/frontend.ads ada/get_targ.ads \
    ada/gnat.ads ada/g-byorma.ads ada/g-hesorg.ads ada/g-htable.ads \
@@ -2849,7 +2851,7 @@ ada/gnat1drv.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_ch9.adb ada/sem_dim.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_ch9.adb ada/sem_dim.ads \
    ada/sem_elim.ads ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sem_warn.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/sinput-l.ads \
@@ -2934,7 +2936,7 @@ ada/inline.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stylesw.ads ada/system.ads ada/s-exctab.ads \
    ada/s-htable.ads ada/s-imenne.ads ada/s-memory.ads ada/s-os_lib.ads \
@@ -2960,7 +2962,7 @@ ada/itypes.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_prag.ads ada/sem_util.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_prag.ads ada/sem_util.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/system.ads ada/s-exctab.ads ada/s-htable.ads ada/s-imenne.ads \
    ada/s-memory.ads ada/s-os_lib.ads ada/s-parame.ads ada/s-rident.ads \
@@ -2994,7 +2996,7 @@ ada/layout.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
@@ -3103,7 +3105,7 @@ ada/lib-xref.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/snames.ads \
@@ -3430,7 +3432,7 @@ ada/rtsfind.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dist.ads ada/sem_prag.ads ada/sem_util.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dist.ads ada/sem_prag.ads ada/sem_util.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stylesw.ads ada/system.ads ada/s-exctab.ads \
    ada/s-exctab.adb ada/s-htable.ads ada/s-imenne.ads ada/s-memory.ads \
@@ -3684,7 +3686,7 @@ ada/sem.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads ada/a-uncdea.ads \
    ada/debug_a.ads ada/debug_a.adb ada/einfo.ads ada/einfo.adb \
    ada/elists.ads ada/elists.adb ada/err_vars.ads ada/errout.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/exp_ch7.ads \
-   ada/exp_ch9.ads ada/exp_disp.ads ada/exp_tss.ads ada/exp_util.ads \
+   ada/exp_ch9.ads ada/exp_atom.ads ada/exp_disp.ads ada/exp_tss.ads ada/exp_util.ads \
    ada/expander.ads ada/fname.ads ada/fname-uf.ads ada/freeze.ads \
    ada/get_targ.ads ada/gnat.ads ada/g-hesorg.ads ada/g-htable.ads \
    ada/gnatvsn.ads ada/hostparm.ads ada/inline.ads ada/inline.adb \
@@ -3697,7 +3699,7 @@ ada/sem.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads ada/a-uncdea.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads \
    ada/sem_ch2.adb ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_ch9.adb ada/sem_dim.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_warn.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
@@ -3735,7 +3737,7 @@ ada/sem_aggr.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/sinput.adb \
@@ -3774,7 +3776,7 @@ ada/sem_attr.o : ada/ada.ads ada/a-charac.ads ada/a-chlat1.ads \
    ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads ada/sem_eval.adb \
    ada/sem_intr.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
@@ -3822,7 +3824,7 @@ ada/sem_case.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_case.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sinfo.ads ada/sinfo.adb \
    ada/sinput.ads ada/snames.ads ada/stand.ads ada/stylesw.ads \
    ada/system.ads ada/s-exctab.ads ada/s-htable.ads ada/s-imenne.ads \
@@ -3852,7 +3854,7 @@ ada/sem_cat.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_cat.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/snames.ads ada/stand.ads ada/stringt.ads ada/style.ads \
@@ -3886,7 +3888,7 @@ ada/sem_ch10.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch10.adb ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb \
    ada/sinfo.ads ada/sinfo.adb ada/sinfo-cn.ads ada/sinput.ads \
@@ -3921,7 +3923,7 @@ ada/sem_ch11.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch11.adb ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads ada/sem_eval.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads ada/sinfo.adb \
    ada/sinput.ads ada/snames.ads ada/sprint.ads ada/stand.ads \
@@ -3956,7 +3958,7 @@ ada/sem_ch12.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch12.adb \
    ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads \
    ada/sem_dist.ads ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads \
@@ -3997,7 +3999,7 @@ ada/sem_ch13.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads \
    ada/sem_disp.ads ada/sem_dist.ads ada/sem_eval.ads ada/sem_eval.adb \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads \
    ada/sem_util.adb ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads \
@@ -4042,7 +4044,7 @@ ada/sem_ch3.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/elists.ads ada/elists.adb ada/err_vars.ads ada/errout.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_aggr.ads ada/exp_ch11.ads ada/exp_ch2.ads ada/exp_ch3.ads \
-   ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads \
+   ada/exp_ch4.ads ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads \
    ada/exp_code.ads ada/exp_disp.ads ada/exp_dist.ads ada/exp_pakd.ads \
    ada/exp_tss.ads ada/exp_util.ads ada/exp_util.adb ada/expander.ads \
    ada/fname.ads ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads \
@@ -4058,7 +4060,7 @@ ada/sem_ch3.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_cat.ads ada/sem_cat.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch3.adb ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_elim.ads \
    ada/sem_eval.ads ada/sem_eval.adb ada/sem_mech.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_smem.ads ada/sem_type.ads ada/sem_util.ads \
@@ -4097,7 +4099,7 @@ ada/sem_ch4.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch4.adb ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads \
    ada/sem_dist.ads ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_intr.ads ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_res.adb ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
@@ -4136,7 +4138,7 @@ ada/sem_ch5.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_case.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch5.adb ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads \
    ada/sem_disp.ads ada/sem_dist.ads ada/sem_elab.ads ada/sem_elim.ads \
    ada/sem_eval.ads ada/sem_eval.adb ada/sem_intr.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads ada/sem_util.ads \
@@ -4161,7 +4163,7 @@ ada/sem_ch6.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/elists.ads ada/elists.adb ada/err_vars.ads ada/errout.ads \
    ada/errout.adb ada/erroutc.ads ada/erroutc.adb ada/eval_fat.ads \
    ada/exp_ch11.ads ada/exp_ch2.ads ada/exp_ch4.ads ada/exp_ch6.ads \
-   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_code.ads ada/exp_disp.ads \
+   ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_code.ads ada/exp_disp.ads \
    ada/exp_pakd.ads ada/exp_tss.ads ada/exp_util.ads ada/expander.ads \
    ada/fname.ads ada/fname-uf.ads ada/freeze.ads ada/get_targ.ads \
    ada/gnat.ads ada/g-byorma.ads ada/g-hesorg.ads ada/g-htable.ads \
@@ -4176,7 +4178,7 @@ ada/sem_ch6.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch6.adb ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.adb ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_elim.ads \
    ada/sem_eval.ads ada/sem_eval.adb ada/sem_mech.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
@@ -4215,7 +4217,7 @@ ada/sem_ch7.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch7.adb ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch7.ads ada/sem_ch7.adb ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads ada/sinfo.adb \
@@ -4253,7 +4255,7 @@ ada/sem_ch8.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
    ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch8.adb \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads ada/sem_intr.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads ada/sinfo.ads \
@@ -4276,7 +4278,7 @@ ada/sem_ch9.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/einfo.ads ada/einfo.adb ada/elists.ads ada/err_vars.ads \
    ada/errout.ads ada/errout.adb ada/erroutc.ads ada/erroutc.adb \
    ada/eval_fat.ads ada/exp_ch11.ads ada/exp_ch2.ads ada/exp_ch4.ads \
-   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_code.ads \
+   ada/exp_ch6.ads ada/exp_ch7.ads ada/exp_ch9.ads ada/exp_atom.ads ada/exp_code.ads \
    ada/exp_disp.ads ada/exp_pakd.ads ada/exp_tss.ads ada/exp_util.ads \
    ada/expander.ads ada/fname.ads ada/fname-uf.ads ada/freeze.ads \
    ada/get_targ.ads ada/gnat.ads ada/g-byorma.ads ada/g-hesorg.ads \
@@ -4291,7 +4293,7 @@ ada/sem_ch9.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch13.adb \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_ch9.adb ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads ada/sem_intr.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads \
@@ -4325,7 +4327,7 @@ ada/sem_dim.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_dim.adb ada/sem_dist.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_dim.adb ada/sem_dist.ads \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_util.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stringt.adb ada/stylesw.ads ada/system.ads \
@@ -4359,7 +4361,7 @@ ada/sem_disp.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_disp.adb \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_disp.adb \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_util.ads ada/sem_util.adb ada/sinfo.ads ada/sinfo.adb \
    ada/sinput.ads ada/snames.ads ada/stand.ads ada/stringt.ads \
@@ -4389,7 +4391,7 @@ ada/sem_dist.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_dist.adb \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_dist.adb \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_util.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
    ada/stringt.ads ada/stringt.adb ada/stylesw.ads ada/system.ads \
@@ -4422,7 +4424,7 @@ ada/sem_elab.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_elab.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_elab.ads \
    ada/sem_elab.adb ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
    ada/sinfo.ads ada/sinfo.adb ada/sinput.ads ada/sinput.adb \
@@ -4453,7 +4455,7 @@ ada/sem_elim.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_elim.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_elim.ads \
    ada/sem_elim.adb ada/sem_prag.ads ada/sem_util.ads ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/sinput.adb ada/snames.ads \
    ada/stand.ads ada/stringt.ads ada/stylesw.ads ada/system.ads \
@@ -4486,7 +4488,7 @@ ada/sem_eval.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_attr.ads ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads \
-   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads \
+   ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads \
    ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads ada/sem_elab.ads \
    ada/sem_elim.ads ada/sem_eval.ads ada/sem_eval.adb ada/sem_intr.ads \
    ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads \
@@ -4539,7 +4541,7 @@ ada/sem_mech.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_mech.ads ada/sem_mech.adb ada/sem_prag.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_mech.ads ada/sem_mech.adb ada/sem_prag.ads \
    ada/sem_util.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
    ada/snames.ads ada/stand.ads ada/stylesw.ads ada/system.ads \
    ada/s-exctab.ads ada/s-htable.ads ada/s-imenne.ads ada/s-memory.ads \
@@ -4575,7 +4577,7 @@ ada/sem_prag.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_cat.ads ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads \
    ada/sem_dist.ads ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads \
    ada/sem_eval.adb ada/sem_intr.ads ada/sem_mech.ads ada/sem_prag.ads \
    ada/sem_prag.adb ada/sem_res.ads ada/sem_res.adb ada/sem_type.ads \
@@ -4619,7 +4621,7 @@ ada/sem_res.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads \
    ada/sem_ch13.adb ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_dim.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_elab.ads ada/sem_elim.ads ada/sem_eval.ads ada/sem_eval.adb \
    ada/sem_intr.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_res.adb \
    ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb ada/sem_warn.ads \
@@ -4690,7 +4692,7 @@ ada/sem_type.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads \
    ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads \
    ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads \
-   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads ada/sem_dist.ads \
+   ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_dist.ads \
    ada/sem_eval.ads ada/sem_prag.ads ada/sem_res.ads ada/sem_type.ads \
    ada/sem_type.adb ada/sem_util.ads ada/sem_util.adb ada/sinfo.ads \
    ada/sinfo.adb ada/sinput.ads ada/snames.ads ada/stand.ads \
@@ -4725,7 +4727,7 @@ ada/sem_util.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.ads ada/sem_aux.adb ada/sem_cat.ads ada/sem_ch10.ads \
    ada/sem_ch11.ads ada/sem_ch12.ads ada/sem_ch13.ads ada/sem_ch2.ads \
    ada/sem_ch3.ads ada/sem_ch4.ads ada/sem_ch5.ads ada/sem_ch6.ads \
-   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_disp.ads \
+   ada/sem_ch7.ads ada/sem_ch8.ads ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads \
    ada/sem_dist.ads ada/sem_eval.ads ada/sem_eval.adb ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sinfo.ads ada/sinfo.adb ada/sinput.ads \
@@ -4776,7 +4778,7 @@ ada/sem_warn.o : ada/ada.ads ada/a-except.ads ada/a-unccon.ads \
    ada/sem_aux.adb ada/sem_ch10.ads ada/sem_ch11.ads ada/sem_ch12.ads \
    ada/sem_ch13.ads ada/sem_ch2.ads ada/sem_ch3.ads ada/sem_ch4.ads \
    ada/sem_ch5.ads ada/sem_ch6.ads ada/sem_ch7.ads ada/sem_ch8.ads \
-   ada/sem_ch9.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
+   ada/sem_ch9.ads ada/sem_atom.ads ada/sem_disp.ads ada/sem_eval.ads ada/sem_prag.ads \
    ada/sem_res.ads ada/sem_type.ads ada/sem_util.ads ada/sem_util.adb \
    ada/sem_warn.ads ada/sem_warn.adb ada/sinfo.ads ada/sinfo.adb \
    ada/sinput.ads ada/sinput.adb ada/snames.ads ada/stand.ads \

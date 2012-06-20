@@ -1465,6 +1465,7 @@ package body Ch3 is
            or else Bad_Spelling_Of (Tok_Task)
            or else Bad_Spelling_Of (Tok_Use)
            or else Bad_Spelling_Of (Tok_For)
+           or else Bad_Spelling_Of (Tok_Atomic)
          then
             Done := False;
             return;
@@ -1856,6 +1857,7 @@ package body Ch3 is
 
    --  Cases starting with TASK are parsed by P_Task (9.1)
    --  Cases starting with PROTECTED are parsed by P_Protected (9.4)
+   --  Cases starting with ATOMIC are parsed by P_Atomic (9.x)
    --  All other cases are parsed by P_Identifier_Declarations (3.3)
 
    -------------------------------------
@@ -4174,6 +4176,12 @@ package body Ch3 is
 
       case Token is
 
+         when Tok_Atomic =>
+            Check_Bad_Layout;
+            Scan; -- past ATOMIC
+            Append (P_Atomic, Decls);
+            Done := False;
+
          when Tok_Function =>
             Check_Bad_Layout;
             Append (P_Subprogram (Pf_Decl_Gins_Pbod_Rnam_Stub_Pexp), Decls);
@@ -4628,6 +4636,7 @@ package body Ch3 is
    --  Package body is parsed by P_Package (7.1)
    --  Task body is parsed by P_Task (9.1)
    --  Protected body is parsed by P_Protected (9.4)
+   --  Atomic body is parsed by P_Atomic (9.x)
 
    ------------------------------
    -- Set_Declaration_Expected --

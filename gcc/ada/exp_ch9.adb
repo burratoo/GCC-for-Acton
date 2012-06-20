@@ -11917,7 +11917,8 @@ package body Exp_Ch9 is
 
    begin
       --  For a simple entry, the name is a selected component, with the
-      --  prefix being the task value, and the selector being the entry.
+      --  prefix being the task or protected value, and the selector being the
+      --  entry.
 
       if Nkind (Nam) = N_Selected_Component then
          Concval := Prefix (Nam);
@@ -12281,6 +12282,7 @@ package body Exp_Ch9 is
       Family   : Boolean := False)
    is
       Is_Protected : constant Boolean := Is_Protected_Type (Conc_Typ);
+      Is_Atomic    : constant Boolean := Is_Atomic_Type (Conc_Typ);
       Decl         : Node_Id;
       Def          : Node_Id;
       Insert_Node  : Node_Id := Empty;
@@ -12364,6 +12366,31 @@ package body Exp_Ch9 is
          end;
       end if;
 
+      --  Step 3: Create the Atomic object.
+
+      if Is_Atomic then
+         declare
+            Atomic_Ent : constant Entity_Id := Make_Temporary (Loc, 'R');
+
+         begin
+            Set_Atomic_Object (Spec_Id, Atomic_Ent);
+
+            --  Generate:
+            --    conc_typR : atomic_typ renames _object._object;
+
+            Decl :=
+              Make_Object_Renaming_Declaration (Loc,
+                Defining_Identifier => Atomic_Ent,
+                Subtype_Mark =>
+                  New_Reference_To (RTE (RE_Atomic_Action_State), Loc),
+                Name =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => New_Reference_To (Obj_Ent, Loc),
+                    Selector_Name => Make_Identifier (Loc, Name_uObject)));
+            Add (Decl);
+         end;
+      end if;
+
       --  Step 3: Add discriminant renamings (if any)
 
       if Has_Discriminants (Conc_Typ) then
@@ -12400,8 +12427,12 @@ package body Exp_Ch9 is
 
       --  Step 4: Add private component renamings (if any)
 
-      if Is_Protected then
-         Def := Protected_Definition (Parent (Conc_Typ));
+      if Is_Protected or else Is_Atomic then
+         if Is_Protected then
+            Def := Protected_Definition (Parent (Conc_Typ));
+         else
+            Def := Atomic_Definition (Parent (Conc_Typ));
+         end if;
 
          if Present (Private_Declarations (Def)) then
             declare

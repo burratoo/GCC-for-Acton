@@ -218,12 +218,12 @@ package body Sem_Res is
    --  N is the Node_Id for the subprogram call, and Nam is the entity of the
    --  called subprogram.
 
-   procedure Resolve_Entry_Call (N : Node_Id; Typ : Entity_Id);
-   --  Called from Resolve_Call, when the prefix denotes an entry or element
-   --  of entry family. Actuals are resolved as for subprograms, and the node
-   --  is rebuilt as an entry call. Also called for protected operations. Typ
-   --  is the context type, which is used when the operation is a protected
-   --  function with no arguments, and the return value is indexed.
+   procedure Resolve_Concurrent_Call (N : Node_Id; Typ : Entity_Id);
+   --  Called from Resolve_Call, when the prefix denotes an action, entry or
+   --  element of entry family. Actuals are resolved as for subprograms, and
+   --  the node is rebuilt as an entry call. Also called for protected
+   --  operations. Typ is the context type, which is used when the operation is
+   --  a protected function with no arguments, and the return value is indexed.
 
    procedure Resolve_Intrinsic_Operator (N : Node_Id; Typ : Entity_Id);
    --  A call to a user-defined intrinsic operator is rewritten as a call to
@@ -5194,7 +5194,7 @@ package body Sem_Res is
         or else (Is_Entity_Name (Subp)
                   and then Ekind (Entity (Subp)) = E_Entry)
       then
-         Resolve_Entry_Call (N, Typ);
+         Resolve_Concurrent_Call (N, Typ);
          Check_Elab_Call (N);
 
          --  Kill checks and constant values, as above for indirect case
@@ -5317,6 +5317,21 @@ package body Sem_Res is
             Error_Msg_N
              ("entry call or dispatching primitive of interface required", N);
          end if;
+      end if;
+
+      --  Check that a procedure call does not occur in the context of the
+      --  action call statement of an alternative action select statment. Note
+      --  that the case of a call to a subprogram renaming of an entry will
+      --  also be rejected. The test for N not being an N_Action_Call_Statement
+      --  is defensive, covering the possibility that the processing of action
+      --  calls might reach this point due to later modifications of the code
+      --  above.
+
+      if Nkind (Parent (N)) = N_Action_Call_Alternative
+        and then Nkind (N) /= N_Action_Call_Statement
+        and then Action_Call_Statement (Parent (N)) = N
+      then
+         Error_Msg_N ("action call required in select statement", N);
       end if;
 
       --  Check that this is not a call to a protected procedure or entry from
@@ -6583,11 +6598,11 @@ package body Sem_Res is
       end if;
    end Resolve_Entry;
 
-   ------------------------
-   -- Resolve_Entry_Call --
-   ------------------------
+   -----------------------------
+   -- Resolve_Concurrent_Call --
+   -----------------------------
 
-   procedure Resolve_Entry_Call (N : Node_Id; Typ : Entity_Id) is
+   procedure Resolve_Concurrent_Call (N : Node_Id; Typ : Entity_Id) is
       Entry_Name  : constant Node_Id    := Name (N);
       Loc         : constant Source_Ptr := Sloc (Entry_Name);
       Actuals     : List_Id;
@@ -6603,9 +6618,9 @@ package body Sem_Res is
 
       Kill_All_Checks;
 
-      --  Processing of the name is similar for entry calls and protected
-      --  operation calls. Once the entity is determined, we can complete
-      --  the resolution of the actuals.
+      --  Processing of the name is similar for action calls, entry calls and
+      --  protected operation calls. Once the entity is determined, we can
+      --  complete the resolution of the actuals.
 
       --  The selector may be overloaded, in the case of a protected object
       --  with overloaded functions. The type of the context is used for
@@ -6774,8 +6789,9 @@ package body Sem_Res is
       end if;
 
       --  After resolution, entry calls and protected procedure calls are
-      --  changed into entry calls, for expansion. The structure of the node
-      --  does not change, so it can safely be done in place. Protected
+      --  changed into entry calls, for expansion. Action calls are identified
+      --  and changed into action calls for expansion. The structure of the
+      --  node does not change, so it can safely be done in place. Protected
       --  function calls must keep their structure because they are
       --  subexpressions.
 
@@ -6798,10 +6814,17 @@ package body Sem_Res is
          Actuals := Parameter_Associations (N);
          First_Named := First_Named_Actual (N);
 
-         Rewrite (N,
-           Make_Entry_Call_Statement (Loc,
-             Name                   => Entry_Name,
-             Parameter_Associations => Actuals));
+         if Is_Atomic_Type (Scope (Nam)) then
+            Rewrite (N,
+              Make_Action_Call_Statement (Loc,
+                Name                   => Entry_Name,
+                Parameter_Associations => Actuals));
+         else
+            Rewrite (N,
+              Make_Entry_Call_Statement (Loc,
+                Name                   => Entry_Name,
+                Parameter_Associations => Actuals));
+         end if;
 
          Set_First_Named_Actual (N, First_Named);
          Set_Analyzed (N, True);
@@ -6814,7 +6837,7 @@ package body Sem_Res is
       then
          Establish_Transient_Scope (N, Sec_Stack => True);
       end if;
-   end Resolve_Entry_Call;
+   end Resolve_Concurrent_Call;
 
    -------------------------
    -- Resolve_Equality_Op --

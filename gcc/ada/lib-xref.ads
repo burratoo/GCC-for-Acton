@@ -310,6 +310,8 @@ package Lib.Xref is
    --             Entry Body             end [entry_IDENTIFIER];
    --             Protected Body         end [protected_IDENTIFIER]
    --             Accept Statement       end [entry_IDENTIFIER]];
+   --             Action Body            end [action_IDENTIFIER];
+   --             Atomic Body            end [atomic_IDENTIFIER];
 
    --           Note that in the case of accept statements, there can
    --           be multiple b and t entries for the same entity.
@@ -522,11 +524,17 @@ package Lib.Xref is
       E_Return_Statement                           => ' ',
       E_Package                                    => 'K',
 
+      E_Action                                     => 'Z',
+      E_Atomic_Type                                => '1',
+      E_Atomic_Subtype                             => '1',
+
       --  The following entities are not ones to which we gather the cross-
       --  references, since it does not make sense to do so (e.g. references to
       --  a package are to the spec, not the body) Indeed the occurrence of the
       --  body entity is considered to be a reference to the spec entity.
 
+      E_Atomic_Object                              => ' ',
+      E_Atomic_Body                                => ' ',
       E_Package_Body                               => ' ',
       E_Protected_Object                           => ' ',
       E_Protected_Body                             => ' ',
@@ -563,7 +571,9 @@ package Lib.Xref is
    --    w     protected object                protected type
    --    x     abstract procedure              exception
    --    y     abstract function               entry or entry family
-   --    z     generic formal parameter        (unused)
+   --    z     generic formal parameter        action
+   --    0     atomic object
+   --    1     atomic type
 
    --------------------------------------
    -- Handling of Imported Subprograms --
