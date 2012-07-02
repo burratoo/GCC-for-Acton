@@ -1903,6 +1903,14 @@ package body Sinfo is
       return Flag11 (N);
    end Is_Expanded_Build_In_Place_Call;
 
+   function Is_External_Action_Body
+      (N : Node_Id) return Boolean is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body);
+      return Flag12 (N);
+   end Is_External_Action_Body;
+
    function Is_Folded_In_Parser
       (N : Node_Id) return Boolean is
    begin
@@ -5122,6 +5130,14 @@ package body Sinfo is
       Set_Flag11 (N, Val);
    end Set_Is_Expanded_Build_In_Place_Call;
 
+   procedure Set_Is_External_Action_Body
+      (N : Node_Id; Val : Boolean := True) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body);
+      Set_Flag12 (N, Val);
+   end Set_Is_External_Action_Body;
+
    procedure Set_Is_Folded_In_Parser
       (N : Node_Id; Val : Boolean := True) is
    begin
@@ -5145,6 +5161,14 @@ package body Sinfo is
         or else NT (N).Nkind = N_Real_Literal);
       Set_Flag11 (N, Val);
    end Set_Is_Machine_Number;
+
+   procedure Set_Is_Protected_Subprogram_Body
+      (N : Node_Id; Val : Boolean := True) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body);
+      Set_Flag7 (N, Val);
+   end Set_Is_Protected_Subprogram_Body;
 
    procedure Set_Is_Null_Loop
       (N : Node_Id; Val : Boolean := True) is
@@ -5177,14 +5201,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Selected_Component);
       Set_Flag17 (N, Val);
    end Set_Is_Prefixed_Call;
-
-   procedure Set_Is_Protected_Subprogram_Body
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body);
-      Set_Flag7 (N, Val);
-   end Set_Is_Protected_Subprogram_Body;
 
    procedure Set_Is_Static_Coextension
       (N : Node_Id; Val : Boolean := True) is

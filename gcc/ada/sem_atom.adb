@@ -521,8 +521,6 @@ package body Sem_Atom is
 
       Undelay_Itypes (Current_Scope);
 
-      --  Should include a procedure similar to Check_Max_Entries, but for
-      --  Actions.
       Check_Max_Actions (N, Max_Actions);
       Process_End_Label (N, 'e', Current_Scope);
    end Analyze_Atomic_Definition;

@@ -297,9 +297,9 @@ package body Exp_Ch7 is
 
    function Build_Cleanup_Statements (N : Node_Id) return List_Id;
    --  Create the clean up calls for an asynchronous call block, task master,
-   --  protected subprogram body, task allocation block or task body. If the
-   --  context does not contain the above constructs, the routine returns an
-   --  empty list.
+   --  action subprogram body, protected subprogram body, task allocation block
+   --  or task body. If the context does not contain the above constructs, the
+   --  routine returns an empty list.
 
    procedure Build_Finalizer
      (N           : Node_Id;
@@ -465,6 +465,9 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
+      Is_Action_Body       : constant Boolean :=
+                               Nkind (N) = N_Subprogram_Body
+                                 and then Is_External_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
                                  and then Is_Task_Master (N);
@@ -499,11 +502,11 @@ package body Exp_Ch7 is
 
       elsif Is_Protected_Body then
          declare
-            Spec         : constant Node_Id := Parent (Corresponding_Spec (N));
-            Conc_Typ      : Entity_Id;
-            Nam           : Node_Id;
-            Param         : Node_Id;
-            Param_Typ     : Entity_Id;
+            Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
+            Conc_Typ  : Entity_Id;
+            Nam       : Node_Id;
+            Param     : Node_Id;
+            Param_Typ : Entity_Id;
          begin
             --  Find the _object parameter representing the protected object
 
@@ -537,6 +540,19 @@ package body Exp_Ch7 is
                         Selector_Name =>
                           Make_Identifier (Loc, Name_uObject))))));
          end;
+
+      elsif Is_Action_Body then
+
+         --  Finalization statements for the Action body was generated in
+         --  Exp_Atom.Build_External_Action_Body.
+
+         declare
+            Spec : constant Entity_Id := Corresponding_Spec (N);
+            S    : constant List_Id   := Finalization_Statements (Spec);
+         begin
+            Append_List_To (Stmts, S);
+         end;
+
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
       --  tasks. Other unactivated tasks are completed by Complete_Task or
       --  Complete_Master.
@@ -3578,6 +3594,9 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
+      Is_Action_Body       : constant Boolean :=
+                               Nkind (N) = N_Subprogram_Body
+                                 and then Is_External_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
                                  and then Is_Task_Master (N);
@@ -3598,6 +3617,7 @@ package body Exp_Ch7 is
       Actions_Required     : constant Boolean :=
                                Requires_Cleanup_Actions (N, True)
                                  or else Is_Asynchronous_Call
+                                 or else Is_Action_Body
                                  or else Is_Master
                                  or else Is_Protected_Body
                                  or else Is_Task_Allocation

@@ -1838,7 +1838,11 @@ package Rtsfind is
      RE_Initialise_Protected_Agent,      -- Oak.Agent.Tasks.Protected_Objects
      RE_Protected_Agent,                 -- Oak.Agent.Tasks.Protected_Objects
 
-     RE_Atomic_Action_State,             -- Oak.Atomic_Actions
+     RE_Action_End_Barrier,              -- Oak.Atomic_Actions
+     RE_Atomic_Object,                   -- Oak.Atomic_Actions
+     RE_Enter_Action,                    -- Oak.Atomic_Actions
+     RE_Exit_Action,                     -- Oak.Atomic_Actions
+     RE_Initialise_Atomic_Object,        -- Oak.Atomic_Actions
 
      RE_Protected_Entry_Index,           -- Oak.Entries
 
@@ -3130,7 +3134,11 @@ package Rtsfind is
      RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
      RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
 
-     RE_Atomic_Action_State              => Oak_Atomic_Actions,
+     RE_Action_End_Barrier               => Oak_Atomic_Actions,
+     RE_Atomic_Object                    => Oak_Atomic_Actions,
+     RE_Enter_Action                     => Oak_Atomic_Actions,
+     RE_Exit_Action                      => Oak_Atomic_Actions,
+     RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
 
      RE_Protected_Entry_Index            => Oak_Entries,
 

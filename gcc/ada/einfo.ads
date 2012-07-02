@@ -682,9 +682,10 @@ package Einfo is
 --          something that we did not want anyway.
 
 --    Corresponding_Record_Type (Node18)
---       Present in protected and task types and subtypes. References the
---       entity for the corresponding record type constructed by the expander
---       (see Exp_Ch9). This type is used to represent values of the task type.
+--       Present in atomic, protected, and task types and subtypes. References
+--       the entity for the corresponding record type constructed by the
+--       expander (see Exp_Ch9). This type is used to represent values of the
+--       task type.
 
 --    Corresponding_Remote_Type (Node22)
 --       Present in record types that describe the fat pointer structure for
@@ -1176,6 +1177,11 @@ package Einfo is
 --       dynamically allocated controlled objects referenced by the access
 --       type. Empty for access-to-subprogram types. Empty for access types
 --       whose designated type does not need finalization actions.
+
+--    Finalization_Statements (List19)
+--       Present in Procedure entities used as the external subprograms for
+--       actions. The field contains a list of statements to be used by the
+--       procedures's finalization subprogram.
 
 --    Finalize_Storage_Only (Flag158) [base type only]
 --       Present in all types. Set on direct controlled types to which a
@@ -5631,6 +5637,7 @@ package Einfo is
    --    First_Entity                        (Node17)
    --    Alias                               (Node18)   (non-generic case only)
    --    Renamed_Entity                      (Node18)   (generic case only)
+   --    Finalization_Statements             (List19)   (concurrent kind only)
    --    Last_Entity                         (Node20)
    --    Interface_Name                      (Node21)
    --    Scope_Depth_Value                   (Uint22)
@@ -6213,6 +6220,7 @@ package Einfo is
    function Extra_Formal                        (Id : E) return E;
    function Extra_Formals                       (Id : E) return E;
    function Finalization_Master                 (Id : E) return E;
+   function Finalization_Statements             (Id : E) return S;
    function Finalize_Storage_Only               (Id : E) return B;
    function Finalizer                           (Id : E) return E;
    function First_Entity                        (Id : E) return E;
@@ -6807,6 +6815,7 @@ package Einfo is
    procedure Set_Extra_Formal                    (Id : E; V : E);
    procedure Set_Extra_Formals                   (Id : E; V : E);
    procedure Set_Finalization_Master             (Id : E; V : E);
+   procedure Set_Finalization_Statements         (Id : E; V : S);
    procedure Set_Finalize_Storage_Only           (Id : E; V : B := True);
    procedure Set_Finalizer                       (Id : E; V : E);
    procedure Set_First_Entity                    (Id : E; V : E);
@@ -7514,6 +7523,7 @@ package Einfo is
    pragma Inline (Extra_Formal);
    pragma Inline (Extra_Formals);
    pragma Inline (Finalization_Master);
+   pragma Inline (Finalization_Statements);
    pragma Inline (Finalizer);
    pragma Inline (First_Entity);
    pragma Inline (First_Exit_Statement);
@@ -7964,6 +7974,7 @@ package Einfo is
    pragma Inline (Set_Extra_Formal);
    pragma Inline (Set_Extra_Formals);
    pragma Inline (Set_Finalization_Master);
+   pragma Inline (Set_Finalization_Statements);
    pragma Inline (Set_Finalizer);
    pragma Inline (Set_First_Entity);
    pragma Inline (Set_First_Exit_Statement);

@@ -759,13 +759,13 @@ package Sinfo is
    --    and their first named subtypes.
 
    --  Corresponding_Spec (Node5-Sem)
-   --    This field is set in subprogram, package, task, and protected body
-   --    nodes, where it points to the defining entity in the corresponding
-   --    spec. The attribute is also set in N_With_Clause nodes where it points
-   --    to the defining entity for the with'ed spec, and in a subprogram
-   --    renaming declaration when it is a Renaming_As_Body. The field is Empty
-   --    if there is no corresponding spec, as in the case of a subprogram body
-   --    that serves as its own spec.
+   --    This field is set in subprogram, package, task, atomic, and protected
+   --    body nodes, where it points to the defining entity in the
+   --    corresponding spec. The attribute is also set in N_With_Clause nodes
+   --    where it points to the defining entity for the with'ed spec, and in a
+   --    subprogram renaming declaration when it is a Renaming_As_Body. The
+   --    field is Empty if there is no corresponding spec, as in the case of a
+   --    subprogram body that serves as its own spec.
    --
    --    In Ada 2012, Corresponding_Spec is set on expression functions that
    --    complete a subprogram declaration.
@@ -1333,6 +1333,12 @@ package Sinfo is
    --    This flag is set in an N_Function_Call node to indicate that the extra
    --    actuals to support a build-in-place style of call have been added to
    --    the call.
+
+   --  Is_External_Action_Body (Flag12-Sem)
+   --    A flag set in a Subprogram_Body block to indicate that it is the
+   --    implementation of an external action subprogram. Such a body needs
+   --    cleanup handler to make sure that the associated atomic object is
+   --    exited when the subprogram completes.
 
    --  Is_In_Discriminant_Check (Flag11-Sem)
    --    This flag is present in a selected component, and is used to indicate
@@ -4658,6 +4664,7 @@ package Sinfo is
       --  Is_Entry_Barrier_Function (Flag8-Sem)
       --  Is_Task_Master (Flag5-Sem)
       --  Was_Originally_Stub (Flag13-Sem)
+      --  Is_External_Action_Body (Flag12-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Pragma_CPU (Flag14-Sem)
       --  Has_Pragma_Cycle_Period (Flag16-Sem)
@@ -8987,6 +8994,9 @@ package Sinfo is
    function Is_Expanded_Build_In_Place_Call
      (N : Node_Id) return Boolean;    -- Flag11
 
+   function Is_External_Action_Body
+     (N : Node_Id) return Boolean;    -- Flag12
+
    function Is_Folded_In_Parser
      (N : Node_Id) return Boolean;    -- Flag4
 
@@ -10006,6 +10016,9 @@ package Sinfo is
 
    procedure Set_Is_Expanded_Build_In_Place_Call
      (N : Node_Id; Val : Boolean := True);    -- Flag11
+
+   procedure Set_Is_External_Action_Body
+     (N : Node_Id; Val : Boolean := True);    -- Flag12
 
    procedure Set_Is_Folded_In_Parser
      (N : Node_Id; Val : Boolean := True);    -- Flag4
@@ -12456,6 +12469,7 @@ package Sinfo is
    pragma Inline (Is_Elsif);
    pragma Inline (Is_Entry_Barrier_Function);
    pragma Inline (Is_Expanded_Build_In_Place_Call);
+   pragma Inline (Is_External_Action_Body);
    pragma Inline (Is_Folded_In_Parser);
    pragma Inline (Is_In_Discriminant_Check);
    pragma Inline (Is_Machine_Number);
@@ -12789,6 +12803,7 @@ package Sinfo is
    pragma Inline (Set_Is_Elsif);
    pragma Inline (Set_Is_Entry_Barrier_Function);
    pragma Inline (Set_Is_Expanded_Build_In_Place_Call);
+   pragma Inline (Set_Is_External_Action_Body);
    pragma Inline (Set_Is_Folded_In_Parser);
    pragma Inline (Set_Is_In_Discriminant_Check);
    pragma Inline (Set_Is_Machine_Number);

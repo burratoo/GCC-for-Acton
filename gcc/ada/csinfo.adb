@@ -220,6 +220,7 @@ begin
    Set (Special, "Has_Private_View",                 True);
    Set (Special, "Implicit_With_From_Instantiation", True);
    Set (Special, "Is_Controlling_Actual",            True);
+   Set (Special, "Is_External_Action_Body",          True);
    Set (Special, "Is_Overloaded",                    True);
    Set (Special, "Is_Static_Expression",             True);
    Set (Special, "Left_Opnd",                        True);
