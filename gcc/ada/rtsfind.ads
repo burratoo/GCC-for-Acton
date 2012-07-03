@@ -430,7 +430,7 @@ package Rtsfind is
 
       Oak_Agent,
       Oak_Atomic_Actions,
-      Oak_Entries,
+      Oak_Indices,
       Oak_Memory,
       Oak_Oak_Time,
       Oak_Processor_Support_Package,
@@ -1844,7 +1844,7 @@ package Rtsfind is
      RE_Exit_Action,                     -- Oak.Atomic_Actions
      RE_Initialise_Atomic_Object,        -- Oak.Atomic_Actions
 
-     RE_Protected_Entry_Index,           -- Oak.Entries
+     RE_Protected_Entry_Index,           -- Oak.Indices
 
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
@@ -3140,7 +3140,7 @@ package Rtsfind is
      RE_Exit_Action                      => Oak_Atomic_Actions,
      RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
 
-     RE_Protected_Entry_Index            => Oak_Entries,
+     RE_Protected_Entry_Index            => Oak_Indices,
 
      RE_Call_Stack_Size                  => Oak_Memory_Call_Stack,
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
