@@ -450,6 +450,9 @@ package Snames is
    Name_Atomic                         : constant Name_Id := N + $;
    Name_Atomic_Components              : constant Name_Id := N + $;
    Name_Attach_Handler                 : constant Name_Id := N + $;
+   Name_Backwards_Recovery          : constant Name_Id := N + $; -- Acton
+   Name_Barrier_End                 : constant Name_Id := N + $; -- Acton
+   Name_Barrier_Start               : constant Name_Id := N + $; -- Acton
    Name_Check                          : constant Name_Id := N + $; -- GNAT
    Name_CIL_Constructor                : constant Name_Id := N + $; -- GNAT
    Name_Comment                        : constant Name_Id := N + $; -- GNAT
@@ -548,6 +551,8 @@ package Snames is
    Name_Remote_Access_Type             : constant Name_Id := N + $; -- GNAT
    Name_Remote_Call_Interface          : constant Name_Id := N + $;
    Name_Remote_Types                   : constant Name_Id := N + $;
+   Name_Require_All_Actions            : constant Name_Id := N + $; -- Acton
+   Name_Save_State                     : constant Name_Id := N + $; -- Acton
    Name_Share_Generic                  : constant Name_Id := N + $; -- GNAT
    Name_Shared                         : constant Name_Id := N + $; -- Ada 83
    Name_Shared_Passive                 : constant Name_Id := N + $;

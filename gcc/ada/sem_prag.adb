@@ -2039,7 +2039,8 @@ package body Sem_Prag is
             elsif not Nkind_In (PO, N_Subprogram_Declaration,
                                     N_Expression_Function,
                                     N_Generic_Subprogram_Declaration,
-                                    N_Entry_Declaration)
+                                    N_Entry_Declaration,
+                                    N_Action_Declaration)
             then
                Pragma_Misplaced;
             end if;
