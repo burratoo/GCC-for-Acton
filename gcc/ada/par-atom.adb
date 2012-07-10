@@ -384,12 +384,13 @@ package body Atom is
 
       Set_Defining_Identifier
         (Decl_Node, P_Defining_Identifier (C_Left_Paren_Semicolon));
-      Set_Parameter_Specifications (Decl_Node, P_Formal_Part);
+
+      Set_Parameter_Specifications (Decl_Node, P_Parameter_Profile);
 
       --  Error recovery check for illegal return
 
       if Token = Tok_Return then
-         Error_Msg_SC ("entry cannot have return value!");
+         Error_Msg_SC ("action cannot have return value!");
          Scan;
          Discard_Junk_Node (P_Subtype_Indication);
       end if;
@@ -438,8 +439,9 @@ package body Atom is
       Scope.Table (Scope.Last).Labl := Name_Node;
 
       Formal_Part_Node := P_Action_Body_Formal_Part;
-      Set_Entry_Body_Formal_Part (Action_Node, Formal_Part_Node);
+      Set_Action_Body_Formal_Part (Action_Node, Formal_Part_Node);
 
+      TF_Is;
       Parse_Decls_Begin_End (Action_Node);
       return Action_Node;
    end P_Action_Body;

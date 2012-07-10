@@ -1899,7 +1899,8 @@ package body Sem_Prag is
             elsif Nkind_In (P, N_Subprogram_Body,
                                N_Package_Body,
                                N_Task_Body,
-                               N_Entry_Body)
+                               N_Entry_Body,
+                               N_Action_Body)
             then
                return;
             end if;

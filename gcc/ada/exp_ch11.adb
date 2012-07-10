@@ -1887,7 +1887,9 @@ package body Exp_Ch11 is
            or else Nkind (P) = N_Subprogram_Body
            or else Nkind (P) = N_Task_Body
            or else Nkind (P) = N_Protected_Body
+           or else Nkind (P) = N_Atomic_Body
            or else Nkind (P) = N_Entry_Body
+           or else Nkind (P) = N_Action_Body
            or else Nkind (P) = N_Accept_Statement
          then
             return Empty;

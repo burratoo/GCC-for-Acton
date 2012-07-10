@@ -66,7 +66,7 @@ package body Sem_Atom is
       Id          : constant Entity_Id := Defining_Identifier (N);
       Decls       : constant List_Id   := Declarations (N);
       Stats       : constant Node_Id   := Handled_Statement_Sequence (N);
-      Formals     : constant Node_Id   := Entry_Body_Formal_Part (N);
+      Formals     : constant Node_Id   := Action_Body_Formal_Part (N);
       A_Type      : constant Entity_Id := Current_Scope;
       E           : Entity_Id;
       Action_Name : Entity_Id;
@@ -81,10 +81,9 @@ package body Sem_Atom is
 
       Analyze (Formals);
 
-      Set_Ekind (Id, E_Action);
+      Set_Ekind          (Id, E_Action);
       Set_Scope          (Id, Current_Scope);
       Set_Etype          (Id, Standard_Void_Type);
-      Set_Accept_Address (Id, New_Elmt_List);
 
       E := First_Entity (A_Type);
       while Present (E) loop
@@ -271,7 +270,6 @@ package body Sem_Atom is
       Set_Ekind          (Def_Id, E_Action);
       Set_Etype          (Def_Id, Standard_Void_Type);
       Set_Convention     (Def_Id, Convention_Action);
-      Set_Accept_Address (Def_Id, New_Elmt_List);
 
       --  Process formals
 
@@ -283,9 +281,7 @@ package body Sem_Atom is
          End_Scope;
       end if;
 
-      if Ekind (Def_Id) = E_Action then
-         New_Overloaded_Entity (Def_Id);
-      end if;
+      New_Overloaded_Entity (Def_Id);
 
       Generate_Reference_To_Formals (Def_Id);
 
@@ -475,7 +471,7 @@ package body Sem_Atom is
          end loop;
       end Undelay_Itypes;
 
-   --  Start of processing for Analyze_Protected_Definition
+   --  Start of processing for Analyze_Atomic_Definition
 
    begin
       --  Set atomic flags defaults.

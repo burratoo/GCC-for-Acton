@@ -4600,7 +4600,8 @@ package body Ch3 is
          if Kind = N_Subprogram_Body or else
             Kind = N_Package_Body or else
             Kind = N_Task_Body or else
-            Kind = N_Protected_Body
+            Kind = N_Protected_Body or else
+            Kind = N_Atomic_Body
          then
             Error_Msg ("proper body not allowed in package spec", Sloc (Decl));
 

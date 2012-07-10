@@ -3694,7 +3694,8 @@ package body Sem_Ch8 is
             Pop_Scope;
 
             while not (Is_List_Member (Decl))
-              or else Nkind_In (Parent (Decl), N_Protected_Definition,
+              or else Nkind_In (Parent (Decl), N_Atomic_Definition,
+                                               N_Protected_Definition,
                                                N_Task_Definition)
             loop
                Decl := Parent (Decl);

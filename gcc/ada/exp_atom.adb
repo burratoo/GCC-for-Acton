@@ -45,11 +45,9 @@ package body Exp_Atom is
 
    function Action_Index_Expression
      (Sloc  : Source_Ptr;
-      Ent   : Entity_Id;
+      Act   : Entity_Id;
       Atm   : Entity_Id) return Node_Id;
-   --  Compute the index position for an entry call. Tsk is the target task. If
-   --  the bounds of some entry family depend on discriminants, the expression
-   --  computed by this function uses the discriminants of the target task.
+   --  Compute the index position for an entry call.
 
    function Build_Action_Count_Expression
      (Atomic_Type     : Node_Id;
@@ -117,7 +115,7 @@ package body Exp_Atom is
    --  to its final resting scope to ensure proper visibility of debug objects.
    --  NOTE : Copied from Exp_Ch9.
 
-   function Find_Atomic_Declaration (Atomic_Ent : Entity_Id) return Node_Id;
+   function Find_Atomic_Declaration (Atyp : Entity_Id) return Node_Id;
    --  Returns the atomic declaration for the given atomic entitiy.
 
    function First_Action (D : List_Id) return Node_Id;
@@ -130,7 +128,7 @@ package body Exp_Atom is
 
    function Action_Index_Expression
      (Sloc  : Source_Ptr;
-      Ent   : Entity_Id;
+      Act   : Entity_Id;
       Atm   : Entity_Id) return Node_Id
    is
       Atyp  : constant Entity_Id := Etype (Atm);
@@ -149,9 +147,9 @@ package body Exp_Atom is
       Prev  := First_Entity (Atyp);
       Count := 0;
 
-      while Chars (Prev) /= Chars (Ent)
-        or else (Ekind (Prev) /= Ekind (Ent))
-        or else not Sem_Ch6.Type_Conformant (Ent, Prev)
+      while Chars (Prev) /= Chars (Act)
+        or else (Ekind (Prev) /= Ekind (Act))
+        or else not Sem_Ch6.Type_Conformant (Act, Prev)
       loop
          if Ekind (Prev) = E_Action then
             Count := Count + 1;
@@ -200,8 +198,8 @@ package body Exp_Atom is
       Kind       : Action_Sub_Kind) return Node_Id
    is
       Loc         : constant Source_Ptr := Sloc (N);
+      Def_Id      : constant Entity_Id  := Defining_Identifier (N);
       Decl        : Node_Id;
-      Def_Id      : Entity_Id;
       New_Id      : Entity_Id;
       New_Plist   : List_Id;
       New_Spec    : Node_Id;
@@ -218,8 +216,6 @@ package body Exp_Atom is
       else
          Decl := N;
       end if;
-
-      Def_Id := Defining_Unit_Name (Specification (Decl));
 
       New_Plist := New_List;
 
@@ -239,6 +235,10 @@ package body Exp_Atom is
                 In_Present          => In_Present (Parent (Formal)),
                 Out_Present         => Out_Present (Parent (Formal)),
                 Parameter_Type      => New_Reference_To (Etype (Formal), Loc));
+
+            if Kind = Internal_Kind then
+               Set_Atomic_Formal (Formal, Defining_Identifier (New_Param));
+            end if;
 
             Append (New_Param, New_Plist);
             Next_Formal (Formal);
@@ -361,9 +361,6 @@ package body Exp_Atom is
               Component_List =>
                 Make_Component_List (Loc,
                   Component_Items => Cdecls),
-              Tagged_Present  =>
-                 Ada_Version >= Ada_2005 and then Is_Tagged_Type (Ctyp),
-              Interface_List  => Interface_List (N),
               Limited_Present => True));
    end Build_Corresponding_Record;
 
@@ -517,6 +514,17 @@ package body Exp_Atom is
           Name       => New_Reference_To (E, Loc),
           Expression => New_Reference_To (Standard_True, Loc));
 
+      --  Create declaration for Action_Id.
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uAction_Id),
+          Object_Definition   =>
+            New_Reference_To (RTE (RE_Action_Index), Loc),
+          Expression          =>
+            Action_Index_Expression (Loc, Defining_Identifier (N), Pid)));
+
       --  Build a list of the formal parameters of the external version of
       --  the action to use as the actual parameters of the internal
       --  version.
@@ -586,7 +594,7 @@ package body Exp_Atom is
            Make_Procedure_Call_Statement (Loc,
              Name                   =>
                New_Reference_To (RTE (RE_Action_End_Barrier), Loc),
-             Parameter_Associations =>  New_List (Object_Parm,
+             Parameter_Associations =>  New_List (New_Copy (Object_Parm),
                Make_Identifier (Loc, Name_uAction_Id),
                New_Reference_To (E, Loc))));
       end if;
@@ -597,7 +605,7 @@ package body Exp_Atom is
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
             New_Reference_To (RTE (RE_Exit_Action), Loc),
-          Parameter_Associations =>  New_List (Object_Parm,
+          Parameter_Associations =>  New_List (New_Copy (Object_Parm),
             Make_Identifier (Loc, Name_uAction_Id))));
 
    end Build_External_Action_Body;
@@ -795,10 +803,6 @@ package body Exp_Atom is
          else
             Params := New_List;
          end if;
-
-         --  Prepend the action id of the entry to the parameter list.
-         Prepend_To (Params,
-           Action_Index_Expression (Loc, Entity (Aname), Atomval));
 
          --  If the type is an untagged derived type, convert to the root type,
          --  which is the one on which the operations are defined.
@@ -1117,7 +1121,7 @@ package body Exp_Atom is
                Make_Handled_Sequence_Of_Statements (Loc, Stmts));
       end Build_Dispatching_Action_Body;
 
-   --  Start of processing for Expand_N_Protected_Body
+   --  Start of processing for Expand_N_Atomic_Body
 
    begin
       if No_Run_Time_Mode then
@@ -1166,8 +1170,7 @@ package body Exp_Atom is
                   Analyze (New_Op_Body);
 
                   Set_Finalization_Statements
-                    (Defining_Identifier (Corresponding_Spec (New_Op_Body)),
-                     Fstms);
+                    (Corresponding_Spec (New_Op_Body), Fstms);
                   Current_Node := New_Op_Body;
                end;
 
@@ -1576,11 +1579,9 @@ package body Exp_Atom is
    -- Find_Atomic_Declaration --
    -----------------------------
 
-   function Find_Atomic_Declaration (Atomic_Ent : Entity_Id) return Node_Id is
+   function Find_Atomic_Declaration (Atyp : Entity_Id) return Node_Id is
       Adef : Node_Id;
       Adec : Node_Id;
-      Atyp : constant Node_Id :=
-               Corresponding_Concurrent_Type (Atomic_Ent);
    begin
       --  Get atomic declaration. In the case of an atomic type declaration,
       --  this is simply the parent of the atomic type entity. In the single
@@ -1639,7 +1640,7 @@ package body Exp_Atom is
       L           : constant List_Id := New_List;
 
    begin
-      Adef := Find_Atomic_Declaration (Atomic_Rec);
+      Adef := Find_Atomic_Declaration (Atyp);
 
       --  Build the parameter list for the call. Note that _Init is the name
       --  of the formal for the object to be initialized, which is the task

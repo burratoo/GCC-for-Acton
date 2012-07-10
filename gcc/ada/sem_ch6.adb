@@ -1372,7 +1372,7 @@ package body Sem_Ch6 is
          end if;
 
       --  If not an access to subprogram, then the prefix must resolve to the
-      --  name of an entry, entry family, or protected operation.
+      --  name of an action, entry, entry family, or protected operation.
 
       --  For the case of a simple entry call, P is a selected component where
       --  the prefix is the task and the selector name is the entry. A call to
@@ -1381,7 +1381,9 @@ package body Sem_Ch6 is
       --  function, the context will select the operation whose type is Void.
 
       elsif Nkind (P) = N_Selected_Component
-        and then (Ekind (Entity (Selector_Name (P))) = E_Entry
+        and then (Ekind (Entity (Selector_Name (P))) = E_Action
+                    or else
+                  Ekind (Entity (Selector_Name (P))) = E_Entry
                     or else
                   Ekind (Entity (Selector_Name (P))) = E_Procedure
                     or else
@@ -1553,6 +1555,11 @@ package body Sem_Ch6 is
             else
                Error_Msg_N ("accept statement cannot return value", N);
             end if;
+         end if;
+
+      elsif Kind = E_Action then
+         if Returns_Object then
+            Error_Msg_N ("action body cannot return value", N);
          end if;
 
       elsif Kind = E_Return_Statement then
@@ -1735,6 +1742,7 @@ package body Sem_Ch6 is
 
                   elsif Nkind_In (Parent (Parent (N)),
                      N_Accept_Statement,
+                     N_Action_Body,
                      N_Entry_Body,
                      N_Subprogram_Body)
                   then
@@ -1823,6 +1831,7 @@ package body Sem_Ch6 is
       Prev_Id      : constant Entity_Id  := Current_Entity_In_Scope (Body_Id);
       Conformant   : Boolean;
       HSS          : Node_Id;
+      Atom_Typ     : Entity_Id := Empty;
       Prot_Typ     : Entity_Id := Empty;
       Spec_Id      : Entity_Id;
       Spec_Decl    : Node_Id   := Empty;
@@ -2607,6 +2616,10 @@ package body Sem_Ch6 is
                Prot_Typ := Scope (Spec_Id);
             end if;
 
+            if Is_Atomic_Type (Scope (Spec_Id)) then
+               Atom_Typ := Scope (Spec_Id);
+            end if;
+
             --  If this is a body generated for a renaming, do not check for
             --  full conformance. The check is redundant, because the spec of
             --  the body is a copy of the spec in the renaming declaration,
@@ -2929,6 +2942,18 @@ package body Sem_Ch6 is
       then
          Install_Private_Data_Declarations
            (Sloc (N), Spec_Id, Prot_Typ, N, Declarations (N));
+      end if;
+
+      --  Same for the Atomic object
+
+      if Full_Expander_Active
+        and then Comes_From_Source (Original_Node (N))
+        and then Present (Atom_Typ)
+        and then Present (Spec_Id)
+        and then not Is_Eliminated (Spec_Id)
+      then
+         Install_Private_Data_Declarations
+           (Sloc (N), Spec_Id, Atom_Typ, N, Declarations (N));
       end if;
 
       --  Ada 2012 (AI05-0151): Incomplete types coming from a limited context
@@ -3399,6 +3424,14 @@ package body Sem_Ch6 is
          Set_Convention (Designator, Convention_Protected);
       end if;
 
+      if Is_Atomic_Type (Current_Scope) then
+
+         --  Indicate that this is an atomic operation, because it may be
+         --  used in subsequent declarations within the atomic type.
+
+         Set_Convention (Designator, Convention_Action);
+      end if;
+
       List_Inherited_Pre_Post_Aspects (Designator);
 
       if Has_Aspects (N) then
@@ -3659,7 +3692,8 @@ package body Sem_Ch6 is
          while Present (D) loop
             if (Nkind (D) = N_Function_Instantiation
                   and then not Is_Unchecked_Conversion (D))
-              or else Nkind_In (D, N_Protected_Type_Declaration,
+              or else Nkind_In (D, N_Atomic_Type_Declaration,
+                                   N_Protected_Type_Declaration,
                                    N_Package_Declaration,
                                    N_Package_Instantiation,
                                    N_Subprogram_Body,
@@ -4421,7 +4455,8 @@ package body Sem_Ch6 is
             while Present (D) loop
                if (Nkind (D) = N_Function_Instantiation
                    and then not Is_Unchecked_Conversion (D))
-                 or else Nkind_In (D, N_Protected_Type_Declaration,
+                 or else Nkind_In (D, N_Atomic_Type_Declaration,
+                                   N_Protected_Type_Declaration,
                                    N_Package_Declaration,
                                    N_Package_Instantiation,
                                    N_Subprogram_Body,
@@ -6261,7 +6296,7 @@ package body Sem_Ch6 is
       if Ekind (Subp) = E_Enumeration_Literal then
          return;
 
-      elsif Ekind (Subp) = E_Entry then
+      elsif Ekind (Subp) = E_Entry or else Ekind (Subp) = E_Action then
          Decl := Parent (Subp);
 
          --  No point in analyzing a malformed operator
@@ -6283,7 +6318,9 @@ package body Sem_Ch6 is
       then
          Spec := Specification (Decl);
 
-      elsif Nkind (Decl) = N_Entry_Declaration then
+      elsif Nkind (Decl) = N_Entry_Declaration
+        or else Nkind (Decl) = N_Action_Declaration
+      then
          Spec := Decl;
 
       else
@@ -9778,7 +9815,8 @@ package body Sem_Ch6 is
          --  stage predefined primitives are still not fully decorated. As a
          --  minor optimization we skip here internally generated subprograms.
 
-         if (Ekind (Def_Id) /= E_Entry
+         if (Ekind (Def_Id) /= E_Action
+              and then Ekind (Def_Id) /= E_Entry
               and then Ekind (Def_Id) /= E_Function
               and then Ekind (Def_Id) /= E_Procedure)
            or else not Comes_From_Source (Def_Id)
@@ -9875,7 +9913,8 @@ package body Sem_Ch6 is
                --  interface procedures.
 
                elsif (Ekind (Def_Id) = E_Procedure
-                        or else Ekind (Def_Id) = E_Entry)
+                        or else Ekind (Def_Id) = E_Entry
+                        or else Ekind (Def_Id) = E_Action)
                  and then Ekind (Subp) = E_Procedure
                  and then Matches_Prefixed_View_Profile
                             (Parameter_Specifications (Parent (Def_Id)),
@@ -9897,6 +9936,7 @@ package body Sem_Ch6 is
                      --  access-to-variable.
 
                      if (Ekind (Candidate) = E_Entry
+                         or else Ekind (Candidate) = E_Action
                          or else Ekind (Candidate) = E_Procedure)
                        and then Is_Protected_Type (Typ)
                        and then Ekind (Formal) /= E_In_Out_Parameter
@@ -10246,6 +10286,7 @@ package body Sem_Ch6 is
                --  other.
 
                elsif Ekind (E) /= E_Entry
+                 and then Ekind (E) /= E_Action
                  and then not Comes_From_Source (E)
                  and then not Is_Generic_Instance (E)
                  and then (Present (Alias (E))
@@ -10734,6 +10775,7 @@ package body Sem_Ch6 is
                         null;
 
                      elsif Nkind_In (Parent (Parent (T)), N_Accept_Statement,
+                                                          N_Action_Body,
                                                           N_Entry_Body,
                                                           N_Subprogram_Body)
                      then

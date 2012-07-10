@@ -345,9 +345,9 @@ package Exp_Ch9 is
    --  following node in the declarations list.
 
    procedure Set_Discriminals (Dec : Node_Id);
-   --  Replace discriminals in a protected type for use by the next protected
-   --  operation on the type. Each operation needs a new set of discriminals,
-   --  since it needs a unique renaming of the discriminant fields in the
-   --  record used to implement the protected type.
+   --  Replace discriminals in an atomic or protected type for use by the next
+   --  atomic or protected operation on the type. Each operation needs a new
+   --  set of discriminals, since it needs a unique renaming of the
+   --  discriminant fields in the record used to implement the protected type.
 
 end Exp_Ch9;

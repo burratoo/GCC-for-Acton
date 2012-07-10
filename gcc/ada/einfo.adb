@@ -214,6 +214,7 @@ package body Einfo is
    --    Finalizer                       Node24
    --    Related_Expression              Node24
    --    Contract                        Node24
+   --    Atomic_Formal                   Node24
 
    --    Interface_Alias                 Node25
    --    Interfaces                      Elist25
@@ -641,6 +642,12 @@ package body Einfo is
       return Node22 (Root_Type (Id));
    end Associated_Storage_Pool;
 
+   function Atomic_Formal (Id : E) return E is
+   begin
+      pragma Assert (Is_Formal (Id));
+      return Node24 (Id);
+   end Atomic_Formal;
+
    function Atomic_Object (Id : E) return E is
    begin
       pragma Assert (Ekind (Id) = E_Action);
@@ -1003,7 +1010,7 @@ package body Einfo is
    function Contract (Id : E) return N is
    begin
       pragma Assert
-        (Ekind_In (Id, E_Entry, E_Entry_Family)
+        (Ekind_In (Id, E_Action, E_Entry, E_Entry_Family)
           or else Is_Subprogram (Id)
           or else Is_Generic_Subprogram (Id));
       return Node24 (Id);
@@ -3168,6 +3175,12 @@ package body Einfo is
       Set_Uint14 (Id, V);
    end Set_Alignment;
 
+   procedure Set_Atomic_Formal (Id : E; V : E) is
+   begin
+      pragma Assert (Is_Formal (Id));
+      Set_Node24 (Id, V);
+   end Set_Atomic_Formal;
+
    procedure Set_Atomic_Object (Id : E; V : E) is
    begin
       pragma Assert (Ekind (Id) = E_Action);
@@ -3529,7 +3542,7 @@ package body Einfo is
    procedure Set_Contract (Id : E; V : N) is
    begin
       pragma Assert
-        (Ekind_In (Id, E_Entry, E_Entry_Family, E_Void)
+        (Ekind_In (Id, E_Action, E_Entry, E_Entry_Family, E_Void)
           or else Is_Subprogram (Id)
           or else Is_Generic_Subprogram (Id));
       Set_Node24 (Id, V);
@@ -6349,6 +6362,17 @@ package body Einfo is
       end if;
    end Invariant_Procedure;
 
+   ------------------------------
+   -- Is_Atomic_Record_Type --
+   ------------------------------
+
+   function Is_Atomic_Record_Type (Id : E) return B is
+   begin
+      return
+        Is_Concurrent_Record_Type (Id)
+          and then Is_Atomic_Type (Corresponding_Concurrent_Type (Id));
+   end Is_Atomic_Record_Type;
+
    ------------------
    -- Is_Base_Type --
    ------------------
@@ -8277,6 +8301,7 @@ package body Einfo is
               Class_Wide_Kind                              |
               Concurrent_Kind                              |
               Private_Kind                                 |
+              E_Action                                     |
               E_Entry                                      |
               E_Entry_Family                               |
               E_Function                                   |
@@ -8453,6 +8478,7 @@ package body Einfo is
               Class_Wide_Kind                              |
               Concurrent_Kind                              |
               Private_Kind                                 |
+              E_Action                                     |
               E_Entry                                      |
               E_Entry_Family                               |
               E_Function                                   |
@@ -8564,7 +8590,8 @@ package body Einfo is
          when Formal_Kind                                  =>
             Write_Str ("Protected_Formal");
 
-         when E_Atomic_Type                                |
+         when E_Action                                     |
+              E_Atomic_Type                                |
               E_Block                                      |
               E_Entry                                      |
               E_Entry_Family                               |
@@ -8672,11 +8699,19 @@ package body Einfo is
               Type_Kind                                    =>
             Write_Str ("Related_Expression");
 
-         when E_Entry                                      |
+         when E_Action                                     |
+              E_Entry                                      |
               E_Entry_Family                               |
               Subprogram_Kind                              |
               Generic_Subprogram_Kind                      =>
             Write_Str ("Contract");
+
+         when E_In_Parameter                               |
+              E_In_Out_Parameter                           |
+              E_Out_Parameter                              |
+              E_Generic_In_Parameter                       |
+              E_Generic_In_Out_Parameter                   =>
+            Write_Str ("Atomic_Formal");
 
          when others                                       =>
             Write_Str ("Field24???");

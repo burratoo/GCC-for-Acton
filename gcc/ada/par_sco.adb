@@ -137,6 +137,8 @@ package body Par_SCO is
    end record;
    No_Dominant : constant Dominant_Info := (' ', Empty);
 
+   procedure Traverse_Atomic_Body                  (N : Node_Id);
+
    procedure Traverse_Declarations_Or_Statements
      (L : List_Id;
       D : Dominant_Info := No_Dominant);
@@ -826,6 +828,9 @@ package body Par_SCO is
       --  Traverse the unit
 
       case Nkind (Lu) is
+         when N_Atomic_Body =>
+            Traverse_Atomic_Body (Lu);
+
          when N_Protected_Body =>
             Traverse_Protected_Body (Lu);
 
@@ -1269,6 +1274,18 @@ package body Par_SCO is
                   Set_Statement_Entry;
                   Traverse_Subprogram_Or_Task_Body (N);
 
+               --  Action body
+
+               when N_Action_Body =>
+                  Set_Statement_Entry;
+                  Traverse_Subprogram_Or_Task_Body (N);
+
+               --  Atomic body
+
+               when N_Atomic_Body =>
+                  Set_Statement_Entry;
+                  Traverse_Atomic_Body (N);
+
                --  Entry body
 
                when N_Entry_Body =>
@@ -1644,6 +1661,15 @@ package body Par_SCO is
          Set_Statement_Entry;
       end if;
    end Traverse_Declarations_Or_Statements;
+
+   -----------------------------
+   -- Traverse_Atomic_Body --
+   -----------------------------
+
+   procedure Traverse_Atomic_Body (N : Node_Id) is
+   begin
+      Traverse_Declarations_Or_Statements (Declarations (N));
+   end Traverse_Atomic_Body;
 
    ------------------------------------
    -- Traverse_Generic_Instantiation --

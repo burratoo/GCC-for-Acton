@@ -114,6 +114,7 @@ procedure Labl is
       --  of stopping at them.
 
       while Present (Result)
+        and then Nkind (Result) /= N_Action_Body
         and then Nkind (Result) /= N_Entry_Body
         and then Nkind (Result) /= N_Task_Body
         and then Nkind (Result) /= N_Package_Body
@@ -137,6 +138,7 @@ procedure Labl is
 
       while Present (Result)
         and then Nkind (Result) /= N_Accept_Statement
+        and then Nkind (Result) /= N_Action_Body
         and then Nkind (Result) /= N_Entry_Body
         and then Nkind (Result) /= N_Task_Body
         and then Nkind (Result) /= N_Package_Body

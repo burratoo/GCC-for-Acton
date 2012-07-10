@@ -375,9 +375,9 @@ package body Exp_Ch13 is
 
       Inside_Freezing_Actions := Inside_Freezing_Actions + 1;
 
-      --  If we are freezing entities defined in protected types, they belong
-      --  in the enclosing scope, given that the original type has been
-      --  expanded away. The same is true for entities in task types, in
+      --  If we are freezing entities defined in protected and atomic types,
+      --  they belong in the enclosing scope, given that the original type has
+      --  been expanded away. The same is true for entities in task types, in
       --  particular the parameter records of entries (Entities in bodies are
       --  all frozen within the body). If we are in the task body, this is a
       --  proper scope. If we are within a subprogram body, the proper scope
@@ -385,6 +385,7 @@ package body Exp_Ch13 is
       --  the bodies of protected operations.
 
       if Ekind (E_Scope) = E_Protected_Type
+        or else Ekind (E_Scope) = E_Atomic_Type
         or else (Ekind (E_Scope) = E_Task_Type
                   and then not Has_Completion (E_Scope))
       then

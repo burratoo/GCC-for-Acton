@@ -3599,6 +3599,7 @@ package body Exp_Ch7 is
                                  and then Is_External_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
+                                 and then Nkind (N) /= N_Action_Body
                                  and then Is_Task_Master (N);
       Is_Protected_Body    : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
@@ -4082,6 +4083,7 @@ package body Exp_Ch7 is
             --  is known to be scalar
 
             when N_Accept_Alternative               |
+                 N_Action_Body_Formal_Part          |
                  N_Attribute_Definition_Clause      |
                  N_Case_Statement                   |
                  N_Code_Statement                   |
@@ -7545,10 +7547,11 @@ package body Exp_Ch7 is
 
                   exit;
 
-               --  In a loop or entry we should install a block encompassing
-               --  all the construct. For now just release right away.
+               --  In a loop, entry or action we should install a block
+               --  encompassing all the construct. For now just release right
+               --  away.
 
-               elsif Ekind_In (S, E_Entry, E_Loop) then
+               elsif Ekind_In (S, E_Entry, E_Action, E_Loop) then
                   exit;
 
                --  In a procedure or a block, we release on exit of the

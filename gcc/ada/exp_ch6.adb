@@ -31,6 +31,7 @@ with Errout;   use Errout;
 with Elists;   use Elists;
 with Exp_Aggr; use Exp_Aggr;
 with Exp_Atag; use Exp_Atag;
+with Exp_Atom; use Exp_Atom;
 with Exp_Ch2;  use Exp_Ch2;
 with Exp_Ch3;  use Exp_Ch3;
 with Exp_Ch7;  use Exp_Ch7;
@@ -2460,7 +2461,7 @@ package body Exp_Ch6 is
             end;
          end if;
 
-         if Ekind (Subp) = E_Entry then
+         if Ekind (Subp) = E_Entry or else Ekind (Subp) = E_Action then
             Parent_Subp := Empty;
          end if;
       end if;
@@ -6178,6 +6179,7 @@ package body Exp_Ch6 is
               E_Generic_Procedure |
               E_Entry             |
               E_Entry_Family      |
+              E_Action            |
               E_Return_Statement =>
             Expand_Non_Function_Return (N);
 
@@ -6487,6 +6489,16 @@ package body Exp_Ch6 is
         and then Present (Parent (List_Containing (N)))
         and then Nkind (Parent (List_Containing (N))) = N_Protected_Body
         and then Present (Next_Protected_Operation (N))
+      then
+         Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
+      end if;
+
+      --  Create a set of discriminals for the next action subprogram body
+
+      if Is_List_Member (N)
+        and then Present (Parent (List_Containing (N)))
+        and then Nkind (Parent (List_Containing (N))) = N_Atomic_Body
+        and then Present (Next_Action (N))
       then
          Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
       end if;

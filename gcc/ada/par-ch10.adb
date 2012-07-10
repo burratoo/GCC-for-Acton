@@ -565,10 +565,13 @@ package body Ch10 is
 
          if Nkind_In (Unit_Node, N_Task_Body,
                                  N_Protected_Body,
+                                 N_Atomic_Body,
                                  N_Task_Type_Declaration,
                                  N_Protected_Type_Declaration,
+                                 N_Atomic_Type_Declaration,
                                  N_Single_Task_Declaration,
-                                 N_Single_Protected_Declaration)
+                                 N_Single_Protected_Declaration,
+                                 N_Single_Atomic_Declaration)
          then
             Name_Node := Defining_Identifier (Unit_Node);
 

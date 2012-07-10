@@ -4777,7 +4777,10 @@ package body Exp_Ch9 is
    begin
       --  Parameter _O or _object
 
-      if Is_Protected_Type (Conc_Typ) then
+      if Is_Atomic_Type (Conc_Typ) then
+         return First_Formal (Action_Body_Subprogram (Spec_Id));
+
+      elsif Is_Protected_Type (Conc_Typ) then
          return First_Formal (Protected_Body_Subprogram (Spec_Id));
 
       --  Parameter _task
@@ -13450,7 +13453,8 @@ package body Exp_Ch9 is
       D_Minal : Entity_Id;
 
    begin
-      pragma Assert (Nkind (Dec) = N_Protected_Type_Declaration);
+      pragma Assert (Nkind_In (Dec, N_Protected_Type_Declaration,
+        N_Atomic_Type_Declaration));
       Pdef := Defining_Identifier (Dec);
 
       if Has_Discriminants (Pdef) then

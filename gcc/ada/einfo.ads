@@ -460,6 +460,12 @@ package Einfo is
 --       only in the root type, since derived types must have the same pool
 --       as the parent type.
 
+--    Atomic_Formal (Node24)
+--       Present in formal parameters (in, in out and out parameters). Used
+--       only for formals of atomic operations. References corresponding
+--       formal parameter in the internal version of the operation that
+--       is created during expansion.
+
 --    Atomic_Object (Node23)
 --       Applies to actions. Denotes the entity which is used to rename the
 --       _object component of protected types.
@@ -2046,6 +2052,10 @@ package Einfo is
 --       variables. Set if a pragma Atomic or Shared applies to the entity.
 --       In the case of private and incomplete types, this flag is set in
 --       both the partial view and the full view.
+
+--    Is_Atomic_Record_Type (synthesized)
+--       Applies to all entities, true if Is_Concurrent_Record_Type
+--       Corresponding_Concurrent_Type is an atomic type.
 
 --    Is_Atomic_Type (synthesized)
 --       Applies to all entities, true for atomic types and subtypes
@@ -5441,6 +5451,7 @@ package Einfo is
    --    Renamed_Object                      (Node18)   (always Empty)
    --    Default_Value                       (Node20)
    --    Protected_Formal                    (Node22)
+   --    Atomic_Formal                       (Node24)
    --    Is_Controlling_Formal               (Flag97)
    --    Is_Return_Object                    (Flag209)
    --    Parameter_Mode                      (synth)
@@ -5473,6 +5484,7 @@ package Einfo is
    --    Default_Expr_Function               (Node21)
    --    Protected_Formal                    (Node22)
    --    Extra_Constrained                   (Node23)
+   --    Atomic_Formal                       (Node24)
    --    Last_Assignment                     (Node26)   (OUT, IN-OUT only)
    --    Has_Initial_Value                   (Flag219)
    --    Is_Controlling_Formal               (Flag97)
@@ -6142,6 +6154,7 @@ package Einfo is
    function Associated_Formal_Package           (Id : E) return E;
    function Associated_Node_For_Itype           (Id : E) return N;
    function Associated_Storage_Pool             (Id : E) return E;
+   function Atomic_Formal                       (Id : E) return E;
    function Atomic_Object                       (Id : E) return E;
    function Barrier_Function                    (Id : E) return N;
    function Barrier_Service_Function            (Id : E) return E;
@@ -6613,6 +6626,7 @@ package Einfo is
    function Has_Foreign_Convention              (Id : E) return B;
    function Has_Private_Declaration             (Id : E) return B;
    function Implementation_Base_Type            (Id : E) return E;
+   function Is_Atomic_Record_Type            (Id : E) return B;
    function Is_Base_Type                        (Id : E) return B;
    function Is_Boolean_Type                     (Id : E) return B;
    function Is_Constant_Object                  (Id : E) return B;
@@ -6739,6 +6753,7 @@ package Einfo is
    procedure Set_Associated_Formal_Package       (Id : E; V : E);
    procedure Set_Associated_Node_For_Itype       (Id : E; V : N);
    procedure Set_Associated_Storage_Pool         (Id : E; V : E);
+   procedure Set_Atomic_Formal                   (Id : E; V : E);
    procedure Set_Atomic_Object                   (Id : E; V : E);
    procedure Set_Barrier_Function                (Id : E; V : N);
    procedure Set_Block_Node                      (Id : E; V : N);
@@ -7447,6 +7462,7 @@ package Einfo is
    pragma Inline (Associated_Formal_Package);
    pragma Inline (Associated_Node_For_Itype);
    pragma Inline (Associated_Storage_Pool);
+   pragma Inline (Atomic_Formal);
    pragma Inline (Atomic_Object);
    pragma Inline (Barrier_Function);
    pragma Inline (Block_Node);
@@ -7900,6 +7916,7 @@ package Einfo is
    pragma Inline (Set_Associated_Formal_Package);
    pragma Inline (Set_Associated_Node_For_Itype);
    pragma Inline (Set_Associated_Storage_Pool);
+   pragma Inline (Set_Atomic_Formal);
    pragma Inline (Set_Atomic_Object);
    pragma Inline (Set_Barrier_Function);
    pragma Inline (Set_Block_Node);

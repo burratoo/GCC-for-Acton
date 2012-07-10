@@ -2611,7 +2611,8 @@ package body Sem_Ch7 is
 
            or else
             ((Ekind (E) = E_Task_Type or else
-              Ekind (E) = E_Protected_Type)
+              Ekind (E) = E_Protected_Type or else
+              Ekind (E) = E_Atomic_Type)
                and then not Has_Completion (E))
 
            or else

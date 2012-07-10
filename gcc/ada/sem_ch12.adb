@@ -3842,6 +3842,18 @@ package body Sem_Ch12 is
                            end if;
                         end if;
 
+                        if Ekind (Enclosing_Master) = E_Action
+                          and then
+                            Ekind (Scope (Enclosing_Master)) = E_Atomic_Type
+                        then
+                           if not Expander_Active then
+                              exit Scope_Loop;
+                           else
+                              Enclosing_Master :=
+                                Action_Body_Subprogram (Enclosing_Master);
+                           end if;
+                        end if;
+
                         Set_Delay_Cleanups (Enclosing_Master);
 
                         while Ekind (Enclosing_Master) = E_Block loop
@@ -7690,6 +7702,7 @@ package body Sem_Ch12 is
                               N_Package_Declaration,
                               N_Task_Body,
                               N_Protected_Body,
+                              N_Atomic_Body,
                               N_Block_Statement)
          then
             return False;
@@ -12228,6 +12241,9 @@ package body Sem_Ch12 is
 
             when N_Protected_Type_Declaration =>
                Spec := Protected_Definition (Decl);
+
+            when N_Atomic_Type_Declaration =>
+               Spec := Atomic_Definition (Decl);
 
             when others =>
                Spec := Empty;

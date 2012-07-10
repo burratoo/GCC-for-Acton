@@ -270,8 +270,13 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, int definition)
 	      && Present (Protected_Body_Subprogram (gnat_temp)))
 	    gnat_temp = Protected_Body_Subprogram (gnat_temp);
 
+	  if (IN (Ekind (gnat_temp), Subprogram_Kind)
+	      && Present (Action_Body_Subprogram (gnat_temp)))
+	    gnat_temp = Action_Body_Subprogram (gnat_temp);
+
 	  if (Ekind (gnat_temp) == E_Entry
 	      || Ekind (gnat_temp) == E_Entry_Family
+	      || Ekind (gnat_temp) == E_Action
 	      || Ekind (gnat_temp) == E_Task_Type
 	      || (IN (Ekind (gnat_temp), Subprogram_Kind)
 		  && present_gnu_tree (gnat_temp)
@@ -561,6 +566,21 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, int definition)
 		 || (Is_Private_Type (Scop)
 		     && Present (Full_View (Scop))
 		     && Is_Protected_Type (Full_View (Scop))))
+		&& Present (Original_Record_Component (gnat_entity)))
+	      {
+		gnu_decl
+		  = gnat_to_gnu_entity (Original_Record_Component
+					(gnat_entity),
+					gnu_expr, 0);
+		saved = true;
+		break;
+	      }
+
+        /* We copy the above for Atomic types */
+	    if ((Is_Atomic_Type (Scop)
+		 || (Is_Private_Type (Scop)
+		     && Present (Full_View (Scop))
+		     && Is_Atomic_Type (Full_View (Scop))))
 		&& Present (Original_Record_Component (gnat_entity)))
 	      {
 		gnu_decl
@@ -4647,12 +4667,14 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, int definition)
     case E_Task_Subtype:
     case E_Protected_Type:
     case E_Protected_Subtype:
+    case E_Atomic_Type:
+    case E_Atomic_Subtype:
       /* Concurrent types are always transformed into their record type.  */
       if (type_annotate_only && No (gnat_equiv_type))
-	gnu_type = void_type_node;
+        gnu_type = void_type_node;
       else
-	gnu_decl = gnat_to_gnu_entity (gnat_equiv_type, NULL_TREE, 0);
-      maybe_present = true;
+        gnu_decl = gnat_to_gnu_entity (gnat_equiv_type, NULL_TREE, 0);
+        maybe_present = true;
       break;
 
     case E_Label:
@@ -5331,6 +5353,9 @@ gnat_first_param_is_class (Entity_Id gnat_entity)
   if (Is_Protected_Record_Type (gnat_type))
     return True;
 
+  if (Is_Atomic_Record_Type (gnat_type))
+    return True;
+
   /* If this is the special E_Subprogram_Type built for the declaration of
      an access to protected subprogram type, the first parameter will have
      type Address, but we must return true to be consistent with above.  */
@@ -5402,6 +5427,8 @@ Gigi_Equivalent_Type (Entity_Id gnat_entity)
     case E_Task_Subtype:
     case E_Protected_Type:
     case E_Protected_Subtype:
+    case E_Atomic_Type:
+    case E_Atomic_Subtype:
       gnat_equiv = Corresponding_Record_Type (gnat_entity);
       break;
 

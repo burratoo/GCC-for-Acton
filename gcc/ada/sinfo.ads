@@ -5759,6 +5759,7 @@ package Sinfo is
       --   discriminant part)
       --  Atomic_Definition (Node3)
       --  Corresponding_Body (Node5-Sem)
+      --  Interface_List (List2) (set to No_List if none)
 
       ------------------------------------
       -- 9.x  Single Atomic Declaration --
@@ -5775,6 +5776,7 @@ package Sinfo is
       --  Sloc points to ATOMIC
       --  Defining_Identifier (Node1)
       --  Atomic_Definition (Node3)
+      --  Interface_List (List2) (set to No_List if none)
 
       ----------------------------
       -- 9.x  Atomic Definition --
@@ -5863,6 +5865,8 @@ package Sinfo is
       --  Defining_Identifier (Node1)
       --  Parameter_Specifications (List3) (set to No_List if no formal part)
       --  Corresponding_Body (Node5-Sem)
+      --  Must_Override (Flag14) set if overriding indicator present
+      --  Must_Not_Override (Flag15) set if not_overriding indicator present
 
       --  Note: overriding indicator is an Ada 2005 feature
 
@@ -10557,6 +10561,33 @@ package Sinfo is
       V7 : Node_Kind;
       V8 : Node_Kind;
       V9 : Node_Kind) return Boolean;
+
+   function Nkind_In
+     (T   : Node_Kind;
+      V1  : Node_Kind;
+      V2  : Node_Kind;
+      V3  : Node_Kind;
+      V4  : Node_Kind;
+      V5  : Node_Kind;
+      V6  : Node_Kind;
+      V7  : Node_Kind;
+      V8  : Node_Kind;
+      V9  : Node_Kind;
+      V10 : Node_Kind) return Boolean;
+
+   function Nkind_In
+     (T   : Node_Kind;
+      V1  : Node_Kind;
+      V2  : Node_Kind;
+      V3  : Node_Kind;
+      V4  : Node_Kind;
+      V5  : Node_Kind;
+      V6  : Node_Kind;
+      V7  : Node_Kind;
+      V8  : Node_Kind;
+      V9  : Node_Kind;
+      V10 : Node_Kind;
+      V11 : Node_Kind) return Boolean;
 
    pragma Inline (Nkind_In);
    --  Inline all above functions

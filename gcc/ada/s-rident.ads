@@ -217,19 +217,19 @@ package System.Rident is
 
    subtype All_Parameter_Restrictions is
      Restriction_Id range
-       Max_Protected_Entries .. Max_Storage_At_Blocking;
+       Max_Actions .. Max_Storage_At_Blocking;
    --  All restrictions that take a parameter
 
    subtype Checked_Parameter_Restrictions is
      All_Parameter_Restrictions range
-       Max_Protected_Entries .. Max_Entry_Queue_Length;
+       Max_Actions .. Max_Entry_Queue_Length;
    --  These are the parameter restrictions that can be at least partially
    --  checked at compile/binder time. Minimally, the compiler can detect
    --  violations of a restriction pragma with a value of zero reliably.
 
    subtype Checked_Max_Parameter_Restrictions is
      Checked_Parameter_Restrictions range
-       Max_Protected_Entries .. Max_Task_Entries;
+       Max_Actions .. Max_Task_Entries;
    --  Restrictions with parameters that can be checked in some cases by
    --  maximizing among statically detected instances where the compiler
    --  can determine the count.
@@ -243,7 +243,7 @@ package System.Rident is
 
    subtype Checked_Val_Parameter_Restrictions is
      Checked_Parameter_Restrictions range
-       Max_Protected_Entries .. Max_Tasks;
+       Max_Actions .. Max_Tasks;
    --  Restrictions with parameter where the count is known at least in some
    --  cases by the compiler/binder.
 

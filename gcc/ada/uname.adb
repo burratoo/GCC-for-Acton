@@ -273,7 +273,8 @@ package body Uname is
                   Add_Node_Name (Defining_Unit_Name (Node));
 
                when N_Task_Body                       |
-                    N_Protected_Body                  =>
+                    N_Protected_Body                  |
+                    N_Atomic_Body                     =>
                   Add_Node_Name (Defining_Identifier (Node));
 
                when N_Package_Renaming_Declaration    =>
@@ -299,7 +300,8 @@ package body Uname is
                   Add_Node_Name (Defining_Identifier (Node));
 
                when N_Task_Body_Stub                  |
-                    N_Protected_Body_Stub             =>
+                    N_Protected_Body_Stub             |
+                    N_Atomic_Body_Stub                =>
                   Add_Node_Name (Get_Parent (Node));
                   Add_Char ('.');
                   Add_Node_Name (Defining_Identifier (Node));
@@ -324,7 +326,9 @@ package body Uname is
                when N_Task_Type_Declaration           |
                     N_Single_Task_Declaration         |
                     N_Protected_Type_Declaration      |
-                    N_Single_Protected_Declaration    =>
+                    N_Single_Protected_Declaration    |
+                    N_Atomic_Type_Declaration         |
+                    N_Single_Atomic_Declaration       =>
                   Add_Node_Name (Defining_Identifier (Node));
 
                when others =>
@@ -389,8 +393,10 @@ package body Uname is
               N_Generic_Renaming_Declaration    |
               N_Single_Task_Declaration         |
               N_Single_Protected_Declaration    |
+              N_Single_Atomic_Declaration       |
               N_Task_Type_Declaration           |
-              N_Protected_Type_Declaration      =>
+              N_Protected_Type_Declaration      |
+              N_Atomic_Type_Declaration         =>
 
             Add_Char ('s');
 
@@ -400,6 +406,7 @@ package body Uname is
               N_Body_Stub                       |
               N_Task_Body                       |
               N_Protected_Body                  |
+              N_Atomic_Body                     |
               N_Identifier                      |
               N_Selected_Component              =>
 

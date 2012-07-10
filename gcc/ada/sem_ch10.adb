@@ -2926,7 +2926,8 @@ package body Sem_Ch10 is
       if Nkind_In (Kind, N_Package_Body,
                          N_Subprogram_Body,
                          N_Task_Body,
-                         N_Protected_Body)
+                         N_Protected_Body,
+                         N_Atomic_Body)
         and then Nkind_In (Parent (Par), N_Compilation_Unit, N_Subunit)
       then
          null;
@@ -5485,7 +5486,8 @@ package body Sem_Ch10 is
             elsif Nkind_In (Decl, N_Private_Type_Declaration,
                                   N_Incomplete_Type_Declaration,
                                   N_Task_Type_Declaration,
-                                  N_Protected_Type_Declaration)
+                                  N_Protected_Type_Declaration,
+                                  N_Atomic_Type_Declaration)
             then
                Comp_Typ := Defining_Identifier (Decl);
 

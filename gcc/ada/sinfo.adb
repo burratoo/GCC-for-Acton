@@ -1741,11 +1741,13 @@ package body Sinfo is
       (N : Node_Id) return List_Id is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Atomic_Type_Declaration
         or else NT (N).Nkind = N_Derived_Type_Definition
         or else NT (N).Nkind = N_Formal_Derived_Type_Definition
         or else NT (N).Nkind = N_Private_Extension_Declaration
         or else NT (N).Nkind = N_Protected_Type_Declaration
         or else NT (N).Nkind = N_Record_Definition
+        or else NT (N).Nkind = N_Single_Atomic_Declaration
         or else NT (N).Nkind = N_Single_Protected_Declaration
         or else NT (N).Nkind = N_Single_Task_Declaration
         or else NT (N).Nkind = N_Task_Type_Declaration);
@@ -2217,6 +2219,7 @@ package body Sinfo is
       (N : Node_Id) return Boolean is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Action_Declaration
         or else NT (N).Nkind = N_Entry_Declaration
         or else NT (N).Nkind = N_Function_Instantiation
         or else NT (N).Nkind = N_Function_Specification
@@ -2229,6 +2232,7 @@ package body Sinfo is
       (N : Node_Id) return Boolean is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Action_Declaration
         or else NT (N).Nkind = N_Entry_Declaration
         or else NT (N).Nkind = N_Function_Instantiation
         or else NT (N).Nkind = N_Function_Specification
@@ -4968,11 +4972,13 @@ package body Sinfo is
       (N : Node_Id; Val : List_Id) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Atomic_Type_Declaration
         or else NT (N).Nkind = N_Derived_Type_Definition
         or else NT (N).Nkind = N_Formal_Derived_Type_Definition
         or else NT (N).Nkind = N_Private_Extension_Declaration
         or else NT (N).Nkind = N_Protected_Type_Declaration
         or else NT (N).Nkind = N_Record_Definition
+        or else NT (N).Nkind = N_Single_Atomic_Declaration
         or else NT (N).Nkind = N_Single_Protected_Declaration
         or else NT (N).Nkind = N_Single_Task_Declaration
         or else NT (N).Nkind = N_Task_Type_Declaration);
@@ -5444,6 +5450,7 @@ package body Sinfo is
       (N : Node_Id; Val : Boolean := True) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Action_Declaration
         or else NT (N).Nkind = N_Entry_Declaration
         or else NT (N).Nkind = N_Function_Instantiation
         or else NT (N).Nkind = N_Function_Specification
@@ -5456,6 +5463,7 @@ package body Sinfo is
       (N : Node_Id; Val : Boolean := True) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Action_Declaration
         or else NT (N).Nkind = N_Entry_Declaration
         or else NT (N).Nkind = N_Function_Instantiation
         or else NT (N).Nkind = N_Function_Specification
@@ -6715,6 +6723,60 @@ package body Sinfo is
              T = V7 or else
              T = V8 or else
              T = V9;
+   end Nkind_In;
+
+   function Nkind_In
+     (T   : Node_Kind;
+      V1  : Node_Kind;
+      V2  : Node_Kind;
+      V3  : Node_Kind;
+      V4  : Node_Kind;
+      V5  : Node_Kind;
+      V6  : Node_Kind;
+      V7  : Node_Kind;
+      V8  : Node_Kind;
+      V9  : Node_Kind;
+      V10 : Node_Kind) return Boolean
+   is
+   begin
+      return T = V1 or else
+             T = V2 or else
+             T = V3 or else
+             T = V4 or else
+             T = V5 or else
+             T = V6 or else
+             T = V7 or else
+             T = V8 or else
+             T = V9 or else
+             T = V10;
+   end Nkind_In;
+
+   function Nkind_In
+     (T   : Node_Kind;
+      V1  : Node_Kind;
+      V2  : Node_Kind;
+      V3  : Node_Kind;
+      V4  : Node_Kind;
+      V5  : Node_Kind;
+      V6  : Node_Kind;
+      V7  : Node_Kind;
+      V8  : Node_Kind;
+      V9  : Node_Kind;
+      V10 : Node_Kind;
+      V11 : Node_Kind) return Boolean
+   is
+   begin
+      return T = V1 or else
+             T = V2 or else
+             T = V3 or else
+             T = V4 or else
+             T = V5 or else
+             T = V6 or else
+             T = V7 or else
+             T = V8 or else
+             T = V9 or else
+             T = V10 or else
+             T = V11;
    end Nkind_In;
 
    -----------------

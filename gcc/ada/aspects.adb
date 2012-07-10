@@ -188,7 +188,9 @@ package body Aspects is
    -----------------------------------
 
    Has_Aspect_Specifications_Flag : constant array (Node_Kind) of Boolean :=
-     (N_Abstract_Subprogram_Declaration        => True,
+     (N_Action_Declaration                     => True,
+      N_Atomic_Type_Declaration                => True,
+      N_Abstract_Subprogram_Declaration        => True,
       N_Component_Declaration                  => True,
       N_Entry_Declaration                      => True,
       N_Exception_Declaration                  => True,
@@ -215,6 +217,7 @@ package body Aspects is
       N_Procedure_Instantiation                => True,
       N_Protected_Body                         => True,
       N_Protected_Type_Declaration             => True,
+      N_Single_Atomic_Declaration              => True,
       N_Single_Protected_Declaration           => True,
       N_Single_Task_Declaration                => True,
       N_Subprogram_Body                        => True,

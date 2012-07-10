@@ -241,6 +241,7 @@ package body Exp_Alfa is
               E_Generic_Procedure |
               E_Entry             |
               E_Entry_Family      |
+              E_Action            |
               E_Return_Statement =>
             null;
 
