@@ -1312,6 +1312,14 @@ package body Sinfo is
       return List1 (N);
    end Expressions;
 
+   function Finalization_Statements
+      (N : Node_Id) return List_Id is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Procedure_Specification);
+      return List4 (N);
+   end Finalization_Statements;
+
    function First_Bit
       (N : Node_Id) return Node_Id is
    begin
@@ -4542,6 +4550,14 @@ package body Sinfo is
         or else NT (N).Nkind = N_Indexed_Component);
       Set_List1_With_Parent (N, Val);
    end Set_Expressions;
+
+   procedure Set_Finalization_Statements
+      (N : Node_Id; Val : List_Id) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Procedure_Specification);
+      Set_List4_With_Parent (N, Val);
+   end Set_Finalization_Statements;
 
    procedure Set_First_Bit
       (N : Node_Id; Val : Node_Id) is

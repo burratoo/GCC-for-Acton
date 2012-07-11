@@ -470,6 +470,7 @@ package body Exp_Ch7 is
                                  and then Is_External_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
+                                 and then Nkind (N) /= N_Action_Body
                                  and then Is_Task_Master (N);
       Is_Protected_Body    : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
@@ -547,7 +548,7 @@ package body Exp_Ch7 is
          --  Exp_Atom.Build_External_Action_Body.
 
          declare
-            Spec : constant Entity_Id := Corresponding_Spec (N);
+            Spec : constant Entity_Id := Specification (N);
             S    : constant List_Id   := Finalization_Statements (Spec);
          begin
             Append_List_To (Stmts, S);
@@ -3796,21 +3797,28 @@ package body Exp_Ch7 is
          --  Move the declarations into the sequence of statements in order to
          --  have them protected by the At_End handler. It may seem weird to
          --  put declarations in the sequence of statement but in fact nothing
-         --  forbids that at the tree level.
+         --  forbids that at the tree level. We do not do this for the external
+         --  action body as the At_End handler requires these declarations.
 
-         Append_List_To (Decls, Statements (HSS));
-         Set_Statements (HSS, Decls);
+         if not Is_Action_Body then
 
-         --  Reset the Sloc of the handled statement sequence to properly
-         --  reflect the new initial "statement" in the sequence.
+            Append_List_To (Decls, Statements (HSS));
+            Set_Statements (HSS, Decls);
 
-         Set_Sloc (HSS, Sloc (First (Decls)));
+            --  Reset the Sloc of the handled statement sequence to properly
+            --  reflect the new initial "statement" in the sequence.
 
-         --  The declarations of finalizer spec and auxiliary variables replace
-         --  the old declarations that have been moved inward.
+            Set_Sloc (HSS, Sloc (First (Decls)));
 
-         Set_Declarations (N, New_Decls);
-         Analyze_Declarations (New_Decls);
+            --  The declarations of finalizer spec and auxiliary variables
+            --  replace the old declarations that have been moved inward.
+
+            Set_Declarations (N, New_Decls);
+            Analyze_Declarations (New_Decls);
+
+         else
+            New_Decls := Decls;
+         end if;
 
          --  Generate finalization calls for all controlled objects appearing
          --  in the statements of N. Add context specific cleanup for various

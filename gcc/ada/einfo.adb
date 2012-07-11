@@ -164,7 +164,6 @@ package body Einfo is
    --    Default_Aspect_Component_Value  Node19
    --    Default_Aspect_Value            Node19
    --    Extra_Accessibility_Of_Result   Node19
-   --    Finalization_Statements         List19
    --    Parent_Subtype                  Node19
    --    Size_Check_Code                 Node19
    --    Spec_Entity                     Node19
@@ -1113,12 +1112,6 @@ package body Einfo is
       pragma Assert (Is_Access_Type (Id));
       return Node23 (Root_Type (Id));
    end Finalization_Master;
-
-   function Finalization_Statements (Id : E) return S is
-   begin
-      pragma Assert (Ekind (Id) = E_Procedure);
-      return List19 (Id);
-   end Finalization_Statements;
 
    function Finalize_Storage_Only (Id : E) return B is
    begin
@@ -3646,12 +3639,6 @@ package body Einfo is
       pragma Assert (Is_Access_Type (Id) and then Is_Base_Type (Id));
       Set_Node23 (Id, V);
    end Set_Finalization_Master;
-
-   procedure Set_Finalization_Statements (Id : E; V : S) is
-   begin
-      pragma Assert (Ekind (Id) = E_Procedure);
-      Set_List19 (Id, V);
-   end Set_Finalization_Statements;
 
    procedure Set_Finalize_Storage_Only (Id : E; V : B := True) is
    begin
@@ -8444,8 +8431,6 @@ package body Einfo is
          when E_Function | E_Operator | E_Subprogram_Type =>
             Write_Str ("Extra_Accessibility_Of_Result");
 
-         when E_Procedure                                  =>
-            Write_Str ("Finalization_Statements");
          when others                                       =>
             Write_Str ("Field19??");
       end case;

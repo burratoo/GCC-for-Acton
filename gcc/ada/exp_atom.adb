@@ -72,19 +72,16 @@ package body Exp_Atom is
    --  concurrent entity (task type or protected type).
    --  NOTE : This function is the same Exp_Ch9.
 
-   procedure Build_External_Action_Body
+   function Build_External_Action_Body
      (N     : Node_Id;
       Pid   : Entity_Id;
-      Ibody : Node_Id;
-      Ebody : out Node_Id;
-      Fstms : out List_Id);
+      Ibody : Node_Id) return Node_Id;
    --  This procedure is used to construct the external version of an action.
    --  Its statement sequence first enters the associated atomic object, and
    --  then enters a block that contains a call to the internal version of the
    --  action (for details, see Build_Internal_Action_Body). This block
    --  statement requires a cleanup handler that exits the atomic action in all
-   --  cases. Fstms provides the statements for this cleanup handler.
-   --  (see Exp_Ch7.Expand_Cleanup_Actions).
+   --  cases. (see Exp_Ch7.Expand_Cleanup_Actions).
 
    function Build_Internal_Action_Body
      (N   : Node_Id;
@@ -368,18 +365,18 @@ package body Exp_Atom is
    -- Build_External_Action_Body --
    --------------------------------
 
-   procedure Build_External_Action_Body
+   function Build_External_Action_Body
      (N     : Node_Id;
       Pid   : Entity_Id;
-      Ibody : Node_Id;
-      Ebody : out Node_Id;
-      Fstms : out List_Id)
+      Ibody : Node_Id) return Node_Id
    is
       Loc           : constant Source_Ptr := Sloc (N);
       Adec          : constant Node_Id    := Find_Atomic_Declaration (Pid);
       E             : constant Entity_Id  := Make_Temporary (Loc, 'E');
       E_True_Stmt   : Node_Id;
       E_Op_Spec     : Node_Id;
+      Ebody         : Node_Id;
+      Fstms         : List_Id;
       Iactuals      : List_Id;
       Pformal       : Node_Id;
       Internal_Call : Node_Id;
@@ -394,7 +391,7 @@ package body Exp_Atom is
       --  Builds the block that handles the detection and response of an atomic
       --  error.
 
-      function New_Atomic_Error (Loc : Source_Ptr) return Node_Id;
+      function New_Raise_Atomic_Error (Loc : Source_Ptr) return Node_Id;
       --  This function builds a tree corresponding to the Ada statement
       --  "raise Atomic_Error" and returns the root of this tree,
       --  the N_Raise_Statement node.
@@ -414,76 +411,79 @@ package body Exp_Atom is
                        Chars (Standard_Entity (S_Atomic_Error));
 
       begin
-
-         --  Build exception check.
-
-         If_Stmt :=
-           Make_Implicit_If_Statement (N,
-             Condition       => New_Reference_To (E, Loc),
-             Then_Statements => New_List (New_Atomic_Error (Loc)));
-
          --  Search for and extract Atomic_Error Handler from internal
          --  subprogram.
 
          Handlers := Exception_Handlers (Handled_Statement_Sequence (Ibody));
          Handler := First (Handlers);
 
-         --  If no exception handlers are present in the internal subprogram's
-         --  body then there is no Atomic_Error handler to copy.
+         --  Search for the Atomic_Error handler in the internal body.
 
-         if not Present (Handler) then
-            Block_Hs := New_List;
+         Handler_Loop :
+         while Present (Handler) loop
+            E_Choices := Exception_Choices (Handler);
+            E_Choice := First (E_Choices);
+            while Present (E_Choice) loop
+               if Chars (E_Choice) = Atom_Name then
+                  Block_Hs := New_List (
+                    Make_Exception_Handler (Loc,
+                      Choice_Parameter  =>
+                        New_Copy (Choice_Parameter (Handler)),
+                      Exception_Choices =>
+                        New_List (New_Copy (E_Choice)),
+                      Statements        =>
+                        New_Copy_List (Statements (Handler))));
 
-            --  Otherwise search for the Atomic_Error handler.
+                  --  If the exception handler only handles Atomic_Error,
+                  --  we remove the handler.
 
-         else
-            Handler_Loop :
-            while Present (Handler) loop
-               E_Choices := Exception_Choices (Handler);
-               E_Choice := First (E_Choices);
-               while Present (E_Choice) loop
-                  if Chars (E_Choice) = Atom_Name then
-                     Block_Hs := New_List (
-                       Make_Exception_Handler (Loc,
-                         Choice_Parameter  =>
-                           New_Copy (Choice_Parameter (Handler)),
-                         Exception_Choices =>
-                           New_List (New_Copy (E_Choice)),
-                         Statements        =>
-                           New_Copy_List (Statements (Handler))));
+                  if List_Length (E_Choices) = 1 then
+                     Remove (Handler);
 
-                     --  If the exception handler only handles Atomic_Error,
-                     --  we remove the handler.
-
-                     if List_Length (E_Choices) = 1 then
-                        Remove (Handler);
-
-                        --  Otherwise, the handler handles other exceptions,
-                        --  and we only remove the Atomic_Error choice.
-                     else
-                        Remove (E_Choice);
-                     end if;
-
-                     exit Handler_Loop;
+                     --  Otherwise, the handler handles other exceptions,
+                     --  and we only remove the Atomic_Error choice.
+                  else
+                     Remove (E_Choice);
                   end if;
-               end loop;
-            end loop Handler_Loop;
+
+                  exit Handler_Loop;
+               end if;
+            end loop;
+         end loop Handler_Loop;
+
+         --  If no exception handlers are present in the internal subprogram's
+         --  body then there is no Atomic_Error handler to copy. Instead, we
+         --  create a null block as we do not need to create the exception
+         --  block.
+
+         if Is_Empty_List (Block_Hs) then
+            return Make_Block_Statement (Loc,
+              Handled_Statement_Sequence =>
+                Make_Handled_Sequence_Of_Statements (Loc,
+                  Statements         => New_List (Make_Null_Statement (Loc))));
+         else
+
+            --  Build atomic exception block
+
+            If_Stmt :=
+            Make_Implicit_If_Statement (N,
+              Condition       => New_Reference_To (E, Loc),
+              Then_Statements => New_List (New_Raise_Atomic_Error (Loc)));
+
+            return Make_Block_Statement (Loc,
+              Handled_Statement_Sequence =>
+                Make_Handled_Sequence_Of_Statements (Loc,
+                  Statements         => New_List (If_Stmt),
+                  Exception_Handlers => Block_Hs));
          end if;
 
-         --  Build atomic exception block
-
-         return Make_Block_Statement (Loc,
-           Handled_Statement_Sequence =>
-             Make_Handled_Sequence_Of_Statements (Loc,
-               Statements         => New_List (If_Stmt),
-               Exception_Handlers => Block_Hs));
       end Build_Atomic_Exception_Block;
 
-      ----------------------
-      -- New_Atomic_Error --
-      ----------------------
+      ----------------------------
+      -- New_Raise_Atomic_Error --
+      ----------------------------
 
-      function New_Atomic_Error (Loc : Source_Ptr) return Node_Id is
+      function New_Raise_Atomic_Error (Loc : Source_Ptr) return Node_Id is
          Ident_Node : Node_Id;
          Raise_Node : Node_Id;
 
@@ -494,7 +494,9 @@ package body Exp_Atom is
          Raise_Node := New_Node (N_Raise_Statement, Loc);
          Set_Name (Raise_Node, Ident_Node);
          return Raise_Node;
-      end New_Atomic_Error;
+      end New_Raise_Atomic_Error;
+
+   --  Start of processing for Build_External_Action_Body
 
    begin
       E_Op_Spec :=
@@ -520,6 +522,7 @@ package body Exp_Atom is
         Make_Object_Declaration (Loc,
           Defining_Identifier =>
             Make_Defining_Identifier (Loc, Name_uAction_Id),
+          Constant_Present    => True,
           Object_Definition   =>
             New_Reference_To (RTE (RE_Action_Index), Loc),
           Expression          =>
@@ -607,6 +610,11 @@ package body Exp_Atom is
             New_Reference_To (RTE (RE_Exit_Action), Loc),
           Parameter_Associations =>  New_List (New_Copy (Object_Parm),
             Make_Identifier (Loc, Name_uAction_Id))));
+
+      Set_Finalization_Statements
+        (Specification (Ebody), Fstms);
+
+      return Ebody;
 
    end Build_External_Action_Body;
 
@@ -1162,15 +1170,13 @@ package body Exp_Atom is
                   Insert_After (Current_Node, Ibody);
                   Current_Node := Ibody;
 
-                  Build_External_Action_Body
-                    (Op_Body, Pid, Ibody, New_Op_Body, Fstms);
+                  New_Op_Body :=
+                    Build_External_Action_Body (Op_Body, Pid, Ibody);
 
                   Insert_After (Current_Node, New_Op_Body);
                   Analyze (Ibody);
                   Analyze (New_Op_Body);
 
-                  Set_Finalization_Statements
-                    (Corresponding_Spec (New_Op_Body), Fstms);
                   Current_Node := New_Op_Body;
                end;
 

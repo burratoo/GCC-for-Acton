@@ -1014,6 +1014,11 @@ package Sinfo is
    --    target of the assignment or initialization is used to generate the
    --    left-hand side of individual assignment to each sub-component.
 
+   --  Finalization_Statements (List4-Sem)
+   --    Present in N_Procedure_Specification node used as the external
+   --    subprograms for actions. The field contains a list of statements to be
+   --    used by the procedures's finalization subprogram.
+
    --  First_Inlined_Subprogram (Node3-Sem)
    --    Present in the N_Compilation_Unit node for the main program. Points
    --    to a chain of entities for subprograms that are to be inlined. The
@@ -4462,6 +4467,7 @@ package Sinfo is
       --  Defining_Unit_Name (Node1)
       --  Elaboration_Boolean (Node2-Sem)
       --  Parameter_Specifications (List3) (set to No_List if no formal part)
+      --  Finalization_Statements (List4-Sem) (used for Actions)
       --  Generic_Parent (Node5-Sem)
       --  Null_Present (Flag13) set for null procedure case (Ada 2005 feature)
       --  Must_Override (Flag14) set if overriding indicator present
@@ -8797,6 +8803,9 @@ package Sinfo is
    function Expressions
      (N : Node_Id) return List_Id;    -- List1
 
+   function Finalization_Statements
+     (N : Node_Id) return List_Id;    -- List4
+
    function First_Bit
      (N : Node_Id) return Node_Id;    -- Node3
 
@@ -9819,6 +9828,9 @@ package Sinfo is
 
    procedure Set_Expressions
      (N : Node_Id; Val : List_Id);            -- List1
+
+   procedure Set_Finalization_Statements
+     (N : Node_Id; Val : List_Id);            -- List4
 
    procedure Set_First_Bit
      (N : Node_Id; Val : Node_Id);            -- Node3
@@ -11312,7 +11324,7 @@ package Sinfo is
        (1 => True,    --  Defining_Unit_Name (Node1)
         2 => False,   --  Elaboration_Boolean (Node2-Sem)
         3 => True,    --  Parameter_Specifications (List3)
-        4 => False,   --  unused
+        4 => False,   --  Finalization_Statements (List4-Sem)
         5 => False),  --  Generic_Parent (Node5-Sem)
 
      N_Designator =>
@@ -12432,6 +12444,7 @@ package Sinfo is
    pragma Inline (Explicit_Generic_Actual_Parameter);
    pragma Inline (Expression);
    pragma Inline (Expressions);
+   pragma Inline (Finalization_Statements);
    pragma Inline (First_Bit);
    pragma Inline (First_Inlined_Subprogram);
    pragma Inline (First_Name);
@@ -12770,6 +12783,7 @@ package Sinfo is
    pragma Inline (Set_Explicit_Generic_Actual_Parameter);
    pragma Inline (Set_Expression);
    pragma Inline (Set_Expressions);
+   pragma Inline (Set_Finalization_Statements);
    pragma Inline (Set_First_Bit);
    pragma Inline (Set_First_Inlined_Subprogram);
    pragma Inline (Set_First_Name);
