@@ -49,6 +49,15 @@ package body Exp_Atom is
       Atm   : Entity_Id) return Node_Id;
    --  Compute the index position for an entry call.
 
+   function Build_Action_Body
+     (N     : Node_Id;
+      Pid   : Entity_Id) return Node_Id;
+   --  This procedure is used to construct the external version of an action.
+   --  Its statement sequence first enters the associated atomic object, and
+   --  then enters a block that contains the code of the original body. This
+   --  block statement requires a cleanup handler that exits the atomic action
+   --  in all cases. (see Exp_Ch7.Expand_Cleanup_Actions).
+
    function Build_Action_Count_Expression
      (Atomic_Type     : Node_Id;
       Component_List  : List_Id;
@@ -58,8 +67,7 @@ package body Exp_Atom is
 
    function Build_Action_Specification
      (N          : Node_Id;
-      Atomic_Typ : Entity_Id;
-      Kind       : Action_Sub_Kind) return Node_Id;
+      Atomic_Typ : Entity_Id) return Node_Id;
    --  Build the specification for actions. This is called when expanding an
    --  atomic type.
 
@@ -71,24 +79,6 @@ package body Exp_Atom is
    --  build record declaration. N is the type declaration, Ctyp is the
    --  concurrent entity (task type or protected type).
    --  NOTE : This function is the same Exp_Ch9.
-
-   function Build_External_Action_Body
-     (N     : Node_Id;
-      Pid   : Entity_Id;
-      Ibody : Node_Id) return Node_Id;
-   --  This procedure is used to construct the external version of an action.
-   --  Its statement sequence first enters the associated atomic object, and
-   --  then enters a block that contains a call to the internal version of the
-   --  action (for details, see Build_Internal_Action_Body). This block
-   --  statement requires a cleanup handler that exits the atomic action in all
-   --  cases. (see Exp_Ch7.Expand_Cleanup_Actions).
-
-   function Build_Internal_Action_Body
-     (N   : Node_Id;
-      Pid : Node_Id) return Node_Id;
-   --  This routine constructs the internal version of an action body, which is
-   --  contains all of the code in the original, unexpanded body. Called only
-   --  by the external version of the action body.
 
    function Build_Selected_Name
      (Prefix      : Entity_Id;
@@ -191,8 +181,7 @@ package body Exp_Atom is
 
    function Build_Action_Specification
      (N          : Node_Id;
-      Atomic_Typ : Entity_Id;
-      Kind       : Action_Sub_Kind) return Node_Id
+      Atomic_Typ : Entity_Id) return Node_Id
    is
       Loc         : constant Source_Ptr := Sloc (N);
       Def_Id      : constant Entity_Id  := Defining_Identifier (N);
@@ -200,11 +189,6 @@ package body Exp_Atom is
       New_Id      : Entity_Id;
       New_Plist   : List_Id;
       New_Spec    : Node_Id;
-
-      Append_Chr : constant array (Action_Sub_Kind) of Character :=
-                     (Dispatching_Kind => ' ',
-                      External_Kind    => 'E',
-                      Internal_Kind    => 'I');
 
    begin
       if Nkind (N) = N_Action_Body then
@@ -233,9 +217,7 @@ package body Exp_Atom is
                 Out_Present         => Out_Present (Parent (Formal)),
                 Parameter_Type      => New_Reference_To (Etype (Formal), Loc));
 
-            if Kind = Internal_Kind then
-               Set_Atomic_Formal (Formal, Defining_Identifier (New_Param));
-            end if;
+            Set_Atomic_Formal (Formal, Defining_Identifier (New_Param));
 
             Append (New_Param, New_Plist);
             Next_Formal (Formal);
@@ -256,7 +238,7 @@ package body Exp_Atom is
       New_Id :=
         Make_Defining_Identifier (Loc,
           Chars => Build_Selected_Name
-            (Atomic_Typ, Def_Id, Append_Chr (Kind)));
+            (Atomic_Typ, Def_Id));
 
       --  The internal operation carries the user code, and debugging
       --  information must be generated for it, even though this spec does
@@ -362,34 +344,34 @@ package body Exp_Atom is
    end Build_Corresponding_Record;
 
    --------------------------------
-   -- Build_External_Action_Body --
+   -- Build_Action_Body --
    --------------------------------
 
-   function Build_External_Action_Body
+   function Build_Action_Body
      (N     : Node_Id;
-      Pid   : Entity_Id;
-      Ibody : Node_Id) return Node_Id
+      Pid   : Entity_Id) return Node_Id
    is
       Loc           : constant Source_Ptr := Sloc (N);
       Adec          : constant Node_Id    := Find_Atomic_Declaration (Pid);
-      E             : constant Entity_Id  := Make_Temporary (Loc, 'E');
-      E_True_Stmt   : Node_Id;
-      E_Op_Spec     : Node_Id;
-      Ebody         : Node_Id;
+      E             : constant Entity_Id  :=
+                        Make_Defining_Identifier (Loc,
+                          New_External_Name (Name_uExcept, Suffix_Index => 1));
+      Action_Body   : Node_Id;
+      Op_Spec       : Node_Id;
+      Sub_Body      : Node_Id;
       Fstms         : List_Id;
       Iactuals      : List_Id;
       Pformal       : Node_Id;
-      Internal_Call : Node_Id;
       Sub_Type      : Node_Id;
-      Action_Stmt   : Node_Id;
+      Enter_Call    : Node_Id;
       Stmts         : List_Id;
       Object_Parm   : Node_Id;
       Exc_Safe      : Boolean;
       Decls         : List_Id := Empty_List;
 
-      function Build_Atomic_Exception_Block return Node_Id;
-      --  Builds the block that handles the detection and response of an atomic
-      --  error.
+      function Build_Atomic_Exception_Stmts return List_Id;
+      --  Builds the statements that handles the detection and response of an
+      --  atomic error at the end of the atomic action.
 
       function New_Raise_Atomic_Error (Loc : Source_Ptr) return Node_Id;
       --  This function builds a tree corresponding to the Ada statement
@@ -397,87 +379,71 @@ package body Exp_Atom is
       --  the N_Raise_Statement node.
 
       ----------------------------------
-      -- Build_Atomic_Exception_Block --
+      -- Build_Atomic_Exception_Stmts --
       ----------------------------------
 
-      function Build_Atomic_Exception_Block return Node_Id is
-         If_Stmt   : Node_Id;
-         Handlers  : List_Id;
-         Handler   : Node_Id;
-         Block_Hs  : List_Id;
-         E_Choice  : Node_Id;
-         E_Choices : List_Id;
+      function Build_Atomic_Exception_Stmts return List_Id is
          Atom_Name : constant Name_Id :=
                        Chars (Standard_Entity (S_Atomic_Error));
+         Stmts     : List_Id := New_List;
+         Spec      : Entity_Id :=
+                       Corresponding_Spec (Action_Body_Formal_Part (N));
+         P         : Node_Id;
 
       begin
-         --  Search for and extract Atomic_Error Handler from internal
-         --  subprogram.
 
-         Handlers := Exception_Handlers (Handled_Statement_Sequence (Ibody));
-         Handler := First (Handlers);
-
-         --  Search for the Atomic_Error handler in the internal body.
-
-         Handler_Loop :
-         while Present (Handler) loop
-            E_Choices := Exception_Choices (Handler);
-            E_Choice := First (E_Choices);
-            while Present (E_Choice) loop
-               if Chars (E_Choice) = Atom_Name then
-                  Block_Hs := New_List (
-                    Make_Exception_Handler (Loc,
-                      Choice_Parameter  =>
-                        New_Copy (Choice_Parameter (Handler)),
-                      Exception_Choices =>
-                        New_List (New_Copy (E_Choice)),
-                      Statements        =>
-                        New_Copy_List (Statements (Handler))));
-
-                  --  If the exception handler only handles Atomic_Error,
-                  --  we remove the handler.
-
-                  if List_Length (E_Choices) = 1 then
-                     Remove (Handler);
-
-                     --  Otherwise, the handler handles other exceptions,
-                     --  and we only remove the Atomic_Error choice.
-                  else
-                     Remove (E_Choice);
-                  end if;
-
-                  exit Handler_Loop;
-               end if;
-            end loop;
-         end loop Handler_Loop;
-
-         --  If no exception handlers are present in the internal subprogram's
-         --  body then there is no Atomic_Error handler to copy. Instead, we
-         --  create a null block as we do not need to create the exception
-         --  block.
-
-         if Is_Empty_List (Block_Hs) then
-            return Make_Block_Statement (Loc,
-              Handled_Statement_Sequence =>
-                Make_Handled_Sequence_Of_Statements (Loc,
-                  Statements         => New_List (Make_Null_Statement (Loc))));
-         else
-
-            --  Build atomic exception block
-
-            If_Stmt :=
-            Make_Implicit_If_Statement (N,
-              Condition       => New_Reference_To (E, Loc),
-              Then_Statements => New_List (New_Raise_Atomic_Error (Loc)));
-
-            return Make_Block_Statement (Loc,
-              Handled_Statement_Sequence =>
-                Make_Handled_Sequence_Of_Statements (Loc,
-                  Statements         => New_List (If_Stmt),
-                  Exception_Handlers => Block_Hs));
+         if Has_End_Barrier (Adec) then
+            Append_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   =>
+                  New_Reference_To (RTE (RE_Action_End_Barrier), Loc),
+                Parameter_Associations =>
+                  New_List (New_Copy (Object_Parm),
+                    Action_Index_Expression (Loc,
+                      Defining_Identifier (N), Pid),
+                    New_Reference_To (E, Loc))));
          end if;
 
-      end Build_Atomic_Exception_Block;
+         Append_To (Stmts,
+           Make_Implicit_If_Statement (N,
+             Condition       => New_Reference_To (E, Loc),
+             Then_Statements => New_List (New_Raise_Atomic_Error (Loc))));
+
+         --  Expand each pragma Ensure to
+         --    if not condition then
+         --       E := False;
+         --    end if;
+
+         --  Note we consider this to be an explicit conditional in the source,
+         --  not an implicit if.
+
+         --  We prepend each expanded pragma to the start of the statement list
+         --  as each pragma was entered into the Ensure list in reverse order.
+
+         P := Ensure (Spec);
+         while Present (P) loop
+            Prepend_To (Stmts,
+              Make_If_Statement (Loc,
+                Condition =>
+                  Make_Op_Not (Loc,
+                    Right_Opnd =>
+                      Expression (First (Pragma_Argument_Associations (P)))),
+                Then_Statements => New_List (
+                  Make_Assignment_Statement (Loc,
+                    Name       => New_Reference_To (E, Loc),
+                    Expression => New_Reference_To (Standard_False, Loc)))));
+
+            P := Next_Pragma (P);
+         end loop;
+
+         Prepend_To (Stmts,
+           Make_Assignment_Statement (Loc,
+             Name       => New_Reference_To (E, Loc),
+             Expression => New_Reference_To (Standard_True, Loc)));
+
+         return Stmts;
+
+      end Build_Atomic_Exception_Stmts;
 
       ----------------------------
       -- New_Raise_Atomic_Error --
@@ -496,11 +462,16 @@ package body Exp_Atom is
          return Raise_Node;
       end New_Raise_Atomic_Error;
 
-   --  Start of processing for Build_External_Action_Body
+   --  Start of processing for Build_Action_Body
 
    begin
-      E_Op_Spec :=
-        Build_Action_Specification (N, Pid, External_Kind);
+      --  Add renamings for the Atomic object, discriminals, privals and
+      --  for use by debugger.
+
+      Debug_Private_Data_Declarations (Decls);
+
+      Op_Spec :=
+        Build_Action_Specification (N, Pid);
 
       --  Create declaration for exception flag. Also build the statement
       --  that sets the exception flag to True.
@@ -509,12 +480,7 @@ package body Exp_Atom is
         Make_Object_Declaration (Loc,
           Defining_Identifier => E,
           Object_Definition   => New_Reference_To (Standard_Boolean, Loc),
-          Expression          => New_Reference_To (Standard_False, Loc)));
-
-      E_True_Stmt :=
-        Make_Assignment_Statement (Loc,
-          Name       => New_Reference_To (E, Loc),
-          Expression => New_Reference_To (Standard_True, Loc));
+          Expression          => New_Reference_To (Standard_True, Loc)));
 
       --  Create declaration for Action_Id.
 
@@ -528,37 +494,7 @@ package body Exp_Atom is
           Expression          =>
             Action_Index_Expression (Loc, Defining_Identifier (N), Pid)));
 
-      --  Build a list of the formal parameters of the external version of
-      --  the action to use as the actual parameters of the internal
-      --  version.
-
-      Iactuals := New_List;
-      Pformal := First (Parameter_Specifications (E_Op_Spec));
-      while Present (Pformal) loop
-         Append_To (Iactuals,
-           Make_Identifier (Loc, Chars (Defining_Identifier (Pformal))));
-         Next (Pformal);
-      end loop;
-
-      --  Make a call to the unprotected version of the subprogram built above
-      --  for use by the protected version built below.
-
-      Internal_Call :=
-        Make_Procedure_Call_Statement (Loc,
-          Name =>
-            Make_Identifier (Loc, Chars (Defining_Unit_Name (
-              Specification (Ibody)))),
-          Parameter_Associations => Iactuals);
-
-      --  Wrap call in block that will be covered by an at_end handler. at_end
-      --  handler created in Exp_Ch7.
-
-      Internal_Call := Make_Block_Statement (Loc,
-        Handled_Statement_Sequence =>
-          Make_Handled_Sequence_Of_Statements (Loc,
-            Statements => New_List (Internal_Call, E_True_Stmt)));
-
-      --  Build call to Enter_Action.
+      --  Build reference to _object._object.
 
       Object_Parm :=
         Make_Attribute_Reference (Loc,
@@ -568,83 +504,67 @@ package body Exp_Atom is
               Prefix        => Make_Identifier (Loc, Name_uObject),
               Selector_Name => Make_Identifier (Loc, Name_uObject)));
 
-      Action_Stmt :=
+      --  Wrap call in block that will be covered by an at_end handler. at_end
+      --  handler created in Exp_Ch7. Add end barrier call to the end of
+      --  statements.
+
+      declare
+      begin
+         Append_List_To (Statements (Handled_Statement_Sequence (N)),
+                         Build_Atomic_Exception_Stmts);
+
+         Action_Body := Make_Block_Statement (Loc,
+           Declarations               => Declarations (N),
+           Handled_Statement_Sequence =>
+             Handled_Statement_Sequence (N));
+
+         --  We need to analyzed the handled statement sequence again since we
+         --  have added to it in the above statements, but we can only anaylze
+         --  them once we've analyzed the constructs created in
+         --  Build_Action_Body first.
+
+         Set_Analyzed (Handled_Statement_Sequence (N), False);
+      end;
+
+      --  Build call to Enter_Action.
+
+      Enter_Call :=
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
             New_Reference_To (RTE (RE_Enter_Action), Loc),
           Parameter_Associations =>  New_List (Object_Parm,
             Make_Identifier (Loc, Name_uAction_Id)));
 
-      Stmts := New_List (Action_Stmt);
+      Stmts := New_List (Enter_Call);
 
-      Append (Internal_Call, Stmts);
+      Append (Action_Body, Stmts);
 
-      Ebody :=
+      Sub_Body :=
         Make_Subprogram_Body (Loc,
           Declarations => Decls,
-          Specification => E_Op_Spec,
+          Specification => Op_Spec,
           Handled_Statement_Sequence =>
             Make_Handled_Sequence_Of_Statements (Loc, Statements => Stmts));
 
-      Set_Is_External_Action_Body (Ebody);
+      Set_Is_Action_Body (Sub_Body);
 
       --  Build finalisation statements.
 
       Fstms := New_List;
-
-      if Has_End_Barrier (Adec) then
-         Append_To (Fstms,
-           Make_Procedure_Call_Statement (Loc,
-             Name                   =>
-               New_Reference_To (RTE (RE_Action_End_Barrier), Loc),
-             Parameter_Associations =>  New_List (New_Copy (Object_Parm),
-               Make_Identifier (Loc, Name_uAction_Id),
-               New_Reference_To (E, Loc))));
-      end if;
-
-      Append_To (Fstms, Build_Atomic_Exception_Block);
 
       Append_To (Fstms,
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
             New_Reference_To (RTE (RE_Exit_Action), Loc),
           Parameter_Associations =>  New_List (New_Copy (Object_Parm),
-            Make_Identifier (Loc, Name_uAction_Id))));
+            Action_Index_Expression (Loc, Defining_Identifier (N), Pid))));
 
       Set_Finalization_Statements
-        (Specification (Ebody), Fstms);
+        (Specification (Sub_Body), Fstms);
 
-      return Ebody;
+      return Sub_Body;
 
-   end Build_External_Action_Body;
-
-   --------------------------------
-   -- Build_Internal_Action_Body --
-   --------------------------------
-
-   function Build_Internal_Action_Body
-     (N   : Node_Id;
-      Pid : Node_Id) return Node_Id
-   is
-      Decls : constant List_Id := Declarations (N);
-
-   begin
-      --  Add renamings for the Atomic object, discriminals, privals and
-      --  for use by debugger.
-
-      Debug_Private_Data_Declarations (Decls);
-
-      --  Make an unprotected version of the subprogram for use within the same
-      --  object, with a new name and an additional parameter representing the
-      --  object.
-
-      return
-        Make_Subprogram_Body (Sloc (N),
-          Specification              =>
-            Build_Action_Specification (N, Pid, Internal_Kind),
-          Declarations               => Decls,
-          Handled_Statement_Sequence => Handled_Statement_Sequence (N));
-   end Build_Internal_Action_Body;
+   end Build_Action_Body;
 
    -------------------------
    -- Build_Selected_Name --
@@ -720,6 +640,29 @@ package body Exp_Atom is
          Next (Decl);
       end loop;
    end Debug_Private_Data_Declarations;
+
+   ------------------------------------
+   --  Expand_Action_Body_Statements --
+   ------------------------------------
+
+   procedure Expand_Action_Body_Statements (N : Node_Id) is
+      Loc    : constant Source_Ptr := Sloc (N);
+      Ent    : Entity_Id;
+      Lab    : Node_Id;
+      Lab_Id : Node_Id;
+      Ldecl  : Node_Id;
+   begin
+      Ent := Make_Temporary (Loc, 'L');
+      Lab_Id := New_Reference_To (Ent, Loc);
+      Lab := Make_Label (Loc, Lab_Id);
+      Ldecl :=
+        Make_Implicit_Label_Declaration (Loc,
+          Defining_Identifier  => Ent,
+          Label_Construct      => Lab);
+      Append (Lab, Statements (Handled_Statement_Sequence (N)));
+      Append (Ldecl, Declarations (N));
+      Analyze (Ldecl);
+   end Expand_Action_Body_Statements;
 
    -------------------------------------
    -- Expand_Atomic_Body_Declarations --
@@ -800,9 +743,9 @@ package body Exp_Atom is
             Subp : constant Entity_Id := Action_Body_Subprogram (Ent);
          begin
             if Is_Access_Type (Next_Entity (Subp)) then
-               New_Sub := Next_Entity (Next_Entity (Subp));
-            else
                New_Sub := Next_Entity (Subp);
+            else
+               New_Sub := Subp;
             end if;
          end;
 
@@ -1019,42 +962,39 @@ package body Exp_Atom is
    --------------------------
 
    --  Atomic bodies are expanded to the completion of the subprograms created
-   --  for the corresponding atomic type. These are an external and internal
-   --  version of each action in the object. For example, for atomic type
-   --  atype :
+   --  for the corresponding atomic type. These are a subprogram version of
+   --  each action in the object. For example, for atomic type atype :
 
-   --  procedure actionI (_object : in out aoV;...) is
-   --     <discriminant renamings>
-   --     <private object renamings>
-   --  begin
-   --     <sequence of statements>
-   --  end actionI;
-
-   --  procedure actionE (_object : in out aoV;...) is
+   --  procedure action (_object : in out aoV; ...) is
    --     Except : Boolean := True;
    --
    --     procedure _finalizer is
    --     begin
-   --       Action_End_Barrier (_object._object, 1, Except);
-   --       declare
-   --       begin
-   --          if Except then
-   --             raise Atomic_Error;
-   --          end if
-   --       exception
-   --          when Atomic_Error =>
-   --             <statments>
-   --       end;
-   --       Exit_Action (_object._object, 1);
+   --        Exit_Action (_object._object, 1, Except);
    --     end _finalizer;
-
+   --
    --  begin
    --     Enter_Action (_object._object, 1);
-   --     actionI (_object;...);
-   --     Execpt := False;
+   --
+   --     declare
+   --        <discriminant renamings>
+   --        <private object renamings>
+   --     begin
+   --        <sequence of statements>
+   --        <<Lnn>
+   --        Except := False;
+   --        Action_End_Barrier (_object._object, 1, Except);
+   --        if Except then
+   --           raise Action_Error;
+   --        end if;
+   --     exception
+   --        <exception handler>
+   --           Action_End_Barrier (_object._object, 1, True);
+   --           <exception handler statements>
+   --     end;
    --  at end
    --     _finalizer;
-   --  end pproc;
+   --  end action;
 
    --  The type aoV is the record created for the atomic type to hold the state
    --  of the atomic object.
@@ -1069,65 +1009,6 @@ package body Exp_Atom is
       Num_Actions  : Natural := 0;
       Op_Body      : Node_Id;
       Op_Id        : Entity_Id;
-
-      function Build_Dispatching_Action_Body
-        (N           : Node_Id;
-         Pid         : Node_Id;
-         Action_Body : Node_Id) return Node_Id;
-      --  Build a dispatching version of the action body. The newly generated
-      --  subprogram contains a call to the external subprogram version of th
-      --  action. The following code is generated:
-      --
-      --  procedure <action-name> (Param1 .. ParamN) is
-      --  begin
-      --     <action-procedure-name>E (Param1 .. ParamN);
-      --  end <action-name>
-
-      -----------------------------------
-      -- Build_Dispatching_Action_Body --
-      -----------------------------------
-
-      function Build_Dispatching_Action_Body
-        (N           : Node_Id;
-         Pid         : Node_Id;
-         Action_Body : Node_Id) return Node_Id
-      is
-         Loc     : constant Source_Ptr := Sloc (N);
-         Actuals : List_Id;
-         Formal  : Node_Id;
-         Spec    : Node_Id;
-         Stmts   : List_Id;
-
-      begin
-         --  Generate a specification without a letter suffix in order to
-         --  override an interface function or procedure.
-
-         Spec := Build_Action_Specification (N, Pid, Dispatching_Kind);
-
-         --  The formal parameters become the actuals of the action call.
-
-         Actuals := New_List;
-         Formal  := First (Parameter_Specifications (Spec));
-         while Present (Formal) loop
-            Append_To (Actuals,
-              Make_Identifier (Loc, Chars (Defining_Identifier (Formal))));
-            Next (Formal);
-         end loop;
-
-         Stmts :=
-           New_List (
-             Make_Procedure_Call_Statement (Loc,
-               Name =>
-                 New_Reference_To (Corresponding_Spec (Action_Body), Loc),
-               Parameter_Associations => Actuals));
-
-         return
-           Make_Subprogram_Body (Loc,
-             Declarations               => Empty_List,
-             Specification              => Spec,
-             Handled_Statement_Sequence =>
-               Make_Handled_Sequence_Of_Statements (Loc, Stmts));
-      end Build_Dispatching_Action_Body;
 
    --  Start of processing for Expand_N_Atomic_Body
 
@@ -1156,47 +1037,15 @@ package body Exp_Atom is
 
       while Present (Op_Body) loop
          case Nkind (Op_Body) is
-            when N_Subprogram_Declaration | N_Subprogram_Body =>
-               null;
-
             when N_Action_Body =>
-               declare
-                  Ibody : Node_Id;
-                  Fstms : List_Id;
-               begin
-                  Ibody :=
-                    Build_Internal_Action_Body (Op_Body, Pid);
+               New_Op_Body :=
+                 Build_Action_Body (Op_Body, Pid);
 
-                  Insert_After (Current_Node, Ibody);
-                  Current_Node := Ibody;
+               Insert_After (Current_Node, New_Op_Body);
+               Analyze (New_Op_Body);
 
-                  New_Op_Body :=
-                    Build_External_Action_Body (Op_Body, Pid, Ibody);
+               Current_Node := New_Op_Body;
 
-                  Insert_After (Current_Node, New_Op_Body);
-                  Analyze (Ibody);
-                  Analyze (New_Op_Body);
-
-                  Current_Node := New_Op_Body;
-               end;
-
-               --  Generate an overriding primitive operation body for
-               --  this subprogram if the atomic type implements an
-               --  interface.
-
-               if Ada_Version >= Ada_2005
-                    and then
-                  Present (Interfaces (Corresponding_Record_Type (Pid)))
-               then
-                  Disp_Op_Body :=
-                    Build_Dispatching_Action_Body
-                      (Op_Body, Pid, New_Op_Body);
-
-                  Insert_After (Current_Node, Disp_Op_Body);
-                  Analyze (Disp_Op_Body);
-
-                  Current_Node := Disp_Op_Body;
-               end if;
             when N_Implicit_Label_Declaration =>
                null;
 
@@ -1364,7 +1213,7 @@ package body Exp_Atom is
 
       procedure Move_PPC_List (From_Entity   : Entity_Id;
                                To_Subprogram : Node_Id) is
-         PPC : constant Node_Id := Spec_PPC_List (Contract (From_Entity));
+         PPC : Node_Id := Spec_PPC_List (Contract (From_Entity));
          C   : constant Node_Id :=
                  Make_Contract (Sloc (From_Entity),
                                 Spec_PPC_List => Relocate_Node (PPC));
@@ -1549,32 +1398,17 @@ package body Exp_Atom is
               Make_Subprogram_Declaration (Loc,
                 Specification =>
                   Build_Action_Specification
-                    (Comp, Atomic_Typ, Internal_Kind));
+                    (Comp, Atomic_Typ));
+
+            Insert_After (Current_Node, Sub);
+            Analyze (Sub);
 
             --  Pre/postconditons are attached to the internal subprogram.
 
             Move_PPC_List (From_Entity => Comp_Id, To_Subprogram => Sub);
 
-            Insert_After (Current_Node, Sub);
-            Analyze (Sub);
-
             Set_Action_Body_Subprogram
               (Comp_Id, Defining_Unit_Name (Specification (Sub)));
-
-            --  Make the external version of the subprogram available for
-            --  expansion of external calls.
-
-            Current_Node := Sub;
-
-            Sub :=
-              Make_Subprogram_Declaration (Loc,
-                Specification =>
-                  Build_Action_Specification
-                    (Comp, Atomic_Typ, External_Kind));
-            Insert_After (Current_Node, Sub);
-            Analyze (Sub);
-
-            Current_Node := Sub;
          end if;
 
          Next (Comp);

@@ -465,9 +465,9 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
-      Is_Action_Body       : constant Boolean :=
+      Is_Action_Bod        : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
-                                 and then Is_External_Action_Body (N);
+                                 and then Is_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
                                  and then Nkind (N) /= N_Action_Body
@@ -542,7 +542,7 @@ package body Exp_Ch7 is
                           Make_Identifier (Loc, Name_uObject))))));
          end;
 
-      elsif Is_Action_Body then
+      elsif Is_Action_Bod then
 
          --  Finalization statements for the Action body was generated in
          --  Exp_Atom.Build_External_Action_Body.
@@ -550,6 +550,7 @@ package body Exp_Ch7 is
          declare
             Spec : constant Entity_Id := Specification (N);
             S    : constant List_Id   := Finalization_Statements (Spec);
+
          begin
             Append_List_To (Stmts, S);
          end;
@@ -3595,9 +3596,9 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
-      Is_Action_Body       : constant Boolean :=
+      Is_Action_Bod        : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
-                                 and then Is_External_Action_Body (N);
+                                 and then Is_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
                                  and then Nkind (N) /= N_Action_Body
@@ -3619,7 +3620,7 @@ package body Exp_Ch7 is
       Actions_Required     : constant Boolean :=
                                Requires_Cleanup_Actions (N, True)
                                  or else Is_Asynchronous_Call
-                                 or else Is_Action_Body
+                                 or else Is_Action_Bod
                                  or else Is_Master
                                  or else Is_Protected_Body
                                  or else Is_Task_Allocation
@@ -3800,7 +3801,7 @@ package body Exp_Ch7 is
          --  forbids that at the tree level. We do not do this for the external
          --  action body as the At_End handler requires these declarations.
 
-         if not Is_Action_Body then
+         if not Is_Action_Bod then
 
             Append_List_To (Decls, Statements (HSS));
             Set_Statements (HSS, Decls);

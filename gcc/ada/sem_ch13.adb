@@ -1562,6 +1562,84 @@ package body Sem_Ch13 is
                      goto Continue;
                   end;
 
+               --  Aspect Ensure generate Ensure pragmas with a first argument
+               --  that is the expression, and a second argument that is an
+               --  informative message if the test fails. This is inserted
+               --  right after the declaration, to get the required pragma
+               --  placement. The processing for the pragmas takes care of the
+               --  required delay.
+
+               when Aspect_Ensure =>
+
+                  --  If the expressions is of the form A and then B, then
+                  --  we generate separate Ensure aspects for the separate
+                  --  clauses. Since we allow multiple pragmas, there is no
+                  --  problem in allowing multiple Ensure aspects internally.
+                  --  These should be treated in reverse order (B first and
+                  --  A second) since they are later inserted just after N in
+                  --  the order they are treated. This way, the pragma for A
+                  --  ends up preceding the pragma for B, which may have an
+                  --  importance for the error raised (either constraint error
+                  --  or precondition error).
+
+                  --  We do not do this in ASIS mode, as ASIS relies on the
+                  --  original node representing the complete expression, when
+                  --  retrieving it through the source aspect table.
+
+                  if not ASIS_Mode then
+                     while Nkind (Expr) = N_And_Then loop
+                        Insert_After (Aspect,
+                          Make_Aspect_Specification (Sloc (Left_Opnd (Expr)),
+                            Identifier    => Identifier (Aspect),
+                            Expression    => Relocate_Node (Left_Opnd (Expr)),
+                            Class_Present => Class_Present (Aspect),
+                            Split_PPC     => True));
+                        Rewrite (Expr, Relocate_Node (Right_Opnd (Expr)));
+                        Eloc := Sloc (Expr);
+                     end loop;
+                  end if;
+
+                  --  Build the ensure pragma
+
+                  Aitem :=
+                    Make_Pragma (Loc,
+                      Pragma_Identifier            =>
+                        Make_Identifier (Sloc (Id), Name_Ensure),
+                      Class_Present                => Class_Present (Aspect),
+                      Split_PPC                    => Split_PPC (Aspect),
+                      Pragma_Argument_Associations => New_List (
+                        Make_Pragma_Argument_Association (Eloc,
+                          Chars      => Name_Check,
+                          Expression => Relocate_Node (Expr))));
+
+                  --  Add message unless exception messages are suppressed
+
+                  if not Opt.Exception_Locations_Suppressed then
+                     Append_To (Pragma_Argument_Associations (Aitem),
+                       Make_Pragma_Argument_Association (Eloc,
+                         Chars     => Name_Message,
+                         Expression =>
+                           Make_String_Literal (Eloc,
+                             Strval => "failed "
+                                       & Get_Name_String (Name_Ensure)
+                                       & " from "
+                                       & Build_Location_String (Eloc))));
+                  end if;
+
+                  Set_From_Aspect_Specification (Aitem, True);
+                  Set_Corresponding_Aspect (Aitem, Aspect);
+                  Set_Is_Delayed_Aspect (Aspect);
+
+                  --  For Ensure cases, insert immediately after the entity
+                  --  declaration, since that is the required pragma placement.
+                  --  Note that for these aspects, we do not have to worry
+                  --  about delay issues, since the pragmas themselves deal
+                  --  with delay of visibility for the expression analysis.
+
+                  Insert_After (N, Aitem);
+
+                  goto Continue;
+
                when Aspect_Dimension =>
                   Analyze_Aspect_Dimension (N, Id, Expr);
                   goto Continue;
@@ -6305,9 +6383,10 @@ package body Sem_Ch13 is
               Aspect_Warnings        =>
             raise Program_Error;
 
-         --  Pre/Post/Invariant/Predicate take boolean expressions
+         --  Pre/Post/Invariant/Predicate/Ensure take boolean expressions
 
          when Aspect_Dynamic_Predicate |
+              Aspect_Ensure            |
               Aspect_Invariant         |
               Aspect_Pre               |
               Aspect_Precondition      |

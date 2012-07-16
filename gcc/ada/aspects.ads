@@ -90,6 +90,7 @@ package Aspects is
       Aspect_Dimension_System,              -- GNAT
       Aspect_Dispatching_Domain,
       Aspect_Dynamic_Predicate,
+      Aspect_Ensure,                        -- Acton
       Aspect_External_Name,
       Aspect_External_Tag,
       Aspect_Implicit_Dereference,
@@ -313,6 +314,7 @@ package Aspects is
                         Aspect_Dimension_System        => Expression,
                         Aspect_Dispatching_Domain      => Expression,
                         Aspect_Dynamic_Predicate       => Expression,
+                        Aspect_Ensure                  => Expression,
                         Aspect_External_Name           => Expression,
                         Aspect_External_Tag            => Expression,
                         Aspect_Implicit_Dereference    => Name,
@@ -385,6 +387,7 @@ package Aspects is
      Aspect_Dispatching_Domain           => Name_Dispatching_Domain,
      Aspect_Dynamic_Predicate            => Name_Dynamic_Predicate,
      Aspect_Elaborate_Body               => Name_Elaborate_Body,
+     Aspect_Ensure                       => Name_Ensure,
      Aspect_External_Name                => Name_External_Name,
      Aspect_External_Tag                 => Name_External_Tag,
      Aspect_Export                       => Name_Export,

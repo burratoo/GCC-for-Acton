@@ -9,6 +9,11 @@ package Exp_Atom is
    --  This type is used to distinguish the different subprograms generated for
    --  an action.
 
+   procedure Expand_Action_Body_Statements        (N : Node_Id);
+   --  Expand statements of an action body. Currently it just adds a label
+   --  at the end of the statements for use when expanding a return statement
+   --  inside the action.
+
    procedure Expand_Atomic_Body_Declarations
      (N       : Node_Id;
       Spec_Id : Entity_Id);

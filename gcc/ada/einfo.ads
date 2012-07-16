@@ -1038,6 +1038,10 @@ package Einfo is
 --       entities. Points to the contract of the entity, holding both pre- and
 --       postconditions as well as test-cases.
 
+--    Ensure (Node25)
+--       Present in actions entities. Points to the pragma node that holds
+--       the action's ensure test case.
+
 --    Entry_Parameters_Type (Node15)
 --       Present in entries. Points to the access-to-record type that is
 --       constructed by the expander to hold a reference to the parameter
@@ -5080,6 +5084,7 @@ package Einfo is
    --    Scope_Depth_Value                   (Uint22)
    --    Atomic_Object                       (Node23)   (atomic kind)
    --    Contract                            (Node24)   (for entry only)
+   --    Ensure                              (Node25)
    --    Extra_Formals                       (Node28)
    --    Default_Expressions_Processed       (Flag108)
    --    Needs_No_Actuals                    (Flag22)
@@ -6207,6 +6212,7 @@ package Einfo is
    function Elaboration_Entity                  (Id : E) return E;
    function Elaboration_Entity_Required         (Id : E) return B;
    function Enclosing_Scope                     (Id : E) return E;
+   function Ensure                              (Id : E) return N;
    function Entry_Accepted                      (Id : E) return B;
    function Entry_Cancel_Parameter              (Id : E) return E;
    function Entry_Component                     (Id : E) return E;
@@ -6804,6 +6810,7 @@ package Einfo is
    procedure Set_Elaboration_Entity              (Id : E; V : E);
    procedure Set_Elaboration_Entity_Required     (Id : E; V : B := True);
    procedure Set_Enclosing_Scope                 (Id : E; V : E);
+   procedure Set_Ensure                          (Id : E; V : N);
    procedure Set_Entry_Accepted                  (Id : E; V : B := True);
    procedure Set_Entry_Cancel_Parameter          (Id : E; V : E);
    procedure Set_Entry_Component                 (Id : E; V : E);
@@ -7511,6 +7518,7 @@ package Einfo is
    pragma Inline (Elaboration_Entity);
    pragma Inline (Elaboration_Entity_Required);
    pragma Inline (Enclosing_Scope);
+   pragma Inline (Ensure);
    pragma Inline (Entry_Accepted);
    pragma Inline (Entry_Cancel_Parameter);
    pragma Inline (Entry_Component);
@@ -7964,6 +7972,7 @@ package Einfo is
    pragma Inline (Set_Elaboration_Entity);
    pragma Inline (Set_Elaboration_Entity_Required);
    pragma Inline (Set_Enclosing_Scope);
+   pragma Inline (Set_Ensure);
    pragma Inline (Set_Entry_Accepted);
    pragma Inline (Set_Entry_Cancel_Parameter);
    pragma Inline (Set_Entry_Component);

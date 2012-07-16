@@ -1831,6 +1831,14 @@ package body Sinfo is
       return Flag13 (N);
    end Is_Accessibility_Actual;
 
+   function Is_Action_Body
+      (N : Node_Id) return Boolean is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body);
+      return Flag12 (N);
+   end Is_Action_Body;
+
    function Is_Asynchronous_Call_Block
       (N : Node_Id) return Boolean is
    begin
@@ -1912,14 +1920,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Function_Call);
       return Flag11 (N);
    end Is_Expanded_Build_In_Place_Call;
-
-   function Is_External_Action_Body
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body);
-      return Flag12 (N);
-   end Is_External_Action_Body;
 
    function Is_Folded_In_Parser
       (N : Node_Id) return Boolean is
@@ -5070,6 +5070,14 @@ package body Sinfo is
       Set_Flag13 (N, Val);
    end Set_Is_Accessibility_Actual;
 
+   procedure Set_Is_Action_Body
+      (N : Node_Id; Val : Boolean := True) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Subprogram_Body);
+      Set_Flag12 (N, Val);
+   end Set_Is_Action_Body;
+
    procedure Set_Is_Asynchronous_Call_Block
       (N : Node_Id; Val : Boolean := True) is
    begin
@@ -5151,14 +5159,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Function_Call);
       Set_Flag11 (N, Val);
    end Set_Is_Expanded_Build_In_Place_Call;
-
-   procedure Set_Is_External_Action_Body
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body);
-      Set_Flag12 (N, Val);
-   end Set_Is_External_Action_Body;
 
    procedure Set_Is_Folded_In_Parser
       (N : Node_Id; Val : Boolean := True) is

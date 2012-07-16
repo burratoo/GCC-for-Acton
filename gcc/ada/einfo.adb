@@ -215,6 +215,7 @@ package body Einfo is
    --    Contract                        Node24
    --    Atomic_Formal                   Node24
 
+   --    Ensure                          Node25
    --    Interface_Alias                 Node25
    --    Interfaces                      Elist25
    --    Debug_Renaming_Link             Node25
@@ -1014,6 +1015,12 @@ package body Einfo is
           or else Is_Generic_Subprogram (Id));
       return Node24 (Id);
    end Contract;
+
+   function Ensure (Id : E) return N is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      return Node25 (Id);
+   end Ensure;
 
    function Entry_Parameters_Type (Id : E) return E is
    begin
@@ -3540,6 +3547,12 @@ package body Einfo is
           or else Is_Generic_Subprogram (Id));
       Set_Node24 (Id, V);
    end Set_Contract;
+
+   procedure Set_Ensure (Id : E; V : N) is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      Set_Node25 (Id, V);
+   end Set_Ensure;
 
    procedure Set_Entry_Parameters_Type (Id : E; V : E) is
    begin
@@ -8741,6 +8754,9 @@ package body Einfo is
               E_Modular_Integer_Subtype                    |
               E_Signed_Integer_Subtype                     =>
             Write_Str ("Static_Predicate");
+
+         when E_Action                                     =>
+            Write_Str ("Ensure");
 
          when others                                       =>
             Write_Str ("Field25??");

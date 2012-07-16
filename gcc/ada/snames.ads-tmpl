@@ -164,6 +164,7 @@ package Snames is
    Name_uCPU                           : constant Name_Id := N + $;
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uDispatching_Domain            : constant Name_Id := N + $;
+   Name_uExcept                        : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
    Name_uEntry_Id                      : constant Name_Id := N + $;
    Name_uExpunge                       : constant Name_Id := N + $;
@@ -472,6 +473,7 @@ package Snames is
    Name_Elaborate                      : constant Name_Id := N + $; -- Ada 83
    Name_Elaborate_All                  : constant Name_Id := N + $;
    Name_Elaborate_Body                 : constant Name_Id := N + $;
+   Name_Ensure                         : constant Name_Id := N + $; -- Acton
    Name_Export                         : constant Name_Id := N + $;
    Name_Export_Exception               : constant Name_Id := N + $; -- VMS
    Name_Export_Function                : constant Name_Id := N + $; -- GNAT
@@ -1673,6 +1675,7 @@ package Snames is
       Pragma_Elaborate,
       Pragma_Elaborate_All,
       Pragma_Elaborate_Body,
+      Pragma_Ensure,
       Pragma_Export,
       Pragma_Export_Exception,
       Pragma_Export_Function,

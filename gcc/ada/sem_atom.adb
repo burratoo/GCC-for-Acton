@@ -148,6 +148,7 @@ package body Sem_Atom is
       end if;
 
       if Present (Stats) then
+         Expand_Action_Body_Statements (N);
          Analyze (Stats);
       end if;
 

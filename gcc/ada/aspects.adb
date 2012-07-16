@@ -266,6 +266,7 @@ package body Aspects is
     Aspect_Dispatching_Domain           => Aspect_Dispatching_Domain,
     Aspect_Dynamic_Predicate            => Aspect_Predicate,
     Aspect_Elaborate_Body               => Aspect_Elaborate_Body,
+    Aspect_Ensure                       => Aspect_Ensure,
     Aspect_Export                       => Aspect_Export,
     Aspect_External_Name                => Aspect_External_Name,
     Aspect_External_Tag                 => Aspect_External_Tag,
