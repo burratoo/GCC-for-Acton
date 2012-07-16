@@ -3411,6 +3411,7 @@ package body Exp_Ch6 is
       --  attribute does not apply to entries.
 
       if Nkind (Call_Node) /= N_Entry_Call_Statement
+        and then Nkind (Call_Node) /= N_Action_Call_Statement
         and then No (Controlling_Argument (Call_Node))
         and then Present (Parent_Subp)
         and then not Is_Direct_Deep_Call (Subp)

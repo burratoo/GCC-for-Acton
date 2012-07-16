@@ -740,13 +740,13 @@ package body Exp_Atom is
          --  Find the external subprogram for the action.
 
          declare
-            Subp : constant Entity_Id := Action_Body_Subprogram (Ent);
+            Subp : Entity_Id := Action_Body_Subprogram (Ent);
          begin
             if Is_Access_Type (Next_Entity (Subp)) then
-               New_Sub := Next_Entity (Subp);
-            else
-               New_Sub := Subp;
+               Subp := Next_Entity (Subp);
             end if;
+
+            New_Sub := New_Occurrence_Of (Subp, Loc);
          end;
 
          if Present (Parameter_Associations (N)) then

@@ -69,7 +69,8 @@ package Exp_Ch6 is
 
    procedure Expand_Call (N : Node_Id);
    --  This procedure contains common processing for Expand_N_Function_Call,
-   --  Expand_N_Procedure_Statement, and Expand_N_Entry_Call.
+   --  Expand_N_Procedure_Statement, Expand_N_Entry_Call and
+   --  Expand_N_Action_Call.
 
    procedure Freeze_Subprogram (N : Node_Id);
    --  generate the appropriate expansions related to Subprogram freeze
