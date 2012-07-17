@@ -160,6 +160,7 @@ package body Einfo is
    --    Renamed_Object                  Node18
 
    --    Body_Entity                     Node19
+   --    Corresponding_Action            Node19
    --    Corresponding_Discriminant      Node19
    --    Default_Aspect_Component_Value  Node19
    --    Default_Aspect_Value            Node19
@@ -732,6 +733,12 @@ package body Einfo is
       pragma Assert (Is_Array_Type (Id) or else Is_String_Type (Id));
       return Node20 (Implementation_Base_Type (Id));
    end Component_Type;
+
+   function Corresponding_Action (Id : E) return E is
+   begin
+      pragma Assert (Ekind (Id) = E_Subprogram_Body);
+      return Node19 (Id);
+   end Corresponding_Action;
 
    function Corresponding_Concurrent_Type (Id : E) return E is
    begin
@@ -3265,6 +3272,12 @@ package body Einfo is
       pragma Assert (Is_Array_Type (Id) and then Is_Base_Type (Id));
       Set_Node20 (Id, V);
    end Set_Component_Type;
+
+   procedure Set_Corresponding_Action (Id : E; V : E) is
+   begin
+      pragma Assert (Ekind_In (Id, E_Void, E_Subprogram_Body));
+      Set_Node19 (Id, V);
+   end Set_Corresponding_Action;
 
    procedure Set_Corresponding_Concurrent_Type (Id : E; V : E) is
    begin
@@ -8441,8 +8454,11 @@ package body Einfo is
          when Private_Kind                                 =>
             Write_Str ("Underlying_Full_View");
 
-         when E_Function | E_Operator | E_Subprogram_Type =>
+         when E_Function | E_Operator | E_Subprogram_Type  =>
             Write_Str ("Extra_Accessibility_Of_Result");
+
+         when E_Subprogram_Body                            =>
+            Write_Str ("Corresponding_Action");
 
          when others                                       =>
             Write_Str ("Field19??");

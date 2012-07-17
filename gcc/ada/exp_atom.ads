@@ -9,6 +9,12 @@ package Exp_Atom is
    --  This type is used to distinguish the different subprograms generated for
    --  an action.
 
+   function Action_Index_Expression
+     (Sloc  : Source_Ptr;
+      Act   : Entity_Id;
+      Atm   : Entity_Id) return Node_Id;
+   --  Compute the index position for an action call.
+
    procedure Expand_Action_Body_Statements        (N : Node_Id);
    --  Expand statements of an action body. Currently it just adds a label
    --  at the end of the statements for use when expanding a return statement

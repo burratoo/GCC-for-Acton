@@ -43,12 +43,6 @@ with Uintp;    use Uintp;
 
 package body Exp_Atom is
 
-   function Action_Index_Expression
-     (Sloc  : Source_Ptr;
-      Act   : Entity_Id;
-      Atm   : Entity_Id) return Node_Id;
-   --  Compute the index position for an entry call.
-
    function Build_Action_Body
      (N     : Node_Id;
       Pid   : Entity_Id) return Node_Id;
@@ -359,7 +353,6 @@ package body Exp_Atom is
       Action_Body   : Node_Id;
       Op_Spec       : Node_Id;
       Sub_Body      : Node_Id;
-      Fstms         : List_Id;
       Iactuals      : List_Id;
       Pformal       : Node_Id;
       Sub_Type      : Node_Id;
@@ -547,20 +540,8 @@ package body Exp_Atom is
             Make_Handled_Sequence_Of_Statements (Loc, Statements => Stmts));
 
       Set_Is_Action_Body (Sub_Body);
-
-      --  Build finalisation statements.
-
-      Fstms := New_List;
-
-      Append_To (Fstms,
-        Make_Procedure_Call_Statement (Loc,
-          Name                   =>
-            New_Reference_To (RTE (RE_Exit_Action), Loc),
-          Parameter_Associations =>  New_List (New_Copy (Object_Parm),
-            Action_Index_Expression (Loc, Defining_Identifier (N), Pid))));
-
-      Set_Finalization_Statements
-        (Specification (Sub_Body), Fstms);
+      Set_Corresponding_Action (Defining_Unit_Name (Op_Spec),
+                                Defining_Identifier (N));
 
       return Sub_Body;
 

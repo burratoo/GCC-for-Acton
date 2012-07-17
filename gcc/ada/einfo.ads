@@ -660,6 +660,10 @@ package Einfo is
 --    Component_Type (Node20) [implementation base type only]
 --       Present in array types and string types. References component type.
 
+--    Corresponding_Action (Node19)
+--       Present in subprogram bodies. Set for subprogram bodies that implement
+--       an atomic type action to point to the entity for the action.
+
 --    Corresponding_Concurrent_Type (Node18)
 --       Present in record types that are constructed by the expander to
 --       represent task and protected types (Is_Concurrent_Record_Type flag
@@ -5824,6 +5828,7 @@ package Einfo is
    --    Mechanism                           (Uint8)
    --    First_Entity                        (Node17)
    --    Corresponding_Protected_Entry       (Node18)
+   --    Corresponding_Action                (Node19)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
    --    Barrier_Service_Function            (Node26)
@@ -6173,6 +6178,7 @@ package Einfo is
    function Component_Size                      (Id : E) return U;
    function Component_Type                      (Id : E) return E;
    function Contract                            (Id : E) return N;
+   function Corresponding_Action                (Id : E) return E;
    function Corresponding_Concurrent_Type       (Id : E) return E;
    function Corresponding_Discriminant          (Id : E) return E;
    function Corresponding_Equality              (Id : E) return E;
@@ -6771,6 +6777,7 @@ package Einfo is
    procedure Set_Component_Size                  (Id : E; V : U);
    procedure Set_Component_Type                  (Id : E; V : E);
    procedure Set_Contract                        (Id : E; V : N);
+   procedure Set_Corresponding_Action            (Id : E; V : E);
    procedure Set_Corresponding_Concurrent_Type   (Id : E; V : E);
    procedure Set_Corresponding_Discriminant      (Id : E; V : E);
    procedure Set_Corresponding_Equality          (Id : E; V : E);
@@ -7479,6 +7486,7 @@ package Einfo is
    pragma Inline (Component_Size);
    pragma Inline (Component_Type);
    pragma Inline (Contract);
+   pragma Inline (Corresponding_Action);
    pragma Inline (Corresponding_Concurrent_Type);
    pragma Inline (Corresponding_Discriminant);
    pragma Inline (Corresponding_Equality);
@@ -7933,6 +7941,7 @@ package Einfo is
    pragma Inline (Set_Component_Size);
    pragma Inline (Set_Component_Type);
    pragma Inline (Set_Contract);
+   pragma Inline (Set_Corresponding_Action);
    pragma Inline (Set_Corresponding_Concurrent_Type);
    pragma Inline (Set_Corresponding_Discriminant);
    pragma Inline (Set_Corresponding_Equality);

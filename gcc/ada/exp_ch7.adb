@@ -32,6 +32,7 @@ with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
+with Exp_Atom; use Exp_Atom;
 with Exp_Ch6;  use Exp_Ch6;
 with Exp_Ch9;  use Exp_Ch9;
 with Exp_Ch11; use Exp_Ch11;
@@ -505,9 +506,9 @@ package body Exp_Ch7 is
          declare
             Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
             Conc_Typ  : Entity_Id;
-            Nam       : Node_Id;
             Param     : Node_Id;
             Param_Typ : Entity_Id;
+
          begin
             --  Find the _object parameter representing the protected object
 
@@ -543,16 +544,136 @@ package body Exp_Ch7 is
          end;
 
       elsif Is_Action_Bod then
-
-         --  Finalization statements for the Action body was generated in
-         --  Exp_Atom.Build_External_Action_Body.
-
          declare
-            Spec : constant Entity_Id := Specification (N);
-            S    : constant List_Id   := Finalization_Statements (Spec);
+            Def       : Entity_Id := Defining_Unit_Name (Specification (N));
+            Act_Def   : Entity_Id := Corresponding_Action (Def);
+            Atom_Def  : Entity_Id := Scope (Act_Def);
+            Spec      : constant Node_Id   := Parent (Corresponding_Spec (N));
+            Conc_Typ  : Entity_Id;
+            E         : Entity_Id;
+            Nam       : Entity_Id;
+            Param     : Node_Id;
+            Param_Id  : Entity_Id;
+            Param_Typ : Entity_Id;
+            Rest_Stms : List_Id;
+            Save_Stm  : Node_Id;
 
          begin
-            Append_List_To (Stmts, S);
+            --  Find the _object parameter representing the atomic object
+
+            Param := First (Parameter_Specifications (Spec));
+            loop
+               Param_Typ := Etype (Parameter_Type (Param));
+
+               if Ekind (Param_Typ) = E_Record_Type then
+                  Conc_Typ := Corresponding_Concurrent_Type (Param_Typ);
+               end if;
+
+               exit when No (Param) or else Present (Conc_Typ);
+               Next (Param);
+            end loop;
+
+            pragma Assert (Present (Param));
+
+            --  Find Except
+
+            declare
+               Dec   : Node_Id;
+               E_Nam : Name_Id :=
+                         New_External_Name (Name_uExcept, Suffix_Index => 1);
+               --  _exceptx is already in the name table so no biggy to use
+               --  New_External_Name.
+
+            begin
+               Dec := First (Declarations (N));
+               while Present (Dec) loop
+                  if Nkind (Dec) = N_Object_Declaration
+                    and then Chars (Defining_Identifier (Dec)) = E_Nam
+                  then
+                     E := Defining_Identifier (Dec);
+                     exit;
+                  end if;
+                  Dec := Next (Dec);
+               end loop;
+            end;
+
+            --  Generate:
+            --    Exit_Action (_object._object, Action_Id,
+            --                 _Except1));
+            Append_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   =>
+                  New_Reference_To (RTE (RE_Exit_Action), Loc),
+                Parameter_Associations => New_List (
+                  Make_Attribute_Reference (Loc,
+                    Attribute_Name => Name_Unchecked_Access,
+                    Prefix         =>
+                      Make_Selected_Component (Loc,
+                        Prefix        =>
+                          New_Reference_To (Defining_Identifier (Param), Loc),
+                        Selector_Name =>
+                          Make_Identifier (Loc, Name_uObject))),
+                  Action_Index_Expression (Loc, Act_Def, Atom_Def))));
+
+            --  If pragma Backwards_Recovery applies to the atomic type
+            --  generate the save/restore parameter instructions
+
+            if Backwards_Recovery (Atomic_Definition (Parent (Atom_Def))) then
+               Rest_Stms := New_List;
+
+               --  We skip the first parameter of the action's procedure as it
+               --  is always the acton's atomic object.
+
+               Param := Next (First (Parameter_Specifications (Spec)));
+               while Present (Param) loop
+                  Param_Id := Defining_Identifier (Param);
+                  if Out_Present (Param)
+                    and then not Is_Limited_Type (Etype (Param_Id))
+                  then
+                     --  Only parameters that can be modified will be saved and
+                     --  restored as there is no point restoring a constant.
+                     --  Since we have to save a copy of the parameter, it has
+                     --  to be non-limited.
+
+                     Nam :=
+                       Make_Defining_Identifier (Loc,
+                         New_External_Name (Chars (Param_Id),
+                           Suffix => "_old",
+                           Prefix => 'R'));
+
+                     Save_Stm :=
+                       Make_Object_Declaration (Loc,
+                         Defining_Identifier => Nam,
+                         Constant_Present    => True,
+                         Object_Definition   =>
+                           New_Occurrence_Of (
+                             Etype (Parameter_Type (Param)), Loc),
+                         Expression          =>
+                           New_Reference_To (Param_Id, Loc));
+
+                     --  The subprogram will already have at least one
+                     --  declaration at this point, that being _except, so we
+                     --  can safely insert the Save_Stm into its declarations.
+
+                     Insert_Action (First (Declarations (N)), Save_Stm);
+
+                     Append_To (Rest_Stms,
+                       Make_Assignment_Statement (Loc,
+                         Name => New_Reference_To (Param_Id, Loc),
+                         Expression => New_Reference_To (Nam, Loc)));
+                  end if;
+
+                  Param := Next (Param);
+
+               end loop;
+
+               if not Is_Empty_List (Rest_Stms) then
+                  Append_To (Stmts,
+                    Make_Implicit_If_Statement (N,
+                      Condition => New_Reference_To (E, Loc),
+                      Then_Statements => Rest_Stms));
+               end if;
+            end if;
          end;
 
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
