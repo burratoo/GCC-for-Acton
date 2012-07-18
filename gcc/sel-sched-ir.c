@@ -35,8 +35,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "recog.h"
 #include "params.h"
 #include "target.h"
-#include "timevar.h"
-#include "tree-pass.h"
 #include "sched-int.h"
 #include "ggc.h"
 #include "tree.h"
@@ -5044,7 +5042,7 @@ find_place_to_insert_bb (basic_block bb, int rgn)
             break;
         }
 
-      /* We skipped the right block, so we increase i.  We accomodate
+      /* We skipped the right block, so we increase i.  We accommodate
          it for increasing by step later, so we decrease i.  */
       return (i + 1) - 1;
     }

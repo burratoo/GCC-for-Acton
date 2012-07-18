@@ -60,14 +60,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "insn-config.h"
 #include "recog.h"
 #include "basic-block.h"
-#include "output.h"
 #include "tm_p.h"
 #include "function.h"
 #include "sbitmap.h"
-
-/* We want target macros for the mode switching code to be able to refer
-   to instruction attribute values.  */
-#include "insn-attr.h"
+#include "dumpfile.h"
 
 /* Edge based LCM routines.  */
 static void compute_antinout_edge (sbitmap *, sbitmap *, sbitmap *, sbitmap *);

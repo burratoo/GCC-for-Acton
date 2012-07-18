@@ -55,7 +55,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "rtl.h"
 #include "flags.h"
-#include "output.h"
 #include "regs.h"
 #include "expr.h"
 #include "function.h"
@@ -64,11 +63,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "coverage.h"
 #include "value-prof.h"
 #include "tree.h"
-#include "cfghooks.h"
 #include "tree-flow.h"
-#include "timevar.h"
 #include "cfgloop.h"
-#include "tree-pass.h"
+#include "dumpfile.h"
 
 #include "profile.h"
 
@@ -642,7 +639,7 @@ compute_branch_probabilities (unsigned cfg_checksum, unsigned lineno_checksum)
   if (dump_file)
     {
       int overlap = compute_frequency_overlap ();
-      dump_flow_info (dump_file, dump_flags);
+      gimple_dump_cfg (dump_file, dump_flags);
       fprintf (dump_file, "Static profile overlap: %d.%d%%\n",
 	       overlap / (OVERLAP_BASE / 100),
 	       overlap % (OVERLAP_BASE / 100));
