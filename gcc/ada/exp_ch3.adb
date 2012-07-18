@@ -2782,7 +2782,7 @@ package body Exp_Ch3 is
                elsif Ekind (Scope (Id)) = E_Record_Type
                  and then Present (Corresponding_Concurrent_Type (Scope (Id)))
                  and then (Chars (Id) = Name_uCPU                or else
-                           Chars (Id) = Name_Cycle_Period        or else
+                           Chars (Id) = Name_uCycle_Period       or else
                            Chars (Id) = Name_uDispatching_Domain or else
                            Chars (Id) = Name_uPhase              or else
                            Chars (Id) = Name_uPriority)

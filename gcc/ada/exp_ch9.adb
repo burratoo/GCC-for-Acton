@@ -13004,7 +13004,7 @@ package body Exp_Ch9 is
       end if;
 
       --  Cycle_Period parameter. Set to Time_Span_Zero unless there is a
-      --  Cycle_Period pragma,in which case we take the value from the pragma.
+      --  Cycle_Period pragma, in which case we take the value from the pragma.
 
       if Has_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False) then
          Append_To (Args,
@@ -13024,7 +13024,7 @@ package body Exp_Ch9 is
       end if;
 
       --  Phase parameter. Set to Time_Span_Zero unless there is a
-      --  Phase pragma,in which case we take the value from the pragma.
+      --  Phase pragma, in which case we take the value from the pragma.
 
       if Has_Rep_Item (Ttyp, Name_Phase, Check_Parents => False) then
          Append_To (Args,
