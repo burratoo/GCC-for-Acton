@@ -4600,7 +4600,7 @@ package Sinfo is
       --  Is_Task_Master (Flag5-Sem)
       --  Was_Originally_Stub (Flag13-Sem)
       --  Has_Relative_Deadline_Pragma (Flag9-Sem)
-
+      --  Has_Storage_Size_Pragma (Flag18-Sem)
       -------------------------
       -- Expression Function --
       -------------------------

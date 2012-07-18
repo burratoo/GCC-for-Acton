@@ -129,10 +129,14 @@ package body Snames is
    begin
       if N = Name_CPU then
          return Attribute_CPU;
+      elsif N = Name_Cycle_Period then
+         return Attribute_Cycle_Period;
       elsif N = Name_Dispatching_Domain then
          return Attribute_Dispatching_Domain;
       elsif N = Name_Interrupt_Priority then
          return Attribute_Interrupt_Priority;
+      elsif N = Name_Phase then
+         return Attribute_Phase;
       else
          return Attribute_Id'Val (N - First_Attribute_Name);
       end if;
@@ -219,6 +223,8 @@ package body Snames is
          return Pragma_AST_Entry;
       elsif N = Name_CPU then
          return Pragma_CPU;
+      elsif N = Name_Cycle_Period then
+         return Pragma_Cycle_Period;
       elsif N = Name_Dispatching_Domain then
          return Pragma_Dispatching_Domain;
       elsif N = Name_Fast_Math then
@@ -229,6 +235,8 @@ package body Snames is
          return Pragma_Interrupt_Priority;
       elsif N = Name_Lock_Free then
          return Pragma_Lock_Free;
+      elsif N = Name_Phase then
+         return Pragma_Phase;
       elsif N = Name_Priority then
          return Pragma_Priority;
       elsif N = Name_Relative_Deadline then
@@ -437,12 +445,14 @@ package body Snames is
       return N in First_Pragma_Name .. Last_Pragma_Name
         or else N = Name_AST_Entry
         or else N = Name_CPU
+        or else N = Name_Cycle_Period
         or else N = Name_Dispatching_Domain
         or else N = Name_Fast_Math
         or else N = Name_Interface
         or else N = Name_Interrupt_Priority
         or else N = Name_Lock_Free
         or else N = Name_Relative_Deadline
+        or else N = Name_Phase
         or else N = Name_Priority
         or else N = Name_Storage_Size
         or else N = Name_Storage_Unit;

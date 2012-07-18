@@ -1151,6 +1151,7 @@ package body Sem_Ch13 is
                     Aspect_Component_Size       |
                     Aspect_Constant_Indexing    |
                     Aspect_CPU                  |
+                    Aspect_Cycle_Period         |
                     Aspect_Default_Iterator     |
                     Aspect_Dispatching_Domain   |
                     Aspect_External_Tag         |
@@ -1161,6 +1162,7 @@ package body Sem_Ch13 is
                     Aspect_Object_Size          |
                     Aspect_Output               |
                     Aspect_Priority             |
+                    Aspect_Phase                |
                     Aspect_Read                 |
                     Aspect_Scalar_Storage_Order |
                     Aspect_Size                 |
@@ -2967,6 +2969,45 @@ package body Sem_Ch13 is
             end if;
          end CPU;
 
+         ------------------
+         -- Cycle_Period --
+         ------------------
+
+         when Attribute_Cycle_Period => Cycle_Period :
+         begin
+            --  Cycle_Period attribute definition clause not allowed except
+            --  from aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N ("Cycle_Period can only be defined for task",
+                               Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Time_Span));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Cycle_Period;
+
          ----------------------
          -- Default_Iterator --
          ----------------------
@@ -3231,6 +3272,44 @@ package body Sem_Ch13 is
          when Attribute_Output =>
             Analyze_Stream_TSS_Definition (TSS_Stream_Output);
             Set_Has_Specified_Stream_Output (Ent);
+
+         -----------
+         -- Phase --
+         -----------
+
+         when Attribute_Phase => Phase :
+         begin
+            --  Phase attribute definition clause not allowed except from
+            --  aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N ("Phase can only be defined for task", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Time_Span));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Phase;
 
          --------------
          -- Priority --
@@ -6556,6 +6635,9 @@ package body Sem_Ch13 is
          when Aspect_CPU =>
             T := RTE (RE_CPU_Range);
 
+         when Aspect_Cycle_Period =>
+            T := RTE (RE_Time_Span);
+
          when Aspect_Dispatching_Domain =>
             T := RTE (RE_Dispatching_Domain);
 
@@ -6567,6 +6649,9 @@ package body Sem_Ch13 is
 
          when Aspect_Link_Name =>
             T := Standard_String;
+
+         when Aspect_Phase =>
+            T := RTE (RE_Time_Span);
 
          when Aspect_Priority | Aspect_Interrupt_Priority =>
             T := Standard_Integer;
