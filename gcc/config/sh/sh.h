@@ -172,6 +172,9 @@ do { \
   (TARGET_SH1 && ! TARGET_SH2E && ! TARGET_SH5 \
    && ! (TARGET_HITACHI || sh_attr_renesas_p (FUN_DECL)))
 
+/* Nonzero if either soft or hard atomics are enabled.  */
+#define TARGET_ANY_ATOMIC (TARGET_SOFT_ATOMIC | TARGET_HARD_ATOMIC)
+
 #ifndef TARGET_CPU_DEFAULT
 #define TARGET_CPU_DEFAULT SELECT_SH1
 #define SUPPORT_SH1 1
@@ -335,8 +338,8 @@ do { \
 #endif
 
 #define SH_ASM_SPEC \
- "%(subtarget_asm_endian_spec) %{mrelax:-relax %(subtarget_asm_relax_spec)}\
-%(subtarget_asm_isa_spec) %(subtarget_asm_spec)\
+ "%(subtarget_asm_endian_spec) %{mrelax:-relax %(subtarget_asm_relax_spec)} \
+%(subtarget_asm_isa_spec) %(subtarget_asm_spec) \
 %{m2a:--isa=sh2a} \
 %{m2a-single:--isa=sh2a} \
 %{m2a-single-only:--isa=sh2a} \
@@ -433,7 +436,20 @@ do { \
 "%{m2a*:%eSH2a does not support little-endian}}"
 #endif
 
-#define DRIVER_SELF_SPECS UNSUPPORTED_SH2A
+#define UNSUPPORTED_ATOMIC_OPTIONS \
+"%{msoft-atomic:%{mhard-atomic:%e-msoft-atomic and -mhard-atomic cannot be \
+used at the same time}}"
+
+#if TARGET_CPU_DEFAULT & MASK_SH4A
+#define UNSUPPORTED_HARD_ATOMIC_CPU ""
+#else
+#define UNSUPPORTED_HARD_ATOMIC_CPU \
+"%{!m4a*:%{mhard-atomic:%e-mhard-atomic is only available for SH4A targets}}"
+#endif
+
+#undef DRIVER_SELF_SPECS
+#define DRIVER_SELF_SPECS UNSUPPORTED_SH2A, UNSUPPORTED_ATOMIC_OPTIONS,\
+			  UNSUPPORTED_HARD_ATOMIC_CPU
 
 #define ASSEMBLER_DIALECT assembler_dialect
 
@@ -1197,12 +1213,8 @@ extern enum reg_class regno_reg_class[FIRST_PSEUDO_REGISTER];
 
 /* Defines for sh.md and constraints.md.  */
 
-#define CONST_OK_FOR_I06(VALUE) (((HOST_WIDE_INT)(VALUE)) >= -32 \
-				 && ((HOST_WIDE_INT)(VALUE)) <= 31)
 #define CONST_OK_FOR_I08(VALUE) (((HOST_WIDE_INT)(VALUE))>= -128 \
 				 && ((HOST_WIDE_INT)(VALUE)) <= 127)
-#define CONST_OK_FOR_I10(VALUE) (((HOST_WIDE_INT)(VALUE)) >= -512 \
-				 && ((HOST_WIDE_INT)(VALUE)) <= 511)
 #define CONST_OK_FOR_I16(VALUE) (((HOST_WIDE_INT)(VALUE)) >= -32768 \
 				 && ((HOST_WIDE_INT)(VALUE)) <= 32767)
 

@@ -58,7 +58,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-diagnostic.h"
 #include "tree-pretty-print.h"
 #include "cgraph.h"
-#include "timevar.h"
 #include "except.h"
 #include "debug.h"
 #include "intl.h"
@@ -1416,17 +1415,24 @@ build_constructor (tree type, VEC(constructor_elt,gc) *vals)
   unsigned int i;
   constructor_elt *elt;
   bool constant_p = true;
+  bool side_effects_p = false;
 
   TREE_TYPE (c) = type;
   CONSTRUCTOR_ELTS (c) = vals;
 
   FOR_EACH_VEC_ELT (constructor_elt, vals, i, elt)
-    if (!TREE_CONSTANT (elt->value))
-      {
+    {
+      /* Mostly ctors will have elts that don't have side-effects, so
+	 the usual case is to scan all the elements.  Hence a single
+	 loop for both const and side effects, rather than one loop
+	 each (with early outs).  */
+      if (!TREE_CONSTANT (elt->value))
 	constant_p = false;
-	break;
-      }
+      if (TREE_SIDE_EFFECTS (elt->value))
+	side_effects_p = true;
+    }
 
+  TREE_SIDE_EFFECTS (c) = side_effects_p;
   TREE_CONSTANT (c) = constant_p;
 
   return c;
@@ -1633,7 +1639,7 @@ build_zero_cst (tree type)
     {
     case INTEGER_TYPE: case ENUMERAL_TYPE: case BOOLEAN_TYPE:
     case POINTER_TYPE: case REFERENCE_TYPE:
-    case OFFSET_TYPE:
+    case OFFSET_TYPE: case NULLPTR_TYPE:
       return build_int_cst (type, 0);
 
     case REAL_TYPE:
@@ -1865,7 +1871,7 @@ integer_pow2p (const_tree expr)
   /* First clear all bits that are beyond the type's precision in case
      we've been sign extended.  */
 
-  if (prec == 2 * HOST_BITS_PER_WIDE_INT)
+  if (prec == HOST_BITS_PER_DOUBLE_INT)
     ;
   else if (prec > HOST_BITS_PER_WIDE_INT)
     high &= ~((HOST_WIDE_INT) (-1) << (prec - HOST_BITS_PER_WIDE_INT));
@@ -1929,7 +1935,7 @@ tree_log2 (const_tree expr)
   /* First clear all bits that are beyond the type's precision in case
      we've been sign extended.  */
 
-  if (prec == 2 * HOST_BITS_PER_WIDE_INT)
+  if (prec == HOST_BITS_PER_DOUBLE_INT)
     ;
   else if (prec > HOST_BITS_PER_WIDE_INT)
     high &= ~((HOST_WIDE_INT) (-1) << (prec - HOST_BITS_PER_WIDE_INT));
@@ -1966,7 +1972,7 @@ tree_floor_log2 (const_tree expr)
      we've been sign extended.  Ignore if type's precision hasn't been set
      since what we are doing is setting it.  */
 
-  if (prec == 2 * HOST_BITS_PER_WIDE_INT || prec == 0)
+  if (prec == HOST_BITS_PER_DOUBLE_INT || prec == 0)
     ;
   else if (prec > HOST_BITS_PER_WIDE_INT)
     high &= ~((HOST_WIDE_INT) (-1) << (prec - HOST_BITS_PER_WIDE_INT));
@@ -2973,6 +2979,7 @@ type_contains_placeholder_1 (const_tree type)
     case METHOD_TYPE:
     case FUNCTION_TYPE:
     case VECTOR_TYPE:
+    case NULLPTR_TYPE:
       return false;
 
     case INTEGER_TYPE:
@@ -3050,7 +3057,7 @@ push_without_duplicates (tree exp, VEC (tree, heap) **queue)
     VEC_safe_push (tree, heap, *queue, exp);
 }
 
-/* Given a tree EXP, find all occurences of references to fields
+/* Given a tree EXP, find all occurrences of references to fields
    in a PLACEHOLDER_EXPR and place them in vector REFS without
    duplicates.  Also record VAR_DECLs and CONST_DECLs.  Note that
    we assume here that EXP contains only arithmetic expressions
@@ -4568,11 +4575,17 @@ free_lang_data_in_type (tree type)
   free_lang_data_in_one_sizepos (&TYPE_SIZE (type));
   free_lang_data_in_one_sizepos (&TYPE_SIZE_UNIT (type));
 
-  if (debug_info_level < DINFO_LEVEL_TERSE
-      || (TYPE_CONTEXT (type)
-	  && TREE_CODE (TYPE_CONTEXT (type)) != FUNCTION_DECL
-	  && TREE_CODE (TYPE_CONTEXT (type)) != NAMESPACE_DECL))
-    TYPE_CONTEXT (type) = NULL_TREE;
+  if (TYPE_CONTEXT (type)
+      && TREE_CODE (TYPE_CONTEXT (type)) == BLOCK)
+    {
+      tree ctx = TYPE_CONTEXT (type);
+      do
+	{
+	  ctx = BLOCK_SUPERCONTEXT (ctx);
+	}
+      while (ctx && TREE_CODE (ctx) == BLOCK);
+      TYPE_CONTEXT (type) = ctx;
+    }
 }
 
 
@@ -4897,7 +4910,15 @@ find_decls_types_r (tree *tp, int *ws, void *data)
       fld_worklist_push (TYPE_MAIN_VARIANT (t), fld);
       /* Do not walk TYPE_NEXT_VARIANT.  We do not stream it and thus
          do not and want not to reach unused variants this way.  */
-      fld_worklist_push (TYPE_CONTEXT (t), fld);
+      if (TYPE_CONTEXT (t))
+	{
+	  tree ctx = TYPE_CONTEXT (t);
+	  /* We adjust BLOCK TYPE_CONTEXTs to the innermost non-BLOCK one.
+	     So push that instead.  */
+	  while (ctx && TREE_CODE (ctx) == BLOCK)
+	    ctx = BLOCK_SUPERCONTEXT (ctx);
+	  fld_worklist_push (ctx, fld);
+	}
       /* Do not walk TYPE_CANONICAL.  We do not stream it and thus do not
 	 and want not to reach unused types this way.  */
 
@@ -6167,6 +6188,7 @@ type_hash_eq (const void *va, const void *vb)
     case COMPLEX_TYPE:
     case POINTER_TYPE:
     case REFERENCE_TYPE:
+    case NULLPTR_TYPE:
       return 1;
 
     case VECTOR_TYPE:
@@ -6886,6 +6908,7 @@ commutative_tree_code (enum tree_code code)
     {
     case PLUS_EXPR:
     case MULT_EXPR:
+    case MULT_HIGHPART_EXPR:
     case MIN_EXPR:
     case MAX_EXPR:
     case BIT_IOR_EXPR:
@@ -6900,6 +6923,11 @@ commutative_tree_code (enum tree_code code)
     case TRUTH_AND_EXPR:
     case TRUTH_XOR_EXPR:
     case TRUTH_OR_EXPR:
+    case WIDEN_MULT_EXPR:
+    case VEC_WIDEN_MULT_HI_EXPR:
+    case VEC_WIDEN_MULT_LO_EXPR:
+    case VEC_WIDEN_MULT_EVEN_EXPR:
+    case VEC_WIDEN_MULT_ODD_EXPR:
       return true;
 
     default:
@@ -8477,8 +8505,11 @@ variably_modified_type_p (tree type, tree fn)
    a variable in FN.  */
 #define RETURN_TRUE_IF_VAR(T)						\
   do { tree _t = (T);							\
-    if (_t && _t != error_mark_node && TREE_CODE (_t) != INTEGER_CST	\
-        && (!fn || walk_tree (&_t, find_var_from_fn, fn, NULL)))	\
+    if (_t != NULL_TREE							\
+	&& _t != error_mark_node					\
+	&& TREE_CODE (_t) != INTEGER_CST				\
+	&& TREE_CODE (_t) != PLACEHOLDER_EXPR				\
+	&& (!fn || walk_tree (&_t, find_var_from_fn, fn, NULL)))	\
       return true;  } while (0)
 
   if (type == error_mark_node)
@@ -8718,23 +8749,37 @@ dump_tree_statistics (void)
 
 /* Generate a crc32 of a byte.  */
 
-unsigned
-crc32_byte (unsigned chksum, char byte)
+static unsigned
+crc32_unsigned_bits (unsigned chksum, unsigned value, unsigned bits)
 {
-  unsigned value = (unsigned) byte << 24;
-      unsigned ix;
+  unsigned ix;
 
-      for (ix = 8; ix--; value <<= 1)
-  	{
-  	  unsigned feedback;
-
-  	  feedback = (value ^ chksum) & 0x80000000 ? 0x04c11db7 : 0;
- 	  chksum <<= 1;
- 	  chksum ^= feedback;
-  	}
+  for (ix = bits; ix--; value <<= 1)
+    {
+      unsigned feedback;
+      
+      feedback = (value ^ chksum) & 0x80000000 ? 0x04c11db7 : 0;
+      chksum <<= 1;
+      chksum ^= feedback;
+    }
   return chksum;
 }
 
+/* Generate a crc32 of a 32-bit unsigned.  */
+
+unsigned
+crc32_unsigned (unsigned chksum, unsigned value)
+{
+  return crc32_unsigned_bits (chksum, value, 32);
+}
+
+/* Generate a crc32 of a byte.  */
+
+unsigned
+crc32_byte (unsigned chksum, char byte)
+{
+  return crc32_unsigned_bits (chksum, (unsigned) byte << 24, 8);
+}
 
 /* Generate a crc32 of a string.  */
 
@@ -10191,7 +10236,7 @@ widest_int_cst_value (const_tree x)
   unsigned HOST_WIDEST_INT val = TREE_INT_CST_LOW (x);
 
 #if HOST_BITS_PER_WIDEST_INT > HOST_BITS_PER_WIDE_INT
-  gcc_assert (HOST_BITS_PER_WIDEST_INT >= 2 * HOST_BITS_PER_WIDE_INT);
+  gcc_assert (HOST_BITS_PER_WIDEST_INT >= HOST_BITS_PER_DOUBLE_INT);
   val |= (((unsigned HOST_WIDEST_INT) TREE_INT_CST_HIGH (x))
 	  << HOST_BITS_PER_WIDE_INT);
 #else
@@ -10309,7 +10354,7 @@ upper_bound_in_type (tree outer, tree inner)
   else
     {
       high.high = ((~(unsigned HOST_WIDE_INT) 0)
-	    >> (2 * HOST_BITS_PER_WIDE_INT - prec));
+	    >> (HOST_BITS_PER_DOUBLE_INT - prec));
       high.low = ~(unsigned HOST_WIDE_INT) 0;
     }
 

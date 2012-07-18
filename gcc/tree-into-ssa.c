@@ -28,17 +28,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm_p.h"
 #include "langhooks.h"
 #include "basic-block.h"
-#include "output.h"
 #include "function.h"
-#include "tree-pretty-print.h"
 #include "gimple-pretty-print.h"
 #include "bitmap.h"
 #include "tree-flow.h"
 #include "gimple.h"
 #include "tree-inline.h"
-#include "timevar.h"
 #include "hashtab.h"
-#include "tree-dump.h"
 #include "tree-pass.h"
 #include "cfgloop.h"
 #include "domwalk.h"
@@ -2471,7 +2467,7 @@ rewrite_into_ssa (void)
   basic_block bb;
 
   /* Initialize operand data structures.  */
-  init_ssa_operands ();
+  init_ssa_operands (cfun);
 
   /* Initialize internal data needed by the renamer.  */
   init_ssa_renamer ();

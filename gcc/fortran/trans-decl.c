@@ -32,7 +32,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "ggc.h"
 #include "diagnostic-core.h"	/* For internal_error.  */
 #include "toplev.h"	/* For announce_function.  */
-#include "output.h"	/* For decl_default_tls_model.  */
 #include "target.h"
 #include "function.h"
 #include "flags.h"
@@ -3452,12 +3451,9 @@ init_intent_out_dt (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 	     && !CLASS_DATA (f->sym)->attr.class_pointer
 	     && CLASS_DATA (f->sym)->ts.u.derived->attr.alloc_comp)
       {
-	tree decl = build_fold_indirect_ref_loc (input_location,
-						 f->sym->backend_decl);
-	tmp = CLASS_DATA (f->sym)->backend_decl;
-	tmp = fold_build3_loc (input_location, COMPONENT_REF,
-			       TREE_TYPE (tmp), decl, tmp, NULL_TREE);
-	tmp = build_fold_indirect_ref_loc (input_location, tmp);
+	tmp = gfc_class_data_get (f->sym->backend_decl);
+	if (CLASS_DATA (f->sym)->as == NULL)
+	  tmp = build_fold_indirect_ref_loc (input_location, tmp);
 	tmp = gfc_deallocate_alloc_comp (CLASS_DATA (f->sym)->ts.u.derived,
 					 tmp,
 					 CLASS_DATA (f->sym)->as ?

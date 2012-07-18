@@ -28,12 +28,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree.h"
 #include "tm_p.h"
 #include "basic-block.h"
-#include "output.h"
 #include "tree-pretty-print.h"
 #include "tree-flow.h"
-#include "tree-dump.h"
-#include "tree-pass.h"
-#include "timevar.h"
+#include "dumpfile.h"
 #include "flags.h"
 #include "tree-inline.h"
 #include "tree-affine.h"
@@ -557,7 +554,7 @@ most_expensive_mult_to_index (tree type, struct mem_address *parts,
 	  || !multiplier_allowed_in_address_p (coef, TYPE_MODE (type), as))
 	continue;
 
-      acost = multiply_by_cost (coef, address_mode, speed);
+      acost = multiply_by_const_cost (coef, address_mode, speed);
 
       if (acost > best_mult_cost)
 	{
@@ -868,7 +865,7 @@ copy_ref_info (tree new_ref, tree old_ref)
 	  duplicate_ssa_name_ptr_info
 	    (new_ptr_base, SSA_NAME_PTR_INFO (TREE_OPERAND (base, 0)));
 	  new_pi = SSA_NAME_PTR_INFO (new_ptr_base);
-	  /* We have to be careful about transfering alignment information.  */
+	  /* We have to be careful about transferring alignment information.  */
 	  if (get_ptr_info_alignment (new_pi, &align, &misalign)
 	      && TREE_CODE (old_ref) == MEM_REF
 	      && !(TREE_CODE (new_ref) == TARGET_MEM_REF
