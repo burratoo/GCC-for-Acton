@@ -22,6 +22,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
+#include "coretypes.h"
 #include "flags.h"
 #include "gfortran.h"
 #include "obstack.h"
@@ -172,7 +173,7 @@ resolve_procedure_interface (gfc_symbol *sym)
       sym->ts.interface = ifc;
       sym->attr.function = ifc->attr.function;
       sym->attr.subroutine = ifc->attr.subroutine;
-      gfc_copy_formal_args (sym, ifc);
+      gfc_copy_formal_args (sym, ifc, IFSRC_DECL);
 
       sym->attr.allocatable = ifc->attr.allocatable;
       sym->attr.pointer = ifc->attr.pointer;
@@ -1152,7 +1153,7 @@ resolve_structure_cons (gfc_expr *expr, int init)
 	    }
 
 	  if (s2 && !gfc_compare_interfaces (comp->ts.interface, s2, name, 0, 1,
-					     err, sizeof (err)))
+					     err, sizeof (err), NULL, NULL))
 	    {
 	      gfc_error ("Interface mismatch for procedure-pointer component "
 			 "'%s' in structure constructor at %L: %s",
@@ -1401,7 +1402,7 @@ count_specific_procs (gfc_expr *e)
 
 
 /* See if a call to sym could possibly be a not allowed RECURSION because of
-   a missing RECURIVE declaration.  This means that either sym is the current
+   a missing RECURSIVE declaration.  This means that either sym is the current
    context itself, or sym is the parent of a contained procedure calling its
    non-RECURSIVE containing procedure.
    This also works if sym is an ENTRY.  */
@@ -1957,7 +1958,6 @@ resolve_elemental_actual (gfc_expr *expr, gfc_code *c)
 		       "ELEMENTAL procedure unless there is a non-optional "
 		       "argument with the same rank (12.4.1.5)",
 		       arg->expr->symtree->n.sym->name, &arg->expr->where);
-	  return FAILURE;
 	}
     }
 
@@ -5684,7 +5684,7 @@ resolve_typebound_static (gfc_expr* e, gfc_symtree** target,
       derived = e->value.compcall.base_object->ts.u.derived;
       st = NULL;
 
-      /* If necessary, go throught the inheritance chain.  */
+      /* If necessary, go through the inheritance chain.  */
       while (!st && derived)
 	{
 	  /* Look for the typebound procedure 'name'.  */
@@ -6879,7 +6879,7 @@ resolve_allocate_expr (gfc_expr *e, gfc_code *code)
   gfc_component *c;
   gfc_try t;
 
-  /* Mark the ultimost array component as being in allocate to allow DIMEN_STAR
+  /* Mark the utmost array component as being in allocate to allow DIMEN_STAR
      checking of coarrays.  */
   for (ref = e->ref; ref; ref = ref->next)
     if (ref->next == NULL)
@@ -6986,6 +6986,7 @@ resolve_allocate_expr (gfc_expr *e, gfc_code *code)
 	}
     }
 
+  /* Check for F08:C628.  */
   if (allocatable == 0 && pointer == 0)
     {
       gfc_error ("Allocate-object at %L must be ALLOCATABLE or a POINTER",
@@ -7130,7 +7131,7 @@ resolve_allocate_expr (gfc_expr *e, gfc_code *code)
   if (dimension == 0 && codimension == 0)
     goto success;
 
-  /* Make sure the last reference node is an array specifiction.  */
+  /* Make sure the last reference node is an array specification.  */
 
   if (!ref2 || ref2->type != REF_ARRAY || ref2->u.ar.type == AR_FULL
       || (dimension && ref2->u.ar.dimen == 0))
@@ -7325,8 +7326,8 @@ resolve_allocate_deallocate (gfc_code *code, const char *fcn)
 	  }
     }
 
-  /* Check that an allocate-object appears only once in the statement.  
-     FIXME: Checking derived types is disabled.  */
+  /* Check that an allocate-object appears only once in the statement.  */
+
   for (p = code->ext.alloc.list; p; p = p->next)
     {
       pe = p->expr;
@@ -7376,9 +7377,10 @@ resolve_allocate_deallocate (gfc_code *code, const char *fcn)
 			{
 			  gfc_array_ref *par = &(pr->u.ar);
 			  gfc_array_ref *qar = &(qr->u.ar);
-			  if (gfc_dep_compare_expr (par->start[0],
-						    qar->start[0]) != 0)
-			      break;
+			  if ((par->start[0] != NULL || qar->start[0] != NULL)
+			      && gfc_dep_compare_expr (par->start[0],
+						       qar->start[0]) != 0)
+			    break;
 			}
 		    }
 		  else
@@ -8200,7 +8202,7 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 
       /* Chain in the new list only if it is marked as dangling.  Otherwise
 	 there is a CASE label overlap and this is already used.  Just ignore,
-	 the error is diagonsed elsewhere.  */
+	 the error is diagnosed elsewhere.  */
       if (st->n.sym->assoc->dangling)
 	{
 	  new_st->ext.block.assoc = st->n.sym->assoc;
@@ -9366,7 +9368,7 @@ resolve_code (gfc_code *code, gfc_namespace *ns)
 	    case EXEC_OMP_WORKSHARE:
 	      omp_workshare_save = omp_workshare_flag;
 	      omp_workshare_flag = 1;
-	      /* FALLTHROUGH */
+	      /* FALL THROUGH */
 	    default:
 	      gfc_resolve_blocks (code->block, ns);
 	      break;
@@ -9945,12 +9947,24 @@ resolve_charlen (gfc_charlen *cl)
 
   cl->resolved = 1;
 
-  specification_expr = 1;
 
-  if (resolve_index_expr (cl->length) == FAILURE)
+  if (cl->length_from_typespec)
     {
-      specification_expr = 0;
-      return FAILURE;
+      if (gfc_resolve_expr (cl->length) == FAILURE)
+	return FAILURE;
+
+      if (gfc_simplify_expr (cl->length, 0) == FAILURE)
+	return FAILURE;
+    }
+  else
+    {
+      specification_expr = 1;
+
+      if (resolve_index_expr (cl->length) == FAILURE)
+	{
+	  specification_expr = 0;
+	  return FAILURE;
+	}
     }
 
   /* "If the character length parameter value evaluates to a negative
@@ -10091,7 +10105,8 @@ build_default_init_expr (gfc_symbol *sym)
       || sym->attr.data
       || sym->module
       || sym->attr.cray_pointee
-      || sym->attr.cray_pointer)
+      || sym->attr.cray_pointer
+      || sym->assoc)
     return NULL;
 
   /* Now we'll try to build an initializer expression.  */
@@ -11007,8 +11022,8 @@ static gfc_try
 check_generic_tbp_ambiguity (gfc_tbp_generic* t1, gfc_tbp_generic* t2,
 			     const char* generic_name, locus where)
 {
-  gfc_symbol* sym1;
-  gfc_symbol* sym2;
+  gfc_symbol *sym1, *sym2;
+  const char *pass1, *pass2;
 
   gcc_assert (t1->specific && t2->specific);
   gcc_assert (!t1->specific->is_generic);
@@ -11032,8 +11047,20 @@ check_generic_tbp_ambiguity (gfc_tbp_generic* t1, gfc_tbp_generic* t2,
     }
 
   /* Compare the interfaces.  */
+  if (t1->specific->nopass)
+    pass1 = NULL;
+  else if (t1->specific->pass_arg)
+    pass1 = t1->specific->pass_arg;
+  else
+    pass1 = t1->specific->u.specific->n.sym->formal->sym->name;
+  if (t2->specific->nopass)
+    pass2 = NULL;
+  else if (t2->specific->pass_arg)
+    pass2 = t2->specific->pass_arg;
+  else
+    pass2 = t2->specific->u.specific->n.sym->formal->sym->name;  
   if (gfc_compare_interfaces (sym1, sym2, sym2->name, !t1->is_operator, 0,
-			      NULL, 0))
+			      NULL, 0, pass1, pass2))
     {
       gfc_error ("'%s' and '%s' for GENERIC '%s' at %L are ambiguous",
 		 sym1->name, sym2->name, generic_name, &where);
@@ -11239,6 +11266,22 @@ resolve_typebound_intrinsic_op (gfc_symbol* derived, gfc_intrinsic_op op,
 
       if (!gfc_check_operator_interface (target_proc, op, p->where))
 	goto error;
+
+      /* Add target to non-typebound operator list.  */
+      if (!target->specific->deferred && !derived->attr.use_assoc
+	  && p->access != ACCESS_PRIVATE)
+	{
+	  gfc_interface *head, *intr;
+	  if (gfc_check_new_interface (derived->ns->op[op], target_proc,
+				       p->where) == FAILURE)
+	    return FAILURE;
+	  head = derived->ns->op[op];
+	  intr = gfc_get_interface ();
+	  intr->sym = target_proc;
+	  intr->where = p->where;
+	  intr->next = head;
+	  derived->ns->op[op] = intr;
+	}
     }
 
   return SUCCESS;
@@ -11748,7 +11791,7 @@ resolve_fl_derived0 (gfc_symbol *sym)
 	      c->ts.interface = ifc;
 	      c->attr.function = ifc->attr.function;
 	      c->attr.subroutine = ifc->attr.subroutine;
-	      gfc_copy_formal_args_ppc (c, ifc);
+	      gfc_copy_formal_args_ppc (c, ifc, IFSRC_DECL);
 
 	      c->attr.pure = ifc->attr.pure;
 	      c->attr.elemental = ifc->attr.elemental;

@@ -28,7 +28,6 @@
 #include "bitmap.h"
 #include "flags.h"
 #include "basic-block.h"
-#include "output.h"
 #include "tree.h"
 #include "tree-flow.h"
 #include "tree-inline.h"
@@ -38,7 +37,6 @@
 #include "function.h"
 #include "cgraph.h"
 #include "tree-pass.h"
-#include "timevar.h"
 #include "alloc-pool.h"
 #include "splay-tree.h"
 #include "params.h"
@@ -5583,7 +5581,8 @@ create_variable_info_for (tree decl, const char *name)
 
 	  /* If this is a global variable with an initializer and we are in
 	     IPA mode generate constraints for it.  */
-	  if (DECL_INITIAL (decl))
+	  if (DECL_INITIAL (decl)
+	      && vnode->analyzed)
 	    {
 	      VEC (ce_s, heap) *rhsc = NULL;
 	      struct constraint_expr lhs, *rhsp;

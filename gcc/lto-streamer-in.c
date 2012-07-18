@@ -42,8 +42,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "except.h"
 #include "debug.h"
 #include "vec.h"
-#include "timevar.h"
-#include "output.h"
 #include "ipa-utils.h"
 #include "data-streamer.h"
 #include "gimple-streamer.h"
@@ -616,7 +614,7 @@ input_cfg (struct lto_input_block *ib, struct function *fn,
   int index;
 
   init_empty_tree_cfg_for_function (fn);
-  init_ssa_operands ();
+  init_ssa_operands (fn);
 
   profile_status_for_function (fn) = streamer_read_enum (ib, profile_status_d,
 							 PROFILE_LAST);
@@ -804,6 +802,7 @@ input_struct_function_base (struct function *fn, struct data_in *data_in,
   fn->returns_pcc_struct = bp_unpack_value (&bp, 1);
   fn->returns_struct = bp_unpack_value (&bp, 1);
   fn->can_throw_non_call_exceptions = bp_unpack_value (&bp, 1);
+  fn->can_delete_dead_exceptions = bp_unpack_value (&bp, 1);
   fn->always_inline_functions_inlined = bp_unpack_value (&bp, 1);
   fn->after_inlining = bp_unpack_value (&bp, 1);
   fn->stdarg = bp_unpack_value (&bp, 1);

@@ -48,7 +48,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "value-prof.h"
 #include "tree-pass.h"
 #include "target.h"
-#include "integrate.h"
 
 #include "rtl.h"	/* FIXME: For asm_str_count.  */
 
@@ -818,6 +817,15 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
 	       || decl_function_context (*tp) == id->src_fn))
     /* These may need to be remapped for EH handling.  */
     *tp = remap_decl (*tp, id);
+  else if (TREE_CODE (*tp) == FIELD_DECL)
+    {
+      /* If the enclosing record type is variably_modified_type_p, the field
+	 has already been remapped.  Otherwise, it need not be.  */
+      tree *n = (tree *) pointer_map_contains (id->decl_map, *tp);
+      if (n)
+	*tp = *n;
+      *walk_subtrees = 0;
+    }
   else if (TYPE_P (*tp))
     /* Types may need remapping as well.  */
     *tp = remap_type (*tp, id);
@@ -876,8 +884,8 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
 
       /* Global variables we haven't seen yet need to go into referenced
 	 vars.  If not referenced from types only.  */
-      if (gimple_in_ssa_p (cfun)
-	  && TREE_CODE (*tp) == VAR_DECL
+      if (gimple_referenced_vars (cfun)
+	  && TREE_CODE (*tp) == VAR_DECL && !is_global_var (*tp)
 	  && id->remapping_type_depth == 0
 	  && !processing_debug_stmt)
 	add_referenced_var (*tp);
@@ -1119,8 +1127,8 @@ copy_tree_body_r (tree *tp, int *walk_subtrees, void *data)
 
       /* Global variables we haven't seen yet needs to go into referenced
 	 vars.  If not referenced from types or debug stmts only.  */
-      if (gimple_in_ssa_p (cfun)
-	  && TREE_CODE (*tp) == VAR_DECL
+      if (gimple_referenced_vars (cfun)
+	  && TREE_CODE (*tp) == VAR_DECL && !is_global_var (*tp)
 	  && id->remapping_type_depth == 0
 	  && !processing_debug_stmt)
 	add_referenced_var (*tp);
@@ -2099,6 +2107,7 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   cfun->after_inlining = src_cfun->after_inlining;
   cfun->can_throw_non_call_exceptions
     = src_cfun->can_throw_non_call_exceptions;
+  cfun->can_delete_dead_exceptions = src_cfun->can_delete_dead_exceptions;
   cfun->returns_struct = src_cfun->returns_struct;
   cfun->returns_pcc_struct = src_cfun->returns_pcc_struct;
   cfun->after_tree_profile = src_cfun->after_tree_profile;
@@ -2123,7 +2132,7 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
     {
       init_tree_ssa (cfun);
       cfun->gimple_df->in_ssa_p = true;
-      init_ssa_operands ();
+      init_ssa_operands (cfun);
     }
   pop_cfun ();
 }
@@ -2604,11 +2613,11 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
   /* We are eventually using the value - make sure all variables
      referenced therein are properly recorded.  */
   if (value
-      && gimple_in_ssa_p (cfun)
+      && gimple_referenced_vars (cfun)
       && TREE_CODE (value) == ADDR_EXPR)
     {
       tree base = get_base_address (TREE_OPERAND (value, 0));
-      if (base && TREE_CODE (base) == VAR_DECL)
+      if (base && TREE_CODE (base) == VAR_DECL && !is_global_var (base))
 	add_referenced_var (base);
     }
 
@@ -2701,7 +2710,8 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
       STRIP_USELESS_TYPE_CONVERSION (rhs);
 
       /* If we are in SSA form properly remap the default definition
-         or omit the initialization if the parameter is unused.  */
+         or assign to a dummy SSA name if the parameter is unused and
+	 we are not optimizing.  */
       if (gimple_in_ssa_p (cfun) && is_gimple_reg (p))
 	{
 	  if (def)
@@ -2710,6 +2720,11 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
 	      init_stmt = gimple_build_assign (def, rhs);
 	      SSA_NAME_IS_DEFAULT_DEF (def) = 0;
 	      set_default_def (var, NULL);
+	    }
+	  else if (!optimize)
+	    {
+	      def = make_ssa_name (var, NULL);
+	      init_stmt = gimple_build_assign (def, rhs);
 	    }
 	}
       else
@@ -2911,7 +2926,7 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
   gcc_assert (TREE_CODE (TYPE_SIZE_UNIT (callee_type)) == INTEGER_CST);
 
   var = copy_result_decl_to_var (result, id);
-  if (gimple_in_ssa_p (cfun))
+  if (gimple_referenced_vars (cfun))
     add_referenced_var (var);
 
   DECL_SEEN_IN_BIND_EXPR_P (var) = 1;
@@ -2972,7 +2987,7 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
       && !is_gimple_val (var))
     {
       tree temp = create_tmp_var (TREE_TYPE (result), "retvalptr");
-      if (gimple_in_ssa_p (id->src_cfun))
+      if (gimple_referenced_vars (cfun))
 	add_referenced_var (temp);
       insert_decl_map (id, result, temp);
       /* When RESULT_DECL is in SSA form, we need to remap and initialize
@@ -3221,6 +3236,29 @@ inline_forbidden_p (tree fndecl)
   pointer_set_destroy (visited_nodes);
   return forbidden_p;
 }
+
+/* Return false if the function FNDECL cannot be inlined on account of its
+   attributes, true otherwise.  */
+static bool
+function_attribute_inlinable_p (const_tree fndecl)
+{
+  if (targetm.attribute_table)
+    {
+      const_tree a;
+
+      for (a = DECL_ATTRIBUTES (fndecl); a; a = TREE_CHAIN (a))
+	{
+	  const_tree name = TREE_PURPOSE (a);
+	  int i;
+
+	  for (i = 0; targetm.attribute_table[i].name != NULL; i++)
+	    if (is_attribute_p (targetm.attribute_table[i].name, name))
+	      return targetm.function_attribute_inlinable_p (fndecl);
+	}
+    }
+
+  return true;
+}
 
 /* Returns nonzero if FN is a function that does not have any
    fundamental inline blocking properties.  */
@@ -3341,6 +3379,7 @@ estimate_operator_cost (enum tree_code code, eni_weights *weights,
     case POINTER_PLUS_EXPR:
     case MINUS_EXPR:
     case MULT_EXPR:
+    case MULT_HIGHPART_EXPR:
     case FMA_EXPR:
 
     case ADDR_SPACE_CONVERT_EXPR:
@@ -3409,6 +3448,8 @@ estimate_operator_cost (enum tree_code code, eni_weights *weights,
 
     case VEC_WIDEN_MULT_HI_EXPR:
     case VEC_WIDEN_MULT_LO_EXPR:
+    case VEC_WIDEN_MULT_EVEN_EXPR:
+    case VEC_WIDEN_MULT_ODD_EXPR:
     case VEC_UNPACK_HI_EXPR:
     case VEC_UNPACK_LO_EXPR:
     case VEC_UNPACK_FLOAT_HI_EXPR:
@@ -3794,9 +3835,9 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
 
   /* Set input_location here so we get the right instantiation context
      if we call instantiate_decl from inlinable_function_p.  */
+  /* FIXME: instantiate_decl isn't called by inlinable_function_p.  */
   saved_location = input_location;
-  if (gimple_has_location (stmt))
-    input_location = gimple_location (stmt);
+  input_location = gimple_location (stmt);
 
   /* From here on, we're only interested in CALL_EXPRs.  */
   if (gimple_code (stmt) != GIMPLE_CALL)
@@ -5188,10 +5229,8 @@ tree_function_versioning (tree old_decl, tree new_decl,
 
 	    if (TREE_CODE (op) == ADDR_EXPR)
 	      {
-		op = TREE_OPERAND (op, 0);
-		while (handled_component_p (op))
-		  op = TREE_OPERAND (op, 0);
-		if (TREE_CODE (op) == VAR_DECL)
+		op = get_base_address (TREE_OPERAND (op, 0));
+		if (op && TREE_CODE (op) == VAR_DECL && !is_global_var (op))
 		  add_referenced_var (op);
 	      }
 	    gcc_assert (TREE_CODE (replace_info->old_tree) == PARM_DECL);

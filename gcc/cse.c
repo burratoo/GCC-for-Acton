@@ -35,9 +35,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "expr.h"
 #include "diagnostic-core.h"
 #include "toplev.h"
-#include "output.h"
 #include "ggc.h"
-#include "timevar.h"
 #include "except.h"
 #include "target.h"
 #include "params.h"
@@ -600,7 +598,6 @@ static void invalidate_from_clobbers (rtx);
 static void invalidate_from_sets_and_clobbers (rtx);
 static rtx cse_process_notes (rtx, rtx, bool *);
 static void cse_extended_basic_block (struct cse_basic_block_data *);
-static void count_reg_usage (rtx, int *, rtx, int);
 static int check_for_label_ref (rtx *, void *);
 extern void dump_class (struct table_elt*);
 static void get_cse_reg_info_1 (unsigned int regno);
@@ -622,9 +619,7 @@ static enum machine_mode cse_cc_succs (basic_block, basic_block, rtx, rtx,
 
 static const struct rtl_hooks cse_rtl_hooks = RTL_HOOKS_INITIALIZER;
 
-/* Nonzero if X has the form (PLUS frame-pointer integer).  We check for
-   virtual regs here because the simplify_*_operation routines are called
-   by integrate.c, which is called before virtual register instantiation.  */
+/* Nonzero if X has the form (PLUS frame-pointer integer).  */
 
 static bool
 fixed_base_plus_p (rtx x)
@@ -635,9 +630,6 @@ fixed_base_plus_p (rtx x)
       if (x == frame_pointer_rtx || x == hard_frame_pointer_rtx)
 	return true;
       if (x == arg_pointer_rtx && fixed_regs[ARG_POINTER_REGNUM])
-	return true;
-      if (REGNO (x) >= FIRST_VIRTUAL_REGISTER
-	  && REGNO (x) <= LAST_VIRTUAL_REGISTER)
 	return true;
       return false;
 
@@ -6698,10 +6690,11 @@ count_reg_usage (rtx x, int *counts, rtx dest, int incr)
     case CALL_INSN:
     case INSN:
     case JUMP_INSN:
-      /* We expect dest to be NULL_RTX here.  If the insn may trap,
+      /* We expect dest to be NULL_RTX here.  If the insn may throw,
 	 or if it cannot be deleted due to side-effects, mark this fact
 	 by setting DEST to pc_rtx.  */
-      if (insn_could_throw_p (x) || side_effects_p (PATTERN (x)))
+      if ((!cfun->can_delete_dead_exceptions && !insn_nothrow_p (x))
+	  || side_effects_p (PATTERN (x)))
 	dest = pc_rtx;
       if (code == CALL_INSN)
 	count_reg_usage (CALL_INSN_FUNCTION_USAGE (x), counts, dest, incr);
@@ -6806,7 +6799,7 @@ static bool
 insn_live_p (rtx insn, int *counts)
 {
   int i;
-  if (insn_could_throw_p (insn))
+  if (!cfun->can_delete_dead_exceptions && !insn_nothrow_p (insn))
     return true;
   else if (GET_CODE (PATTERN (insn)) == SET)
     return set_live_p (PATTERN (insn), insn, counts);

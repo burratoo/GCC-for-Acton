@@ -30,7 +30,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree.h"
 #include "cp-tree.h"
 #include "flags.h"
-#include "output.h"
 #include "tree-inline.h"
 #include "tree-iterator.h"
 #include "target.h"
@@ -425,7 +424,8 @@ initialize_handler_parm (tree decl, tree exp)
       && TYPE_PTR_P (TREE_TYPE (init_type)))
     exp = cp_build_addr_expr (exp, tf_warning_or_error);
 
-  exp = ocp_convert (init_type, exp, CONV_IMPLICIT|CONV_FORCE_TEMP, 0);
+  exp = ocp_convert (init_type, exp, CONV_IMPLICIT|CONV_FORCE_TEMP, 0,
+		     tf_warning_or_error);
 
   init = convert_from_reference (exp);
 
@@ -436,7 +436,8 @@ initialize_handler_parm (tree decl, tree exp)
       /* Generate the copy constructor call directly so we can wrap it.
 	 See also expand_default_init.  */
       init = ocp_convert (TREE_TYPE (decl), init,
-			  CONV_IMPLICIT|CONV_FORCE_TEMP, 0);
+			  CONV_IMPLICIT|CONV_FORCE_TEMP, 0,
+			  tf_warning_or_error);
       /* Force cleanups now to avoid nesting problems with the
 	 MUST_NOT_THROW_EXPR.  */
       init = fold_build_cleanup_point_expr (TREE_TYPE (init), init);
@@ -974,7 +975,7 @@ is_admissible_throw_operand_or_catch_parameter (tree t, bool is_throw)
   /* 10.4/3 An abstract class shall not be used as a parameter type,
 	    as a function return type or as type of an explicit
 	    conversion.  */
-  else if (CLASS_TYPE_P (type) && CLASSTYPE_PURE_VIRTUALS (type))
+  else if (ABSTRACT_CLASS_TYPE_P (type))
     {
       if (is_throw)
 	error ("expression %qE of abstract class type %qT cannot "

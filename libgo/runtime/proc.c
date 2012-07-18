@@ -8,6 +8,11 @@
 #include <unistd.h>
 
 #include "config.h"
+
+#ifdef HAVE_DL_ITERATE_PHDR
+#include <link.h>
+#endif
+
 #include "runtime.h"
 #include "arch.h"
 #include "defs.h"
@@ -36,12 +41,12 @@ extern void __splitstack_block_signals_context (void *context[10], int *,
 
 #endif
 
+#ifndef PTHREAD_STACK_MIN
+# define PTHREAD_STACK_MIN 8192
+#endif
+
 #if defined(USING_SPLIT_STACK) && defined(LINKER_SUPPORTS_SPLIT_STACK)
-# ifdef PTHREAD_STACK_MIN
-#  define StackMin PTHREAD_STACK_MIN
-# else
-#  define StackMin 8192
-# endif
+# define StackMin PTHREAD_STACK_MIN
 #else
 # define StackMin 2 * 1024 * 1024
 #endif
@@ -137,6 +142,46 @@ runtime_m(void)
 }
 
 int32	runtime_gcwaiting;
+
+// The static TLS size.  See runtime_newm.
+static int tlssize;
+
+#ifdef HAVE_DL_ITERATE_PHDR
+
+// Called via dl_iterate_phdr.
+
+static int
+addtls(struct dl_phdr_info* info, size_t size __attribute__ ((unused)), void *data)
+{
+	size_t *total = (size_t *)data;
+	unsigned int i;
+
+	for(i = 0; i < info->dlpi_phnum; ++i) {
+		if(info->dlpi_phdr[i].p_type == PT_TLS)
+			*total += info->dlpi_phdr[i].p_memsz;
+	}
+	return 0;
+}
+
+// Set the total TLS size.
+
+static void
+inittlssize()
+{
+	size_t total = 0;
+
+	dl_iterate_phdr(addtls, (void *)&total);
+	tlssize = total;
+}
+
+#else
+
+static void
+inittlssize()
+{
+}
+
+#endif
 
 // Go scheduler
 //
@@ -348,7 +393,7 @@ runtime_mcall(void (*pfn)(G*))
 		mp = runtime_m();
 		gp = runtime_g();
 
-		if(gp->dotraceback != nil)
+		if(gp->traceback != nil)
 			gtraceback(gp);
 	}
 	if (gp == nil || !gp->fromgogo) {
@@ -393,6 +438,7 @@ runtime_schedinit(void)
 	g->m = m;
 
 	initcontext();
+	inittlssize();
 
 	m->nomemprof++;
 	runtime_mallocinit();
@@ -542,11 +588,20 @@ runtime_goroutinetrailer(G *g)
 	}
 }
 
+struct Traceback
+{
+	G* gp;
+	uintptr pcbuf[100];
+	int32 c;
+};
+
 void
 runtime_tracebackothers(G * volatile me)
 {
 	G * volatile g;
+	Traceback traceback;
 
+	traceback.gp = me;
 	for(g = runtime_allg; g != nil; g = g->alllink) {
 		if(g == me || g->status == Gdead)
 			continue;
@@ -567,16 +622,19 @@ runtime_tracebackothers(G * volatile me)
 			continue;
 		}
 
-		g->dotraceback = me;
+		g->traceback = &traceback;
 
 #ifdef USING_SPLIT_STACK
 		__splitstack_getcontext(&me->stack_context[0]);
 #endif
 		getcontext(&me->context);
 
-		if(g->dotraceback) {
+		if(g->traceback != nil) {
 			runtime_gogo(g);
 		}
+
+		runtime_printtrace(traceback.pcbuf, traceback.c);
+		runtime_goroutinetrailer(g);
 	}
 }
 
@@ -586,13 +644,13 @@ runtime_tracebackothers(G * volatile me)
 static void
 gtraceback(G* gp)
 {
-	G* ret;
+	Traceback* traceback;
 
-	runtime_traceback(nil);
-	runtime_goroutinetrailer(gp);
-	ret = gp->dotraceback;
-	gp->dotraceback = nil;
-	runtime_gogo(ret);
+	traceback = gp->traceback;
+	gp->traceback = nil;
+	traceback->c = runtime_callers(1, traceback->pcbuf,
+		sizeof traceback->pcbuf / sizeof traceback->pcbuf[0]);
+	runtime_gogo(traceback->gp);
 }
 
 // Mark this g as m's idle goroutine.
@@ -1093,6 +1151,7 @@ runtime_newm(void)
 	M *m;
 	pthread_attr_t attr;
 	pthread_t tid;
+	size_t stacksize;
 
 	m = runtime_malloc(sizeof(M));
 	mcommoninit(m);
@@ -1103,10 +1162,17 @@ runtime_newm(void)
 	if(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) != 0)
 		runtime_throw("pthread_attr_setdetachstate");
 
-#ifndef PTHREAD_STACK_MIN
-#define PTHREAD_STACK_MIN 8192
-#endif
-	if(pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN) != 0)
+	stacksize = PTHREAD_STACK_MIN;
+
+	// With glibc before version 2.16 the static TLS size is taken
+	// out of the stack size, and we get an error or a crash if
+	// there is not enough stack space left.  Add it back in if we
+	// can, in case the program uses a lot of TLS space.  FIXME:
+	// This can be disabled in glibc 2.16 and later, if the bug is
+	// indeed fixed then.
+	stacksize += tlssize;
+
+	if(pthread_attr_setstacksize(&attr, stacksize) != 0)
 		runtime_throw("pthread_attr_setstacksize");
 
 	if(pthread_create(&tid, &attr, runtime_mstart, m) != 0)
@@ -1239,9 +1305,7 @@ runtime_entersyscall(void)
 
 	// Save the registers in the g structure so that any pointers
 	// held in registers will be seen by the garbage collector.
-	// We could use getcontext here, but setjmp is more efficient
-	// because it doesn't need to save the signal mask.
-	setjmp(g->gcregs);
+	getcontext(&g->gcregs);
 
 	g->status = Gsyscall;
 
@@ -1299,7 +1363,7 @@ runtime_exitsyscall(void)
 		gp->gcstack = nil;
 #endif
 		gp->gcnext_sp = nil;
-		runtime_memclr(gp->gcregs, sizeof gp->gcregs);
+		runtime_memclr(&gp->gcregs, sizeof gp->gcregs);
 
 		if(m->profilehz > 0)
 			runtime_setprof(true);
@@ -1328,7 +1392,7 @@ runtime_exitsyscall(void)
 	gp->gcstack = nil;
 #endif
 	gp->gcnext_sp = nil;
-	runtime_memclr(gp->gcregs, sizeof gp->gcregs);
+	runtime_memclr(&gp->gcregs, sizeof gp->gcregs);
 }
 
 // Allocate a new g, with a stack big enough for stacksize bytes.

@@ -126,9 +126,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "cgraph.h"
 #include "diagnostic-core.h"
-#include "timevar.h"
 #include "params.h"
-#include "fibheap.h"
 #include "intl.h"
 #include "function.h"
 #include "basic-block.h"
@@ -1914,7 +1912,6 @@ transform_access_sites (void **slot, void *data ATTRIBUTE_UNUSED)
 	      num_elements =
 		fold_build2 (MULT_EXPR, sizetype, fold_convert (sizetype, acc_info->index),
 			    fold_convert (sizetype, d_size));
-	      add_referenced_var (d_size);
 	      gsi = gsi_for_stmt (acc_info->stmt);
 	      tmp1 = force_gimple_operand_gsi (&gsi, num_elements, true,
 					       NULL, true, GSI_SAME_STMT);
