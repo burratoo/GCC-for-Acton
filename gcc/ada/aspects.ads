@@ -83,6 +83,7 @@ package Aspects is
       Aspect_Contract_Case,                 -- GNAT
       Aspect_Convention,
       Aspect_CPU,
+      Aspect_Cycle_Period,                  -- Acton
       Aspect_Default_Component_Value,
       Aspect_Default_Iterator,
       Aspect_Default_Value,
@@ -101,6 +102,7 @@ package Aspects is
       Aspect_Machine_Radix,
       Aspect_Object_Size,                   -- GNAT
       Aspect_Output,
+      Aspect_Phase,                         -- Acton
       Aspect_Post,
       Aspect_Postcondition,
       Aspect_Pre,
@@ -306,6 +308,7 @@ package Aspects is
                         Aspect_Contract_Case           => Expression,
                         Aspect_Convention              => Name,
                         Aspect_CPU                     => Expression,
+                        Aspect_Cycle_Period            => Expression,
                         Aspect_Default_Component_Value => Expression,
                         Aspect_Default_Iterator        => Name,
                         Aspect_Default_Value           => Expression,
@@ -324,6 +327,7 @@ package Aspects is
                         Aspect_Machine_Radix           => Expression,
                         Aspect_Object_Size             => Expression,
                         Aspect_Output                  => Name,
+                        Aspect_Phase                   => Expression,
                         Aspect_Post                    => Expression,
                         Aspect_Postcondition           => Expression,
                         Aspect_Pre                     => Expression,
@@ -376,6 +380,7 @@ package Aspects is
      Aspect_Contract_Case                => Name_Contract_Case,
      Aspect_Convention                   => Name_Convention,
      Aspect_CPU                          => Name_CPU,
+     Aspect_Cycle_Period                 => Name_Cycle_Period,
      Aspect_Default_Iterator             => Name_Default_Iterator,
      Aspect_Default_Value                => Name_Default_Value,
      Aspect_Default_Component_Value      => Name_Default_Component_Value,
@@ -408,6 +413,7 @@ package Aspects is
      Aspect_Output                       => Name_Output,
      Aspect_Pack                         => Name_Pack,
      Aspect_Persistent_BSS               => Name_Persistent_BSS,
+     Aspect_Phase                        => Name_Phase,
      Aspect_Post                         => Name_Post,
      Aspect_Postcondition                => Name_Postcondition,
      Aspect_Pre                          => Name_Pre,

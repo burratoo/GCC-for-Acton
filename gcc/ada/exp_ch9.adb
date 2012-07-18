@@ -11029,13 +11029,12 @@ package body Exp_Ch9 is
                  Relocate_Node (
                    Expression (First (
                      Pragma_Argument_Associations (
-                       Find_Task_Or_Protected_Pragma
-                         (Taskdef, Name_Relative_Deadline))))))));
+                       Get_Relative_Deadline_Pragma (Taskdef))))))));
       end if;
 
       --  Add the _Cycle_Period component if a Cycle_Period pragma is present
 
-      if Present (Taskdef) and then Has_Pragma_Cycle_Period (Taskdef) then
+      if Has_Rep_Item (TaskId, Name_Cycle_Period, Check_Parents => False) then
          Append_To (Cdecls,
            Make_Component_Declaration (Loc,
              Defining_Identifier =>
@@ -11045,20 +11044,12 @@ package body Exp_Ch9 is
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
                  Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Time_Span), Loc)),
-
-             Expression =>
-               Convert_To (RTE (RE_Time_Span),
-                 Relocate_Node (
-                   Expression (First (
-                     Pragma_Argument_Associations (
-                       Find_Task_Or_Protected_Pragma
-                         (Taskdef, Name_Cycle_Period))))))));
+                   New_Reference_To (RTE (RE_Time_Span), Loc))));
       end if;
 
       --  Add the _Phase component if a Phase pragma is present
 
-      if Present (Taskdef) and then Has_Pragma_Phase (Taskdef) then
+      if Has_Rep_Item (TaskId, Name_Phase, Check_Parents => False) then
          Append_To (Cdecls,
            Make_Component_Declaration (Loc,
              Defining_Identifier =>
@@ -11068,15 +11059,7 @@ package body Exp_Ch9 is
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
                  Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Time_Span), Loc)),
-
-             Expression =>
-               Convert_To (RTE (RE_Time_Span),
-                 Relocate_Node (
-                   Expression (First (
-                     Pragma_Argument_Associations (
-                       Find_Task_Or_Protected_Pragma
-                         (Taskdef, Name_Phase))))))));
+                   New_Reference_To (RTE (RE_Time_Span), Loc))));
       end if;
 
       --  Add the _Dispatching_Domain component if a Dispatching_Domain rep
@@ -12959,18 +12942,17 @@ package body Exp_Ch9 is
       --  init call unless there is a Task_Name pragma, in which case we take
       --  the value from the pragma.
 
-      if Present (Tdef)
-        and then Has_Task_Name_Pragma (Tdef)
-      then
+      if Has_Rep_Pragma (Ttyp, Name_Task_Name, Check_Parents => False) then
          --  Copy expression in full, because it may be dynamic and have
          --  side effects.
 
          Append_To (Args,
            New_Copy_Tree
-             (Expression (First
-                           (Pragma_Argument_Associations
-                             (Find_Task_Or_Protected_Pragma
-                               (Tdef, Name_Task_Name))))));
+             (Expression
+               (First
+                 (Pragma_Argument_Associations
+                   (Get_Rep_Pragma
+                     (Ttyp, Name_Task_Name, Check_Parents => False))))));
 
       else
          Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
@@ -12979,7 +12961,7 @@ package body Exp_Ch9 is
       --  Priority parameter. Set to Unspecified_Priority unless there is a
       --  priority pragma, in which case we take the value from the pragma.
 
-      if Present (Tdef) and then Has_Pragma_Priority (Tdef) then
+      if Has_Rep_Item (Ttyp, Name_Priority, Check_Parents => False) then
          Append_To (Args,
            Make_Selected_Component (Loc,
              Prefix        => Make_Identifier (Loc, Name_uInit),
@@ -13022,9 +13004,9 @@ package body Exp_Ch9 is
       end if;
 
       --  Cycle_Period parameter. Set to Time_Span_Zero unless there is a
-      --  Cycle_Period pragma,in which case we take the value from the pragma.
+      --  Cycle_Period pragma, in which case we take the value from the pragma.
 
-      if Present (Tdef) and then Has_Pragma_Cycle_Period (Tdef) then
+      if Has_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False) then
          Append_To (Args,
            Make_Function_Call (Loc,
              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
@@ -13042,9 +13024,9 @@ package body Exp_Ch9 is
       end if;
 
       --  Phase parameter. Set to Time_Span_Zero unless there is a
-      --  Phase pragma,in which case we take the value from the pragma.
+      --  Phase pragma, in which case we take the value from the pragma.
 
-      if Present (Tdef) and then Has_Pragma_Phase (Tdef) then
+      if Has_Rep_Item (Ttyp, Name_Phase, Check_Parents => False) then
          Append_To (Args,
            Make_Function_Call (Loc,
              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
@@ -13060,12 +13042,12 @@ package body Exp_Ch9 is
                 New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
       end if;
 
-      --  CPU parameter. Set to Unspecified_CPU unless there is a CPU pragma,
-      --  in which case we take the value from the pragma. The parameter is
+      --  CPU parameter. Set to Unspecified_CPU unless there is a CPU rep item,
+      --  in which case we take the value from the rep item. The parameter is
       --  passed as an Integer because in the case of unspecified CPU the
       --  value is not in the range of CPU_Range.
 
-      --  if Present (Tdef) and then Has_Pragma_CPU (Tdef) then
+      --  if Has_Rep_Item (Ttyp, Name_CPU, Check_Parents => False) then
       --     Append_To (Args,
       --       Convert_To (Standard_Integer,
       --         Make_Selected_Component (Loc,

@@ -7899,43 +7899,40 @@ package body Sem_Prag is
          when Pragma_Cycle_Period => Cycle_Period : declare
             P   : constant Node_Id := Parent (N);
             Arg : Node_Id;
+            Ent : Entity_Id;
 
          begin
-            --  Ada_2005_Pragma;
+            Ada_2012_Pragma;
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
-            Arg := Get_Pragma_Arg (Arg1);
+            --  This pragma is born obsolete, but not the aspect
 
-            --  The expression must be analyzed in the special manner described
-            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
+            if not From_Aspect_Specification (N) then
+               Check_Restriction
+                 (No_Obsolescent_Features, Pragma_Identifier (N));
+            end if;
 
-            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+            if Nkind (P) = N_Task_Definition then
+               Arg := Get_Pragma_Arg (Arg1);
+               Ent := Defining_Identifier (Parent (P));
 
-            --  Subprogram case
+               --  The expression must be analyzed in the special manner
+               --  described in "Handling of Default and Per-Object
+               --  Expressions" in sem.ads.
 
-            if Nkind (P) = N_Subprogram_Body then
-               Check_In_Main_Program;
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
 
-            --  Tasks
+               --  Check duplicate pragma before we chain the pragma in the Rep
+               --  Item chain of Ent.
 
-            elsif Nkind (P) = N_Task_Definition then
-               null;
+               Check_Duplicate_Pragma (Ent);
+               Record_Rep_Item (Ent, N);
 
             --  Anything else is incorrect
 
             else
                Pragma_Misplaced;
-            end if;
-
-            if Has_Pragma_Cycle_Period (P) then
-               Error_Pragma ("duplicate pragma% not allowed");
-            else
-               Set_Has_Pragma_Cycle_Period (P, True);
-
-               if Nkind (P) = N_Task_Definition then
-                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
-               end if;
             end if;
          end Cycle_Period;
 
@@ -12084,38 +12081,40 @@ package body Sem_Prag is
          when Pragma_Phase => Phase : declare
             P   : constant Node_Id := Parent (N);
             Arg : Node_Id;
+            Ent : Entity_Id;
 
          begin
-            --  Ada_2005_Pragma;
+            Ada_2012_Pragma;
             Check_No_Identifiers;
             Check_Arg_Count (1);
 
-            Arg := Get_Pragma_Arg (Arg1);
+            --  This pragma is born obsolete, but not the aspect
 
-            --  The expression must be analyzed in the special manner described
-            --  in "Handling of Default and Per-Object Expressions" in sem.ads.
-
-            Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
-            --  Tasks
+            if not From_Aspect_Specification (N) then
+               Check_Restriction
+                 (No_Obsolescent_Features, Pragma_Identifier (N));
+            end if;
 
             if Nkind (P) = N_Task_Definition then
-               null;
+               Arg := Get_Pragma_Arg (Arg1);
+               Ent := Defining_Identifier (Parent (P));
+
+               --  The expression must be analyzed in the special manner
+               --  described in "Handling of Default and Per-Object
+               --  Expressions" in sem.ads.
+
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
+               --  Check duplicate pragma before we chain the pragma in the Rep
+               --  Item chain of Ent.
+
+               Check_Duplicate_Pragma (Ent);
+               Record_Rep_Item (Ent, N);
 
             --  Anything else is incorrect
 
             else
                Pragma_Misplaced;
-            end if;
-
-            if Has_Pragma_Phase (P) then
-               Error_Pragma ("duplicate pragma% not allowed");
-            else
-               Set_Has_Pragma_Phase (P, True);
-
-               if Nkind (P) = N_Task_Definition then
-                  Record_Rep_Item (Defining_Identifier (Parent (P)), N);
-               end if;
             end if;
          end Phase;
 
