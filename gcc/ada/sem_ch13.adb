@@ -913,12 +913,6 @@ package body Sem_Ch13 is
                     Aspect_Default_Component_Value =>
                   Analyze_Aspect_Default_Value (ASN);
 
-               when Aspect_No_End_Barrier          |
-                    Aspect_No_Start_Barrier        |
-                    Aspect_Participating_Actions   |
-                    Aspect_Restore_State           =>
-                  Analyze_Atomic_Aspects (ASN);
-
                when others =>
                   null;
             end case;
@@ -998,6 +992,11 @@ package body Sem_Ch13 is
             --  This routine performs the analysis of the Implicit_Dereference
             --  aspects.
 
+            procedure Analyze_Atomic_Aspects;
+            --  This routine performs the analysis of the No_End_Barrier,
+            --  No_Start_Barrier, Participating_Actions and Restore_State
+            --  aspects.
+
             ------------------------------------------
             -- Analyze_Aspect_External_Or_Link_Name --
             ------------------------------------------
@@ -1066,6 +1065,38 @@ package body Sem_Ch13 is
                   end;
                end if;
             end Analyze_Aspect_Implicit_Dereference;
+
+            ----------------------------
+            -- Analyze_Atomic_Aspects --
+            ----------------------------
+
+            procedure Analyze_Atomic_Aspects is
+               Unused : Uint;
+               pragma Unreferenced (Unused);
+
+            begin
+
+               if not Ekind_In (E, E_Atomic_Type, E_Atomic_Subtype)
+                 and then (A_Id = Aspect_Restore_State
+                           and Ekind (E) /= E_Action)
+               then
+                  Error_Msg_N
+                    ("aspect& must apply to subtype declaration", Aspect);
+                  return;
+               end if;
+
+               if Present (Expr) then
+                  if A_Id = Aspect_Participating_Actions then
+                     Preanalyze_Spec_Expression (Expr,
+                       RTE (RE_Participating_Actions));
+                  else
+                     Unused := Static_Boolean (Expr);
+                  end if;
+               end if;
+
+               Record_Rep_Item (E, Aspect);
+
+            end Analyze_Atomic_Aspects;
 
          begin
             --  Skip aspect if already analyzed (not clear if this is needed)
@@ -1440,11 +1471,7 @@ package body Sem_Ch13 is
                --  pragmas/attributes but do require delayed analysis.
 
                when Aspect_Default_Value           |
-                    Aspect_Default_Component_Value |
-                    Aspect_No_End_Barrier          |
-                    Aspect_No_Start_Barrier        |
-                    Aspect_Participating_Actions   |
-                    Aspect_Restore_State           =>
+                    Aspect_Default_Component_Value =>
                   Aitem := Empty;
 
                --  Case 3b: The aspects listed below don't correspond to
@@ -1469,6 +1496,13 @@ package body Sem_Ch13 is
 
                when Aspect_Dimension_System =>
                   Analyze_Aspect_Dimension_System (N, Id, Expr);
+                  goto Continue;
+
+               when Aspect_No_End_Barrier          |
+                    Aspect_No_Start_Barrier        |
+                    Aspect_Participating_Actions   |
+                    Aspect_Restore_State           =>
+                  Analyze_Atomic_Aspects;
                   goto Continue;
 
                --  Case 4: Special handling for aspects
@@ -6549,7 +6583,7 @@ package body Sem_Ch13 is
       Freeze_Expr : constant Node_Id := Expression (ASN);
       --  Expression from call to Check_Aspect_At_Freeze_Point
 
-      T : Entity_Id;
+      T : constant Entity_Id := Etype (Freeze_Expr);
       --  Type required for preanalyze call
 
       Err : Boolean;
@@ -6599,13 +6633,6 @@ package body Sem_Ch13 is
    --  Start of processing for Check_Aspect_At_End_Of_Declarations
 
    begin
-
-      --  Case of aspect with no expression
-      if No (Freeze_Expr) then
-         return;
-      end if;
-
-      T := Etype (Freeze_Expr);
 
       --  Case of aspects Dimension, Dimension_System and Synchronization
 
@@ -6728,15 +6755,6 @@ package body Sem_Ch13 is
               Library_Unit_Aspects  =>
             T := Standard_Boolean;
 
-         when Aspect_No_End_Barrier        |
-              Aspect_No_Start_Barrier      |
-              Aspect_Restore_State         =>
-            if Present (Expression (ASN)) then
-               T := Standard_Boolean;
-            else
-               return;
-            end if;
-
          when Aspect_Attach_Handler =>
             T := RTE (RE_Interrupt_ID);
 
@@ -6778,9 +6796,6 @@ package body Sem_Ch13 is
 
          when Aspect_Link_Name =>
             T := Standard_String;
-
-         when Aspect_Participating_Actions =>
-            T := RTE (RE_Participating_Actions);
 
          when Aspect_Phase =>
             T := RTE (RE_Time_Span);
@@ -6853,10 +6868,14 @@ package body Sem_Ch13 is
               Aspect_Dimension_System      |
               Aspect_Ensure                |
               Aspect_Implicit_Dereference  |
+              Aspect_No_End_Barrier        |
+              Aspect_No_Start_Barrier      |
+              Aspect_Participating_Actions |
               Aspect_Post                  |
               Aspect_Postcondition         |
               Aspect_Pre                   |
               Aspect_Precondition          |
+              Aspect_Restore_State         |
               Aspect_Test_Case     =>
             raise Program_Error;
 

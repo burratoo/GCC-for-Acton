@@ -284,6 +284,15 @@ package body Sem_Atom is
       if Has_Aspects (N) then
          Analyze_Aspect_Specifications (N, Def_Id);
       end if;
+
+      --  An action inherts its atomic parent's Restore_State aspect if it
+      --  does not specify its own. To achieve this we chain the atomic type's
+      --  rep item chain to the end of the action's rep item chain. Since
+      --  the rep item chain has not been populated yet, we can just place
+      --  the atomic rep item chain to the front.
+
+      Set_First_Rep_Item (Def_Id, First_Rep_Item (Scope (Def_Id)));
+
    end Analyze_Action_Declaration;
 
    -------------------------------------

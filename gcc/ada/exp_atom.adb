@@ -1581,7 +1581,6 @@ package body Exp_Atom is
                              " No_End_Barrier given", Ritem, Id);
             end;
          end if;
-         Analyze (Expression (Ritem));
 
          Arg := New_Reference_To (Entity (Expression (Ritem)), Loc);
       else
