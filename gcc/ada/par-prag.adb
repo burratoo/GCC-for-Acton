@@ -1102,9 +1102,6 @@ begin
            Pragma_Atomic                         |
            Pragma_Atomic_Components              |
            Pragma_Attach_Handler                 |
-           Pragma_Backwards_Recovery             |
-           Pragma_Barrier_End                    |
-           Pragma_Barrier_Start                  |
            Pragma_Check                          |
            Pragma_Check_Name                     |
            Pragma_Check_Policy                   |
@@ -1230,11 +1227,9 @@ begin
            Pragma_Remote_Access_Type             |
            Pragma_Remote_Call_Interface          |
            Pragma_Remote_Types                   |
-           Pragma_Require_All_Actions            |
            Pragma_Restricted_Run_Time            |
            Pragma_Ravenscar                      |
            Pragma_Reviewable                     |
-           Pragma_Save_State                     |
            Pragma_Share_Generic                  |
            Pragma_Shared                         |
            Pragma_Shared_Passive                 |

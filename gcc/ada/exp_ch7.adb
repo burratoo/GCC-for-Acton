@@ -556,6 +556,7 @@ package body Exp_Ch7 is
             Param_Id  : Entity_Id;
             Param_Typ : Entity_Id;
             Rest_Stms : List_Id;
+            Ritem     : Node_Id;
             Save_Stm  : Node_Id;
 
          begin
@@ -615,10 +616,10 @@ package body Exp_Ch7 is
                           Make_Identifier (Loc, Name_uObject))),
                   Action_Index_Expression (Loc, Act_Def, Atom_Def))));
 
-            --  If pragma Backwards_Recovery applies to the atomic type
-            --  generate the save/restore parameter instructions
+            --  If aspect Restore_State applies to the action or its atomic
+            --  type, generate the save/restore parameter instructions
 
-            if Backwards_Recovery (Atomic_Definition (Parent (Atom_Def))) then
+            if True then
                Rest_Stms := New_List;
 
                --  We skip the first parameter of the action's procedure as it

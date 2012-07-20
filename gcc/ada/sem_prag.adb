@@ -7159,115 +7159,6 @@ package body Sem_Prag is
                Process_Interrupt_Or_Attach_Handler;
             end if;
 
-         ------------------------
-         -- Backwards_Recovery --
-         ------------------------
-
-         --  pragma Backwards_Recovery ([boolean_EXPRESSION]);
-
-         when Pragma_Backwards_Recovery => Backwards_Recovery : declare
-            P   : constant Node_Id := Parent (N);
-            Val : Boolean;
-
-         begin
-            --  Pragma only valid for Atomic definition and Action bodies.
-
-            if Nkind (P) = N_Atomic_Definition
-              or else Nkind (P) = N_Action_Body then
-               Check_No_Identifiers;
-               Check_At_Most_N_Arguments (1);
-
-               if Arg_Count = 1 then
-                  Val := Is_True (Static_Boolean (Get_Pragma_Arg (Arg1)));
-
-                  --  For zero arguments, the default expression is considered
-                  --  to be True.
-               else
-                  Val := True;
-               end if;
-
-               Set_Backwards_Recovery (P, Val);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-
-         end Backwards_Recovery;
-
-         -----------------
-         -- Barrier_End --
-         -----------------
-
-         --  pragma Barrier_End ([boolean_EXPRESSION]);
-
-         when Pragma_Barrier_End => Barrier_End : declare
-            P   : constant Node_Id := Parent (N);
-            Val : Boolean;
-
-         begin
-            --  Pragma only valid for Atomic definitions.
-
-            if Nkind (P) = N_Atomic_Definition then
-               Check_No_Identifiers;
-               Check_At_Most_N_Arguments (1);
-
-               if Arg_Count = 1 then
-                  Val := Is_True (Static_Boolean (Get_Pragma_Arg (Arg1)));
-
-                  --  For zero arguments, the default expression is considered
-                  --  to be True.
-               else
-                  Val := True;
-               end if;
-
-               Set_Has_End_Barrier (P, Val);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-
-         end Barrier_End;
-
-         -------------------
-         -- Barrier_Start --
-         -------------------
-
-         --  pragma Barrier_Start ([boolean_EXPRESSION]);
-
-         when Pragma_Barrier_Start => Barrier_Start : declare
-            P   : constant Node_Id := Parent (N);
-            Val : Boolean;
-
-         begin
-            --  Pragma only valid for Atomic definitions.
-
-            if Nkind (P) = N_Atomic_Definition then
-               Check_No_Identifiers;
-               Check_At_Most_N_Arguments (1);
-
-               if Arg_Count = 1 then
-                  Val := Is_True (Static_Boolean (Get_Pragma_Arg (Arg1)));
-
-                  --  For zero arguments, the default expression is considered
-                  --  to be True.
-               else
-                  Val := True;
-               end if;
-
-               Set_Has_Start_Barrier (P, Val);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-
-         end Barrier_Start;
-
          --------------------
          -- C_Pass_By_Copy --
          --------------------
@@ -13329,42 +13220,6 @@ package body Sem_Prag is
             end if;
 
          -------------------------
-         -- Require_All_Actions --
-         -------------------------
-
-         --  pragma Require_All_Actions (boolean_EXPRESSION);
-
-         when Pragma_Require_All_Actions => Require_All_Actions : declare
-            P   : constant Node_Id := Parent (N);
-            Val : Boolean;
-
-         begin
-            --  Pragma only valid for Atomic definitions.
-
-            if Nkind (P) = N_Atomic_Definition then
-               Check_No_Identifiers;
-               Check_At_Most_N_Arguments (1);
-
-               if Arg_Count = 1 then
-                  Val := Is_True (Static_Boolean (Get_Pragma_Arg (Arg1)));
-
-                  --  For zero arguments, the default expression is considered
-                  --  to be True.
-               else
-                  Val := True;
-               end if;
-
-               Set_Require_All_Actions (P, Val);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-
-         end Require_All_Actions;
-
-         -------------------------
          -- Restricted_Run_Time --
          -------------------------
 
@@ -13427,43 +13282,6 @@ package body Sem_Prag is
             --  allowing convenient stepping to the point of interest.
 
             rv;
-
-         ----------------
-         -- Save_State --
-         ----------------
-
-         --  pragma Save_State (boolean_EXPRESSION);
-
-         when Pragma_Save_State => Save_State : declare
-            P   : constant Node_Id := Parent (N);
-            Val : Boolean;
-
-         begin
-            --  Pragma only valid for Atomic definition and Action bodies.
-
-            if Nkind (P) = N_Atomic_Definition
-              or else Nkind (P) = N_Action_Body then
-               Check_No_Identifiers;
-               Check_At_Most_N_Arguments (1);
-
-               if Arg_Count = 1 then
-                  Val := Is_True (Static_Boolean (Get_Pragma_Arg (Arg1)));
-
-                  --  For zero arguments, the default expression is considered
-                  --  to be True.
-               else
-                  Val := True;
-               end if;
-
-               Set_Save_State (P, Val);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-
-         end Save_State;
 
          --------------------------
          -- Short_Circuit_And_Or --
@@ -15461,9 +15279,6 @@ package body Sem_Prag is
       Pragma_Atomic                         =>  0,
       Pragma_Atomic_Components              =>  0,
       Pragma_Attach_Handler                 => -1,
-      Pragma_Backwards_Recovery             => -1,
-      Pragma_Barrier_End                    => -1,
-      Pragma_Barrier_Start                  => -1,
       Pragma_Check                          => 99,
       Pragma_Check_Name                     =>  0,
       Pragma_Check_Policy                   =>  0,
@@ -15594,12 +15409,10 @@ package body Sem_Prag is
       Pragma_Remote_Access_Type             => -1,
       Pragma_Remote_Call_Interface          => -1,
       Pragma_Remote_Types                   => -1,
-      Pragma_Require_All_Actions            => -1,
       Pragma_Restricted_Run_Time            => -1,
       Pragma_Restriction_Warnings           => -1,
       Pragma_Restrictions                   => -1,
       Pragma_Reviewable                     => -1,
-      Pragma_Save_State                     => -1,
       Pragma_Short_Circuit_And_Or           => -1,
       Pragma_Share_Generic                  => -1,
       Pragma_Shared                         => -1,

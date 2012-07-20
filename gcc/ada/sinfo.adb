@@ -363,15 +363,6 @@ package body Sinfo is
       return Flag6 (N);
    end Backwards_OK;
 
-   function Backwards_Recovery
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Action_Body
-        or else NT (N).Nkind = N_Atomic_Definition);
-      return Flag8 (N);
-   end Backwards_Recovery;
-
    function Bad_Is_Detected
       (N : Node_Id) return Boolean is
    begin
@@ -1515,14 +1506,6 @@ package body Sinfo is
       return Flag12 (N);
    end Has_Dynamic_Range_Check;
 
-   function Has_End_Barrier
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      return Flag7 (N);
-   end Has_End_Barrier;
-
    function Has_Init_Expression
       (N : Node_Id) return Boolean is
    begin
@@ -1584,14 +1567,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Extension_Aggregate);
       return Flag13 (N);
    end Has_Self_Reference;
-
-   function Has_Start_Barrier
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      return Flag6 (N);
-   end Has_Start_Barrier;
 
    function Has_Storage_Size_Pragma
       (N : Node_Id) return Boolean is
@@ -2735,14 +2710,6 @@ package body Sinfo is
       return Node2 (N);
    end Renaming_Exception;
 
-   function Require_All_Actions
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      return Flag11 (N);
-   end Require_All_Actions;
-
    function Result_Definition
      (N : Node_Id) return Node_Id is
    begin
@@ -2799,15 +2766,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Type_Conversion);
       return Flag18 (N);
    end Rounded_Result;
-
-   function Save_State
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Action_Body
-        or else NT (N).Nkind = N_Atomic_Definition);
-      return Flag9 (N);
-   end Save_State;
 
    function SCIL_Controlling_Tag
       (N : Node_Id) return Node_Id is
@@ -3550,15 +3508,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Assignment_Statement);
       Set_Flag6 (N, Val);
    end Set_Backwards_OK;
-
-   procedure Set_Backwards_Recovery
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Action_Body
-        or else NT (N).Nkind = N_Atomic_Definition);
-      Set_Flag8 (N, Val);
-   end Set_Backwards_Recovery;
 
    procedure Set_Bad_Is_Detected
       (N : Node_Id; Val : Boolean := True) is
@@ -4694,14 +4643,6 @@ package body Sinfo is
       Set_Flag12 (N, Val);
    end Set_Has_Dynamic_Range_Check;
 
-   procedure Set_Has_End_Barrier
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      Set_Flag7 (N, Val);
-   end Set_Has_End_Barrier;
-
    procedure Set_Has_Init_Expression
       (N : Node_Id; Val : Boolean := True) is
    begin
@@ -4763,14 +4704,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Extension_Aggregate);
       Set_Flag13 (N, Val);
    end Set_Has_Self_Reference;
-
-   procedure Set_Has_Start_Barrier
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      Set_Flag6 (N, Val);
-   end Set_Has_Start_Barrier;
 
    procedure Set_Has_Storage_Size_Pragma
       (N : Node_Id; Val : Boolean := True) is
@@ -5914,14 +5847,6 @@ package body Sinfo is
       Set_Node2 (N, Val);
    end Set_Renaming_Exception;
 
-   procedure Set_Require_All_Actions
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Atomic_Definition);
-      Set_Flag11 (N, Val);
-   end Set_Require_All_Actions;
-
    procedure Set_Result_Definition
      (N : Node_Id; Val : Node_Id) is
    begin
@@ -5978,15 +5903,6 @@ package body Sinfo is
         or else NT (N).Nkind = N_Type_Conversion);
       Set_Flag18 (N, Val);
    end Set_Rounded_Result;
-
-   procedure Set_Save_State
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Action_Body
-        or else NT (N).Nkind = N_Atomic_Definition);
-      Set_Flag9 (N, Val);
-   end Set_Save_State;
 
    procedure Set_SCIL_Controlling_Tag
       (N : Node_Id; Val : Node_Id) is

@@ -628,12 +628,6 @@ package Sinfo is
    --    cannot figure it out. If both flags Forwards_OK and Backwards_OK are
    --    set, it means that the front end can assure no overlap of operands.
 
-   --  Backwards_Recovery (Flag8-Sem)
-   --    A flag present in N_Atomic_Definition and N_Action_Body nodes. For an
-   --    N_Atomic_Definition node, it specifies the default vaule to be used
-   --    in its N_Action_Body nodes. Set by a Backwards_Recovery pragma in the
-   --    declaration sequence.
-
    --  Body_To_Inline (Node3-Sem)
    --    present in subprogram declarations. Denotes analyzed but unexpanded
    --    body of subprogram, to be used when inlining calls. Present when the
@@ -1137,11 +1131,6 @@ package Sinfo is
    --    checks. Why does this occur on N_Subtype_Declaration nodes, what does
    --    it mean in that context???
 
-   --  Has_End_Barrier (Flag7-Sem)
-   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
-   --    has a barrier at the end of the atomic action. Set by a
-   --    Barrier_Start pragma in the declaration sequence.
-
    --  Has_Local_Raise (Flag8-Sem)
    --    Present in exception handler nodes. Set if the handler can be entered
    --    via a local raise that gets transformed to a goto statement. This will
@@ -1184,11 +1173,6 @@ package Sinfo is
    --    of the expressions contains an access attribute reference to the
    --    enclosing type. Such a self-reference can only appear in default-
    --    initialized aggregate for a record type.
-
-   --  Has_Start_Barrier (Flag6-Sem)
-   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
-   --    has a barrier at the start of the atomic action. Set by a
-   --    Barrier_Start pragma in the declaration sequence.
 
    --  Has_Storage_Size_Pragma (flag18-Sem)
    --    A flag present in N_Subprogram_Body and N_Task_Definition node to
@@ -1695,12 +1679,6 @@ package Sinfo is
    --    object. We use a list (instead of just a pointer to the object decl)
    --    because Analyze wants to insert extra actions on this list.
 
-   --  Require_All_Actions (Flag11-Sem)
-   --    A flag present in N_Atomic_Definition nodes. Set if the atomic unit
-   --    requires all tasks to be present at the end barrier, or only those
-   --    tasks who are currently inside the atomic action. Set by a
-   --    Require_All_Actions pragma in the declaration sequence.
-
    --  Rounded_Result (Flag18-Sem)
    --    Present in N_Type_Conversion, N_Op_Divide and N_Op_Multiply nodes.
    --    Used in the fixed-point cases to indicate that the result must be
@@ -1710,12 +1688,6 @@ package Sinfo is
    --    than truncated towards zero as usual. These rounded integer operations
    --    are the result of expansion of rounded fixed-point divide, conversion
    --    and multiplication operations.
-
-   --  Save_State (Flag9-Sem)
-   --    A flag present in N_Atomic_Definition and N_Action_Body nodes. For an
-   --    N_Atomic_Definition node, it specifies the default vaule to be used
-   --    in its N_Action_Body nodes. Set by a Save_State pragma in the
-   --    declaration sequence.
 
    --  SCIL_Entity (Node4-Sem)
    --    Present in SCIL nodes. Used to reference the tagged type associated
@@ -5762,11 +5734,6 @@ package Sinfo is
       --  Visible_Declarations (List2)
       --  Private_Declarations (List3) (set to No_List if no private part)
       --  End_Label (Node4)
-      --  Has_Start_Barrier (Flag6-Sem)
-      --  Has_End_Barrier (Flag7-Sem)
-      --  Backwards_Recovery (Flag8-Sem)
-      --  Save_State (Flag9-Sem)
-      --  Require_All_Actions (Flag11-Sem)
 
       ------------------------------------------
       -- 9.x  Atomic Operation Declaration --
@@ -5857,8 +5824,6 @@ package Sinfo is
       --  Declarations (List2)
       --  Handled_Statement_Sequence (Node4)
       --  Activation_Chain_Entity (Node3-Sem)
-      --  Backwards_Recovery (Flag8-Sem)
-      --  Save_State (Flag9-Sem)
 
       ----------------------------------
       -- 9.y  Action Body Formal Part --
@@ -8491,9 +8456,6 @@ package Sinfo is
    function Backwards_OK
      (N : Node_Id) return Boolean;    -- Flag6
 
-   function Backwards_Recovery
-     (N : Node_Id) return Boolean;    -- Flag8
-
    function Bad_Is_Detected
      (N : Node_Id) return Boolean;    -- Flag15
 
@@ -8842,9 +8804,6 @@ package Sinfo is
    function Has_Dynamic_Range_Check
      (N : Node_Id) return Boolean;    -- Flag12
 
-   function Has_End_Barrier
-     (N : Node_Id) return Boolean;    -- Flag7
-
    function Has_Init_Expression
      (N : Node_Id) return Boolean;    -- Flag14
 
@@ -8865,9 +8824,6 @@ package Sinfo is
 
    function Has_Self_Reference
      (N : Node_Id) return Boolean;    -- Flag13
-
-   function Has_Start_Barrier
-     (N : Node_Id) return Boolean;    -- Flag6
 
    function Has_Storage_Size_Pragma
      (N : Node_Id) return Boolean;    -- Flag18
@@ -9229,9 +9185,6 @@ package Sinfo is
    function Renaming_Exception
      (N : Node_Id) return Node_Id;    -- Node2
 
-   function Require_All_Actions
-     (N : Node_Id) return Boolean;    -- Flag11
-
    function Result_Definition
      (N : Node_Id) return Node_Id;    -- Node4
 
@@ -9249,9 +9202,6 @@ package Sinfo is
 
    function Rounded_Result
      (N : Node_Id) return Boolean;    -- Flag18
-
-   function Save_State
-     (N : Node_Id) return Boolean;    -- Flag9
 
    function SCIL_Controlling_Tag
      (N : Node_Id) return Node_Id;    -- Node5
@@ -9498,9 +9448,6 @@ package Sinfo is
 
    procedure Set_Backwards_OK
      (N : Node_Id; Val : Boolean := True);    -- Flag6
-
-   procedure Set_Backwards_Recovery
-     (N : Node_Id; Val : Boolean := True);    -- Flag8
 
    procedure Set_Bad_Is_Detected
      (N : Node_Id; Val : Boolean := True);    -- Flag15
@@ -9847,9 +9794,6 @@ package Sinfo is
    procedure Set_Has_Dynamic_Range_Check
      (N : Node_Id; Val : Boolean := True);    -- Flag12
 
-   procedure Set_Has_End_Barrier
-     (N : Node_Id; Val : Boolean := True);    -- Flag7
-
    procedure Set_Has_Init_Expression
      (N : Node_Id; Val : Boolean := True);    -- Flag14
 
@@ -9870,9 +9814,6 @@ package Sinfo is
 
    procedure Set_Has_Self_Reference
      (N : Node_Id; Val : Boolean := True);    -- Flag13
-
-   procedure Set_Has_Start_Barrier
-     (N : Node_Id; Val : Boolean := True);    -- Flag6
 
    procedure Set_Has_Storage_Size_Pragma
      (N : Node_Id; Val : Boolean := True);    -- Flag18
@@ -10234,9 +10175,6 @@ package Sinfo is
    procedure Set_Renaming_Exception
      (N : Node_Id; Val : Node_Id);            -- Node2
 
-   procedure Set_Require_All_Actions
-     (N : Node_Id; Val : Boolean := True);    -- Flag11
-
    procedure Set_Result_Definition
      (N : Node_Id; Val : Node_Id);            -- Node4
 
@@ -10254,9 +10192,6 @@ package Sinfo is
 
    procedure Set_Rounded_Result
      (N : Node_Id; Val : Boolean := True);    -- Flag18
-
-   procedure Set_Save_State
-     (N : Node_Id; Val : Boolean := True);    -- Flag9
 
    procedure Set_SCIL_Controlling_Tag
      (N : Node_Id; Val : Node_Id);            -- Node5
@@ -12278,7 +12213,6 @@ package Sinfo is
    pragma Inline (Attribute_Name);
    pragma Inline (Aux_Decls_Node);
    pragma Inline (Backwards_OK);
-   pragma Inline (Backwards_Recovery);
    pragma Inline (Bad_Is_Detected);
    pragma Inline (Body_To_Inline);
    pragma Inline (Body_Required);
@@ -12395,7 +12329,6 @@ package Sinfo is
    pragma Inline (Has_Dereference_Action);
    pragma Inline (Has_Dynamic_Length_Check);
    pragma Inline (Has_Dynamic_Range_Check);
-   pragma Inline (Has_End_Barrier);
    pragma Inline (Has_Init_Expression);
    pragma Inline (Has_Local_Raise);
    pragma Inline (Has_Self_Reference);
@@ -12403,7 +12336,6 @@ package Sinfo is
    pragma Inline (Has_Pragma_Suppress_All);
    pragma Inline (Has_Private_View);
    pragma Inline (Has_Relative_Deadline_Pragma);
-   pragma Inline (Has_Start_Barrier);
    pragma Inline (Has_Storage_Size_Pragma);
    pragma Inline (Has_Wide_Character);
    pragma Inline (Has_Wide_Wide_Character);
@@ -12524,14 +12456,12 @@ package Sinfo is
    pragma Inline (Record_Extension_Part);
    pragma Inline (Redundant_Use);
    pragma Inline (Renaming_Exception);
-   pragma Inline (Require_All_Actions);
    pragma Inline (Result_Definition);
    pragma Inline (Return_Object_Declarations);
    pragma Inline (Return_Statement_Entity);
    pragma Inline (Reverse_Present);
    pragma Inline (Right_Opnd);
    pragma Inline (Rounded_Result);
-   pragma Inline (Save_State);
    pragma Inline (SCIL_Controlling_Tag);
    pragma Inline (SCIL_Entity);
    pragma Inline (SCIL_Tag_Value);
@@ -12611,7 +12541,6 @@ package Sinfo is
    pragma Inline (Set_Attribute_Name);
    pragma Inline (Set_Aux_Decls_Node);
    pragma Inline (Set_Backwards_OK);
-   pragma Inline (Set_Backwards_Recovery);
    pragma Inline (Set_Bad_Is_Detected);
    pragma Inline (Set_Body_To_Inline);
    pragma Inline (Set_Body_Required);
@@ -12726,7 +12655,6 @@ package Sinfo is
    pragma Inline (Set_Has_Created_Identifier);
    pragma Inline (Set_Has_Dereference_Action);
    pragma Inline (Set_Has_Dynamic_Length_Check);
-   pragma Inline (Set_Has_End_Barrier);
    pragma Inline (Set_Has_Init_Expression);
    pragma Inline (Set_Has_Local_Raise);
    pragma Inline (Set_Has_Dynamic_Range_Check);
@@ -12734,7 +12662,6 @@ package Sinfo is
    pragma Inline (Set_Has_Pragma_Suppress_All);
    pragma Inline (Set_Has_Private_View);
    pragma Inline (Set_Has_Relative_Deadline_Pragma);
-   pragma Inline (Set_Has_Start_Barrier);
    pragma Inline (Set_Has_Storage_Size_Pragma);
    pragma Inline (Set_Has_Wide_Character);
    pragma Inline (Set_Has_Wide_Wide_Character);
@@ -12855,13 +12782,11 @@ package Sinfo is
    pragma Inline (Set_Record_Extension_Part);
    pragma Inline (Set_Redundant_Use);
    pragma Inline (Set_Renaming_Exception);
-   pragma Inline (Set_Require_All_Actions);
    pragma Inline (Set_Result_Definition);
    pragma Inline (Set_Return_Object_Declarations);
    pragma Inline (Set_Reverse_Present);
    pragma Inline (Set_Right_Opnd);
    pragma Inline (Set_Rounded_Result);
-   pragma Inline (Set_Save_State);
    pragma Inline (Set_SCIL_Controlling_Tag);
    pragma Inline (Set_SCIL_Entity);
    pragma Inline (Set_SCIL_Tag_Value);

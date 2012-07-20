@@ -142,8 +142,12 @@ package Snames is
    Name_Dimension                      : constant Name_Id := N + $;
    Name_Dimension_System               : constant Name_Id := N + $;
    Name_Dynamic_Predicate              : constant Name_Id := N + $;
+   Name_No_End_Barrier                 : constant Name_Id := N + $;
+   Name_No_Start_Barrier               : constant Name_Id := N + $;
+   Name_Participating_Actions          : constant Name_Id := N + $;
    Name_Post                           : constant Name_Id := N + $;
    Name_Pre                            : constant Name_Id := N + $;
+   Name_Restore_State                  : constant Name_Id := N + $;
    Name_Static_Predicate               : constant Name_Id := N + $;
    Name_Synchronization                : constant Name_Id := N + $;
    Name_Type_Invariant                 : constant Name_Id := N + $;
@@ -459,9 +463,6 @@ package Snames is
    Name_Atomic                         : constant Name_Id := N + $;
    Name_Atomic_Components              : constant Name_Id := N + $;
    Name_Attach_Handler                 : constant Name_Id := N + $;
-   Name_Backwards_Recovery          : constant Name_Id := N + $; -- Acton
-   Name_Barrier_End                 : constant Name_Id := N + $; -- Acton
-   Name_Barrier_Start               : constant Name_Id := N + $; -- Acton
    Name_Check                          : constant Name_Id := N + $; -- GNAT
    Name_CIL_Constructor                : constant Name_Id := N + $; -- GNAT
    Name_Comment                        : constant Name_Id := N + $; -- GNAT
@@ -588,8 +589,6 @@ package Snames is
    Name_Remote_Access_Type             : constant Name_Id := N + $; -- GNAT
    Name_Remote_Call_Interface          : constant Name_Id := N + $;
    Name_Remote_Types                   : constant Name_Id := N + $;
-   Name_Require_All_Actions            : constant Name_Id := N + $; -- Acton
-   Name_Save_State                     : constant Name_Id := N + $; -- Acton
    Name_Share_Generic                  : constant Name_Id := N + $; -- GNAT
    Name_Shared                         : constant Name_Id := N + $; -- Ada 83
    Name_Shared_Passive                 : constant Name_Id := N + $;
@@ -1732,9 +1731,6 @@ package Snames is
       Pragma_Atomic,
       Pragma_Atomic_Components,
       Pragma_Attach_Handler,
-      Pragma_Backwards_Recovery,
-      Pragma_Barrier_End,
-      Pragma_Barrier_Start,
       Pragma_Check,
       Pragma_CIL_Constructor,
       Pragma_Comment,
@@ -1817,8 +1813,6 @@ package Snames is
       Pragma_Remote_Access_Type,
       Pragma_Remote_Call_Interface,
       Pragma_Remote_Types,
-      Pragma_Require_All_Actions,
-      Pragma_Save_State,
       Pragma_Share_Generic,
       Pragma_Shared,
       Pragma_Shared_Passive,

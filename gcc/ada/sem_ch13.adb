@@ -696,6 +696,11 @@ package body Sem_Ch13 is
       --  This routine analyzes an Aspect_Default_[Component_]Value denoted by
       --  the aspect specification node ASN.
 
+      procedure Analyze_Atomic_Aspects (ASN : Node_Id);
+      --  This routine analyzes an atomic aspect, No_End_Barrier,
+      --  No_Start_Barrier, Participating_Actions or Restore_State, denoted by
+      --  the aspect specification node ASN.
+
       procedure Make_Pragma_From_Boolean_Aspect (ASN : Node_Id);
       --  Given an aspect specification node ASN whose expression is an
       --  optional Boolean, this routines creates the corresponding pragma
@@ -746,6 +751,25 @@ package body Sem_Ch13 is
             Set_Default_Aspect_Component_Value (Ent, Expr);
          end if;
       end Analyze_Aspect_Default_Value;
+
+      ----------------------------
+      -- Analyze_Atomic_Aspects --
+      ----------------------------
+
+      procedure Analyze_Atomic_Aspects (ASN : Node_Id) is
+         Ent  : constant Entity_Id := Entity (ASN);
+         Id   : constant Node_Id   := Identifier (ASN);
+
+      begin
+         Error_Msg_Name_1 := Chars (Id);
+
+         if not Ekind_In (Ent, E_Atomic_Type, E_Atomic_Subtype)
+           and then (A_Id = Aspect_Restore_State and Ekind (Ent) /= E_Action)
+         then
+            Error_Msg_N ("aspect& must apply to subtype declaration", Id);
+            return;
+         end if;
+      end Analyze_Atomic_Aspects;
 
       -------------------------------------
       -- Make_Pragma_From_Boolean_Aspect --
@@ -888,6 +912,12 @@ package body Sem_Ch13 is
                when Aspect_Default_Value           |
                     Aspect_Default_Component_Value =>
                   Analyze_Aspect_Default_Value (ASN);
+
+               when Aspect_No_End_Barrier          |
+                    Aspect_No_Start_Barrier        |
+                    Aspect_Participating_Actions   |
+                    Aspect_Restore_State           =>
+                  Analyze_Atomic_Aspects (ASN);
 
                when others =>
                   null;
@@ -1410,7 +1440,11 @@ package body Sem_Ch13 is
                --  pragmas/attributes but do require delayed analysis.
 
                when Aspect_Default_Value           |
-                    Aspect_Default_Component_Value =>
+                    Aspect_Default_Component_Value |
+                    Aspect_No_End_Barrier          |
+                    Aspect_No_Start_Barrier        |
+                    Aspect_Participating_Actions   |
+                    Aspect_Restore_State           =>
                   Aitem := Empty;
 
                --  Case 3b: The aspects listed below don't correspond to
@@ -6515,7 +6549,7 @@ package body Sem_Ch13 is
       Freeze_Expr : constant Node_Id := Expression (ASN);
       --  Expression from call to Check_Aspect_At_Freeze_Point
 
-      T : constant Entity_Id := Etype (Freeze_Expr);
+      T : Entity_Id;
       --  Type required for preanalyze call
 
       Err : Boolean;
@@ -6565,6 +6599,14 @@ package body Sem_Ch13 is
    --  Start of processing for Check_Aspect_At_End_Of_Declarations
 
    begin
+
+      --  Case of aspect with no expression
+      if No (Freeze_Expr) then
+         return;
+      end if;
+
+      T := Etype (Freeze_Expr);
+
       --  Case of aspects Dimension, Dimension_System and Synchronization
 
       if A_Id = Aspect_Synchronization then
@@ -6682,9 +6724,18 @@ package body Sem_Ch13 is
 
          --  Aspects taking an optional boolean argument
 
-         when Boolean_Aspects      |
-              Library_Unit_Aspects =>
+         when Boolean_Aspects       |
+              Library_Unit_Aspects  =>
             T := Standard_Boolean;
+
+         when Aspect_No_End_Barrier        |
+              Aspect_No_Start_Barrier      |
+              Aspect_Restore_State         =>
+            if Present (Expression (ASN)) then
+               T := Standard_Boolean;
+            else
+               return;
+            end if;
 
          when Aspect_Attach_Handler =>
             T := RTE (RE_Interrupt_ID);
@@ -6727,6 +6778,9 @@ package body Sem_Ch13 is
 
          when Aspect_Link_Name =>
             T := Standard_String;
+
+         when Aspect_Participating_Actions =>
+            T := RTE (RE_Participating_Actions);
 
          when Aspect_Phase =>
             T := RTE (RE_Time_Span);
@@ -6786,7 +6840,6 @@ package body Sem_Ch13 is
          --  Invariant/Predicate take boolean expressions
 
          when Aspect_Dynamic_Predicate |
-              Aspect_Ensure            |
               Aspect_Invariant         |
               Aspect_Predicate         |
               Aspect_Static_Predicate  |
@@ -6795,14 +6848,15 @@ package body Sem_Ch13 is
 
          --  Here is the list of aspects that don't require delay analysis.
 
-         when Aspect_Contract_Case        |
-              Aspect_Dimension            |
-              Aspect_Dimension_System     |
-              Aspect_Implicit_Dereference |
-              Aspect_Post                 |
-              Aspect_Postcondition        |
-              Aspect_Pre                  |
-              Aspect_Precondition         |
+         when Aspect_Contract_Case         |
+              Aspect_Dimension             |
+              Aspect_Dimension_System      |
+              Aspect_Ensure                |
+              Aspect_Implicit_Dereference  |
+              Aspect_Post                  |
+              Aspect_Postcondition         |
+              Aspect_Pre                   |
+              Aspect_Precondition          |
               Aspect_Test_Case     =>
             raise Program_Error;
 

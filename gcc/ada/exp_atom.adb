@@ -1,3 +1,4 @@
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Checks;   use Checks;
 with Einfo;    use Einfo;
@@ -102,6 +103,15 @@ package body Exp_Atom is
    function First_Action (D : List_Id) return Node_Id;
    --  Given the declarations list for an atomic body, find the
    --  first action body.
+
+   function Is_Atomic_Aspect_True
+     (Nam : Name_Id;
+      E   : Entity_Id) return Boolean;
+   --  Searches the Rep_Item chain for a given entity E for an instance of a
+   --  atomic boolean aspect specification whose name matches Nam. If a
+   --  matching aspect is found, its state is return. If no matching
+   --  aspect is found, the default state of the all atomic boolean apsects,
+   --  False, is returned.
 
    -----------------------------
    -- Action_Index_Expression --
@@ -385,7 +395,7 @@ package body Exp_Atom is
 
       begin
 
-         if Has_End_Barrier (Adec) then
+         if Is_Atomic_Aspect_True (Name_No_End_Barrier, Pid) then
             Append_To (Stmts,
               Make_Procedure_Call_Statement (Loc,
                 Name                   =>
@@ -1444,6 +1454,48 @@ package body Exp_Atom is
    end First_Action;
 
    ----------------------------
+   --  Is_Atomic_Aspect_True --
+   ----------------------------
+
+   function Is_Atomic_Aspect_True
+     (Nam : Name_Id;
+      E   : Entity_Id) return Boolean
+   is
+      Ritem : Node_Id;
+
+   begin
+      --  Check to make sure that the aspect we are looking for actually is
+      --  an atomic boolean aspect.
+
+      pragma Assert (False
+        or else Nam = Name_No_End_Barrier
+        or else Nam = Name_No_Start_Barrier
+        or else Nam = Name_Restore_State);
+
+      Ritem := Get_Rep_Item (E, Nam, Check_Parents => False);
+
+      if Present (Ritem)
+        and then Nkind (Ritem) = N_Aspect_Specification
+      then
+
+         --  We've found the aspect, now return its expression if it has one.
+         if Present (Expression (Ritem)) then
+            return Is_True (Static_Boolean (Expression (Ritem)));
+
+         --  Otherwise, return True.
+
+         else
+            return True;
+         end if;
+
+      --  If no aspect is found we return the default state.
+
+      else
+         return False;
+      end if;
+   end Is_Atomic_Aspect_True;
+
+   ----------------------------
    -- Make_Initialize_Atomic --
    ----------------------------
 
@@ -1451,13 +1503,13 @@ package body Exp_Atom is
      (Atomic_Rec : Entity_Id) return List_Id
    is
       Loc         : constant Source_Ptr := Sloc (Atomic_Rec);
-      A_Arr       : Entity_Id;
       Adef        : Node_Id;
-      Adec        : Node_Id;
-      Atyp        : constant Node_Id :=
+      Atyp        : constant Entity_Id :=
                       Corresponding_Concurrent_Type (Atomic_Rec);
-      B           : Node_Id;
+      Arg         : Node_Id;
       Args        : List_Id;
+      Has_End     : Boolean;
+      Ritem       : Node_Id;
       L           : constant List_Id := New_List;
 
    begin
@@ -1488,31 +1540,55 @@ package body Exp_Atom is
       --  Start and end barrier parameters. Sets whether or not the atomic
       --  object has a start and/or end barrier.
 
-      if Has_End_Barrier (Adef) then
-         B := New_Occurrence_Of (Standard_True, Loc);
+      Has_End := not Is_Atomic_Aspect_True (Name_No_End_Barrier, Atyp);
+
+      if Has_End then
+         Arg := New_Occurrence_Of (Standard_True, Loc);
       else
-         B := New_Occurrence_Of (Standard_False, Loc);
+         Arg := New_Occurrence_Of (Standard_False, Loc);
       end if;
 
-      Append_To (Args, B);
+      Append_To (Args, Arg);
 
-      if Has_Start_Barrier (Adef) then
-         B := New_Occurrence_Of (Standard_True, Loc);
+      if Is_Atomic_Aspect_True (Name_No_Start_Barrier, Atyp) then
+         Arg := New_Occurrence_Of (Standard_False, Loc);
       else
-         B := New_Occurrence_Of (Standard_False, Loc);
+         Arg := New_Occurrence_Of (Standard_True, Loc);
       end if;
 
-      Append_To (Args, B);
+      Append_To (Args, Arg);
 
       --  Require all actions parameter.
 
-      if Require_All_Actions (Adef) then
-         B := New_Occurrence_Of (Standard_True, Loc);
+      Ritem :=
+        Get_Rep_Item
+          (Atyp, Name_Participating_Actions, Check_Parents => False);
+
+      if Present (Ritem)
+        and then Nkind (Ritem) = N_Aspect_Specification
+      then
+         if not Has_End then
+            declare
+               Id : constant Entity_Id :=
+                      Defining_Identifier (Original_Node (Parent (Atyp)));
+               --  The warning must be issued on the original identifier in
+               --  order to deal properly with the case of a single atomic
+               --  object.
+
+            begin
+               Error_Msg_Name_1 := Chars (Identifier (Ritem));
+               Error_Msg_NE ("?aspect% for & has no effect when" &
+                             " No_End_Barrier given", Ritem, Id);
+            end;
+         end if;
+         Analyze (Expression (Ritem));
+
+         Arg := New_Reference_To (Entity (Expression (Ritem)), Loc);
       else
-         B := New_Occurrence_Of (Standard_False, Loc);
+         Arg := New_Reference_To (RTE (RE_All_Actions), Loc);
       end if;
 
-      Append_To (Args, B);
+      Append_To (Args, Arg);
 
       Append_To (L,
         Make_Procedure_Call_Statement (Loc,

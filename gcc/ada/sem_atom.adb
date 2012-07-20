@@ -470,14 +470,6 @@ package body Sem_Atom is
    --  Start of processing for Analyze_Atomic_Definition
 
    begin
-      --  Set atomic flags defaults.
-
-      Set_Backwards_Recovery (N);
-      Set_Has_End_Barrier (N);
-      Set_Has_Start_Barrier (N);
-      Set_Require_All_Actions (N);
-      Set_Save_State (N);
-
       Tasking_Used := True;
 
       Analyze_Declarations (Visible_Declarations (N));
