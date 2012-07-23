@@ -389,11 +389,29 @@ package body Exp_Atom is
          Atom_Name : constant Name_Id :=
                        Chars (Standard_Entity (S_Atomic_Error));
          Stmts     : List_Id := New_List;
+         Estmts    : List_Id := New_List;
          Spec      : Entity_Id :=
                        Corresponding_Spec (Action_Body_Formal_Part (N));
          P         : Node_Id;
 
       begin
+         --  If we have reached this point, we have encountered no errors,
+         --  so set the except flag to false.
+
+         Append_To (Stmts,
+           Make_Assignment_Statement (Loc,
+             Name       => New_Reference_To (E, Loc),
+             Expression => New_Reference_To (Standard_False, Loc)));
+
+         --  Build call to the Ensure statements that test to see that the
+         --  action meets its contract with the atomic action. This can change
+         --  the except flag to false.
+
+         Append_To (Stmts,
+           Make_Procedure_Call_Statement (Loc,
+             Name => Make_Identifier (Loc, Name_uEnsure)));
+
+         --   Make call to exit barrier.
 
          if Is_Atomic_Aspect_True (Name_No_End_Barrier, Pid) then
             Append_To (Stmts,
@@ -407,12 +425,15 @@ package body Exp_Atom is
                     New_Reference_To (E, Loc))));
          end if;
 
+         --  If the except flag is true, raise Atomic_Error.
+
          Append_To (Stmts,
            Make_Implicit_If_Statement (N,
              Condition       => New_Reference_To (E, Loc),
              Then_Statements => New_List (New_Raise_Atomic_Error (Loc))));
 
-         --  Expand each pragma Ensure to
+         --  Build the Ensure procedure and attach it to the end of subprogram
+         --  declarations. We expand each pragma Ensure to
          --    if not condition then
          --       E := False;
          --    end if;
@@ -425,7 +446,7 @@ package body Exp_Atom is
 
          P := Ensure (Spec);
          while Present (P) loop
-            Prepend_To (Stmts,
+            Prepend_To (Estmts,
               Make_If_Statement (Loc,
                 Condition =>
                   Make_Op_Not (Loc,
@@ -439,10 +460,20 @@ package body Exp_Atom is
             P := Next_Pragma (P);
          end loop;
 
-         Prepend_To (Stmts,
-           Make_Assignment_Statement (Loc,
-             Name       => New_Reference_To (E, Loc),
-             Expression => New_Reference_To (Standard_True, Loc)));
+         Insert_After (First (Declarations (Action_Body)),
+           Make_Subprogram_Body (Loc,
+             Specification =>
+               Make_Procedure_Specification (Loc,
+                 Defining_Unit_Name =>
+                   Make_Defining_Identifier (Loc,
+                     Chars => Name_uEnsure),
+                 Parameter_Specifications => Empty_List),
+
+             Declarations => Empty_List,
+
+             Handled_Statement_Sequence =>
+               Make_Handled_Sequence_Of_Statements (Loc,
+                 Statements => Estmts)));
 
          return Stmts;
 
@@ -513,13 +544,13 @@ package body Exp_Atom is
 
       declare
       begin
-         Append_List_To (Statements (Handled_Statement_Sequence (N)),
-                         Build_Atomic_Exception_Stmts);
-
          Action_Body := Make_Block_Statement (Loc,
            Declarations               => Declarations (N),
            Handled_Statement_Sequence =>
              Handled_Statement_Sequence (N));
+
+         Append_List_To (Statements (Handled_Statement_Sequence (N)),
+                         Build_Atomic_Exception_Stmts);
 
          --  We need to analyzed the handled statement sequence again since we
          --  have added to it in the above statements, but we can only anaylze
