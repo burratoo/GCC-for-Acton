@@ -167,6 +167,7 @@ package Snames is
    Name_uCPU                           : constant Name_Id := N + $;
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uDispatching_Domain            : constant Name_Id := N + $;
+   Name_uEnsure                        : constant Name_Id := N + $;
    Name_uExcept                        : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
    Name_uEntry_Id                      : constant Name_Id := N + $;
