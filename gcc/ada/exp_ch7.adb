@@ -614,7 +614,8 @@ package body Exp_Ch7 is
                           New_Reference_To (Defining_Identifier (Param), Loc),
                         Selector_Name =>
                           Make_Identifier (Loc, Name_uObject))),
-                  Action_Index_Expression (Loc, Act_Def, Atom_Def))));
+                  Action_Index_Expression (Loc, Act_Def, Atom_Def),
+                  New_Reference_To (E, Loc))));
 
             --  If aspect Restore_State applies to the action or its atomic
             --  type, generate the save/restore parameter instructions

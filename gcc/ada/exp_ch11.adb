@@ -1880,7 +1880,7 @@ package body Exp_Ch11 is
          P := Parent (N);
 
          --  If we get to the top of the tree, or to a subprogram, task, entry,
-         --  protected body, or accept statement without having found a
+         --  protected body, action, or accept statement without having found a
          --  matching handler, then there is no local handler.
 
          if No (P)
