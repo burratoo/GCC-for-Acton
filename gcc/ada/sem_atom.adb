@@ -309,30 +309,26 @@ package body Sem_Atom is
       --  Check_SPARK_Restriction ("action call is not allowed", N);
       Check_Restriction (No_Select_Statements, N);
 
-      if Present (Pragmas_Before (N)) then
-         Analyze_List (Pragmas_Before (N));
-      end if;
-
       --  Analyze alternatives
 
       Analyze_List (Alt_List);
 
       --  Analyze sequence of statement
 
-      if Is_Non_Empty_List (Statements (N)) then
-         Analyze_Statements (Statements (N));
+      if Is_Non_Empty_List (Else_Statements (N)) then
+         Analyze_Statements (Else_Statements (N));
 
          --  The parser cannot tell if the last else statement is an
          --  action_call_alternative or just a normal sequence of statements.
          --  We do the check here and transform from a Sequence_of_Statements
          --  to an Action_Call_Alternative.
 
-         Stm := First (Statements (N));
+         Stm := First (Else_Statements (N));
 
          if Nkind (Stm) = N_Action_Call_Statement then
             Alt := Make_Action_Call_Alternative (Sloc (Stm),
                      Action_Call_Statement => Relocate_Node (Stm),
-                     Statements            => Statements (N));
+                     Statements            => Else_Statements (N));
             Set_Analyzed (Alt, True);
             Append_To (Alt_List, Alt);
          end if;

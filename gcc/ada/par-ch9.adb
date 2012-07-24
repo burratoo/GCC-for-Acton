@@ -1962,7 +1962,7 @@ package body Ch9 is
             return Error;
       end;
 
-      Set_Action_Call_Statement (Acall_Node, P_Delay_Statement);
+      Set_Action_Call_Statement (Alt_Node, Acall_Node);
 
       Set_Statements
         (Alt_Node, P_Sequence_Of_Statements (SS_Eltm));

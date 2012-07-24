@@ -8054,7 +8054,6 @@ package Sinfo is
       --  N_Has_Condition
 
       N_Accept_Alternative,
-      N_Action_Call_Alternative,
       N_Delay_Alternative,
       N_Elsif_Part,
       N_Entry_Body_Formal_Part,
@@ -8092,6 +8091,7 @@ package Sinfo is
       N_Access_To_Object_Definition,
       N_Action_Body,
       N_Action_Body_Formal_Part,
+      N_Action_Call_Alternative,
       N_Aspect_Specification,
       N_Atomic_Definition,
       N_Case_Expression_Alternative,

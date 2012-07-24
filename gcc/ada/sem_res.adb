@@ -5318,21 +5318,6 @@ package body Sem_Res is
          end if;
       end if;
 
-      --  Check that a procedure call does not occur in the context of the
-      --  action call statement of an alternative action select statment. Note
-      --  that the case of a call to a subprogram renaming of an entry will
-      --  also be rejected. The test for N not being an N_Action_Call_Statement
-      --  is defensive, covering the possibility that the processing of action
-      --  calls might reach this point due to later modifications of the code
-      --  above.
-
-      if Nkind (Parent (N)) = N_Action_Call_Alternative
-        and then Nkind (N) /= N_Action_Call_Statement
-        and then Action_Call_Statement (Parent (N)) = N
-      then
-         Error_Msg_N ("action call required in select statement", N);
-      end if;
-
       --  Check that this is not a call to a protected procedure or entry from
       --  within a protected function.
 

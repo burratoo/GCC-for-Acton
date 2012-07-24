@@ -861,18 +861,19 @@ package body Exp_Atom is
    --    end;
 
    procedure Expand_N_Alternative_Action_Select (N : Node_Id) is
-      Loc            : constant Source_Ptr := Sloc (N);
-      Alts           : constant List_Id := Action_Call_Alternatives (N);
-      Els            : constant List_Id := Else_Statements (N);
+      Loc      : constant Source_Ptr := Sloc (N);
+      Alts     : constant List_Id := Action_Call_Alternatives (N);
+      Els      : constant List_Id := Else_Statements (N);
 
-      Alt            : Node_Id;
+      Alt      : Node_Id;
 
-      Block          : Node_Id;
-      Decls          : constant List_Id := New_List;
-      Stmts          : constant List_Id := New_List;
+      Block    : Node_Id;
+      Decls    : constant List_Id := New_List;
+      Stmts    : constant List_Id := New_List;
 
-      Exit_Lab       : Node_Id;
-      F              : constant Node_Id := Make_Temporary (Loc, 'F');
+      Exit_Lab : Node_Id;
+      Exit_Nam : constant Name_Id := New_External_Name ('E', 0);
+      F        : constant Node_Id := Make_Temporary (Loc, 'F');
 
       Act_Call_Stmts : List_Id := New_List;
 
@@ -889,27 +890,28 @@ package body Exp_Atom is
              Right_Opnd => New_Reference_To (F, Loc)),
            Then_Statements => New_List (
              Make_Goto_Statement (Loc,
-               Name =>
-                 New_Occurrence_Of (Entity (Identifier (Exit_Lab)), Loc))));
+               Name => Make_Identifier (Loc, Exit_Nam))));
       end Make_Flag_Check_Statement;
 
    begin
 
+      --  Add F to declaration list.
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier => F,
+          Object_Definition   => New_Reference_To (Standard_Boolean, Loc),
+          Expression          => New_Reference_To (Standard_True, Loc)));
+
       --  Generate label for common exit
 
-      declare
-         Exit_Id : Node_Id;
+      Exit_Lab := Make_Label (Loc, Make_Identifier (Loc, Exit_Nam));
 
-      begin
-         Exit_Id := Make_Identifier (Loc, New_External_Name ('E', 0));
-         Exit_Lab := Make_Label (Loc, Exit_Id);
-
-         Append_To (Decls,
-           Make_Implicit_Label_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Chars (Exit_Id)),
-             Label_Construct     => Exit_Lab));
-      end;
+      Append_To (Decls,
+        Make_Implicit_Label_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Exit_Nam),
+          Label_Construct     => Exit_Lab));
 
       --  Loop through action call alternatives and transform them into
       --  the following block statement:
@@ -932,7 +934,7 @@ package body Exp_Atom is
          Append_To (Act_Call_Stmts,
            Make_Assignment_Statement (Loc,
              Name       => New_Reference_To (F, Loc),
-             Expression => New_Reference_To (Standard_True, Loc)));
+             Expression => New_Reference_To (Standard_False, Loc)));
          Append_List_To (Act_Call_Stmts,
            Copy_Separate_List (Statements (Alt)));
 
@@ -943,15 +945,15 @@ package body Exp_Atom is
                  Statements         => Act_Call_Stmts,
                  Exception_Handlers => New_List (
                    Make_Implicit_Exception_Handler (Loc,
-                     Exception_Choices => New_List (
-                       New_Reference_To (Standard_Entity (S_Atomic_Error),
-                         Loc)),
+                     Exception_Choices => New_List (Make_Others_Choice (Loc)),
                      Statements        =>
                        New_List (Make_Null_Statement (Loc)))))));
 
          --  Add Flag check statement
 
          Append_To (Stmts, Make_Flag_Check_Statement);
+
+         Alt := Next (Alt);
       end loop;
 
       --  If we have else statements, append them now
@@ -961,7 +963,7 @@ package body Exp_Atom is
            Make_Block_Statement (Loc,
              Handled_Statement_Sequence =>
                Make_Handled_Sequence_Of_Statements (Loc,
-                 Statements => Copy_Separate_List (Els))));
+                 Statements => New_Copy_List (Els))));
       end if;
 
       Append (Exit_Lab, Stmts);
