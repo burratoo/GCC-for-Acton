@@ -182,7 +182,7 @@ package body Exp_Ch13 is
                       Name =>
                         New_Reference_To (Storage_Size_Variable (Ent), Loc),
                       Expression =>
-                        Convert_To (RTE (RE_Size_Type), Expression (N)));
+                        Convert_To (RTE (RE_Storage_Count), Expression (N)));
 
                   Insert_After
                     (Parent (Storage_Size_Variable (Entity (N))), Assign);
