@@ -120,6 +120,7 @@ package Rtsfind is
 
       --  Children of Ada
 
+      Ada_Atomic_Actions,
       Ada_Calendar,
       Ada_Dispatching,
       Ada_Exceptions,
@@ -461,7 +462,7 @@ package Rtsfind is
       );
 
    subtype Ada_Child is RTU_Id
-     range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
+     range Ada_Atomic_Actions .. Ada_Wide_Wide_Text_IO_Modular_IO;
    --  Range of values for children or grand-children of Ada
 
    subtype Ada_Calendar_Child is Ada_Child
@@ -612,6 +613,10 @@ package Rtsfind is
    type RE_Id is (
 
      RE_Null,
+
+     RE_Active_Actions,                  -- Ada.Atomic_Actions
+     RE_All_Actions,                     -- Ada.Atomic_Actions
+     RE_Participating_Actions,           -- Ada.Atomic_Actions
 
      RO_CA_Time,                         -- Ada.Calendar
 
@@ -1846,11 +1851,8 @@ package Rtsfind is
      RE_Initialise_Protected_Agent,      -- Oak.Agent.Tasks.Protected_Objects
      RE_Protected_Agent,                 -- Oak.Agent.Tasks.Protected_Objects
 
-     RE_Active_Actions,                  -- Oak.Atomic_Actions
-     RE_All_Actions,                     -- Oak.Atomic_Actions
      RE_Atomic_Object,                   -- Oak.Atomic_Actions
      RE_Initialise_Atomic_Object,        -- Oak.Atomic_Actions
-     RE_Participating_Actions,           -- Oak.Atomic_Actions
 
      RE_Action_Index,                    -- Oak.Indices
      RE_Protected_Entry_Index,           -- Oak.Indices
@@ -1877,6 +1879,10 @@ package Rtsfind is
    RE_Unit_Table : constant array (RE_Id) of RTU_Id := (
 
      RE_Null                             => RTU_Null,
+
+     RE_Active_Actions                   => Ada_Atomic_Actions,
+     RE_All_Actions                      => Ada_Atomic_Actions,
+     RE_Participating_Actions            => Ada_Atomic_Actions,
 
      RO_CA_Time                          => Ada_Calendar,
 
@@ -3149,11 +3155,8 @@ package Rtsfind is
      RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
      RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
 
-     RE_Active_Actions                   => Oak_Atomic_Actions,
-     RE_All_Actions                      => Oak_Atomic_Actions,
      RE_Atomic_Object                    => Oak_Atomic_Actions,
      RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
-     RE_Participating_Actions            => Oak_Atomic_Actions,
 
      RE_Action_Index                     => Oak_Indices,
      RE_Protected_Entry_Index            => Oak_Indices,
