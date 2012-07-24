@@ -1509,6 +1509,7 @@ package body CStand is
 
       --  Create declarations of standard exceptions
 
+      Build_Exception (S_Atomic_Error);
       Build_Exception (S_Constraint_Error);
       Build_Exception (S_Program_Error);
       Build_Exception (S_Storage_Error);

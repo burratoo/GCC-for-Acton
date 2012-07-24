@@ -114,6 +114,7 @@ package Uname is
    --    N_Package_Body_Stub
    --    N_Task_Body_Stub
    --    N_Protected_Body_Stub
+   --    N_Atomic_Body_Stub
    --    N_Subunit
 
    procedure Get_Unit_Name_String

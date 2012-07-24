@@ -28,6 +28,7 @@ with Debug_A;  use Debug_A;
 with Errout;   use Errout;
 with Exp_Aggr; use Exp_Aggr;
 with Exp_Alfa; use Exp_Alfa;
+with Exp_Atom; use Exp_Atom;
 with Exp_Attr; use Exp_Attr;
 with Exp_Ch2;  use Exp_Ch2;
 with Exp_Ch3;  use Exp_Ch3;
@@ -149,11 +150,20 @@ package body Expander is
                   when N_Accept_Statement =>
                      Expand_N_Accept_Statement (N);
 
+                  when N_Action_Body =>
+                     Expand_N_Action_Body (N);
+
+                  when N_Action_Call_Statement =>
+                     Expand_N_Action_Call_Statement (N);
+
                   when N_Aggregate =>
                      Expand_N_Aggregate (N);
 
                   when N_Allocator =>
                      Expand_N_Allocator (N);
+
+                  when N_Alternative_Action_Select =>
+                     Expand_N_Alternative_Action_Select (N);
 
                   when N_And_Then =>
                      Expand_N_And_Then (N);
@@ -163,6 +173,12 @@ package body Expander is
 
                   when N_Asynchronous_Select =>
                      Expand_N_Asynchronous_Select (N);
+
+                  when N_Atomic_Type_Declaration =>
+                     Expand_N_Atomic_Type_Declaration (N);
+
+                  when N_Atomic_Body =>
+                     Expand_N_Atomic_Body (N);
 
                   when N_Attribute_Definition_Clause =>
                      Expand_N_Attribute_Definition_Clause (N);

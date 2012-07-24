@@ -242,7 +242,7 @@ package Sem_Ch6 is
    --  is non-empty then this is a subprogram derived for that type.
 
    procedure Process_Formals (T : List_Id; Related_Nod : Node_Id);
-   --  Enter the formals in the scope of the subprogram or entry, and
+   --  Enter the formals in the scope of the subprogram, action or entry, and
    --  analyze default expressions if any. The implicit types created for
    --  access parameter are attached to the Related_Nod which comes from the
    --  context.

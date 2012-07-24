@@ -1137,6 +1137,7 @@ begin
            Pragma_Elaborate_Body                 |
            Pragma_Elaboration_Checks             |
            Pragma_Enable_Atomic_Synchronization  |
+           Pragma_Ensure                         |
            Pragma_Export                         |
            Pragma_Export_Exception               |
            Pragma_Export_Function                |

@@ -696,6 +696,11 @@ package body Sem_Ch13 is
       --  This routine analyzes an Aspect_Default_[Component_]Value denoted by
       --  the aspect specification node ASN.
 
+      procedure Analyze_Atomic_Aspects (ASN : Node_Id);
+      --  This routine analyzes an atomic aspect, No_End_Barrier,
+      --  No_Start_Barrier, Participating_Actions or Restore_State, denoted by
+      --  the aspect specification node ASN.
+
       procedure Make_Pragma_From_Boolean_Aspect (ASN : Node_Id);
       --  Given an aspect specification node ASN whose expression is an
       --  optional Boolean, this routines creates the corresponding pragma
@@ -746,6 +751,25 @@ package body Sem_Ch13 is
             Set_Default_Aspect_Component_Value (Ent, Expr);
          end if;
       end Analyze_Aspect_Default_Value;
+
+      ----------------------------
+      -- Analyze_Atomic_Aspects --
+      ----------------------------
+
+      procedure Analyze_Atomic_Aspects (ASN : Node_Id) is
+         Ent  : constant Entity_Id := Entity (ASN);
+         Id   : constant Node_Id   := Identifier (ASN);
+
+      begin
+         Error_Msg_Name_1 := Chars (Id);
+
+         if not Ekind_In (Ent, E_Atomic_Type, E_Atomic_Subtype)
+           and then (A_Id = Aspect_Restore_State and Ekind (Ent) /= E_Action)
+         then
+            Error_Msg_N ("aspect& must apply to subtype declaration", Id);
+            return;
+         end if;
+      end Analyze_Atomic_Aspects;
 
       -------------------------------------
       -- Make_Pragma_From_Boolean_Aspect --
@@ -968,6 +992,11 @@ package body Sem_Ch13 is
             --  This routine performs the analysis of the Implicit_Dereference
             --  aspects.
 
+            procedure Analyze_Atomic_Aspects;
+            --  This routine performs the analysis of the No_End_Barrier,
+            --  No_Start_Barrier, Participating_Actions and Restore_State
+            --  aspects.
+
             ------------------------------------------
             -- Analyze_Aspect_External_Or_Link_Name --
             ------------------------------------------
@@ -1036,6 +1065,38 @@ package body Sem_Ch13 is
                   end;
                end if;
             end Analyze_Aspect_Implicit_Dereference;
+
+            ----------------------------
+            -- Analyze_Atomic_Aspects --
+            ----------------------------
+
+            procedure Analyze_Atomic_Aspects is
+               Unused : Uint;
+               pragma Unreferenced (Unused);
+
+            begin
+
+               if not Ekind_In (E, E_Atomic_Type, E_Atomic_Subtype)
+                 and then (A_Id = Aspect_Restore_State
+                           and Ekind (E) /= E_Action)
+               then
+                  Error_Msg_N
+                    ("aspect& must apply to subtype declaration", Aspect);
+                  return;
+               end if;
+
+               if Present (Expr) then
+                  if A_Id = Aspect_Participating_Actions then
+                     Preanalyze_Spec_Expression (Expr,
+                       RTE (RE_Participating_Actions));
+                  else
+                     Unused := Static_Boolean (Expr);
+                  end if;
+               end if;
+
+               Record_Rep_Item (E, Aspect);
+
+            end Analyze_Atomic_Aspects;
 
          begin
             --  Skip aspect if already analyzed (not clear if this is needed)
@@ -1437,6 +1498,13 @@ package body Sem_Ch13 is
                   Analyze_Aspect_Dimension_System (N, Id, Expr);
                   goto Continue;
 
+               when Aspect_No_End_Barrier          |
+                    Aspect_No_Start_Barrier        |
+                    Aspect_Participating_Actions   |
+                    Aspect_Restore_State           =>
+                  Analyze_Atomic_Aspects;
+                  goto Continue;
+
                --  Case 4: Special handling for aspects
                --  Pre/Post/Test_Case/Contract_Case whose corresponding pragmas
                --  take care of the delay.
@@ -1614,6 +1682,84 @@ package body Sem_Ch13 is
 
                      Delay_Required := False;
                   end;
+
+               --  Aspect Ensure generate Ensure pragmas with a first argument
+               --  that is the expression, and a second argument that is an
+               --  informative message if the test fails. This is inserted
+               --  right after the declaration, to get the required pragma
+               --  placement. The processing for the pragmas takes care of the
+               --  required delay.
+
+               when Aspect_Ensure =>
+
+                  --  If the expressions is of the form A and then B, then
+                  --  we generate separate Ensure aspects for the separate
+                  --  clauses. Since we allow multiple pragmas, there is no
+                  --  problem in allowing multiple Ensure aspects internally.
+                  --  These should be treated in reverse order (B first and
+                  --  A second) since they are later inserted just after N in
+                  --  the order they are treated. This way, the pragma for A
+                  --  ends up preceding the pragma for B, which may have an
+                  --  importance for the error raised (either constraint error
+                  --  or precondition error).
+
+                  --  We do not do this in ASIS mode, as ASIS relies on the
+                  --  original node representing the complete expression, when
+                  --  retrieving it through the source aspect table.
+
+                  if not ASIS_Mode then
+                     while Nkind (Expr) = N_And_Then loop
+                        Insert_After (Aspect,
+                          Make_Aspect_Specification (Sloc (Left_Opnd (Expr)),
+                            Identifier    => Identifier (Aspect),
+                            Expression    => Relocate_Node (Left_Opnd (Expr)),
+                            Class_Present => Class_Present (Aspect),
+                            Split_PPC     => True));
+                        Rewrite (Expr, Relocate_Node (Right_Opnd (Expr)));
+                        Eloc := Sloc (Expr);
+                     end loop;
+                  end if;
+
+                  --  Build the ensure pragma
+
+                  Aitem :=
+                    Make_Pragma (Loc,
+                      Pragma_Identifier            =>
+                        Make_Identifier (Sloc (Id), Name_Ensure),
+                      Class_Present                => Class_Present (Aspect),
+                      Split_PPC                    => Split_PPC (Aspect),
+                      Pragma_Argument_Associations => New_List (
+                        Make_Pragma_Argument_Association (Eloc,
+                          Chars      => Name_Check,
+                          Expression => Relocate_Node (Expr))));
+
+                  --  Add message unless exception messages are suppressed
+
+                  if not Opt.Exception_Locations_Suppressed then
+                     Append_To (Pragma_Argument_Associations (Aitem),
+                       Make_Pragma_Argument_Association (Eloc,
+                         Chars     => Name_Message,
+                         Expression =>
+                           Make_String_Literal (Eloc,
+                             Strval => "failed "
+                                       & Get_Name_String (Name_Ensure)
+                                       & " from "
+                                       & Build_Location_String (Eloc))));
+                  end if;
+
+                  Set_From_Aspect_Specification (Aitem, True);
+                  Set_Corresponding_Aspect (Aitem, Aspect);
+                  Set_Is_Delayed_Aspect (Aspect);
+
+                  --  For Ensure cases, insert immediately after the entity
+                  --  declaration, since that is the required pragma placement.
+                  --  Note that for these aspects, we do not have to worry
+                  --  about delay issues, since the pragmas themselves deal
+                  --  with delay of visibility for the expression analysis.
+
+                  Insert_After (N, Aitem);
+
+                  goto Continue;
 
                --  Case 5: Special handling for aspects with an optional
                --  boolean argument.
@@ -6487,6 +6633,7 @@ package body Sem_Ch13 is
    --  Start of processing for Check_Aspect_At_End_Of_Declarations
 
    begin
+
       --  Case of aspects Dimension, Dimension_System and Synchronization
 
       if A_Id = Aspect_Synchronization then
@@ -6604,8 +6751,8 @@ package body Sem_Ch13 is
 
          --  Aspects taking an optional boolean argument
 
-         when Boolean_Aspects      |
-              Library_Unit_Aspects =>
+         when Boolean_Aspects       |
+              Library_Unit_Aspects  =>
             T := Standard_Boolean;
 
          when Aspect_Attach_Handler =>
@@ -6716,14 +6863,19 @@ package body Sem_Ch13 is
 
          --  Here is the list of aspects that don't require delay analysis.
 
-         when Aspect_Contract_Case        |
-              Aspect_Dimension            |
-              Aspect_Dimension_System     |
-              Aspect_Implicit_Dereference |
-              Aspect_Post                 |
-              Aspect_Postcondition        |
-              Aspect_Pre                  |
-              Aspect_Precondition         |
+         when Aspect_Contract_Case         |
+              Aspect_Dimension             |
+              Aspect_Dimension_System      |
+              Aspect_Ensure                |
+              Aspect_Implicit_Dereference  |
+              Aspect_No_End_Barrier        |
+              Aspect_No_Start_Barrier      |
+              Aspect_Participating_Actions |
+              Aspect_Post                  |
+              Aspect_Postcondition         |
+              Aspect_Pre                   |
+              Aspect_Precondition          |
+              Aspect_Restore_State         |
               Aspect_Test_Case     =>
             raise Program_Error;
 

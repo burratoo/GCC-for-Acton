@@ -392,6 +392,8 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
    SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(T, T, F, F, T, F, F, F);
    SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, T, F, T, F, T, F, F);
+   SS_Eltm           : constant SS_Rec := SS_Rec'(F, T, F, F, F, F, F, F);
+   SS_Eltm_Sreq      : constant SS_Rec := SS_Rec'(F, T, F, F, F, T, F, F);
    SS_Extm_Sreq      : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, F, F);
    SS_None           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, F);
    SS_Ortm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, T, T, F, F, F);
@@ -805,6 +807,15 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Task                                 return Node_Id;
       function P_Terminate_Alternative                return Node_Id;
    end Ch9;
+
+   -------------
+   -- Par.Atom --
+   -------------
+
+   package Atom is
+      --  Placed here as it is envisioned it will end up in Ch9.
+      function P_Atomic                               return Node_Id;
+   end Atom;
 
    --------------
    -- Par.Ch10 --
@@ -1329,6 +1340,8 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    use Sync;
    use Util;
 
+   use Atom;
+
    package body Ch2 is separate;
    package body Ch3 is separate;
    package body Ch4 is separate;
@@ -1346,6 +1359,8 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    package body Tchk is separate;
    package body Sync is separate;
    package body Util is separate;
+
+   package body Atom is separate;
 
    function Prag (Pragma_Node : Node_Id; Semi : Source_Ptr) return Node_Id
      is separate;

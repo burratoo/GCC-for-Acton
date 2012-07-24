@@ -242,5 +242,6 @@ begin
    Register_Exception (Program_Error_Def'Access);
    Register_Exception (Numeric_Error_Def'Access);
    Register_Exception (Constraint_Error_Def'Access);
+   Register_Exception (Atomic_Error_Def'Access);
 
 end System.Exception_Table;

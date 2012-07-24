@@ -101,7 +101,7 @@ package body Ch5 is
    --  | RETURN_STATEMENT      | ENTRY_CALL_STATEMENT
    --  | REQUEUE_STATEMENT     | DELAY_STATEMENT
    --  | ABORT_STATEMENT       | RAISE_STATEMENT
-   --  | CODE_STATEMENT
+   --  | CODE_STATEMENT        | ACTION_CALL_STATEMENT
 
    --  COMPOUND_STATEMENT ::=
    --    IF_STATEMENT         | CASE_STATEMENT
@@ -1975,6 +1975,7 @@ package body Ch5 is
    --  If the BEGIN is missing, then the parent node is used to help construct
    --  an appropriate missing BEGIN message. Possibilities for the parent are:
 
+   --    N_Action_Body         action body
    --    N_Block_Statement     declare block
    --    N_Entry_Body          entry body
    --    N_Package_Body        package body (begin part optional)
@@ -2171,7 +2172,10 @@ package body Ch5 is
 
                --  Now issue appropriate message
 
-               if Parent_Nkind = N_Block_Statement then
+               if Parent_Nkind = N_Action_Body then
+                  Missing_Begin ("missing BEGIN for ACTION#!");
+
+               elsif Parent_Nkind = N_Block_Statement then
                   Missing_Begin ("missing BEGIN for DECLARE#!");
 
                elsif Parent_Nkind = N_Entry_Body then

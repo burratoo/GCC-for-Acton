@@ -289,12 +289,11 @@ package body Exp_Ch9 is
    function Build_Unprotected_Entry_Body
      (N   : Node_Id;
       Pid : Node_Id) return Node_Id;
-   --  Builds the unprotected version of a protected entry body that asks the
-   --  system for permission to the protected object before calling the
-   --  protected entry body after permission is granted. The unprotected entry
-   --  body contains the original entry body. Like its protected version,
-   --  Build_Unprotected_Entry_Body is based off is subprogram variant and is
-   --  so similar they probably should be combined into the one function.
+   --  Builds the unprotected version of a protected entry body. The
+   --  unprotected entry body contains the original entry body. Like its
+   --  protected version, Build_Unprotected_Entry_Body is based off is
+   --  subprogram variant and is so similar they probably should be combined
+   --  into the one function.
 
    function Build_Unprotected_Subprogram_Body
      (N   : Node_Id;
@@ -3713,7 +3712,6 @@ package body Exp_Ch9 is
       Sub_Body      : Node_Id;
       Sub_Type      : Node_Id;
       Lock_Stmt     : Node_Id;
-      Service_Name  : Node_Id;
       Stmts         : List_Id;
       Object_Parm   : Node_Id;
       Exc_Safe      : Boolean;
@@ -4004,7 +4002,6 @@ package body Exp_Ch9 is
       Sub_Body      : Node_Id;
       Sub_Type      : Node_Id;
       Lock_Stmt     : Node_Id;
-      Service_Name  : Node_Id;
       R             : Node_Id;
       Return_Stmt   : Node_Id := Empty;    -- init to avoid gcc 3 warning
       Pre_Stmts     : List_Id := No_List;  -- init to avoid gcc 3 warning
@@ -4799,7 +4796,10 @@ package body Exp_Ch9 is
    begin
       --  Parameter _O or _object
 
-      if Is_Protected_Type (Conc_Typ) then
+      if Is_Atomic_Type (Conc_Typ) then
+         return First_Formal (Action_Body_Subprogram (Spec_Id));
+
+      elsif Is_Protected_Type (Conc_Typ) then
          return First_Formal (Protected_Body_Subprogram (Spec_Id));
 
       --  Parameter _task
@@ -8061,8 +8061,8 @@ package body Exp_Ch9 is
    --  The general form of this type declaration is
 
    --    type poV (discriminants) is record
-   --      _Object       : aliased <kind>Task_Agent
-   --         [Regular, (<entry count>)];
+   --      _Object       : aliased <kind>Protected_Agent
+   --         [(<entry count>)];
    --      [_barriers   : aliased Protected_Object_Barriers (bounds)];
    --      [entry_family  : array (bounds) of Void;]
    --      <private data fields>
@@ -8076,8 +8076,8 @@ package body Exp_Ch9 is
    --  The Object field is always present. It contains RTS specific data used
    --  to control the protected object. It is declared as Aliased so that it
    --  can be passed as a pointer to the RTS. This allows the protected record
-   --  to be referenced within RTS data structures. An appropriate Protection
-   --  type and discriminant are generated.
+   --  to be referenced within RTS data structures. An appropriate
+   --  Protected_Agent type and discriminant are generated.
 
    --  The barrier field is present when the protected object has entries. The
    --  length of the barrier array is equal to the number of each individual
@@ -8542,8 +8542,6 @@ package body Exp_Ch9 is
 
             Set_Protected_Body_Subprogram
               (Comp_Id, Defining_Unit_Name (Specification (Sub)));
-            --  Not sure if we should be checking inline on the entry call ???
-            Check_Inlining (Comp_Id);
 
             --  Make the protected version of the subprogram available for
             --  expansion of external calls.
@@ -11856,7 +11854,8 @@ package body Exp_Ch9 is
 
    begin
       --  For a simple entry, the name is a selected component, with the
-      --  prefix being the task value, and the selector being the entry.
+      --  prefix being the task or protected value, and the selector being the
+      --  entry.
 
       if Nkind (Nam) = N_Selected_Component then
          Concval := Prefix (Nam);
@@ -12166,6 +12165,7 @@ package body Exp_Ch9 is
       Family   : Boolean := False)
    is
       Is_Protected : constant Boolean := Is_Protected_Type (Conc_Typ);
+      Is_Atomic    : constant Boolean := Is_Atomic_Type (Conc_Typ);
       Decl         : Node_Id;
       Def          : Node_Id;
       Insert_Node  : Node_Id := Empty;
@@ -12249,6 +12249,31 @@ package body Exp_Ch9 is
          end;
       end if;
 
+      --  Step 3: Create the Atomic object.
+
+      if Is_Atomic then
+         declare
+            Atomic_Ent : constant Entity_Id := Make_Temporary (Loc, 'R');
+
+         begin
+            Set_Atomic_Object (Spec_Id, Atomic_Ent);
+
+            --  Generate:
+            --    conc_typR : atomic_typ renames _object._object;
+
+            Decl :=
+              Make_Object_Renaming_Declaration (Loc,
+                Defining_Identifier => Atomic_Ent,
+                Subtype_Mark =>
+                  New_Reference_To (RTE (RE_Atomic_Object), Loc),
+                Name =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => New_Reference_To (Obj_Ent, Loc),
+                    Selector_Name => Make_Identifier (Loc, Name_uObject)));
+            Add (Decl);
+         end;
+      end if;
+
       --  Step 3: Add discriminant renamings (if any)
 
       if Has_Discriminants (Conc_Typ) then
@@ -12285,8 +12310,12 @@ package body Exp_Ch9 is
 
       --  Step 4: Add private component renamings (if any)
 
-      if Is_Protected then
-         Def := Protected_Definition (Parent (Conc_Typ));
+      if Is_Protected or else Is_Atomic then
+         if Is_Protected then
+            Def := Protected_Definition (Parent (Conc_Typ));
+         else
+            Def := Atomic_Definition (Parent (Conc_Typ));
+         end if;
 
          if Present (Private_Declarations (Def)) then
             declare
@@ -13314,7 +13343,8 @@ package body Exp_Ch9 is
       D_Minal : Entity_Id;
 
    begin
-      pragma Assert (Nkind (Dec) = N_Protected_Type_Declaration);
+      pragma Assert (Nkind_In (Dec, N_Protected_Type_Declaration,
+        N_Atomic_Type_Declaration));
       Pdef := Defining_Identifier (Dec);
 
       if Has_Discriminants (Pdef) then

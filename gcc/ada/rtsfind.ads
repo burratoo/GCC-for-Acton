@@ -419,6 +419,7 @@ package Rtsfind is
 
       --  Children of ARPART
 
+      ARPART_Atomic_Actions,
       ARPART_Interrupts,
       ARPART_Protected_Objects,
       ARPART_Tasks,
@@ -430,6 +431,7 @@ package Rtsfind is
       --  Children of Oak
 
       Oak_Agent,
+      Oak_Atomic_Actions,
       Oak_Indices,
       Oak_Memory,
       Oak_Oak_Time,
@@ -546,7 +548,7 @@ package Rtsfind is
    --  Range of values for children of System.Tasking.Async_Delays
 
    subtype ARPART_Child is RTU_Id
-      range ARPART_Interrupts .. ARPART_Tasks;
+      range ARPART_Atomic_Actions .. ARPART_Tasks;
    --  Range of values of children of ARPART
 
    subtype Oak_Child is RTU_Id
@@ -1819,6 +1821,10 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Action_End_Barrier,              -- ARPART.Atomic_Actions
+     RE_Enter_Action,                    -- ARPART.Atomic_Actions
+     RE_Exit_Action,                     -- ARPART.Atomic_Actions
+
      RE_Attach_Handlers,                 -- ARPART.Interrupts
 
      RE_Enter_Protected_Object,          -- ARPART.Protected_Objects
@@ -1840,6 +1846,13 @@ package Rtsfind is
      RE_Initialise_Protected_Agent,      -- Oak.Agent.Tasks.Protected_Objects
      RE_Protected_Agent,                 -- Oak.Agent.Tasks.Protected_Objects
 
+     RE_Active_Actions,                  -- Oak.Atomic_Actions
+     RE_All_Actions,                     -- Oak.Atomic_Actions
+     RE_Atomic_Object,                   -- Oak.Atomic_Actions
+     RE_Initialise_Atomic_Object,        -- Oak.Atomic_Actions
+     RE_Participating_Actions,           -- Oak.Atomic_Actions
+
+     RE_Action_Index,                    -- Oak.Indices
      RE_Protected_Entry_Index,           -- Oak.Indices
 
      RE_Call_Stack_Size,                 -- Oak.Memory.Call_Stack
@@ -3111,6 +3124,10 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Action_End_Barrier               => ARPART_Atomic_Actions,
+     RE_Enter_Action                     => ARPART_Atomic_Actions,
+     RE_Exit_Action                      => ARPART_Atomic_Actions,
+
      RE_Attach_Handlers                  => ARPART_Interrupts,
 
      RE_Enter_Protected_Object           => ARPART_Protected_Objects,
@@ -3132,6 +3149,13 @@ package Rtsfind is
      RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
      RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
 
+     RE_Active_Actions                   => Oak_Atomic_Actions,
+     RE_All_Actions                      => Oak_Atomic_Actions,
+     RE_Atomic_Object                    => Oak_Atomic_Actions,
+     RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
+     RE_Participating_Actions            => Oak_Atomic_Actions,
+
+     RE_Action_Index                     => Oak_Indices,
      RE_Protected_Entry_Index            => Oak_Indices,
 
      RE_Call_Stack_Size                  => Oak_Memory_Call_Stack,

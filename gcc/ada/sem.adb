@@ -35,6 +35,7 @@ with Lib.Load; use Lib.Load;
 with Nlists;   use Nlists;
 with Output;   use Output;
 with Restrict; use Restrict;
+with Sem_Atom; use Sem_Atom;
 with Sem_Attr; use Sem_Attr;
 with Sem_Aux;  use Sem_Aux;
 with Sem_Ch2;  use Sem_Ch2;
@@ -122,11 +123,23 @@ package body Sem is
          when N_Accept_Statement =>
             Analyze_Accept_Statement (N);
 
+         when N_Action_Body =>
+            Analyze_Action_Body (N);
+
+         when N_Action_Body_Formal_Part =>
+            Analyze_Action_Body_Formal_Part (N);
+
+         when N_Action_Declaration =>
+            Analyze_Action_Declaration (N);
+
          when N_Aggregate =>
             Analyze_Aggregate (N);
 
          when N_Allocator =>
             Analyze_Allocator (N);
+
+         when N_Alternative_Action_Select =>
+            Analyze_Alternative_Action_Select (N);
 
          when N_And_Then =>
             Analyze_Short_Circuit (N);
@@ -139,6 +152,21 @@ package body Sem is
 
          when N_At_Clause =>
             Analyze_At_Clause (N);
+
+         when N_Atomic_Body =>
+            Analyze_Atomic_Body (N);
+
+         when N_Atomic_Body_Stub =>
+            Analyze_Atomic_Body_Stub (N);
+
+         when N_Action_Call_Alternative =>
+            Analyze_Action_Call_Alternative (N);
+
+         when N_Atomic_Definition =>
+            Analyze_Atomic_Definition (N);
+
+         when N_Atomic_Type_Declaration =>
+            Analyze_Atomic_Type_Declaration (N);
 
          when N_Attribute_Reference =>
             Analyze_Attribute (N);
@@ -504,6 +532,9 @@ package body Sem is
          when N_Selective_Accept =>
             Analyze_Selective_Accept (N);
 
+         when N_Single_Atomic_Declaration =>
+            Analyze_Single_Atomic_Declaration (N);
+
          when N_Single_Protected_Declaration =>
             Analyze_Single_Protected_Declaration (N);
 
@@ -636,6 +667,7 @@ package body Sem is
            N_Access_Function_Definition             |
            N_Access_Procedure_Definition            |
            N_Access_To_Object_Definition            |
+           N_Action_Call_Statement                  |
            N_Aspect_Specification                   |
            N_Case_Expression_Alternative            |
            N_Case_Statement_Alternative             |

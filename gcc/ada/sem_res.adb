@@ -218,12 +218,12 @@ package body Sem_Res is
    --  N is the Node_Id for the subprogram call, and Nam is the entity of the
    --  called subprogram.
 
-   procedure Resolve_Entry_Call (N : Node_Id; Typ : Entity_Id);
-   --  Called from Resolve_Call, when the prefix denotes an entry or element
-   --  of entry family. Actuals are resolved as for subprograms, and the node
-   --  is rebuilt as an entry call. Also called for protected operations. Typ
-   --  is the context type, which is used when the operation is a protected
-   --  function with no arguments, and the return value is indexed.
+   procedure Resolve_Concurrent_Call (N : Node_Id; Typ : Entity_Id);
+   --  Called from Resolve_Call, when the prefix denotes an action, entry or
+   --  element of entry family. Actuals are resolved as for subprograms, and
+   --  the node is rebuilt as an entry call. Also called for protected
+   --  operations. Typ is the context type, which is used when the operation is
+   --  a protected function with no arguments, and the return value is indexed.
 
    procedure Resolve_Intrinsic_Operator (N : Node_Id; Typ : Entity_Id);
    --  A call to a user-defined intrinsic operator is rewritten as a call to
@@ -616,7 +616,8 @@ package body Sem_Res is
          P := Parent (PN);
          while not Nkind_In (P, N_Component_Declaration,
                                 N_Subtype_Indication,
-                                N_Entry_Declaration)
+                                N_Entry_Declaration,
+                                N_Action_Declaration)
          loop
             D := P;
             P := Parent (P);
@@ -640,6 +641,7 @@ package body Sem_Res is
                       and then
                     Nkind (Parent (P)) = N_Index_Or_Discriminant_Constraint)
            or else Nkind (P) = N_Entry_Declaration
+           or else Nkind (P) = N_Action_Declaration
            or else Nkind (D) = N_Defining_Identifier
          then
             Error_Msg_N
@@ -1098,7 +1100,8 @@ package body Sem_Res is
         (Nkind (N) = N_Selected_Component
           and then (Ekind (Entity (Selector_Name (N))) = E_Function
                      or else
-                       (Ekind_In (Entity (Selector_Name (N)), E_Entry,
+                       (Ekind_In (Entity (Selector_Name (N)), E_Action,
+                                                              E_Entry,
                                                               E_Procedure)
                          and then Is_Overloaded (Selector_Name (N)))))
 
@@ -5190,7 +5193,7 @@ package body Sem_Res is
         or else (Is_Entity_Name (Subp)
                   and then Ekind (Entity (Subp)) = E_Entry)
       then
-         Resolve_Entry_Call (N, Typ);
+         Resolve_Concurrent_Call (N, Typ);
          Check_Elab_Call (N);
 
          --  Kill checks and constant values, as above for indirect case
@@ -6576,11 +6579,11 @@ package body Sem_Res is
       end if;
    end Resolve_Entry;
 
-   ------------------------
-   -- Resolve_Entry_Call --
-   ------------------------
+   -----------------------------
+   -- Resolve_Concurrent_Call --
+   -----------------------------
 
-   procedure Resolve_Entry_Call (N : Node_Id; Typ : Entity_Id) is
+   procedure Resolve_Concurrent_Call (N : Node_Id; Typ : Entity_Id) is
       Entry_Name  : constant Node_Id    := Name (N);
       Loc         : constant Source_Ptr := Sloc (Entry_Name);
       Actuals     : List_Id;
@@ -6596,9 +6599,9 @@ package body Sem_Res is
 
       Kill_All_Checks;
 
-      --  Processing of the name is similar for entry calls and protected
-      --  operation calls. Once the entity is determined, we can complete
-      --  the resolution of the actuals.
+      --  Processing of the name is similar for action calls, entry calls and
+      --  protected operation calls. Once the entity is determined, we can
+      --  complete the resolution of the actuals.
 
       --  The selector may be overloaded, in the case of a protected object
       --  with overloaded functions. The type of the context is used for
@@ -6767,8 +6770,9 @@ package body Sem_Res is
       end if;
 
       --  After resolution, entry calls and protected procedure calls are
-      --  changed into entry calls, for expansion. The structure of the node
-      --  does not change, so it can safely be done in place. Protected
+      --  changed into entry calls, for expansion. Action calls are identified
+      --  and changed into action calls for expansion. The structure of the
+      --  node does not change, so it can safely be done in place. Protected
       --  function calls must keep their structure because they are
       --  subexpressions.
 
@@ -6791,10 +6795,17 @@ package body Sem_Res is
          Actuals := Parameter_Associations (N);
          First_Named := First_Named_Actual (N);
 
-         Rewrite (N,
-           Make_Entry_Call_Statement (Loc,
-             Name                   => Entry_Name,
-             Parameter_Associations => Actuals));
+         if Is_Atomic_Type (Scope (Nam)) then
+            Rewrite (N,
+              Make_Action_Call_Statement (Loc,
+                Name                   => Entry_Name,
+                Parameter_Associations => Actuals));
+         else
+            Rewrite (N,
+              Make_Entry_Call_Statement (Loc,
+                Name                   => Entry_Name,
+                Parameter_Associations => Actuals));
+         end if;
 
          Set_First_Named_Actual (N, First_Named);
          Set_Analyzed (N, True);
@@ -6807,7 +6818,7 @@ package body Sem_Res is
       then
          Establish_Transient_Scope (N, Sec_Stack => True);
       end if;
-   end Resolve_Entry_Call;
+   end Resolve_Concurrent_Call;
 
    -------------------------
    -- Resolve_Equality_Op --

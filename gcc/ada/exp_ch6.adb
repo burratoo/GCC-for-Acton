@@ -31,6 +31,7 @@ with Errout;   use Errout;
 with Elists;   use Elists;
 with Exp_Aggr; use Exp_Aggr;
 with Exp_Atag; use Exp_Atag;
+with Exp_Atom; use Exp_Atom;
 with Exp_Ch2;  use Exp_Ch2;
 with Exp_Ch3;  use Exp_Ch3;
 with Exp_Ch7;  use Exp_Ch7;
@@ -2460,7 +2461,7 @@ package body Exp_Ch6 is
             end;
          end if;
 
-         if Ekind (Subp) = E_Entry then
+         if Ekind (Subp) = E_Entry or else Ekind (Subp) = E_Action then
             Parent_Subp := Empty;
          end if;
       end if;
@@ -3410,6 +3411,7 @@ package body Exp_Ch6 is
       --  attribute does not apply to entries.
 
       if Nkind (Call_Node) /= N_Entry_Call_Statement
+        and then Nkind (Call_Node) /= N_Action_Call_Statement
         and then No (Controlling_Argument (Call_Node))
         and then Present (Parent_Subp)
         and then not Is_Direct_Deep_Call (Subp)
@@ -6227,6 +6229,7 @@ package body Exp_Ch6 is
               E_Generic_Procedure |
               E_Entry             |
               E_Entry_Family      |
+              E_Action            |
               E_Return_Statement =>
             Expand_Non_Function_Return (N);
 
@@ -6540,6 +6543,16 @@ package body Exp_Ch6 is
          Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
       end if;
 
+      --  Create a set of discriminals for the next action subprogram body
+
+      if Is_List_Member (N)
+        and then Present (Parent (List_Containing (N)))
+        and then Nkind (Parent (List_Containing (N))) = N_Atomic_Body
+        and then Present (Next_Action (N))
+      then
+         Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
+      end if;
+
       --  Returns_By_Ref flag is normally set when the subprogram is frozen but
       --  subprograms with no specs are not frozen.
 
@@ -6787,6 +6800,7 @@ package body Exp_Ch6 is
       Kind        : constant Entity_Kind := Ekind (Scope_Id);
       Call        : Node_Id;
       Acc_Stat    : Node_Id;
+      Act_Body    : Node_Id;
       Goto_Stat   : Node_Id;
       Lab_Node    : Node_Id;
 
@@ -6827,10 +6841,11 @@ package body Exp_Ch6 is
          return;
       end if;
 
-      pragma Assert (Is_Entry (Scope_Id));
+      pragma Assert (Is_Entry (Scope_Id)
+             or else Is_Action (Scope_Id));
 
       --  Look at the enclosing block to see whether the return is from an
-      --  accept statement or an entry body.
+      --  accept statement or an action body.
 
       for J in reverse 0 .. Scope_Stack.Last loop
          Scope_Id := Scope_Stack.Table (J).Entity;
@@ -6869,23 +6884,29 @@ package body Exp_Ch6 is
          Rewrite (N, Goto_Stat);
          Analyze (N);
 
-      --  If it is a return from an entry body, put a Complete_Entry_Body call
-      --  in front of the return.
+         --  If it is a return from an action body, it is expanded into a goto
+         --  to the end of the body.
 
-      elsif Is_Protected_Type (Scope_Id) then
-         Call :=
-           Make_Procedure_Call_Statement (Loc,
-             Name =>
-               New_Reference_To (RTE (RE_Complete_Entry_Body), Loc),
-             Parameter_Associations => New_List (
-               Make_Attribute_Reference (Loc,
-                 Prefix         =>
-                   New_Reference_To
-                     (Find_Protection_Object (Current_Scope), Loc),
-                 Attribute_Name => Name_Unchecked_Access)));
+         --  (cf : Expand_N_Atomic_Body in exp_atom.adb)
 
-         Insert_Before (N, Call);
-         Analyze (Call);
+      elsif Is_Atomic_Type (Scope_Id) then
+
+         Act_Body := Parent (N);
+         while Nkind (Act_Body) /= N_Action_Body loop
+            Act_Body := Parent (Act_Body);
+         end loop;
+
+         Lab_Node := Last (Statements
+           (Handled_Statement_Sequence (Act_Body)));
+
+         Goto_Stat := Make_Goto_Statement (Loc,
+           Name => New_Occurrence_Of
+             (Entity (Identifier (Lab_Node)), Loc));
+
+         Set_Analyzed (Goto_Stat);
+
+         Rewrite (N, Goto_Stat);
+         Analyze (N);
       end if;
    end Expand_Non_Function_Return;
 

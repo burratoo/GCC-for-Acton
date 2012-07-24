@@ -185,6 +185,7 @@ package body Snames is
    function Get_Convention_Name (C : Convention_Id) return Name_Id is
    begin
       case C is
+         when Convention_Action                => return Name_Action;
          when Convention_Ada                   => return Name_Ada;
          when Convention_Ada_Pass_By_Copy      => return Name_Ada_Pass_By_Copy;
          when Convention_Ada_Pass_By_Reference =>

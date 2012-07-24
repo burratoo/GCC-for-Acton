@@ -1123,6 +1123,9 @@ package Atree is
       function List14 (N : Node_Id) return List_Id;
       pragma Inline (List14);
 
+      function List19 (N : Node_Id) return List_Id;
+      pragma Inline (List19);
+
       function List25 (N : Node_Id) return List_Id;
       pragma Inline (List25);
 
@@ -2194,6 +2197,9 @@ package Atree is
 
       procedure Set_List14 (N : Node_Id; Val : List_Id);
       pragma Inline (Set_List14);
+
+      procedure Set_List19 (N : Node_Id; Val : List_Id);
+      pragma Inline (Set_List19);
 
       procedure Set_List25 (N : Node_Id; Val : List_Id);
       pragma Inline (Set_List25);

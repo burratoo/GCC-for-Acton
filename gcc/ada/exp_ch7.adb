@@ -32,6 +32,7 @@ with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
+with Exp_Atom; use Exp_Atom;
 with Exp_Ch6;  use Exp_Ch6;
 with Exp_Ch9;  use Exp_Ch9;
 with Exp_Ch11; use Exp_Ch11;
@@ -297,9 +298,9 @@ package body Exp_Ch7 is
 
    function Build_Cleanup_Statements (N : Node_Id) return List_Id;
    --  Create the clean up calls for an asynchronous call block, task master,
-   --  protected subprogram body, task allocation block or task body. If the
-   --  context does not contain the above constructs, the routine returns an
-   --  empty list.
+   --  action subprogram body, protected subprogram body, task allocation block
+   --  or task body. If the context does not contain the above constructs, the
+   --  routine returns an empty list.
 
    procedure Build_Finalizer
      (N           : Node_Id;
@@ -465,8 +466,12 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
+      Is_Action_Bod        : constant Boolean :=
+                               Nkind (N) = N_Subprogram_Body
+                                 and then Is_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
+                                 and then Nkind (N) /= N_Action_Body
                                  and then Is_Task_Master (N);
       Is_Protected_Body    : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
@@ -499,11 +504,11 @@ package body Exp_Ch7 is
 
       elsif Is_Protected_Body then
          declare
-            Spec         : constant Node_Id := Parent (Corresponding_Spec (N));
-            Conc_Typ      : Entity_Id;
-            Nam           : Node_Id;
-            Param         : Node_Id;
-            Param_Typ     : Entity_Id;
+            Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
+            Conc_Typ  : Entity_Id;
+            Param     : Node_Id;
+            Param_Typ : Entity_Id;
+
          begin
             --  Find the _object parameter representing the protected object
 
@@ -537,6 +542,142 @@ package body Exp_Ch7 is
                         Selector_Name =>
                           Make_Identifier (Loc, Name_uObject))))));
          end;
+
+      elsif Is_Action_Bod then
+         declare
+            Def       : Entity_Id := Defining_Unit_Name (Specification (N));
+            Act_Def   : Entity_Id := Corresponding_Action (Def);
+            Atom_Def  : Entity_Id := Scope (Act_Def);
+            Spec      : constant Node_Id   := Parent (Corresponding_Spec (N));
+            Conc_Typ  : Entity_Id;
+            E         : Entity_Id;
+            Nam       : Entity_Id;
+            Param     : Node_Id;
+            Param_Id  : Entity_Id;
+            Param_Typ : Entity_Id;
+            Rest_Stms : List_Id;
+            Ritem     : Node_Id;
+            Save_Stm  : Node_Id;
+
+         begin
+            --  Find the _object parameter representing the atomic object
+
+            Param := First (Parameter_Specifications (Spec));
+            loop
+               Param_Typ := Etype (Parameter_Type (Param));
+
+               if Ekind (Param_Typ) = E_Record_Type then
+                  Conc_Typ := Corresponding_Concurrent_Type (Param_Typ);
+               end if;
+
+               exit when No (Param) or else Present (Conc_Typ);
+               Next (Param);
+            end loop;
+
+            pragma Assert (Present (Param));
+
+            --  Find Except
+
+            declare
+               Dec   : Node_Id;
+               E_Nam : Name_Id :=
+                         New_External_Name (Name_uExcept, Suffix_Index => 1);
+               --  _exceptx is already in the name table so no biggy to use
+               --  New_External_Name.
+
+            begin
+               Dec := First (Declarations (N));
+               while Present (Dec) loop
+                  if Nkind (Dec) = N_Object_Declaration
+                    and then Chars (Defining_Identifier (Dec)) = E_Nam
+                  then
+                     E := Defining_Identifier (Dec);
+                     exit;
+                  end if;
+                  Dec := Next (Dec);
+               end loop;
+            end;
+
+            --  Generate:
+            --    Exit_Action (_object._object, Action_Id,
+            --                 _Except1));
+            Append_To (Stmts,
+              Make_Procedure_Call_Statement (Loc,
+                Name                   =>
+                  New_Reference_To (RTE (RE_Exit_Action), Loc),
+                Parameter_Associations => New_List (
+                  Make_Attribute_Reference (Loc,
+                    Attribute_Name => Name_Unchecked_Access,
+                    Prefix         =>
+                      Make_Selected_Component (Loc,
+                        Prefix        =>
+                          New_Reference_To (Defining_Identifier (Param), Loc),
+                        Selector_Name =>
+                          Make_Identifier (Loc, Name_uObject))),
+                  Action_Index_Expression (Loc, Act_Def, Atom_Def),
+                  New_Reference_To (E, Loc))));
+
+            --  If aspect Restore_State applies to the action or its atomic
+            --  type, generate the save/restore parameter instructions
+
+            if True then
+               Rest_Stms := New_List;
+
+               --  We skip the first parameter of the action's procedure as it
+               --  is always the acton's atomic object.
+
+               Param := Next (First (Parameter_Specifications (Spec)));
+               while Present (Param) loop
+                  Param_Id := Defining_Identifier (Param);
+                  if Out_Present (Param)
+                    and then not Is_Limited_Type (Etype (Param_Id))
+                  then
+                     --  Only parameters that can be modified will be saved and
+                     --  restored as there is no point restoring a constant.
+                     --  Since we have to save a copy of the parameter, it has
+                     --  to be non-limited.
+
+                     Nam :=
+                       Make_Defining_Identifier (Loc,
+                         New_External_Name (Chars (Param_Id),
+                           Suffix => "_old",
+                           Prefix => 'R'));
+
+                     Save_Stm :=
+                       Make_Object_Declaration (Loc,
+                         Defining_Identifier => Nam,
+                         Constant_Present    => True,
+                         Object_Definition   =>
+                           New_Occurrence_Of (
+                             Etype (Parameter_Type (Param)), Loc),
+                         Expression          =>
+                           New_Reference_To (Param_Id, Loc));
+
+                     --  The subprogram will already have at least one
+                     --  declaration at this point, that being _except, so we
+                     --  can safely insert the Save_Stm into its declarations.
+
+                     Insert_Action (First (Declarations (N)), Save_Stm);
+
+                     Append_To (Rest_Stms,
+                       Make_Assignment_Statement (Loc,
+                         Name => New_Reference_To (Param_Id, Loc),
+                         Expression => New_Reference_To (Nam, Loc)));
+                  end if;
+
+                  Param := Next (Param);
+
+               end loop;
+
+               if not Is_Empty_List (Rest_Stms) then
+                  Append_To (Stmts,
+                    Make_Implicit_If_Statement (N,
+                      Condition => New_Reference_To (E, Loc),
+                      Then_Statements => Rest_Stms));
+               end if;
+            end if;
+         end;
+
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
       --  tasks. Other unactivated tasks are completed by Complete_Task or
       --  Complete_Master.
@@ -3606,8 +3747,12 @@ package body Exp_Ch7 is
       Is_Asynchronous_Call : constant Boolean :=
                                Nkind (N) = N_Block_Statement
                                  and then Is_Asynchronous_Call_Block (N);
+      Is_Action_Bod        : constant Boolean :=
+                               Nkind (N) = N_Subprogram_Body
+                                 and then Is_Action_Body (N);
       Is_Master            : constant Boolean :=
                                Nkind (N) /= N_Entry_Body
+                                 and then Nkind (N) /= N_Action_Body
                                  and then Is_Task_Master (N);
       Is_Protected_Body    : constant Boolean :=
                                Nkind (N) = N_Subprogram_Body
@@ -3626,6 +3771,7 @@ package body Exp_Ch7 is
       Actions_Required     : constant Boolean :=
                                Requires_Cleanup_Actions (N, True)
                                  or else Is_Asynchronous_Call
+                                 or else Is_Action_Bod
                                  or else Is_Master
                                  or else Is_Protected_Body
                                  or else Is_Task_Allocation
@@ -3808,21 +3954,28 @@ package body Exp_Ch7 is
          --  Move the declarations into the sequence of statements in order to
          --  have them protected by the At_End handler. It may seem weird to
          --  put declarations in the sequence of statement but in fact nothing
-         --  forbids that at the tree level.
+         --  forbids that at the tree level. We do not do this for the external
+         --  action body as the At_End handler requires these declarations.
 
-         Append_List_To (Decls, Statements (HSS));
-         Set_Statements (HSS, Decls);
+         if not Is_Action_Bod then
 
-         --  Reset the Sloc of the handled statement sequence to properly
-         --  reflect the new initial "statement" in the sequence.
+            Append_List_To (Decls, Statements (HSS));
+            Set_Statements (HSS, Decls);
 
-         Set_Sloc (HSS, Sloc (First (Decls)));
+            --  Reset the Sloc of the handled statement sequence to properly
+            --  reflect the new initial "statement" in the sequence.
 
-         --  The declarations of finalizer spec and auxiliary variables replace
-         --  the old declarations that have been moved inward.
+            Set_Sloc (HSS, Sloc (First (Decls)));
 
-         Set_Declarations (N, New_Decls);
-         Analyze_Declarations (New_Decls);
+            --  The declarations of finalizer spec and auxiliary variables
+            --  replace the old declarations that have been moved inward.
+
+            Set_Declarations (N, New_Decls);
+            Analyze_Declarations (New_Decls);
+
+         else
+            New_Decls := Decls;
+         end if;
 
          --  Generate finalization calls for all controlled objects appearing
          --  in the statements of N. Add context specific cleanup for various
@@ -4095,6 +4248,7 @@ package body Exp_Ch7 is
             --  is known to be scalar
 
             when N_Accept_Alternative               |
+                 N_Action_Body_Formal_Part          |
                  N_Attribute_Definition_Clause      |
                  N_Case_Statement                   |
                  N_Code_Statement                   |
@@ -7577,10 +7731,11 @@ package body Exp_Ch7 is
 
                   exit;
 
-               --  In a loop or entry we should install a block encompassing
-               --  all the construct. For now just release right away.
+               --  In a loop, entry or action we should install a block
+               --  encompassing all the construct. For now just release right
+               --  away.
 
-               elsif Ekind_In (S, E_Entry, E_Loop) then
+               elsif Ekind_In (S, E_Entry, E_Action, E_Loop) then
                   exit;
 
                --  In a procedure or a block, we release on exit of the

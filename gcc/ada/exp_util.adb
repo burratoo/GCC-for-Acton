@@ -3426,6 +3426,10 @@ package body Exp_Util is
 
                --  Declarations
 
+               N_Action_Body                            |
+               N_Atomic_Body                            |
+               N_Atomic_Body_Stub                       |
+               N_Atomic_Type_Declaration                |
                N_Abstract_Subprogram_Declaration        |
                N_Entry_Body                             |
                N_Exception_Declaration                  |
@@ -3641,9 +3645,13 @@ package body Exp_Util is
                N_Access_Function_Definition             |
                N_Access_Procedure_Definition            |
                N_Access_To_Object_Definition            |
+               N_Action_Body_Formal_Part                |
+               N_Action_Call_Alternative                |
+               N_Action_Declaration                     |
                N_Aggregate                              |
                N_Allocator                              |
                N_Aspect_Specification                   |
+               N_Atomic_Definition                      |
                N_Case_Expression                        |
                N_Case_Statement_Alternative             |
                N_Character_Literal                      |
@@ -3759,6 +3767,7 @@ package body Exp_Util is
                N_SCIL_Membership_Test                   |
                N_Selected_Component                     |
                N_Signed_Integer_Type_Definition         |
+               N_Single_Atomic_Declaration              |
                N_Single_Protected_Declaration           |
                N_Slice                                  |
                N_String_Literal                         |
@@ -6241,6 +6250,7 @@ package body Exp_Util is
 
          when N_Abortable_Part             |
               N_Accept_Alternative         |
+              N_Alternative_Action_Select  |
               N_Case_Statement_Alternative |
               N_Delay_Alternative          |
               N_Entry_Call_Alternative     |
@@ -7052,6 +7062,8 @@ package body Exp_Util is
    begin
       case Nkind (N) is
          when N_Accept_Statement      |
+              N_Action_Body           |
+              N_Atomic_Body           |
               N_Block_Statement       |
               N_Entry_Body            |
               N_Package_Body          |

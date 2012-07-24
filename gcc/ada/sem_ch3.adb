@@ -926,13 +926,15 @@ package body Sem_Ch3 is
          end if;
       end if;
 
-      --  For a private component of a protected type, it is imperative that
-      --  the back-end elaborate the type immediately after the protected
-      --  declaration, because this type will be used in the declarations
-      --  created for the component within each protected body, so we must
-      --  create an itype reference for it now.
+      --  For a private component of a protected or atomic type, it is
+      --  imperative that the back-end elaborate the type immediately after the
+      --  protected declaration, because this type will be used in the
+      --  declarations created for the component within each protected body, so
+      --  we must create an itype reference for it now.
 
-      if Nkind (Parent (Related_Nod)) = N_Protected_Definition then
+      if Nkind (Parent (Related_Nod)) = N_Protected_Definition
+        or else Nkind (Parent (Related_Nod)) = N_Atomic_Definition
+      then
          Build_Itype_Reference (Anon_Type, Parent (Parent (Related_Nod)));
 
       --  Similarly, if the access definition is the return result of a
@@ -1058,7 +1060,8 @@ package body Sem_Ch3 is
                                    N_Private_Extension_Declaration,
                                    N_Procedure_Specification,
                                    N_Function_Specification,
-                                   N_Entry_Body)
+                                   N_Entry_Body,
+                                   N_Action_Body)
 
                    or else
                  Nkind_In (D_Ityp, N_Object_Declaration,
@@ -1066,7 +1069,8 @@ package body Sem_Ch3 is
                                    N_Formal_Object_Declaration,
                                    N_Formal_Type_Declaration,
                                    N_Task_Type_Declaration,
-                                   N_Protected_Type_Declaration))
+                                   N_Protected_Type_Declaration,
+                                   N_Atomic_Type_Declaration))
       loop
          D_Ityp := Parent (D_Ityp);
          pragma Assert (D_Ityp /= Empty);
@@ -2117,7 +2121,8 @@ package body Sem_Ch3 is
          if No (Next_Node) then
             if Nkind_In (Parent (L), N_Component_List,
                                      N_Task_Definition,
-                                     N_Protected_Definition)
+                                     N_Protected_Definition,
+                                     N_Atomic_Definition)
             then
                null;
 
@@ -2162,6 +2167,8 @@ package body Sem_Ch3 is
 
          elsif not Analyzed (Next_Node)
            and then (Nkind_In (Next_Node, N_Subprogram_Body,
+                                          N_Action_Body,
+                                          N_Atomic_Body,
                                           N_Entry_Body,
                                           N_Package_Body,
                                           N_Protected_Body,
@@ -4437,6 +4444,18 @@ package body Sem_Ch3 is
       elsif Ekind (Scope (Id)) /= E_Protected_Type
         and then Present (Scope (Scope (Id))) -- error defense!
         and then Ekind (Scope (Scope (Id))) /= E_Protected_Type
+      then
+         Conditional_Delay (Id, T);
+
+      --  The subtypes of components or subcomponents of atomic types
+      --  do not need freeze nodes, which would otherwise appear in the
+      --  wrong scope (before the freeze node for the atomic type). The
+      --  proper subtypes are those of the subcomponents of the corresponding
+      --  record.
+
+      elsif Ekind (Scope (Id)) /= E_Atomic_Type
+        and then Present (Scope (Scope (Id))) -- error defense!
+        and then Ekind (Scope (Scope (Id))) /= E_Atomic_Type
       then
          Conditional_Delay (Id, T);
       end if;
@@ -8551,7 +8570,8 @@ package body Sem_Ch3 is
          end if;
 
          --  Inherit preelaboration flag from base, for types for which it
-         --  may have been set: records, private types, protected types.
+         --  may have been set: records, private types, protected, atomic
+         --  types.
 
          Set_Known_To_Have_Preelab_Init
            (Def_Id, Known_To_Have_Preelab_Init (T));
@@ -8561,6 +8581,11 @@ package body Sem_Ch3 is
 
       elsif Ekind (T) = E_Protected_Type then
          Set_Ekind (Def_Id, E_Protected_Subtype);
+         Set_Known_To_Have_Preelab_Init
+           (Def_Id, Known_To_Have_Preelab_Init (T));
+
+      elsif Ekind (T) = E_Atomic_Type then
+         Set_Ekind (Def_Id, E_Atomic_Subtype);
          Set_Known_To_Have_Preelab_Init
            (Def_Id, Known_To_Have_Preelab_Init (T));
 
@@ -9566,6 +9591,14 @@ package body Sem_Ch3 is
                Post_Error;
             end if;
 
+         elsif Is_Action (E) then
+            if not Has_Completion (E) and then
+              (Ekind (Scope (E)) = E_Atomic_Object
+                or else Ekind (Scope (E)) = E_Atomic_Type)
+            then
+               Post_Error;
+            end if;
+
          elsif Is_Package_Or_Generic_Package (E) then
             if Unit_Requires_Body (E) then
                if not Has_Completion (E)
@@ -9589,7 +9622,8 @@ package body Sem_Ch3 is
             Post_Error;
 
          elsif (Ekind (E) = E_Task_Type or else
-                Ekind (E) = E_Protected_Type)
+                Ekind (E) = E_Protected_Type or else
+                Ekind (E) = E_Atomic_Type)
            and then not Has_Completion (E)
          then
             Post_Error;
@@ -9607,6 +9641,11 @@ package body Sem_Ch3 is
             Post_Error;
 
          elsif Ekind (E) = E_Protected_Object
+           and then not Has_Completion (Etype (E))
+         then
+            Post_Error;
+
+         elsif Ekind (E) = E_Atomic_Object
            and then not Has_Completion (Etype (E))
          then
             Post_Error;
@@ -14879,7 +14918,8 @@ package body Sem_Ch3 is
 
          elsif not Nkind_In (N, N_Full_Type_Declaration,
                                 N_Task_Type_Declaration,
-                                N_Protected_Type_Declaration)
+                                N_Protected_Type_Declaration,
+                                N_Atomic_Type_Declaration)
            and then
              (Ada_Version < Ada_2012
                 or else not Is_Incomplete_Type (Prev)
@@ -14974,14 +15014,16 @@ package body Sem_Ch3 is
 
                elsif Ekind (Prev) = E_Private_Type
                  and then Nkind_In (N, N_Task_Type_Declaration,
-                                       N_Protected_Type_Declaration)
+                                       N_Protected_Type_Declaration,
+                                       N_Atomic_Type_Declaration)
                then
                   Error_Msg_N
                    ("completion of nonlimited type cannot be limited", N);
 
                elsif Ekind (Prev) = E_Record_Type_With_Private
                  and then Nkind_In (N, N_Task_Type_Declaration,
-                                       N_Protected_Type_Declaration)
+                                       N_Protected_Type_Declaration,
+                                       N_Atomic_Type_Declaration)
                then
                   if not Is_Limited_Record (Prev) then
                      Error_Msg_N
@@ -15003,11 +15045,12 @@ package body Sem_Ch3 is
                end if;
 
             --  Ada 2005 (AI-251): Private extension declaration of a task
-            --  type or a protected type. This case arises when covering
-            --  interface types.
+            --  type, a protected type or atomic type. This case arises when
+            --  covering interface types.
 
             elsif Nkind_In (N, N_Task_Type_Declaration,
-                               N_Protected_Type_Declaration)
+                               N_Protected_Type_Declaration,
+                               N_Atomic_Type_Declaration)
             then
                null;
 
@@ -15109,7 +15152,8 @@ package body Sem_Ch3 is
             --  type extension, otherwise this is an error.
 
             elsif Nkind_In (N, N_Task_Type_Declaration,
-                               N_Protected_Type_Declaration)
+                               N_Protected_Type_Declaration,
+                               N_Atomic_Type_Declaration)
             then
                if No (Interface_List (N))
                  and then not Error_Posted (N)
@@ -18262,6 +18306,7 @@ package body Sem_Ch3 is
             if Is_Tagged_Type (Full_T)
               and then Is_Primitive (Priv_Dep)
               and then Convention (Priv_Dep) /= Convention_Protected
+              and then Convention (Priv_Dep) /= Convention_Action
             then
                Check_Operation_From_Incomplete_Type (Priv_Dep, Inc_T);
                Set_Is_Dispatching_Operation (Priv_Dep);
@@ -18524,6 +18569,9 @@ package body Sem_Ch3 is
                           and then Depends_On_Discriminant (R))
                        or else
                         (Ekind (Def_Id) = E_Protected_Type
+                          and then Has_Discriminants (Def_Id))
+                       or else
+                        (Ekind (Def_Id) = E_Atomic_Type
                           and then Has_Discriminants (Def_Id))
                      then
                         Append_Range_Checks

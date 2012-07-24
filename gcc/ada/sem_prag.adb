@@ -1907,7 +1907,8 @@ package body Sem_Prag is
             elsif Nkind_In (P, N_Subprogram_Body,
                                N_Package_Body,
                                N_Task_Body,
-                               N_Entry_Body)
+                               N_Entry_Body,
+                               N_Action_Body)
             then
                return;
             end if;
@@ -2001,10 +2002,10 @@ package body Sem_Prag is
          PO : Node_Id;
 
          procedure Chain_PPC (PO : Node_Id);
-         --  If PO is an entry or a [generic] subprogram declaration node, then
-         --  the precondition/postcondition applies to this subprogram and the
-         --  processing for the pragma is completed. Otherwise the pragma is
-         --  misplaced.
+         --  If PO is an action, an entry or a [generic] subprogram declaration
+         --  node, then the precondition/postcondition applies to this
+         --  subprogram and the processing for the pragma is completed.
+         --  Otherwise the pragma is misplaced.
 
          ---------------
          -- Chain_PPC --
@@ -2046,14 +2047,19 @@ package body Sem_Prag is
             elsif not Nkind_In (PO, N_Subprogram_Declaration,
                                     N_Expression_Function,
                                     N_Generic_Subprogram_Declaration,
-                                    N_Entry_Declaration)
+                                    N_Entry_Declaration,
+                                    N_Action_Declaration)
             then
                Pragma_Misplaced;
             end if;
 
-            --  Here if we have [generic] subprogram or entry declaration
+            --  Here if we have [generic] subprogram, or action or entry
+            --  declaration
 
-            if Nkind (PO) = N_Entry_Declaration then
+            if Nkind (PO) = N_Entry_Declaration
+              or else
+               Nkind (PO) = N_Action_Declaration
+            then
                S := Defining_Entity (PO);
             else
                S := Defining_Unit_Name (Specification (PO));
@@ -8554,6 +8560,92 @@ package body Sem_Prag is
 
          when Pragma_Enable_Atomic_Synchronization =>
             Process_Disable_Enable_Atomic_Sync (Name_Unsuppress);
+
+         ------------
+         -- Ensure --
+         ------------
+
+         --  pragma Ensure ([Check   =>] Boolean_EXPRESSION
+         --                 [,[Message =>] String_EXPRESSION]);
+
+         when Pragma_Ensure => Ensure : declare
+            P  : Node_Id;
+            PO : Node_Id;
+
+         begin
+            GNAT_Pragma;
+            Check_At_Least_N_Arguments (1);
+            Check_At_Most_N_Arguments (2);
+            Check_Optional_Identifier (Arg1, Name_Check);
+
+            if not Is_List_Member (N) then
+               Pragma_Misplaced;
+            end if;
+
+            --  Preanalyze message argument if present. Visibility in this
+            --  argument is established at the point of pragma occurrence.
+
+            if Arg_Count = 2 then
+               Check_Optional_Identifier (Arg2, Name_Message);
+               Preanalyze_Spec_Expression
+                 (Get_Pragma_Arg (Arg2), Standard_String);
+            end if;
+
+            --  Record if pragma is disabled
+
+            if Check_Enabled (Pname) then
+               Set_SCO_Pragma_Enabled (Loc);
+            end if;
+
+            --  Search prior declarations
+
+            P := N;
+            while Present (Prev (P)) loop
+               P := Prev (P);
+               PO := Original_Node (P);
+
+               --  Skip past prior pragma
+
+               if Nkind (PO) = N_Pragma then
+                  null;
+
+               --  Skip stuff not coming from source
+
+               elsif not Comes_From_Source (PO) then
+                  null;
+
+               --  Only remaining possibility is subprogram declaration
+
+               else
+                  declare
+                     S   : Entity_Id;
+                     P   : Node_Id;
+                  begin
+                     if Nkind (PO) /= N_Action_Declaration then
+                        Error_Pragma
+                          ("pragma% can only be applied to action");
+                     end if;
+
+                     S := Defining_Entity (PO);
+
+                     --  Note: we do not analyze the pragma at this point.
+                     --  Instead we delay this analysis until the end of the
+                     --  declarative part in which the pragma appears. This
+                     --  Implements the required delay in this analysis,
+                     --  allowing forward references. The analysis happens at
+                     --  the end of Analyze_Declarations.
+
+                     Set_Next_Pragma (N, Einfo.Ensure (S));
+                     Set_Ensure (S, N);
+                     return;
+                  end;
+               end if;
+            end loop;
+
+            --  If we fall through, pragma was misplaced
+
+            Pragma_Misplaced;
+         end Ensure;
 
          ------------
          -- Export --
@@ -15223,6 +15315,7 @@ package body Sem_Prag is
       Pragma_Elaboration_Checks             => -1,
       Pragma_Eliminate                      => -1,
       Pragma_Enable_Atomic_Synchronization  => -1,
+      Pragma_Ensure                         => -1,
       Pragma_Export                         => -1,
       Pragma_Export_Exception               => -1,
       Pragma_Export_Function                => -1,

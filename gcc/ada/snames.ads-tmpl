@@ -142,8 +142,12 @@ package Snames is
    Name_Dimension                      : constant Name_Id := N + $;
    Name_Dimension_System               : constant Name_Id := N + $;
    Name_Dynamic_Predicate              : constant Name_Id := N + $;
+   Name_No_End_Barrier                 : constant Name_Id := N + $;
+   Name_No_Start_Barrier               : constant Name_Id := N + $;
+   Name_Participating_Actions          : constant Name_Id := N + $;
    Name_Post                           : constant Name_Id := N + $;
    Name_Pre                            : constant Name_Id := N + $;
+   Name_Restore_State                  : constant Name_Id := N + $;
    Name_Static_Predicate               : constant Name_Id := N + $;
    Name_Synchronization                : constant Name_Id := N + $;
    Name_Type_Invariant                 : constant Name_Id := N + $;
@@ -153,6 +157,7 @@ package Snames is
    --  names are only referenced internally by expander generated code.
 
    Name_uAbort_Signal                  : constant Name_Id := N + $;
+   Name_uAction_Id                     : constant Name_Id := N + $;
    Name_uAlignment                     : constant Name_Id := N + $;
    Name_uAssign                        : constant Name_Id := N + $;
    Name_uBarriers                      : constant Name_Id := N + $;
@@ -162,6 +167,8 @@ package Snames is
    Name_uCPU                           : constant Name_Id := N + $;
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uDispatching_Domain            : constant Name_Id := N + $;
+   Name_uEnsure                        : constant Name_Id := N + $;
+   Name_uExcept                        : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
    Name_uEntry_Id                      : constant Name_Id := N + $;
    Name_uExpunge                       : constant Name_Id := N + $;
@@ -487,6 +494,7 @@ package Snames is
    Name_Elaborate                      : constant Name_Id := N + $; -- Ada 83
    Name_Elaborate_All                  : constant Name_Id := N + $;
    Name_Elaborate_Body                 : constant Name_Id := N + $;
+   Name_Ensure                         : constant Name_Id := N + $; -- Acton
    Name_Export                         : constant Name_Id := N + $;
    Name_Export_Exception               : constant Name_Id := N + $; -- VMS
    Name_Export_Function                : constant Name_Id := N + $; -- GNAT
@@ -1357,6 +1365,15 @@ package Snames is
    subtype Ada_2012_Reserved_Words is
      Name_Id range First_2012_Reserved_Word .. Last_2012_Reserved_Word;
 
+   --  Ada Acton reserved words
+
+   First_Acton_Reserved_Word             : constant Name_Id := N + $;
+   Name_Action                           : constant Name_Id := N + $;
+   Last_Acton_Reserved_Word              : constant Name_Id := N + $;
+
+   subtype Acton_Reserved_Words is
+     Name_Id range First_Acton_Reserved_Word .. Last_Acton_Reserved_Word;
+
    --  Mark last defined name for consistency check in Snames body
 
    Last_Predefined_Name                  : constant Name_Id := N + $;
@@ -1585,6 +1602,7 @@ package Snames is
 
       Convention_Ada,
       Convention_Intrinsic,
+      Convention_Action,
       Convention_Entry,
       Convention_Protected,
       Convention_Stubbed,
@@ -1731,6 +1749,7 @@ package Snames is
       Pragma_Elaborate,
       Pragma_Elaborate_All,
       Pragma_Elaborate_Body,
+      Pragma_Ensure,
       Pragma_Export,
       Pragma_Export_Exception,
       Pragma_Export_Function,

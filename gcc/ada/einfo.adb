@@ -92,6 +92,7 @@ package body Einfo is
    --    Handler_Records                 List10
    --    Normalized_Position_Max         Uint10
 
+   --    Action_Body_Subprogram          Node11
    --    Component_Bit_Offset            Uint11
    --    Full_View                       Node11
    --    Entry_Component                 Node11
@@ -160,6 +161,7 @@ package body Einfo is
    --    Renamed_Object                  Node18
 
    --    Body_Entity                     Node19
+   --    Corresponding_Action            Node19
    --    Corresponding_Discriminant      Node19
    --    Default_Aspect_Component_Value  Node19
    --    Default_Aspect_Value            Node19
@@ -197,6 +199,7 @@ package body Einfo is
    --    Scope_Depth_Value               Uint22
    --    Shared_Var_Procs_Instance       Node22
 
+   --    Atomic_Object                   Node23
    --    CR_Discriminant                 Node23
    --    Entry_Cancel_Parameter          Node23
    --    Enum_Pos_To_Rep                 Node23
@@ -212,7 +215,9 @@ package body Einfo is
    --    Finalizer                       Node24
    --    Related_Expression              Node24
    --    Contract                        Node24
+   --    Atomic_Formal                   Node24
 
+   --    Ensure                          Node25
    --    Interface_Alias                 Node25
    --    Interfaces                      Elist25
    --    Debug_Renaming_Link             Node25
@@ -585,6 +590,12 @@ package body Einfo is
       return Elist16 (Implementation_Base_Type (Id));
    end Access_Disp_Table;
 
+   function Action_Body_Subprogram (Id : E) return E is
+   begin
+      pragma Assert (Is_Action (Id));
+      return Node11 (Id);
+   end Action_Body_Subprogram;
+
    function Actual_Subtype (Id : E) return E is
    begin
       pragma Assert
@@ -632,6 +643,18 @@ package body Einfo is
       pragma Assert (Is_Access_Type (Id));
       return Node22 (Root_Type (Id));
    end Associated_Storage_Pool;
+
+   function Atomic_Formal (Id : E) return E is
+   begin
+      pragma Assert (Is_Formal (Id));
+      return Node24 (Id);
+   end Atomic_Formal;
+
+   function Atomic_Object (Id : E) return E is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      return Node23 (Id);
+   end Atomic_Object;
 
    function Barrier_Function (Id : E) return N is
    begin
@@ -711,6 +734,12 @@ package body Einfo is
       pragma Assert (Is_Array_Type (Id) or else Is_String_Type (Id));
       return Node20 (Implementation_Base_Type (Id));
    end Component_Type;
+
+   function Corresponding_Action (Id : E) return E is
+   begin
+      pragma Assert (Ekind (Id) = E_Subprogram_Body);
+      return Node19 (Id);
+   end Corresponding_Action;
 
    function Corresponding_Concurrent_Type (Id : E) return E is
    begin
@@ -989,11 +1018,17 @@ package body Einfo is
    function Contract (Id : E) return N is
    begin
       pragma Assert
-        (Ekind_In (Id, E_Entry, E_Entry_Family)
+        (Ekind_In (Id, E_Action, E_Entry, E_Entry_Family)
           or else Is_Subprogram (Id)
           or else Is_Generic_Subprogram (Id));
       return Node24 (Id);
    end Contract;
+
+   function Ensure (Id : E) return N is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      return Node25 (Id);
+   end Ensure;
 
    function Entry_Parameters_Type (Id : E) return E is
    begin
@@ -2854,6 +2889,11 @@ package body Einfo is
       return Ekind (Id) in Access_Subprogram_Kind;
    end Is_Access_Subprogram_Type;
 
+   function Is_Action                           (Id : E) return B is
+   begin
+      return Ekind (Id) = E_Action;
+   end Is_Action;
+
    function Is_Aggregate_Type                   (Id : E) return B is
    begin
       return Ekind (Id) in Aggregate_Kind;
@@ -2868,6 +2908,11 @@ package body Einfo is
    begin
       return Ekind (Id) in Assignable_Kind;
    end Is_Assignable;
+
+   function Is_Atomic_Type                      (Id : E) return B is
+   begin
+      return Ekind (Id) in Atomic_Kind;
+   end Is_Atomic_Type;
 
    function Is_Class_Wide_Type                  (Id : E) return B is
    begin
@@ -3096,6 +3141,12 @@ package body Einfo is
       Set_Node22 (Id, V);
    end Set_Associated_Storage_Pool;
 
+   procedure Set_Action_Body_Subprogram (Id : E; V : E) is
+   begin
+      pragma Assert (Is_Action (Id));
+      Set_Node11 (Id, V);
+   end Set_Action_Body_Subprogram;
+
    procedure Set_Actual_Subtype (Id : E; V : E) is
    begin
       pragma Assert
@@ -3126,6 +3177,18 @@ package body Einfo is
                                              E_Variable));
       Set_Uint14 (Id, V);
    end Set_Alignment;
+
+   procedure Set_Atomic_Formal (Id : E; V : E) is
+   begin
+      pragma Assert (Is_Formal (Id));
+      Set_Node24 (Id, V);
+   end Set_Atomic_Formal;
+
+   procedure Set_Atomic_Object (Id : E; V : E) is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      Set_Node23 (Id, V);
+   end Set_Atomic_Object;
 
    procedure Set_Barrier_Function (Id : E; V : N) is
    begin
@@ -3205,6 +3268,12 @@ package body Einfo is
       pragma Assert (Is_Array_Type (Id) and then Is_Base_Type (Id));
       Set_Node20 (Id, V);
    end Set_Component_Type;
+
+   procedure Set_Corresponding_Action (Id : E; V : E) is
+   begin
+      pragma Assert (Ekind_In (Id, E_Void, E_Subprogram_Body));
+      Set_Node19 (Id, V);
+   end Set_Corresponding_Action;
 
    procedure Set_Corresponding_Concurrent_Type (Id : E; V : E) is
    begin
@@ -3482,11 +3551,17 @@ package body Einfo is
    procedure Set_Contract (Id : E; V : N) is
    begin
       pragma Assert
-        (Ekind_In (Id, E_Entry, E_Entry_Family, E_Void)
+        (Ekind_In (Id, E_Action, E_Entry, E_Entry_Family, E_Void)
           or else Is_Subprogram (Id)
           or else Is_Generic_Subprogram (Id));
       Set_Node24 (Id, V);
    end Set_Contract;
+
+   procedure Set_Ensure (Id : E; V : N) is
+   begin
+      pragma Assert (Ekind (Id) = E_Action);
+      Set_Node25 (Id, V);
+   end Set_Ensure;
 
    procedure Set_Entry_Parameters_Type (Id : E; V : E) is
    begin
@@ -6211,6 +6286,17 @@ package body Einfo is
       end if;
    end Invariant_Procedure;
 
+   ------------------------------
+   -- Is_Atomic_Record_Type --
+   ------------------------------
+
+   function Is_Atomic_Record_Type (Id : E) return B is
+   begin
+      return
+        Is_Concurrent_Record_Type (Id)
+          and then Is_Atomic_Type (Corresponding_Concurrent_Type (Id));
+   end Is_Atomic_Record_Type;
+
    ------------------
    -- Is_Base_Type --
    ------------------
@@ -6232,6 +6318,7 @@ package body Einfo is
                             E_Record_Subtype_With_Private  |
                             E_Limited_Private_Subtype      |
                             E_Access_Subtype               |
+                            E_Atomic_Subtype               |
                             E_Protected_Subtype            |
                             E_Task_Subtype                 |
                             E_String_Literal_Subtype       |
@@ -7231,6 +7318,9 @@ package body Einfo is
          when Modular_Integer_Kind           =>
             Kind := E_Modular_Integer_Subtype;
 
+         when Atomic_Kind                    =>
+            Kind := E_Atomic_Subtype;
+
          when Protected_Kind                 =>
             Kind := E_Protected_Subtype;
 
@@ -7922,6 +8012,9 @@ package body Einfo is
               E_Entry_Family                               =>
             Write_Str ("Protected_Body_Subprogram");
 
+         when E_Action                                     =>
+            Write_Str ("Action_Body_Subprogram");
+
          when others                                       =>
             Write_Str ("Field11??");
       end case;
@@ -8152,6 +8245,7 @@ package body Einfo is
               Class_Wide_Kind                              |
               Concurrent_Kind                              |
               Private_Kind                                 |
+              E_Action                                     |
               E_Entry                                      |
               E_Entry_Family                               |
               E_Function                                   |
@@ -8291,8 +8385,11 @@ package body Einfo is
          when Private_Kind                                 =>
             Write_Str ("Underlying_Full_View");
 
-         when E_Function | E_Operator | E_Subprogram_Type =>
+         when E_Function | E_Operator | E_Subprogram_Type  =>
             Write_Str ("Extra_Accessibility_Of_Result");
+
+         when E_Subprogram_Body                            =>
+            Write_Str ("Corresponding_Action");
 
          when others                                       =>
             Write_Str ("Field19??");
@@ -8326,6 +8423,7 @@ package body Einfo is
               Class_Wide_Kind                              |
               Concurrent_Kind                              |
               Private_Kind                                 |
+              E_Action                                     |
               E_Entry                                      |
               E_Entry_Family                               |
               E_Function                                   |
@@ -8437,7 +8535,9 @@ package body Einfo is
          when Formal_Kind                                  =>
             Write_Str ("Protected_Formal");
 
-         when E_Block                                      |
+         when E_Action                                     |
+              E_Atomic_Type                                |
+              E_Block                                      |
               E_Entry                                      |
               E_Entry_Family                               |
               E_Function                                   |
@@ -8493,6 +8593,9 @@ package body Einfo is
          when Array_Kind                                   =>
             Write_Str ("Packed_Array_Type");
 
+         when E_Action                                     =>
+            Write_Str ("Atomic_Object");
+
          when Entry_Kind                                   =>
             Write_Str ("Protection_Object");
 
@@ -8541,11 +8644,19 @@ package body Einfo is
               Type_Kind                                    =>
             Write_Str ("Related_Expression");
 
-         when E_Entry                                      |
+         when E_Action                                     |
+              E_Entry                                      |
               E_Entry_Family                               |
               Subprogram_Kind                              |
               Generic_Subprogram_Kind                      =>
             Write_Str ("Contract");
+
+         when E_In_Parameter                               |
+              E_In_Out_Parameter                           |
+              E_Out_Parameter                              |
+              E_Generic_In_Parameter                       |
+              E_Generic_In_Out_Parameter                   =>
+            Write_Str ("Atomic_Formal");
 
          when others                                       =>
             Write_Str ("Field24???");
@@ -8590,6 +8701,9 @@ package body Einfo is
               E_Modular_Integer_Subtype                    |
               E_Signed_Integer_Subtype                     =>
             Write_Str ("Static_Predicate");
+
+         when E_Action                                     =>
+            Write_Str ("Ensure");
 
          when others                                       =>
             Write_Str ("Field25??");

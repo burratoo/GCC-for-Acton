@@ -3943,7 +3943,8 @@ package body Sem_Attr is
             end loop;
 
             if Nkind (Prag) /= N_Pragma then
-               Error_Attr ("% attribute can only appear in postcondition", P);
+               Error_Attr ("% attribute can only appear in postcondition"&
+                 " or an action's ensure", P);
 
             elsif Get_Pragma_Id (Prag) = Pragma_Contract_Case
                     or else
@@ -3971,26 +3972,34 @@ package body Sem_Attr is
                   end if;
                end;
 
-            elsif Get_Pragma_Id (Prag) /= Pragma_Postcondition then
-               Error_Attr ("% attribute can only appear in postcondition", P);
+            elsif Get_Pragma_Id (Prag) /= Pragma_Postcondition
+              and then Get_Pragma_Id (Prag) /= Pragma_Ensure
+            then
+               Error_Attr ("% attribute can only appear in postcondition" &
+                 " or an action's ensure", P);
             end if;
 
          --  Body case, where we must be inside a generated _Postcondition
-         --  procedure, or else the attribute use is definitely misplaced. The
-         --  postcondition itself may have generated transient scopes, and is
-         --  not necessarily the current one.
+         --  or _Ensure procedure, or else the attribute use is definitely
+         --  misplaced. The postcondition itself may have generated transient
+         --  scopes, and is not necessarily the current one.
 
          else
             while Present (CS) and then CS /= Standard_Standard loop
-               if Chars (CS) = Name_uPostconditions then
+               if Chars (CS) = Name_uPostconditions
+                 or else Chars (CS) = Name_uEnsure
+               then
                   exit;
                else
                   CS := Scope (CS);
                end if;
             end loop;
 
-            if Chars (CS) /= Name_uPostconditions then
-               Error_Attr ("% attribute can only appear in postcondition", P);
+            if Chars (CS) /= Name_uPostconditions
+              and then Chars (CS) /= Name_uEnsure
+            then
+               Error_Attr ("% attribute can only appear in postcondition" &
+                 " or an action's ensure", P);
             end if;
          end if;
 

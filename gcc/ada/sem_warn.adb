@@ -952,6 +952,7 @@ package body Sem_Warn is
 
                when N_Package_Body    |
                     N_Task_Body       |
+                    N_Atomic_Body     |
                     N_Entry_Body      |
                     N_Protected_Body  |
                     N_Block_Statement |

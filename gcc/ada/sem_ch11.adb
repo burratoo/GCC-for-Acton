@@ -515,7 +515,8 @@ package body Sem_Ch11 is
                                 N_Subprogram_Body,
                                 N_Package_Body,
                                 N_Task_Body,
-                                N_Entry_Body)
+                                N_Entry_Body,
+                                N_Action_Body)
          loop
             P := Parent (P);
          end loop;

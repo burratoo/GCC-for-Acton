@@ -3373,13 +3373,15 @@ package body Exp_Attr is
          Asn_Stm : Node_Id;
 
       begin
-         --  Find the nearest subprogram body, ignoring _Preconditions
+         --  Find the nearest subprogram body, ignoring _Preconditions and
+         --  _Ensure.
 
          Subp := N;
          loop
             Subp := Parent (Subp);
             exit when Nkind (Subp) = N_Subprogram_Body
-              and then Chars (Defining_Entity (Subp)) /= Name_uPostconditions;
+              and then Chars (Defining_Entity (Subp)) /= Name_uPostconditions
+              and then Chars (Defining_Entity (Subp)) /= Name_uEnsure;
          end loop;
 
          --  Insert the initialized object declaration at the start of the

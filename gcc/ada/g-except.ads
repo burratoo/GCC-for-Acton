@@ -61,6 +61,7 @@ package GNAT.Exceptions is
    --  files, which is unwanted in the case of e.g ravenscar where we want to
    --  minimize the number of run time files needed by default.
 
+   AE : constant Exception_Type;  -- Atomic_Error
    CE : constant Exception_Type;  -- Constraint_Error
    PE : constant Exception_Type;  -- Program_Error
    SE : constant Exception_Type;  -- Storage_Error
@@ -73,6 +74,7 @@ package GNAT.Exceptions is
    --  Raise specified exception with specified message
 
 private
+   pragma Import (C, AE, "atomic_error");
    pragma Import (C, CE, "constraint_error");
    pragma Import (C, PE, "program_error");
    pragma Import (C, SE, "storage_error");

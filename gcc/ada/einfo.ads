@@ -350,6 +350,10 @@ package Einfo is
 --       used to expand dispatching calls through the primary dispatch table.
 --       For a non-tagged record, contains No_Elist.
 
+--    Action_Body_Subprogram (Node11)
+--       Present in atomic operations. References the entity for the
+--       subprogram which implements the body of the operation.
+
 --    Actual_Subtype (Node17)
 --       Present in variables, constants, and formal parameters. This is the
 --       subtype imposed by the value of the object, as opposed to its nominal
@@ -369,11 +373,12 @@ package Einfo is
 --       subtype being unconstrained use flag Is_Constr_Subt_For_U_Nominal(qv).
 
 --    Address_Clause (synthesized)
---       Applies to entries, objects and subprograms. Set if an address clause
---       is present which references the object or subprogram and points to
---       the N_Attribute_Definition_Clause node. Empty if no Address clause.
---       The expression in the address clause is always a constant that is
---       defined before the entity to which the address clause applies.
+--       Applies to actions, entries, objects and subprograms. Set if an
+--       address clause is present which references the object or subprogram
+--       and points to the N_Attribute_Definition_Clause node. Empty if no
+--       Address clause. The expression in the address clause is always a
+--       constant that is defined before the entity to which the address clause
+--       applies.
 --       Note: Gigi references this field in E_Task_Type entities???
 
 --    Address_Taken (Flag104)
@@ -453,6 +458,16 @@ package Einfo is
 --       Empty means that the default pool is to be used. This is present
 --       only in the root type, since derived types must have the same pool
 --       as the parent type.
+
+--    Atomic_Formal (Node24)
+--       Present in formal parameters (in, in out and out parameters). Used
+--       only for formals of atomic operations. References corresponding
+--       formal parameter in the internal version of the operation that
+--       is created during expansion.
+
+--    Atomic_Object (Node23)
+--       Applies to actions. Denotes the entity which is used to rename the
+--       _object component of protected types.
 
 --    Barrier_Function (Node12)
 --       Present in protected entries and entry families. This is the
@@ -644,6 +659,10 @@ package Einfo is
 --    Component_Type (Node20) [implementation base type only]
 --       Present in array types and string types. References component type.
 
+--    Corresponding_Action (Node19)
+--       Present in subprogram bodies. Set for subprogram bodies that implement
+--       an atomic type action to point to the entity for the action.
+
 --    Corresponding_Concurrent_Type (Node18)
 --       Present in record types that are constructed by the expander to
 --       represent task and protected types (Is_Concurrent_Record_Type flag
@@ -672,9 +691,10 @@ package Einfo is
 --          something that we did not want anyway.
 
 --    Corresponding_Record_Type (Node18)
---       Present in protected and task types and subtypes. References the
---       entity for the corresponding record type constructed by the expander
---       (see Exp_Ch9). This type is used to represent values of the task type.
+--       Present in atomic, protected, and task types and subtypes. References
+--       the entity for the corresponding record type constructed by the
+--       expander (see Exp_Ch9). This type is used to represent values of the
+--       task type.
 
 --    Corresponding_Remote_Type (Node22)
 --       Present in record types that describe the fat pointer structure for
@@ -755,10 +775,11 @@ package Einfo is
 
 --    Default_Expressions_Processed (Flag108)
 --       A flag in subprograms (functions, operators, procedures) and in
---       entries and entry families used to indicate that default expressions
---       have been processed and to avoid multiple calls to process the
---       default expressions (see Freeze.Process_Default_Expressions), which
---       would not only waste time, but also generate false error messages.
+--       actions, entries and entry families used to indicate that default
+--       expressions have been processed and to avoid multiple calls to process
+--       the default expressions (see Freeze.Process_Default_Expressions),
+--       which would not only waste time, but also generate false error
+--       messages.
 
 --    Default_Value (Node20)
 --       Present in formal parameters. Points to the node representing the
@@ -1016,9 +1037,13 @@ package Einfo is
 --       'COUNT when it applies to a family member.
 
 --    Contract (Node24)
---       Present in entries, and in subprogram and generic subprogram entities.
---       Points to the contract of the entity, holding both pre- and
+--       Present in actions, entries, and in subprogram and generic subprogram
+--       entities. Points to the contract of the entity, holding both pre- and
 --       postconditions as well as test-cases.
+
+--    Ensure (Node25)
+--       Present in actions entities. Points to the pragma node that holds
+--       the action's ensure test case.
 
 --    Entry_Parameters_Type (Node15)
 --       Present in entries. Points to the access-to-record type that is
@@ -1122,9 +1147,9 @@ package Einfo is
 --       end of the list of extra formals.
 
 --    Extra_Formals (Node28)
---       Applies to subprograms and subprogram types, and also in entries
---       and entry families. Returns first extra formal of the subprogram
---       or entry. Returns Empty if there are no extra formals.
+--       Applies to subprograms and subprogram types, and also in actions,
+--       entries and entry families. Returns first extra formal of the
+--       subprogram or entry. Returns Empty if there are no extra formals.
 
 --    Extra_Accessibility (Node13)
 --       Present in formal parameters in the non-generic case. Normally Empty,
@@ -1206,17 +1231,18 @@ package Einfo is
 --       N_Exit_Statement node with Empty marking the end of the list.
 
 --    First_Formal (synthesized)
---       Applies to subprograms and subprogram types, and also in entries
---       and entry families. Returns first formal of the subprogram or entry.
---       The formals are the first entities declared in a subprogram or in
---       a subprogram type (the designated type of an Access_To_Subprogram
---       definition) or in an entry.
+--       Applies to subprograms and subprogram types, and also in actions,
+--       entries and entry families. Returns first formal of the subprogram or
+--       entry. The formals are the first entities declared in a subprogram or
+--       in a subprogram type (the designated type of an Access_To_Subprogram
+--       definition) or in an entry or action.
 
 --    First_Formal_With_Extras (synthesized)
---       Applies to subprograms and subprogram types, and also in entries
---       and entry families. Returns first formal of the subprogram or entry.
---       Returns Empty if there are no formals. The list returned includes
---       all the extra formals (see description of Extra_Formals field).
+--       Applies to subprograms and subprogram types, and also in actions,
+--       entries and entry families. Returns first formal of the subprogram,
+--       action or entry. Returns Empty if there are no formals. The list
+--       returned includes all the extra formals (see description of
+--       Extra_Formals field).
 
 --    First_Index (Node17)
 --       Present in array types and subtypes and in string types and subtypes.
@@ -1502,7 +1528,8 @@ package Einfo is
 --    Has_Foreign_Convention (synthesized)
 --       Applies to all entities. Determines if the Convention for the
 --       entity is a foreign convention (i.e. is other than Convention_Ada,
---       Convention_Intrinsic, Convention_Entry or Convention_Protected).
+--       Convention_Intrinsic, Convention_Action, Convention_Entry
+--       or Convention_Protected).
 
 --    Has_Forward_Instantiation (Flag175)
 --       Present in package entities. Set true for packages that contain
@@ -1992,6 +2019,10 @@ package Einfo is
 --    Is_Access_Type (synthesized)
 --       Applies to all entities, true for access types and subtypes
 
+--    Is_Action (synthesized)
+--       Applies to all entities, True only for actions entities and False for
+--       all other entity kinds.
+
 --    Is_Ada_2005_Only (Flag185)
 --       Present in all entities, true if a valid pragma Ada_05 or Ada_2005
 --       applies to the entity which specifically names the entity, indicating
@@ -2023,6 +2054,13 @@ package Einfo is
 --       variables. Set if a pragma Atomic or Shared applies to the entity.
 --       In the case of private and incomplete types, this flag is set in
 --       both the partial view and the full view.
+
+--    Is_Atomic_Record_Type (synthesized)
+--       Applies to all entities, true if Is_Concurrent_Record_Type
+--       Corresponding_Concurrent_Type is an atomic type.
+
+--    Is_Atomic_Type (synthesized)
+--       Applies to all entities, true for atomic types and subtypes
 
 --    Is_Array_Type (synthesized)
 --       Applies to all entities, true for array types and subtypes
@@ -2098,8 +2136,8 @@ package Einfo is
 --       for further details.
 
 --    Is_Concurrent_Type (synthesized)
---       Applies to all entities, true for task types and subtypes and for
---       protected types and subtypes.
+--       Applies to all entities, true for task types and subtypes, for
+--       protected types and subtypes, and for atomic types and subtypes.
 
 --    Is_Constant_Object (synthesized)
 --       Applies to all entities, true for E_Constant, E_Loop_Parameter, and
@@ -2930,11 +2968,11 @@ package Einfo is
 --       through the Next_Entity field. Empty if no entities are chained.
 
 --    Last_Formal (synthesized)
---       Applies to subprograms and subprogram types, and also in entries
---       and entry families. Returns last formal of the subprogram or entry.
---       The formals are the first entities declared in a subprogram or in
---       a subprogram type (the designated type of an Access_To_Subprogram
---       definition) or in an entry.
+--       Applies to subprograms and subprogram types, and also in actions,
+--       entries and entry families. Returns last formal of the subprogram,
+--       action or entry. The formals are the first entities declared in a
+--       subprogram or in a subprogram type (the designated type of an
+--       Access_To_Subprogram definition) or in an entry or action.
 
 --    Limited_View (Node23)
 --       Present in non-generic package entities that are not instances. Bona
@@ -3026,9 +3064,9 @@ package Einfo is
 
 --    Needs_No_Actuals (Flag22)
 --       Present in callable entities (subprograms, entries, access to
---       subprograms)  which can be called without actuals because all of
---       their formals (if any) have default values. This flag simplifies the
---       resolution of the syntactic ambiguity involving a call to these
+--       subprograms, actions) which can be called without actuals because all
+--       of their formals (if any) have default values. This flag simplifies
+--       the resolution of the syntactic ambiguity involving a call to these
 --       entities when the return type is an array type, and a call can be
 --       interpreted as an indexing of the result of the call. It is also
 --       used to resolve various cases of entry calls.
@@ -3587,18 +3625,18 @@ package Einfo is
 --       the Scope will be Standard.
 
 --    Scope_Depth (synthesized)
---       Applies to program units, blocks, concurrent types and entries, and
---       also to record types, i.e. to any entity that can appear on the scope
---       stack. Yields the scope depth value, which for those entities other
---       than records is simply the scope depth value, for record entities, it
---       is the Scope_Depth of the record scope.
+--       Applies to program units, blocks, concurrent types, actions and
+--       entries, and also to record types, i.e. to any entity that can appear
+--       on the scope stack. Yields the scope depth value, which for those
+--       entities other than records is simply the scope depth value, for
+--       record entities, it is the Scope_Depth of the record scope.
 
 --    Scope_Depth_Value (Uint22)
---       Present in program units, blocks, concurrent types, and entries.
---       Indicates the number of scopes that statically enclose the declaration
---       of the unit or type. Library units have a depth of zero. Note that
---       record types can act as scopes but do NOT have this field set (see
---       Scope_Depth above)
+--       Present in program units, blocks, concurrent types, actions, and
+--       entries. Indicates the number of scopes that statically enclose the
+--       declaration of the unit or type. Library units have a depth of zero.
+--       Note that record types can act as scopes but do NOT have this field
+--       set (see Scope_Depth above)
 
 --    Scope_Depth_Set (synthesized)
 --       Applies to a special predicate function that returns a Boolean value
@@ -4284,6 +4322,15 @@ package Einfo is
       --  A subtype of a protected type, created by a subtype declaration used
       --  to declare a subtype of a protected type.
 
+      E_Atomic_Type,
+      --  An atomic type, created by an atomic type declaration. An entity
+      --  with this Ekind is also created to describe the anonymous type of
+      --  an atomic object created by a single atomic declaration.
+
+      E_Atomic_Subtype,
+      --  A subtype of an atomic type, created by a subtype declaration used
+      --  to declare a subtype of an atomic type.
+
       -----------------
       -- Other Types --
       -----------------
@@ -4318,6 +4365,9 @@ package Einfo is
       E_Procedure,
       --  A procedure, created by a procedure declaration or a procedure
       --  body that acts as its own declaration.
+
+      E_Action,
+      --  An action, created by an action declaration in an atomic object.
 
       E_Entry,
       --  An entry, created by an entry declaration in a task or protected
@@ -4382,9 +4432,17 @@ package Einfo is
       --  there are some attributes that are significant for the body entity.
       --  For example, collection of exception handlers.
 
+      E_Atomic_Object,
+      --  An atomic object, created by an object declaration that declares
+      --  an object of an atomic type.
+
       E_Protected_Object,
       --  A protected object, created by an object declaration that declares
       --  an object of a protected type.
+
+      E_Atomic_Body,
+      --  A atomic body. This entity serves almost no function, since all
+      --  semantic analysis uses the atomic entity (E_Atomic_Type)
 
       E_Protected_Body,
       --  A protected body. This entity serves almost no function, since all
@@ -4460,6 +4518,10 @@ package Einfo is
    --  E_Out_Parameter
        E_In_Out_Parameter;
 
+   subtype Atomic_Kind              is Entity_Kind range
+       E_Atomic_Type ..
+       E_Atomic_Subtype;
+
    subtype Class_Wide_Kind             is Entity_Kind range
        E_Class_Wide_Type ..
        E_Class_Wide_Subtype;
@@ -4485,16 +4547,21 @@ package Einfo is
    --  E_Task_Type
    --  E_Task_Subtype,
    --  E_Protected_Type,
-       E_Protected_Subtype;
+   --  E_Protected_Subtype,
+   --  E_Atomic_Type,
+       E_Atomic_Subtype;
 
    subtype Concurrent_Kind             is Entity_Kind range
        E_Task_Type ..
    --  E_Task_Subtype,
    --  E_Protected_Type,
-       E_Protected_Subtype;
+   --  E_Protected_Subtype,
+   --  E_Atomic_Type,
+       E_Atomic_Subtype;
 
    subtype Concurrent_Body_Kind        is Entity_Kind range
-       E_Protected_Body ..
+       E_Atomic_Body ..
+   --  E_Protected_Body,
        E_Task_Body;
 
    subtype Decimal_Fixed_Point_Kind    is Entity_Kind range
@@ -4648,6 +4715,7 @@ package Einfo is
    --  E_Function
    --  E_Operator
    --  E_Procedure
+   --  E_Action
        E_Entry;
 
    subtype Private_Kind                is Entity_Kind range
@@ -4754,6 +4822,8 @@ package Einfo is
    --  E_Task_Subtype
    --  E_Protected_Type
    --  E_Protected_Subtype
+   --  E_Atomic_Type
+   --  E_Atomic_Subtype
    --  E_Exception_Type
        E_Subprogram_Type;
 
@@ -5001,6 +5071,27 @@ package Einfo is
    --    Directly_Designated_Type            (Node20)
    --    (plus type attributes)
 
+   --  E_Action
+   --    Action_Body_Subprogram              (Node11)
+   --    First_Entity                        (Node17)
+   --    Alias                               (Node18)   (for entry only. Empty)
+   --    Last_Entity                         (Node20)
+   --    Scope_Depth_Value                   (Uint22)
+   --    Atomic_Object                       (Node23)   (atomic kind)
+   --    Contract                            (Node24)   (for entry only)
+   --    Ensure                              (Node25)
+   --    Extra_Formals                       (Node28)
+   --    Default_Expressions_Processed       (Flag108)
+   --    Needs_No_Actuals                    (Flag22)
+   --    Sec_Stack_Needed_For_Return         (Flag167)
+   --    Uses_Sec_Stack                      (Flag95)
+   --    Address_Clause                      (synth)
+   --    First_Formal                        (synth)
+   --    First_Formal_With_Extras            (synth)
+   --    Last_Formal                         (synth)
+   --    Number_Formals                      (synth)
+   --    Scope_Depth                         (synth)
+
    --  E_Allocator_Type
    --    Directly_Designated_Type            (Node20)
    --    (plus type attributes)
@@ -5035,6 +5126,23 @@ package Einfo is
    --    Next_Index                          (synth)
    --    Number_Dimensions                   (synth)
    --    (plus type attributes)
+
+   --  E_Atomic_Body
+   --    (any others??? First/Last Entity, Scope_Depth???)
+
+   --  E_Atomic_Object
+
+   --  E_Atomic_Type
+   --  E_Atomic_Subtype
+   --    Direct_Primitive_Operations         (Elist10)
+   --    First_Private_Entity                (Node16)
+   --    First_Entity                        (Node17)
+   --    Corresponding_Record_Type           (Node18)
+   --    Last_Entity                         (Node20)
+   --    Discriminant_Constraint             (Elist21)
+   --    Scope_Depth_Value                   (Uint22)
+   --    Scope_Depth                         (synth)
+   --    Stored_Constraint                   (Elist23)
 
    --  E_Block
    --    Block_Node                          (Node11)
@@ -5339,6 +5447,7 @@ package Einfo is
    --    Renamed_Object                      (Node18)   (always Empty)
    --    Default_Value                       (Node20)
    --    Protected_Formal                    (Node22)
+   --    Atomic_Formal                       (Node24)
    --    Is_Controlling_Formal               (Flag97)
    --    Is_Return_Object                    (Flag209)
    --    Parameter_Mode                      (synth)
@@ -5371,6 +5480,7 @@ package Einfo is
    --    Default_Expr_Function               (Node21)
    --    Protected_Formal                    (Node22)
    --    Extra_Constrained                   (Node23)
+   --    Atomic_Formal                       (Node24)
    --    Last_Assignment                     (Node26)   (OUT, IN-OUT only)
    --    Has_Initial_Value                   (Flag219)
    --    Is_Controlling_Formal               (Flag97)
@@ -5710,6 +5820,7 @@ package Einfo is
    --    Mechanism                           (Uint8)
    --    First_Entity                        (Node17)
    --    Corresponding_Protected_Entry       (Node18)
+   --    Corresponding_Action                (Node19)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
    --    Barrier_Service_Function            (Node26)
@@ -6031,6 +6142,7 @@ package Einfo is
 
    function Accept_Address                      (Id : E) return L;
    function Access_Disp_Table                   (Id : E) return L;
+   function Action_Body_Subprogram              (Id : E) return E;
    function Actual_Subtype                      (Id : E) return E;
    function Address_Taken                       (Id : E) return B;
    function Alias                               (Id : E) return E;
@@ -6038,7 +6150,10 @@ package Einfo is
    function Associated_Formal_Package           (Id : E) return E;
    function Associated_Node_For_Itype           (Id : E) return N;
    function Associated_Storage_Pool             (Id : E) return E;
+   function Atomic_Formal                       (Id : E) return E;
+   function Atomic_Object                       (Id : E) return E;
    function Barrier_Function                    (Id : E) return N;
+   function Barrier_Service_Function            (Id : E) return E;
    function Block_Node                          (Id : E) return N;
    function Body_Entity                         (Id : E) return E;
    function Body_Needed_For_SAL                 (Id : E) return B;
@@ -6055,6 +6170,7 @@ package Einfo is
    function Component_Size                      (Id : E) return U;
    function Component_Type                      (Id : E) return E;
    function Contract                            (Id : E) return N;
+   function Corresponding_Action                (Id : E) return E;
    function Corresponding_Concurrent_Type       (Id : E) return E;
    function Corresponding_Discriminant          (Id : E) return E;
    function Corresponding_Equality              (Id : E) return E;
@@ -6094,6 +6210,7 @@ package Einfo is
    function Elaboration_Entity                  (Id : E) return E;
    function Elaboration_Entity_Required         (Id : E) return B;
    function Enclosing_Scope                     (Id : E) return E;
+   function Ensure                              (Id : E) return N;
    function Entry_Accepted                      (Id : E) return B;
    function Entry_Cancel_Parameter              (Id : E) return E;
    function Entry_Component                     (Id : E) return E;
@@ -6385,7 +6502,6 @@ package Einfo is
    function Scale_Value                         (Id : E) return U;
    function Scope_Depth_Value                   (Id : E) return U;
    function Sec_Stack_Needed_For_Return         (Id : E) return B;
-   function Barrier_Service_Function            (Id : E) return E;
    function Shadow_Entities                     (Id : E) return S;
    function Shared_Var_Procs_Instance           (Id : E) return E;
    function Size_Check_Code                     (Id : E) return N;
@@ -6437,9 +6553,11 @@ package Einfo is
    function Is_Access_Type                      (Id : E) return B;
    function Is_Access_Protected_Subprogram_Type (Id : E) return B;
    function Is_Access_Subprogram_Type           (Id : E) return B;
+   function Is_Action                           (Id : E) return B;
    function Is_Aggregate_Type                   (Id : E) return B;
    function Is_Array_Type                       (Id : E) return B;
    function Is_Assignable                       (Id : E) return B;
+   function Is_Atomic_Type                      (Id : E) return B;
    function Is_Class_Wide_Type                  (Id : E) return B;
    function Is_Composite_Type                   (Id : E) return B;
    function Is_Concurrent_Body                  (Id : E) return B;
@@ -6504,6 +6622,7 @@ package Einfo is
    function Has_Foreign_Convention              (Id : E) return B;
    function Has_Private_Declaration             (Id : E) return B;
    function Implementation_Base_Type            (Id : E) return E;
+   function Is_Atomic_Record_Type            (Id : E) return B;
    function Is_Base_Type                        (Id : E) return B;
    function Is_Boolean_Type                     (Id : E) return B;
    function Is_Constant_Object                  (Id : E) return B;
@@ -6622,6 +6741,7 @@ package Einfo is
 
    procedure Set_Accept_Address                  (Id : E; V : L);
    procedure Set_Access_Disp_Table               (Id : E; V : L);
+   procedure Set_Action_Body_Subprogram          (Id : E; V : E);
    procedure Set_Actual_Subtype                  (Id : E; V : E);
    procedure Set_Address_Taken                   (Id : E; V : B := True);
    procedure Set_Alias                           (Id : E; V : E);
@@ -6629,6 +6749,8 @@ package Einfo is
    procedure Set_Associated_Formal_Package       (Id : E; V : E);
    procedure Set_Associated_Node_For_Itype       (Id : E; V : N);
    procedure Set_Associated_Storage_Pool         (Id : E; V : E);
+   procedure Set_Atomic_Formal                   (Id : E; V : E);
+   procedure Set_Atomic_Object                   (Id : E; V : E);
    procedure Set_Barrier_Function                (Id : E; V : N);
    procedure Set_Block_Node                      (Id : E; V : N);
    procedure Set_Body_Entity                     (Id : E; V : E);
@@ -6646,6 +6768,7 @@ package Einfo is
    procedure Set_Component_Size                  (Id : E; V : U);
    procedure Set_Component_Type                  (Id : E; V : E);
    procedure Set_Contract                        (Id : E; V : N);
+   procedure Set_Corresponding_Action            (Id : E; V : E);
    procedure Set_Corresponding_Concurrent_Type   (Id : E; V : E);
    procedure Set_Corresponding_Discriminant      (Id : E; V : E);
    procedure Set_Corresponding_Equality          (Id : E; V : E);
@@ -6685,6 +6808,7 @@ package Einfo is
    procedure Set_Elaboration_Entity              (Id : E; V : E);
    procedure Set_Elaboration_Entity_Required     (Id : E; V : B := True);
    procedure Set_Enclosing_Scope                 (Id : E; V : E);
+   procedure Set_Ensure                          (Id : E; V : N);
    procedure Set_Entry_Accepted                  (Id : E; V : B := True);
    procedure Set_Entry_Cancel_Parameter          (Id : E; V : E);
    procedure Set_Entry_Component                 (Id : E; V : E);
@@ -7302,6 +7426,7 @@ package Einfo is
 
    pragma Inline (Accept_Address);
    pragma Inline (Access_Disp_Table);
+   pragma Inline (Action_Body_Subprogram);
    pragma Inline (Actual_Subtype);
    pragma Inline (Address_Taken);
    pragma Inline (Alias);
@@ -7309,6 +7434,8 @@ package Einfo is
    pragma Inline (Associated_Formal_Package);
    pragma Inline (Associated_Node_For_Itype);
    pragma Inline (Associated_Storage_Pool);
+   pragma Inline (Atomic_Formal);
+   pragma Inline (Atomic_Object);
    pragma Inline (Barrier_Function);
    pragma Inline (Block_Node);
    pragma Inline (Body_Entity);
@@ -7325,6 +7452,7 @@ package Einfo is
    pragma Inline (Component_Size);
    pragma Inline (Component_Type);
    pragma Inline (Contract);
+   pragma Inline (Corresponding_Action);
    pragma Inline (Corresponding_Concurrent_Type);
    pragma Inline (Corresponding_Discriminant);
    pragma Inline (Corresponding_Equality);
@@ -7364,6 +7492,7 @@ package Einfo is
    pragma Inline (Elaboration_Entity);
    pragma Inline (Elaboration_Entity_Required);
    pragma Inline (Enclosing_Scope);
+   pragma Inline (Ensure);
    pragma Inline (Entry_Accepted);
    pragma Inline (Entry_Cancel_Parameter);
    pragma Inline (Entry_Component);
@@ -7491,6 +7620,7 @@ package Einfo is
    pragma Inline (Is_Access_Protected_Subprogram_Type);
    pragma Inline (Is_Access_Subprogram_Type);
    pragma Inline (Is_Access_Type);
+   pragma Inline (Is_Action);
    pragma Inline (Is_Ada_2005_Only);
    pragma Inline (Is_Ada_2012_Only);
    pragma Inline (Is_Aggregate_Type);
@@ -7499,6 +7629,7 @@ package Einfo is
    pragma Inline (Is_Assignable);
    pragma Inline (Is_Asynchronous);
    pragma Inline (Is_Atomic);
+   pragma Inline (Is_Atomic_Type);
    pragma Inline (Is_Bit_Packed_Array);
    pragma Inline (Is_CPP_Class);
    pragma Inline (Is_Called);
@@ -7750,12 +7881,15 @@ package Einfo is
    pragma Inline (Set_Accept_Address);
    pragma Inline (Set_Access_Disp_Table);
    pragma Inline (Set_Actual_Subtype);
+   pragma Inline (Set_Action_Body_Subprogram);
    pragma Inline (Set_Address_Taken);
    pragma Inline (Set_Alias);
    pragma Inline (Set_Alignment);
    pragma Inline (Set_Associated_Formal_Package);
    pragma Inline (Set_Associated_Node_For_Itype);
    pragma Inline (Set_Associated_Storage_Pool);
+   pragma Inline (Set_Atomic_Formal);
+   pragma Inline (Set_Atomic_Object);
    pragma Inline (Set_Barrier_Function);
    pragma Inline (Set_Block_Node);
    pragma Inline (Set_Body_Entity);
@@ -7772,6 +7906,7 @@ package Einfo is
    pragma Inline (Set_Component_Size);
    pragma Inline (Set_Component_Type);
    pragma Inline (Set_Contract);
+   pragma Inline (Set_Corresponding_Action);
    pragma Inline (Set_Corresponding_Concurrent_Type);
    pragma Inline (Set_Corresponding_Discriminant);
    pragma Inline (Set_Corresponding_Equality);
@@ -7811,6 +7946,7 @@ package Einfo is
    pragma Inline (Set_Elaboration_Entity);
    pragma Inline (Set_Elaboration_Entity_Required);
    pragma Inline (Set_Enclosing_Scope);
+   pragma Inline (Set_Ensure);
    pragma Inline (Set_Entry_Accepted);
    pragma Inline (Set_Entry_Cancel_Parameter);
    pragma Inline (Set_Entry_Component);

@@ -1880,14 +1880,16 @@ package body Exp_Ch11 is
          P := Parent (N);
 
          --  If we get to the top of the tree, or to a subprogram, task, entry,
-         --  protected body, or accept statement without having found a
+         --  protected body, action, or accept statement without having found a
          --  matching handler, then there is no local handler.
 
          if No (P)
            or else Nkind (P) = N_Subprogram_Body
            or else Nkind (P) = N_Task_Body
            or else Nkind (P) = N_Protected_Body
+           or else Nkind (P) = N_Atomic_Body
            or else Nkind (P) = N_Entry_Body
+           or else Nkind (P) = N_Action_Body
            or else Nkind (P) = N_Accept_Statement
          then
             return Empty;
