@@ -133,10 +133,10 @@ package body Exp_Atom is
    begin
       --  The queues and barriers of actions appear in textual order in the
       --  associated record. The action index is computed as the sum of the
-      --  number of queues for all actions that precede the designated one.
+      --  number of queues for all actions that include the designated one.
 
       Prev  := First_Entity (Atyp);
-      Count := 0;
+      Count := 1;
 
       while Chars (Prev) /= Chars (Act)
         or else (Ekind (Prev) /= Ekind (Act))
@@ -413,7 +413,7 @@ package body Exp_Atom is
 
          --   Make call to exit barrier.
 
-         if Is_Atomic_Aspect_True (Name_No_End_Barrier, Pid) then
+         if not Is_Atomic_Aspect_True (Name_No_End_Barrier, Pid) then
             Append_To (Stmts,
               Make_Procedure_Call_Statement (Loc,
                 Name                   =>
