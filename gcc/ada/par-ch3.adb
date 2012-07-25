@@ -1465,7 +1465,7 @@ package body Ch3 is
            or else Bad_Spelling_Of (Tok_Task)
            or else Bad_Spelling_Of (Tok_Use)
            or else Bad_Spelling_Of (Tok_For)
-           or else Bad_Spelling_Of (Tok_Atomic)
+           or else Bad_Spelling_Of (Tok_Atomic_Action)
          then
             Done := False;
             return;
@@ -4176,9 +4176,9 @@ package body Ch3 is
 
       case Token is
 
-         when Tok_Atomic =>
+         when Tok_Atomic_Action =>
             Check_Bad_Layout;
-            Scan; -- past ATOMIC
+            Scan; -- past ATOMIC_ACTION
             Append (P_Atomic, Decls);
             Done := False;
 
