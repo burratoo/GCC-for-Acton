@@ -526,7 +526,7 @@ package body Exp_Prag is
    begin
       --  Expand the pragma only in the case of the main subprogram. For tasks
       --  the expansion is done in exp_ch9. Generates a call to
-      --  ARPART.Tasks.Change_Cycle_Period.
+      --  Oakland.Tasks.Change_Cycle_Period.
 
       if Nkind (P) = N_Subprogram_Body then
          Rewrite
@@ -839,7 +839,7 @@ package body Exp_Prag is
    begin
       --  Expand the pragma only in the case of the main subprogram. For tasks
       --  the expansion is done in exp_ch9. Generate a call to
-      --  ARPART.Tasks.Change_Relative_Deadline.
+      --  Oakland.Tasks.Change_Relative_Deadline.
 
       if Nkind (P) = N_Subprogram_Body then
          Rewrite

@@ -373,9 +373,6 @@ package body Rtsfind is
             Name_Buffer (28) := '.';
          end if;
 
-      elsif U_Id in ARPART_Child then
-         Name_Buffer (7) := '.';
-
       elsif U_Id in Oak_Child then
          Name_Buffer (4) := '.';
 
@@ -398,6 +395,9 @@ package body Rtsfind is
          if U_Id in Oak_Processor_Support_Package_Child then
             Name_Buffer (30) := '.';
          end if;
+
+      elsif U_Id in Oakland_Child then
+         Name_Buffer (8) := '.';
 
       end if;
 
