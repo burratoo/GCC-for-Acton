@@ -414,17 +414,6 @@ package Rtsfind is
       System_Tasking_Rendezvous,
       System_Tasking_Stages,
 
-      --  ARPART
-
-      ARPART,
-
-      --  Children of ARPART
-
-      ARPART_Atomic_Actions,
-      ARPART_Interrupts,
-      ARPART_Protected_Objects,
-      ARPART_Tasks,
-
       --  Oak
 
       Oak,
@@ -458,8 +447,18 @@ package Rtsfind is
 
       --  Children of Oak.Processor_Support_Package
 
-      Oak_Processor_Support_Package_Interrupts
-      );
+      Oak_Processor_Support_Package_Interrupts,
+
+      --  Oakland
+
+      Oakland,
+
+      --  Children of Oakland
+
+      Oakland_Atomic_Actions,
+      Oakland_Interrupts,
+      Oakland_Protected_Objects,
+      Oakland_Tasks);
 
    subtype Ada_Child is RTU_Id
      range Ada_Atomic_Actions .. Ada_Wide_Wide_Text_IO_Modular_IO;
@@ -548,10 +547,6 @@ package Rtsfind is
        System_Tasking_Async_Delays_Enqueue_RT;
    --  Range of values for children of System.Tasking.Async_Delays
 
-   subtype ARPART_Child is RTU_Id
-      range ARPART_Atomic_Actions .. ARPART_Tasks;
-   --  Range of values of children of ARPART
-
    subtype Oak_Child is RTU_Id
       range Oak_Agent .. Oak_Processor_Support_Package_Interrupts;
    --  Range of values of children of Oak
@@ -577,6 +572,10 @@ package Rtsfind is
       range  Oak_Processor_Support_Package_Interrupts ..
         Oak_Processor_Support_Package_Interrupts;
    --  Range of values of children of Oak.Processor_Support_Package
+
+   subtype Oakland_Child is RTU_Id
+      range Oakland_Atomic_Actions .. Oakland_Tasks;
+   --  Range of values of children of Oakland
 
    --------------------------
    -- Runtime Entity Table --
@@ -1826,22 +1825,6 @@ package Rtsfind is
      RO_TS_Set_Entry_Name,               -- System.Tasking.Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
-     RE_Action_End_Barrier,              -- ARPART.Atomic_Actions
-     RE_Enter_Action,                    -- ARPART.Atomic_Actions
-     RE_Exit_Action,                     -- ARPART.Atomic_Actions
-
-     RE_Attach_Handlers,                 -- ARPART.Interrupts
-
-     RE_Enter_Protected_Object,          -- ARPART.Protected_Objects
-     RE_Exit_Protected_Object,           -- ARPART.Protected_Objects
-     RE_Entry_Count,                     -- ARPART.Protected_Objects
-
-     RE_Activate_Tasks,                  -- ARPART.Tasks
-     RE_Change_Cycle_Period,             -- ARPART.Tasks
-     RE_Change_Relative_Deadline,        -- ARPART.Tasks
-     RE_Complete_Activation,             -- ARPART.Tasks
-     RE_Complete_Task,                   -- ARPART.Tasks
-
      RE_Activation_Chain,                -- Oak.Agent.Tasks
      RE_Activation_Chain_Access,         -- Oak.Agent.Tasks
      RE_Initialise_Task_Agent,           -- Oak.Agent.Tasks
@@ -1869,7 +1852,23 @@ package Rtsfind is
      RE_Protected_Entry,                 -- Oak.Protected_Objects
 
      RE_To_Oak_Time,                     -- Oak.Oak_Time.Conversion
-     RE_To_Oak_Time_Span                 -- Oak.Oak_Time.Conversion
+     RE_To_Oak_Time_Span,                -- Oak.Oak_Time.Conversion
+
+     RE_Action_End_Barrier,              -- Oakland.Atomic_Actions
+     RE_Enter_Action,                    -- Oakland.Atomic_Actions
+     RE_Exit_Action,                     -- Oakland.Atomic_Actions
+
+     RE_Attach_Handlers,                 -- Oakland.Interrupts
+
+     RE_Enter_Protected_Object,          -- Oakland.Protected_Objects
+     RE_Exit_Protected_Object,           -- Oakland.Protected_Objects
+     RE_Entry_Count,                     -- Oakland.Protected_Objects
+
+     RE_Activate_Tasks,                  -- Oakland.Tasks
+     RE_Change_Cycle_Period,             -- Oakland.Tasks
+     RE_Change_Relative_Deadline,        -- Oakland.Tasks
+     RE_Complete_Activation,             -- Oakland.Tasks
+     RE_Complete_Task                    -- Oakland.Tasks
      );
 
    --  The following declarations build a table that is indexed by the RTE
@@ -3130,22 +3129,6 @@ package Rtsfind is
      RO_TS_Set_Entry_Name                => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
-     RE_Action_End_Barrier               => ARPART_Atomic_Actions,
-     RE_Enter_Action                     => ARPART_Atomic_Actions,
-     RE_Exit_Action                      => ARPART_Atomic_Actions,
-
-     RE_Attach_Handlers                  => ARPART_Interrupts,
-
-     RE_Enter_Protected_Object           => ARPART_Protected_Objects,
-     RE_Exit_Protected_Object            => ARPART_Protected_Objects,
-     RE_Entry_Count                      => ARPART_Protected_Objects,
-
-     RE_Activate_Tasks                   => ARPART_Tasks,
-     RE_Change_Cycle_Period              => ARPART_Tasks,
-     RE_Change_Relative_Deadline         => ARPART_Tasks,
-     RE_Complete_Activation              => ARPART_Tasks,
-     RE_Complete_Task                    => ARPART_Tasks,
-
      RE_Activation_Chain                 => Oak_Agent_Tasks,
      RE_Activation_Chain_Access          => Oak_Agent_Tasks,
      RE_Initialise_Task_Agent            => Oak_Agent_Tasks,
@@ -3175,7 +3158,23 @@ package Rtsfind is
      RE_Protected_Entry                  => Oak_Protected_Objects,
 
      RE_To_Oak_Time                      => Oak_Oak_Time_Conversion,
-     RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion);
+     RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion,
+
+     RE_Action_End_Barrier               => Oakland_Atomic_Actions,
+     RE_Enter_Action                     => Oakland_Atomic_Actions,
+     RE_Exit_Action                      => Oakland_Atomic_Actions,
+
+     RE_Attach_Handlers                  => Oakland_Interrupts,
+
+     RE_Enter_Protected_Object           => Oakland_Protected_Objects,
+     RE_Exit_Protected_Object            => Oakland_Protected_Objects,
+     RE_Entry_Count                      => Oakland_Protected_Objects,
+
+     RE_Activate_Tasks                   => Oakland_Tasks,
+     RE_Change_Cycle_Period              => Oakland_Tasks,
+     RE_Change_Relative_Deadline         => Oakland_Tasks,
+     RE_Complete_Activation              => Oakland_Tasks,
+     RE_Complete_Task                    => Oakland_Tasks);
 
    --------------------------------
    -- Configurable Run-Time Mode --
