@@ -298,7 +298,7 @@ package body Ch10 is
 
          --  Allow atomic, task and protected for nice error recovery purposes
 
-         exit when Token = Tok_Atomic
+         exit when Token = Tok_Atomic_Action
            or else Token = Tok_Task
            or else Token = Tok_Protected;
 
@@ -453,8 +453,8 @@ package body Ch10 is
       --  Otherwise we have ATOMIC, TASK or PROTECTED. These are not really an
       --  acceptable tokens, but we accept it to improve error recovery.
 
-      elsif Token = Tok_Atomic then
-         Scan; -- Past ATOMIC
+      elsif Token = Tok_Atomic_Action then
+         Scan; -- Past ATOMIC_ACTION
 
          if Token = Tok_Type then
             Error_Msg_SP
@@ -1115,8 +1115,8 @@ package body Ch10 is
             return Error;
          end if;
 
-      elsif Token = Tok_Atomic then
-         Scan; -- past ATOMIC
+      elsif Token = Tok_Atomic_Action then
+         Scan; -- past ATOMIC_ACTION
 
          if Token = Tok_Body then
             Body_Node := P_Atomic;

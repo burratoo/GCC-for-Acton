@@ -163,7 +163,7 @@ package Scans is
       Tok_While,           -- WHILE        Eterm, Sterm, After_SM, Labeled_Stmt
 
       Tok_Action,          -- ACTION       Eterm, Sterm, Declk, Deckn, After_SM
-      Tok_Atomic,          -- ATOMIC       Eterm, Sterm, Declk, Deckn, After_SM
+      Tok_Atomic_Action,   -- ATOMIC       Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Entry,           -- ENTRY        Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Protected,       -- PROTECTED    Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Task,            -- TASK         Eterm, Sterm, Declk, Deckn, After_SM
