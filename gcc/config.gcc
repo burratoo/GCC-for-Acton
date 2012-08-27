@@ -543,7 +543,7 @@ tm_defines="$tm_defines LIBC_GLIBC=1 LIBC_UCLIBC=2 LIBC_BIONIC=3"
 # Common parts for widely ported systems.
 case ${target} in
 *-*-acton*)
-  # tm_file="${tm_file} acton.h"
+  tm_file="${tm_file} acton.h"
   ;;
 *-*-darwin*)
   tmake_file="t-darwin ${cpu_type}/t-darwin"
@@ -886,6 +886,13 @@ arm*-*-eabi* | arm*-*-symbianelf* | arm*-*-rtemseabi*)
 	  ;;
 	esac
 	tm_file="${tm_file} arm/aout.h arm/arm.h"
+	;;
+avr-*-acton*)
+	tm_file="elfos.h avr/elf.h avr/avr.h dbxelf.h avr/avr-stdint.h acton.h"
+	tmake_file="avr/t-avr avr/t-multilib"
+	use_gcc_stdint=wrap
+	extra_gcc_objs="driver-avr.o avr-devices.o"
+	extra_objs="avr-devices.o avr-log.o"
 	;;
 avr-*-rtems*)
 	tm_file="elfos.h avr/elf.h avr/avr.h dbxelf.h avr/rtems.h rtems.h newlib-stdint.h"
@@ -1867,7 +1874,7 @@ picochip-*)
 #	extra_headers=
 #	;;
 powerpc-*-acton*)
-	tm_file="${tm_file} dbxelf.h elfos.h freebsd-spec.h newlib-stdint.h rs6000/sysv4.h rs6000/eabi.h rs6000/e500.h rs6000/eabispe.h acton.h"
+	tm_file="${tm_file} dbxelf.h elfos.h freebsd-spec.h newlib-stdint.h rs6000/sysv4.h rs6000/eabi.h rs6000/e500.h rs6000/eabispe.h rs6000/acton.h"
 	extra_options="${extra_options} rs6000/sysv4.opt"
 	tmake_file="rs6000/t-spe rs6000/t-ppccomm"
 	use_gcc_stdint=wrap

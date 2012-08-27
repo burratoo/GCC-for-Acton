@@ -24,9 +24,8 @@
 #define LIB_DEFAULT_SPEC */
 
 #undef	STARTFILE_DEFAULT_SPEC
+#define STARTFILE_DEFAULT_SPEC "\
+ecrti.o%s acton-crt0.a%s"
 
 #undef	LINK_START_DEFAULT_SPEC
-
-/* Suppress the generation of -lgcc and -lc flags cause we're awesome. */
-#undef  LINK_GCC_C_SEQUENCE_SPEC 
-#define LINK_GCC_C_SEQUENCE_SPEC "%G"
+#define LINK_START_DEFAULT_SPEC "-T acton.ld%s"
