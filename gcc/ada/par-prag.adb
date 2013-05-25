@@ -1125,6 +1125,7 @@ begin
            Pragma_Controlled                     |
            Pragma_Convention                     |
            Pragma_Cycle_Period                   |
+           Pragma_Cycle_Phase                    |
            Pragma_Debug_Policy                   |
            Pragma_Detect_Blocking                |
            Pragma_Default_Storage_Pool           |
@@ -1206,7 +1207,6 @@ begin
            Pragma_Preelaborable_Initialization   |
            Pragma_Polling                        |
            Pragma_Persistent_BSS                 |
-           Pragma_Phase                          |
            Pragma_Postcondition                  |
            Pragma_Precondition                   |
            Pragma_Predicate                      |

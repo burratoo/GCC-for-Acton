@@ -2779,16 +2779,16 @@ package body Exp_Ch3 is
                      Actions := Build_Assignment (Id, Expression (Decl));
                   end if;
 
-               --  CPU, Cycle_Period, Dispatching_Domain, Phase, Priority and
-               --  Size components are filled with the corresponding rep item
-               --  expression of the concurrent type (if any).
+               --  CPU, Cycle_Period, Dispatching_Domain, Cycle_Phase, Priority
+               --  and Size components are filled with the corresponding rep
+               --  item expression of the concurrent type (if any).
 
                elsif Ekind (Scope (Id)) = E_Record_Type
                  and then Present (Corresponding_Concurrent_Type (Scope (Id)))
                  and then (Chars (Id) = Name_uCPU                or else
                            Chars (Id) = Name_uCycle_Period       or else
+                           Chars (Id) = Name_uCycle_Phase        or else
                            Chars (Id) = Name_uDispatching_Domain or else
-                           Chars (Id) = Name_uPhase              or else
                            Chars (Id) = Name_uPriority)
                then
                   declare
@@ -2803,11 +2803,11 @@ package body Exp_Ch3 is
                      elsif Chars (Id) = Name_uCycle_Period then
                         Nam := Name_Cycle_Period;
 
+                     elsif Chars (Id) = Name_uCycle_Phase then
+                        Nam := Name_Cycle_Phase;
+
                      elsif Chars (Id) = Name_uDispatching_Domain then
                         Nam := Name_Dispatching_Domain;
-
-                     elsif Chars (Id) = Name_uPhase then
-                        Nam := Name_Phase;
 
                      elsif Chars (Id) = Name_uPriority then
                         Nam := Name_Priority;

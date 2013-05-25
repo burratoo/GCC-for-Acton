@@ -84,6 +84,7 @@ package Aspects is
       Aspect_Convention,
       Aspect_CPU,
       Aspect_Cycle_Period,                  -- Acton
+      Aspect_Cycle_Phase,                   -- Acton
       Aspect_Default_Component_Value,
       Aspect_Default_Iterator,
       Aspect_Default_Value,
@@ -106,7 +107,6 @@ package Aspects is
       Aspect_Object_Size,                   -- GNAT
       Aspect_Output,
       Aspect_Participating_Actions,         -- Acton
-      Aspect_Phase,                         -- Acton
       Aspect_Post,
       Aspect_Postcondition,
       Aspect_Pre,
@@ -226,6 +226,7 @@ package Aspects is
                              Aspect_Compiler_Unit            => True,
                              Aspect_Contract_Case            => True,
                              Aspect_Cycle_Period             => True,
+                             Aspect_Cycle_Phase              => True,
                              Aspect_Dimension                => True,
                              Aspect_Dimension_System         => True,
                              Aspect_Favor_Top_Level          => True,
@@ -236,7 +237,6 @@ package Aspects is
                              Aspect_Object_Size              => True,
                              Aspect_Participating_Actions    => True,
                              Aspect_Persistent_BSS           => True,
-                             Aspect_Phase                    => True,
                              Aspect_Predicate                => True,
                              Aspect_Preelaborate_05          => True,
                              Aspect_Pure_05                  => True,
@@ -320,6 +320,7 @@ package Aspects is
                         Aspect_Convention              => Name,
                         Aspect_CPU                     => Expression,
                         Aspect_Cycle_Period            => Expression,
+                        Aspect_Cycle_Phase             => Expression,
                         Aspect_Default_Component_Value => Expression,
                         Aspect_Default_Iterator        => Name,
                         Aspect_Default_Value           => Expression,
@@ -342,7 +343,6 @@ package Aspects is
                         Aspect_Object_Size             => Expression,
                         Aspect_Output                  => Name,
                         Aspect_Participating_Actions   => Name,
-                        Aspect_Phase                   => Expression,
                         Aspect_Post                    => Expression,
                         Aspect_Postcondition           => Expression,
                         Aspect_Pre                     => Expression,
@@ -397,6 +397,7 @@ package Aspects is
      Aspect_Convention                   => Name_Convention,
      Aspect_CPU                          => Name_CPU,
      Aspect_Cycle_Period                 => Name_Cycle_Period,
+     Aspect_Cycle_Phase                  => Name_Cycle_Phase,
      Aspect_Default_Iterator             => Name_Default_Iterator,
      Aspect_Default_Value                => Name_Default_Value,
      Aspect_Default_Component_Value      => Name_Default_Component_Value,
@@ -433,7 +434,6 @@ package Aspects is
      Aspect_Pack                         => Name_Pack,
      Aspect_Participating_Actions        => Name_Participating_Actions,
      Aspect_Persistent_BSS               => Name_Persistent_BSS,
-     Aspect_Phase                        => Name_Phase,
      Aspect_Post                         => Name_Post,
      Aspect_Postcondition                => Name_Postcondition,
      Aspect_Pre                          => Name_Pre,

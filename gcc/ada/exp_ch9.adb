@@ -10639,7 +10639,7 @@ package body Exp_Ch9 is
    --                               := Storage_Count (size_expression);
    --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
    --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
-   --      _Phase             : Ada.Real_Time.Time_Span := Task_Phase; 
+   --      _Cycle_Phase       : Ada.Real_Time.Time_Span := Task_Cycle_Phase; 
    --    end record;
 
    --  The discriminants are present only if the corresponding task type has
@@ -10694,9 +10694,9 @@ package body Exp_Ch9 is
    --  argument that was present in the pragma, and is used to provide the
    --  _Cycle_Period parameter to the call to Create_Task.
 
-   --  The _Phase field is present only if a _Phase pragma appears in the
-   --  task definition. The expression captures the argument that was
-   --  present in the pragma, and is used to provide the _Phase parameter
+   --  The _Cycle_Phase field is present only if a _Cycle_Phase pragma appears
+   --  in the task definition. The expression captures the argument that was
+   --  present in the pragma, and is used to provide the _Cycle_Phase parameter
    --   to the call to Create_Task.
 
    --  When a task is declared, an instance of the task value record is
@@ -11030,7 +11030,7 @@ package body Exp_Ch9 is
                        Get_Relative_Deadline_Pragma (Taskdef))))))));
       end if;
 
-      --  Add the _Cycle_Period component if a Cycle_Period pragma is present
+      --  Add the _Cycle_Period component if a Cycle_Period aspect is present
 
       if Has_Rep_Item (TaskId, Name_Cycle_Period, Check_Parents => False) then
          Append_To (Cdecls,
@@ -11045,13 +11045,13 @@ package body Exp_Ch9 is
                    New_Reference_To (RTE (RE_Time_Span), Loc))));
       end if;
 
-      --  Add the _Phase component if a Phase pragma is present
+      --  Add the _Cycle_Phase component if a Cycle_Phase aspect is present
 
-      if Has_Rep_Item (TaskId, Name_Phase, Check_Parents => False) then
+      if Has_Rep_Item (TaskId, Name_Cycle_Phase, Check_Parents => False) then
          Append_To (Cdecls,
            Make_Component_Declaration (Loc,
              Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uPhase),
+               Make_Defining_Identifier (Loc, Name_uCycle_Phase),
 
              Component_Definition =>
                Make_Component_Definition (Loc,
@@ -13052,17 +13052,17 @@ package body Exp_Ch9 is
                 New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
       end if;
 
-      --  Phase parameter. Set to Time_Span_Zero unless there is a
-      --  Phase pragma, in which case we take the value from the pragma.
+      --  Cycle_Phase parameter. Set to Time_Span_Zero unless there is a
+      --  Cycle_Phase aspect, in which case we take the value from the aspect.
 
-      if Has_Rep_Item (Ttyp, Name_Phase, Check_Parents => False) then
+      if Has_Rep_Item (Ttyp, Name_Cycle_Phase, Check_Parents => False) then
          Append_To (Args,
            Make_Function_Call (Loc,
              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
              Parameter_Associations => New_List (
                Make_Selected_Component (Loc,
                Prefix        => Make_Identifier (Loc, Name_uInit),
-               Selector_Name => Make_Identifier (Loc, Name_uPhase)))));
+               Selector_Name => Make_Identifier (Loc, Name_uCycle_Phase)))));
       else
          Append_To (Args,
             Make_Function_Call (Loc,

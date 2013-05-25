@@ -7942,6 +7942,52 @@ package body Sem_Prag is
             end if;
          end Cycle_Period;
 
+         -----------------
+         -- Cycle_Phase --
+         -----------------
+
+         --  pragma Cycle_Phase (time_span_EXPRESSION);
+
+         when Pragma_Cycle_Phase => Cycle_Phase : declare
+            P   : constant Node_Id := Parent (N);
+            Arg : Node_Id;
+            Ent : Entity_Id;
+
+         begin
+            Ada_2012_Pragma;
+            Check_No_Identifiers;
+            Check_Arg_Count (1);
+
+            --  This pragma is born obsolete, but not the aspect
+
+            if not From_Aspect_Specification (N) then
+               Check_Restriction
+                 (No_Obsolescent_Features, Pragma_Identifier (N));
+            end if;
+
+            if Nkind (P) = N_Task_Definition then
+               Arg := Get_Pragma_Arg (Arg1);
+               Ent := Defining_Identifier (Parent (P));
+
+               --  The expression must be analyzed in the special manner
+               --  described in "Handling of Default and Per-Object
+               --  Expressions" in sem.ads.
+
+               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
+
+               --  Check duplicate pragma before we chain the pragma in the Rep
+               --  Item chain of Ent.
+
+               Check_Duplicate_Pragma (Ent);
+               Record_Rep_Item (Ent, N);
+
+            --  Anything else is incorrect
+
+            else
+               Pragma_Misplaced;
+            end if;
+         end Cycle_Phase;
+
          -----------
          -- Debug --
          -----------
@@ -12164,52 +12210,6 @@ package body Sem_Prag is
             end if;
          end Persistent_BSS;
 
-         -----------
-         -- Phase --
-         -----------
-
-         --  pragma Phase (time_span_EXPRESSION);
-
-         when Pragma_Phase => Phase : declare
-            P   : constant Node_Id := Parent (N);
-            Arg : Node_Id;
-            Ent : Entity_Id;
-
-         begin
-            Ada_2012_Pragma;
-            Check_No_Identifiers;
-            Check_Arg_Count (1);
-
-            --  This pragma is born obsolete, but not the aspect
-
-            if not From_Aspect_Specification (N) then
-               Check_Restriction
-                 (No_Obsolescent_Features, Pragma_Identifier (N));
-            end if;
-
-            if Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-               Ent := Defining_Identifier (Parent (P));
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
-               --  Check duplicate pragma before we chain the pragma in the Rep
-               --  Item chain of Ent.
-
-               Check_Duplicate_Pragma (Ent);
-               Record_Rep_Item (Ent, N);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-         end Phase;
-
          -------------
          -- Polling --
          -------------
@@ -15302,6 +15302,7 @@ package body Sem_Prag is
       Pragma_Convention                     =>  0,
       Pragma_Convention_Identifier          =>  0,
       Pragma_Cycle_Period                   => -1,
+      Pragma_Cycle_Phase                    => -1,
       Pragma_Debug                          => -1,
       Pragma_Debug_Policy                   =>  0,
       Pragma_Detect_Blocking                => -1,
@@ -15384,7 +15385,6 @@ package body Sem_Prag is
       Pragma_Pack                           =>  0,
       Pragma_Page                           => -1,
       Pragma_Passive                        => -1,
-      Pragma_Phase                          => -1,
       Pragma_Preelaborable_Initialization   => -1,
       Pragma_Polling                        => -1,
       Pragma_Persistent_BSS                 =>  0,
