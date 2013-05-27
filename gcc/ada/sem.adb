@@ -201,6 +201,9 @@ package body Sem is
          when N_Conditional_Entry_Call =>
             Analyze_Conditional_Entry_Call (N);
 
+         when N_Cycle_Sequence_Of_Statements =>
+            null;
+
          when N_Delay_Alternative =>
             Analyze_Delay_Alternative (N);
 
@@ -573,6 +576,9 @@ package body Sem is
 
          when N_Task_Body =>
             Analyze_Task_Body (N);
+
+         when N_Task_Body_Statement_Sequence =>
+            null;
 
          when N_Task_Body_Stub =>
             Analyze_Task_Body_Stub (N);

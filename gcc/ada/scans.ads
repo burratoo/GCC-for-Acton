@@ -139,6 +139,7 @@ package Scans is
       Tok_Abort,           -- ABORT        Eterm, Sterm, After_SM
       Tok_Accept,          -- ACCEPT       Eterm, Sterm, After_SM
       Tok_Case,            -- CASE         Eterm, Sterm, After_SM
+      Tok_Cycles,          -- CYCLE        Eterm, Sterm, After_SM
       Tok_Delay,           -- DELAY        Eterm, Sterm, After_SM
       Tok_Else,            -- ELSE         Eterm, Sterm, After_SM
       Tok_Elsif,           -- ELSIF        Eterm, Sterm, After_SM

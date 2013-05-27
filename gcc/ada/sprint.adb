@@ -1445,6 +1445,17 @@ package body Sprint is
          when N_Contract =>
             raise Program_Error;
 
+         when N_Cycle_Sequence_Of_Statements =>
+            Set_Debug_Sloc;
+            Sprint_Indented_List (Statements (Node));
+
+            if Present (Exception_Handlers (Node)) then
+               Write_Indent_Str ("cycles exception");
+               Indent_Begin;
+               Sprint_Node_List (Exception_Handlers (Node));
+               Indent_End;
+            end if;
+
          when N_Decimal_Fixed_Point_Definition =>
             Write_Str_With_Col_Check_Sloc (" delta ");
             Sprint_Node (Delta_Expression (Node));
@@ -3132,11 +3143,18 @@ package body Sprint is
             Write_Str (" is");
             Sprint_Indented_List (Declarations (Node));
             Write_Indent_Str ("begin");
-            Sprint_Node (Handled_Statement_Sequence (Node));
+            Sprint_Node (Task_Body_Statement_Sequence (Node));
             Write_Indent_Str ("end ");
             Sprint_End_Label
               (Handled_Statement_Sequence (Node), Defining_Identifier (Node));
             Write_Char (';');
+
+         when N_Task_Body_Statement_Sequence =>
+            Sprint_Node (Handled_Statement_Sequence (Node));
+            if Present (Cycle_Statement_Sequence (Node)) then
+               Write_Indent_Str ("cycle");
+               Sprint_Node (Cycle_Statement_Sequence (Node));
+            end if;
 
          when N_Task_Body_Stub =>
             Write_Indent_Str_Sloc ("task body ");

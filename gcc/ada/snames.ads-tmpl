@@ -1370,6 +1370,7 @@ package Snames is
    First_Acton_Reserved_Word             : constant Name_Id := N + $;
    Name_Action                           : constant Name_Id := N + $;
    Name_Atomic_Action                    : constant Name_Id := N + $;
+   Name_Cycles                           : constant Name_Id := N + $;
    Last_Acton_Reserved_Word              : constant Name_Id := N + $;
 
    subtype Acton_Reserved_Words is

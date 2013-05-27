@@ -139,6 +139,10 @@ package body Par_SCO is
 
    procedure Traverse_Atomic_Body                  (N : Node_Id);
 
+    procedure Traverse_Cycle_Statement_Sequence
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant);
+
    procedure Traverse_Declarations_Or_Statements
      (L : List_Id;
       D : Dominant_Info := No_Dominant;
@@ -1816,6 +1820,32 @@ package body Par_SCO is
       Traverse_Declarations_Or_Statements (Declarations (N));
    end Traverse_Atomic_Body;
 
+   ----------------------------------------
+   -- Traverse_Cycle_Statement_Sequence --
+   ----------------------------------------
+
+   procedure Traverse_Cycle_Statement_Sequence
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant)
+   is
+      Handler : Node_Id;
+
+   begin
+      if Present (N) and then Comes_From_Source (N) then
+         Traverse_Declarations_Or_Statements (Statements (N), D);
+
+         if Present (Exception_Handlers (N)) then
+            Handler := First (Exception_Handlers (N));
+            while Present (Handler) loop
+               Traverse_Declarations_Or_Statements
+                 (L => Statements (Handler),
+                  D => ('E', Handler));
+               Next (Handler);
+            end loop;
+         end if;
+      end if;
+   end Traverse_Cycle_Statement_Sequence;
+
    ------------------------------------
    -- Traverse_Generic_Instantiation --
    ------------------------------------
@@ -1920,7 +1950,22 @@ package body Par_SCO is
    is
    begin
       Traverse_Declarations_Or_Statements (Declarations (N), D);
-      Traverse_Handled_Statement_Sequence (Handled_Statement_Sequence (N), D);
+      if Nkind (N) = N_Task_Body then
+         declare
+            Body_Statements : constant Node_Id :=
+                                Task_Body_Statement_Sequence (N);
+         begin
+            Traverse_Handled_Statement_Sequence
+              (Handled_Statement_Sequence (N), D);
+            if Present (Cycle_Statement_Sequence (N)) then
+               Traverse_Cycle_Statement_Sequence
+                 (Handled_Statement_Sequence (N), D);
+            end if;
+         end;
+      else
+         Traverse_Handled_Statement_Sequence
+           (Handled_Statement_Sequence (N), D);
+      end if;
    end Traverse_Subprogram_Or_Task_Body;
 
    -------------------------------------

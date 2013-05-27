@@ -65,8 +65,13 @@ package body Ch9 is
    --    task body DEFINING_IDENTIFIER is
    --      DECLARATIVE_PART
    --    begin
-   --      HANDLED_SEQUENCE_OF_STATEMENTS
+   --      TASK_BODY_STATEMENTS
    --    end [task_IDENTIFIER]
+
+   --  TASK_BODY_STATEMENTS ::=
+   --      HANDLED_SEQUENCE_OF_STATEMENTS
+   --    [cycles
+   --      CYCLE_SEQUENCE_OF_STATEMENTS]
 
    --  TASK_BODY_STUB ::=
    --    task body DEFINING_IDENTIFIER is separate;
@@ -117,6 +122,8 @@ package body Ch9 is
          else
             Task_Node := New_Node (N_Task_Body, Task_Sloc);
             Set_Defining_Identifier (Task_Node, Name_Node);
+            Set_Task_Body_Statement_Sequence (Task_Node,
+              New_Node (N_Task_Body_Statement_Sequence, Task_Sloc));
             Parse_Decls_Begin_End (Task_Node);
          end if;
 
@@ -352,6 +359,75 @@ package body Ch9 is
    --------------------
 
    --  Parsed by P_Task (9.1)
+
+   ---------------------------------------
+   -- 9.1  Cycle Sequence Of Statements --
+   ---------------------------------------
+
+   --  CYCLE_SEQUENCE_OF_STATEMENTS ::=
+   --      SEQUENCE_OF_STATEMENTS
+   --    [cycles exception
+   --      EXCEPTION_HANDLER
+   --      {EXCEPTION_HANDLER}]
+
+   --  Error_Recovery : Cannot raise Error_Resync
+
+   function P_Cycle_Sequence_Of_Statements return Node_Id is
+      Cycle_Stmt_Seq_Node : Node_Id;
+      Scan_State          : Saved_Scan_State;
+   begin
+      Cycle_Stmt_Seq_Node :=
+        New_Node (N_Cycle_Sequence_Of_Statements, Token_Ptr);
+
+      --  A special error case to deal with is when the exception keyword
+      --  follows cycles. This likely means the user forgot to include the
+      --  cyclic section.
+
+      if Token = Tok_Exception then
+         Error_Msg_SC
+           ("cycles exception handlers can only follow a cycles part");
+         Discard_Junk_List (Parse_Exception_Handlers);
+      end if;
+
+      --  A cycle sequence of statements is terminated by an end statment
+      --  or another cycles keyword
+
+      Set_Statements
+        (Cycle_Stmt_Seq_Node,
+         P_Sequence_Of_Statements (SS_Cytm_Sreq));
+
+      if Token = Tok_Cycles then
+         Scan; -- past CYCLES
+
+         if Token = Tok_Exception then
+            Scan; -- past EXCEPTION
+            Set_Exception_Handlers
+              (Cycle_Stmt_Seq_Node, Parse_Exception_Handlers);
+         end if;
+      end if;
+
+      --  At this point for valid code we should be at an END keyword. If
+      --  not the user has stuffed up. This could be done in three ways:
+      --  The user could have placed a second cycle section in the task body;
+      --  wrote "cycles" or "execption" instead of "cycles exception"; or has
+      --  just placed junk at the end of the task body. For the first two,
+      --  we can handle them here, for the later it is treated the same as
+      --  for the Handled_Sequence_Of_Statements, i.e. it is not handled here.
+
+      if Token = Tok_When and then
+        (Prev_Token = Tok_Cycles or Prev_Token = Tok_Exception)
+      then
+         Error_Msg_SP
+           ("Cycle exception block should be 'cyles exception'");
+         Set_Exception_Handlers
+           (Cycle_Stmt_Seq_Node, Parse_Exception_Handlers);
+      elsif Prev_Token = Tok_Cycles then
+         Error_Msg_SP ("only one cycles part allowed per task");
+         Discard_Junk_Node (P_Cycle_Sequence_Of_Statements);
+      end if;
+
+      return Cycle_Stmt_Seq_Node;
+   end P_Cycle_Sequence_Of_Statements;
 
    ----------------------------------
    -- 9.4  Protected (also 10.1.3) --

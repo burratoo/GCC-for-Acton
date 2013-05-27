@@ -3662,6 +3662,7 @@ package body Exp_Util is
                N_Component_Definition                   |
                N_Component_List                         |
                N_Constrained_Array_Definition           |
+               N_Cycle_Sequence_Of_Statements           |
                N_Decimal_Fixed_Point_Definition         |
                N_Defining_Character_Literal             |
                N_Defining_Identifier                    |
@@ -3774,6 +3775,7 @@ package body Exp_Util is
                N_Subprogram_Info                        |
                N_Subtype_Indication                     |
                N_Subunit                                |
+               N_Task_Body_Statement_Sequence           |
                N_Task_Definition                        |
                N_Terminate_Alternative                  |
                N_Triggering_Alternative                 |

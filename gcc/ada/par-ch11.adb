@@ -55,7 +55,8 @@ package body Ch11 is
 
    --  Error_Recovery : Cannot raise Error_Resync
 
-   function P_Handled_Sequence_Of_Statements return Node_Id is
+   function P_Handled_Sequence_Of_Statements
+     (In_Task_Body : Boolean := False) return Node_Id is
       Handled_Stmt_Seq_Node  : Node_Id;
       Seq_Is_Hidden_In_SPARK : Boolean;
       Hidden_Region_Start    : Source_Ptr;
@@ -78,13 +79,34 @@ package body Ch11 is
          Seq_Is_Hidden_In_SPARK := False;
       end if;
 
-      Set_Statements
-        (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Sreq));
+      --  For most apperances of HANDLED_SEQUENCE_OF_STATEMENTS, its sequence
+      --  of statements will be terminated by the keywords exception or end.
+      --  The odd case is when HANDLED_SEQUENCE_OF_STATEMENTS forms part of a
+      --  task body where the sequence can also be terminated by the key word
+      --  cycles.
+
+      if In_Task_Body then
+         Set_Statements
+           (Handled_Stmt_Seq_Node,
+            P_Sequence_Of_Statements (SS_Cytm_Extm_Sreq));
+      else
+         Set_Statements
+           (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Sreq));
+      end if;
 
       if Token = Tok_Exception then
          Scan; -- past EXCEPTION
          Set_Exception_Handlers
            (Handled_Stmt_Seq_Node, Parse_Exception_Handlers);
+
+         --  After parsing the exception handler, the parser should be on
+         --  a CYCLES or EXCEPTION keyword. The former is only valid for task
+         --  bodies.
+
+         if not In_Task_Body and then Token = Tok_Cycles then
+            Error_Msg_SC ("cycles section only valid for task bodies.");
+            Discard_Junk_Node (P_Cycle_Sequence_Of_Statements);
+         end if;
       end if;
 
       if Seq_Is_Hidden_In_SPARK then
@@ -161,7 +183,8 @@ package body Ch11 is
       end loop;
 
       TF_Arrow;
-      Set_Statements (Handler_Node, P_Sequence_Of_Statements (SS_Sreq_Whtm));
+      Set_Statements (Handler_Node,
+        P_Sequence_Of_Statements (SS_Cytm_Sreq_Whtm));
       return Handler_Node;
    end P_Exception_Handler;
 
@@ -245,7 +268,7 @@ package body Ch11 is
    --  The caller has scanned out the EXCEPTION keyword
 
    --  Control returns after scanning the last exception handler, presumably
-   --  at the keyword END, but this is not checked in this routine.
+   --  at the keywords END or CYCLES, but this is not checked in this routine.
 
    --  Error recovery: cannot raise Error_Resync
 
@@ -273,7 +296,7 @@ package body Ch11 is
       Handlers_List := New_List;
       P_Pragmas_Opt (Handlers_List);
 
-      if Token = Tok_End then
+      if Token = Tok_End or Token = Tok_Cycles then
          Error_Msg_SC ("must have at least one exception handler!");
 
       else
