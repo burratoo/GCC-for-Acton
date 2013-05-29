@@ -2170,7 +2170,7 @@ package body Ch5 is
 
                TBSS := Task_Body_Statement_Sequence (Parent);
                Set_Handled_Statement_Sequence (TBSS,
-                 P_Handled_Sequence_Of_Statements);
+                 P_Handled_Sequence_Of_Statements (In_Task_Body => True));
 
                --  The cycle section begins on the CYCLE keyword.
 

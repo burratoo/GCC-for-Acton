@@ -2465,7 +2465,7 @@ package body Sem_Ch9 is
       Body_Id : constant Entity_Id := Defining_Identifier (N);
       Decls   : constant List_Id   := Declarations (N);
       TBSS    : constant Node_Id   := Task_Body_Statement_Sequence (N);
-      HSS     : constant Node_Id   := Handled_Statement_Sequence (TBSS);
+      HSS     : Node_Id            := Handled_Statement_Sequence (TBSS);
       Last_E  : Entity_Id;
 
       Spec_Id : Entity_Id;
@@ -2564,9 +2564,11 @@ package body Sem_Ch9 is
       --  At this point the cycle sequence of statements are expanded and
       --  incorporated into the task body's handled sequence of statements.
       --  So in effect the following procedure actually reduces the
-      --  task body statement sequence node.
+      --  task body statement sequence node. Note that the expansion may
+      --  provide a new Handled Statement Sequence
 
-      --  Expand_Task_Body_Sequence_Of_Statements (TBSS);
+      Expand_Task_Body_Sequence_Of_Statements (TBSS);
+      HSS := Handled_Statement_Sequence (TBSS);
 
       --  Now go ahead and complete analysis of the task body
       Analyze (HSS);

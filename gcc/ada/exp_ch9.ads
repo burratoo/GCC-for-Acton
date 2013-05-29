@@ -263,6 +263,11 @@ package Exp_Ch9 is
    --  details of the nature and use of these declarations. The second argument
    --  is the entity for the corresponding protected type declaration.
 
+   procedure Expand_Task_Body_Sequence_Of_Statements (N : Node_Id);
+   --  Expands a task body's sequence of statements to incorporate a task's
+   --  cycle sequence of statements into the task's existing handled sequence
+   --  of statements.
+
    function External_Subprogram (E : Entity_Id) return Entity_Id;
    --  return the external version of a protected operation, which locks
    --  the object before invoking the internal protected subprogram body.

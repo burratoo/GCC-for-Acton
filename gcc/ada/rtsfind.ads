@@ -1865,10 +1865,12 @@ package Rtsfind is
      RE_Entry_Count,                     -- Oakland.Protected_Objects
 
      RE_Activate_Tasks,                  -- Oakland.Tasks
+     RE_Begin_Cycles_Stage,              -- Oakland.Tasks
      RE_Change_Cycle_Period,             -- Oakland.Tasks
      RE_Change_Relative_Deadline,        -- Oakland.Tasks
      RE_Complete_Activation,             -- Oakland.Tasks
-     RE_Complete_Task                    -- Oakland.Tasks
+     RE_Complete_Task,                   -- Oakland.Tasks
+     RE_New_Cycle                        -- Oakland.Tasks
      );
 
    --  The following declarations build a table that is indexed by the RTE
@@ -3171,10 +3173,12 @@ package Rtsfind is
      RE_Entry_Count                      => Oakland_Protected_Objects,
 
      RE_Activate_Tasks                   => Oakland_Tasks,
+     RE_Begin_Cycles_Stage               => Oakland_Tasks,
      RE_Change_Cycle_Period              => Oakland_Tasks,
      RE_Change_Relative_Deadline         => Oakland_Tasks,
      RE_Complete_Activation              => Oakland_Tasks,
-     RE_Complete_Task                    => Oakland_Tasks);
+     RE_Complete_Task                    => Oakland_Tasks,
+     RE_New_Cycle                        => Oakland_Tasks);
 
    --------------------------------
    -- Configurable Run-Time Mode --

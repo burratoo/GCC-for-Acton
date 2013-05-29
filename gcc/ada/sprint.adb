@@ -3146,7 +3146,9 @@ package body Sprint is
             Sprint_Node (Task_Body_Statement_Sequence (Node));
             Write_Indent_Str ("end ");
             Sprint_End_Label
-              (Handled_Statement_Sequence (Node), Defining_Identifier (Node));
+              (Handled_Statement_Sequence
+                (Task_Body_Statement_Sequence (Node)),
+                 Defining_Identifier (Node));
             Write_Char (';');
 
          when N_Task_Body_Statement_Sequence =>

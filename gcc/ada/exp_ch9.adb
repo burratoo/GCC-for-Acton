@@ -58,6 +58,7 @@ with Sem_Eval; use Sem_Eval;
 with Sem_Res;  use Sem_Res;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
+with Sinfo.CN; use Sinfo.CN;
 with Snames;   use Snames;
 with Stand;    use Stand;
 with Stringt;  use Stringt;
@@ -11756,6 +11757,90 @@ package body Exp_Ch9 is
          end if;
       end if;
    end Expand_Protected_Body_Declarations;
+
+   ---------------------------------------------
+   -- Expand_Task_Body_Sequence_Of_Statements --
+   ---------------------------------------------
+
+   --  Take a task body:
+
+   --    task body tname is
+   --       <declarations>
+   --    begin
+   --       <handled sequence of statements>
+   --    cycles
+   --       <cycle sequence of statements>
+   --    end tname;
+
+   --  This expansion routine converts the body's statements as follows:
+
+   --    task body tname is
+   --       <declarations>
+   --    begin
+   --       declare
+   --       begin
+   --          <handled sequence of statements>
+   --       end;
+
+   --       Begin_Cyclic_Stage;
+
+   --       loop
+   --          declare
+   --          begin
+   --             New_Cycle;
+   --             <sequence of statements from cycle section>
+   --          exception
+   --              <exception handlers from cycle section>
+   --          end;
+   --       end loop;
+   --    end tname;
+
+   --  If a task has no cycle section then no expansion needs to be carried
+   --  out.
+
+   procedure Expand_Task_Body_Sequence_Of_Statements (N : Node_Id) is
+      HSS   : constant Node_Id    := Handled_Statement_Sequence (N);
+      Loc   : constant Source_Ptr := Sloc (N);
+
+      CSS   : Node_Id    := Cycle_Statement_Sequence (N);
+      Stmts : List_Id;
+   begin
+
+      --  If the task has no cycle section, then there is nothing to be done.
+
+      if not Present (CSS) then
+         return;
+      end if;
+
+      Change_Cycle_To_Handle_Statement_Sequence (CSS);
+
+      --  Insert New_Cycle call before the cycle sequence of statments
+
+      Prepend_To
+        (Statements (CSS), Build_Runtime_Call (Loc, RE_New_Cycle));
+
+      --  Build new handled sequence of statements for the task and rewrite
+      --  the N_Task_Body_Statement_Sequence node. Note that
+      --  Make_Loop_Statement is used instead of Make_Implicit_Loop_Statement
+      --  as it is clear to the user that the cycle section uses a loop.
+
+      Stmts :=
+        New_List (
+          Make_Block_Statement (Loc,
+            Handled_Statement_Sequence => HSS),
+          Build_Runtime_Call (Loc, (RE_Begin_Cycles_Stage)),
+          Make_Loop_Statement (Loc,
+            Statements => New_List (
+              Make_Block_Statement (Loc,
+                Handled_Statement_Sequence => CSS)),
+            End_Label  => Empty));
+
+      Set_Handled_Statement_Sequence (N,
+        Make_Handled_Sequence_Of_Statements (Loc, Statements => Stmts));
+
+      Set_Cycle_Statement_Sequence (N, Empty);
+
+   end Expand_Task_Body_Sequence_Of_Statements;
 
    -------------------------
    -- External_Subprogram --
