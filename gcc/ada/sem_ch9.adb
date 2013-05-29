@@ -46,6 +46,7 @@ with Sem_Ch3;  use Sem_Ch3;
 with Sem_Ch5;  use Sem_Ch5;
 with Sem_Ch6;  use Sem_Ch6;
 with Sem_Ch8;  use Sem_Ch8;
+with Sem_Ch11; use Sem_Ch11;
 with Sem_Ch13; use Sem_Ch13;
 with Sem_Eval; use Sem_Eval;
 with Sem_Res;  use Sem_Res;
@@ -2463,7 +2464,8 @@ package body Sem_Ch9 is
    procedure Analyze_Task_Body (N : Node_Id) is
       Body_Id : constant Entity_Id := Defining_Identifier (N);
       Decls   : constant List_Id   := Declarations (N);
-      HSS     : constant Node_Id   := Handled_Statement_Sequence (N);
+      TBSS    : constant Node_Id   := Task_Body_Statement_Sequence (N);
+      HSS     : constant Node_Id   := Handled_Statement_Sequence (TBSS);
       Last_E  : Entity_Id;
 
       Spec_Id : Entity_Id;
@@ -2559,8 +2561,14 @@ package body Sem_Ch9 is
          end;
       end if;
 
-      --  Now go ahead and complete analysis of the task body
+      --  At this point the cycle sequence of statements are expanded and
+      --  incorporated into the task body's handled sequence of statements.
+      --  So in effect the following procedure actually reduces the
+      --  task body statement sequence node.
 
+      --  Expand_Task_Body_Sequence_Of_Statements (TBSS);
+
+      --  Now go ahead and complete analysis of the task body
       Analyze (HSS);
       Check_Completion (Body_Id);
       Check_References (Body_Id);
@@ -2585,6 +2593,8 @@ package body Sem_Ch9 is
          end loop;
       end;
 
+      --  Remember the end label is stored in N_Handled_Sequence_Of_Statements
+      --  regardless of where the task body has a cycles section.
       Process_End_Label (HSS, 't', Ref_Id);
       End_Scope;
    end Analyze_Task_Body;

@@ -10529,6 +10529,8 @@ package body Exp_Ch9 is
    --  discriminant references inside the body (see Exp_Ch2.Expand_Name).
 
    procedure Expand_N_Task_Body (N : Node_Id) is
+      TBSS  : constant Node_Id    := Task_Body_Statement_Sequence (N);
+      HSS   : constant Node_Id    := Handled_Statement_Sequence (TBSS);
       Loc   : constant Source_Ptr := Sloc (N);
       Ttyp  : constant Entity_Id  := Corresponding_Spec (N);
       Call  : Node_Id;
@@ -10554,14 +10556,14 @@ package body Exp_Ch9 is
       Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
 
       Insert_Before
-        (First_Real_Statement (Handled_Statement_Sequence (N)), Call);
+        (First_Real_Statement (HSS), Call);
       Analyze (Call);
 
       New_N :=
         Make_Subprogram_Body (Loc,
           Specification              => Build_Task_Proc_Specification (Ttyp),
           Declarations               => Declarations (N),
-          Handled_Statement_Sequence => Handled_Statement_Sequence (N));
+          Handled_Statement_Sequence => HSS);
 
       --  If the task contains generic instantiations, cleanup actions are
       --  delayed until after instantiation. Transfer the activation chain to
