@@ -1124,8 +1124,6 @@ begin
            Pragma_Component_Alignment            |
            Pragma_Controlled                     |
            Pragma_Convention                     |
-           Pragma_Cycle_Period                   |
-           Pragma_Cycle_Phase                    |
            Pragma_Debug_Policy                   |
            Pragma_Detect_Blocking                |
            Pragma_Default_Storage_Pool           |

@@ -64,7 +64,6 @@ package body Exp_Prag is
    procedure Expand_Pragma_Abort_Defer             (N : Node_Id);
    procedure Expand_Pragma_Check                   (N : Node_Id);
    procedure Expand_Pragma_Common_Object           (N : Node_Id);
-   procedure Expand_Pragma_Cycle_Period            (N : Node_Id);
    procedure Expand_Pragma_Import_Or_Interface     (N : Node_Id);
    procedure Expand_Pragma_Import_Export_Exception (N : Node_Id);
    procedure Expand_Pragma_Inspection_Point        (N : Node_Id);
@@ -171,9 +170,6 @@ package body Exp_Prag is
 
             when Pragma_Common_Object =>
                Expand_Pragma_Common_Object (N);
-
-            when Pragma_Cycle_Period =>
-               Expand_Pragma_Cycle_Period (N);
 
             when Pragma_Export_Exception =>
                Expand_Pragma_Import_Export_Exception (N);
@@ -514,31 +510,6 @@ package body Exp_Prag is
                Expression => New_Copy_Tree (Psect)))));
 
    end Expand_Pragma_Common_Object;
-
-   --------------------------------
-   -- Expand_Pragma_Cycle_Period --
-   --------------------------------
-
-   procedure Expand_Pragma_Cycle_Period (N : Node_Id) is
-      P    : constant Node_Id    := Parent (N);
-      Loc  : constant Source_Ptr := Sloc (N);
-
-   begin
-      --  Expand the pragma only in the case of the main subprogram. For tasks
-      --  the expansion is done in exp_ch9. Generates a call to
-      --  Oakland.Tasks.Change_Cycle_Period.
-
-      if Nkind (P) = N_Subprogram_Body then
-         Rewrite
-           (N,
-            Make_Procedure_Call_Statement (Loc,
-              Name => New_Reference_To
-                        (RTE (RE_Change_Cycle_Period), Loc),
-              Parameter_Associations => New_List (Arg1 (N))));
-
-         Analyze (N);
-      end if;
-   end Expand_Pragma_Cycle_Period;
 
    ---------------------------------------
    -- Expand_Pragma_Import_Or_Interface --

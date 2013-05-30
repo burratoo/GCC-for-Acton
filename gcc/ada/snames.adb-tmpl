@@ -224,10 +224,6 @@ package body Snames is
          return Pragma_AST_Entry;
       elsif N = Name_CPU then
          return Pragma_CPU;
-      elsif N = Name_Cycle_Period then
-         return Pragma_Cycle_Period;
-      elsif N = Name_Cycle_Phase then
-         return Pragma_Cycle_Phase;
       elsif N = Name_Dispatching_Domain then
          return Pragma_Dispatching_Domain;
       elsif N = Name_Fast_Math then
