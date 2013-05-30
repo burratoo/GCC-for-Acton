@@ -1,6 +1,5 @@
 /* Code sinking for trees
-   Copyright (C) 2001, 2002, 2003, 2004, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 2001-2013 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org>
 
 This file is part of GCC.
@@ -212,7 +211,7 @@ select_best_block (basic_block early_bb,
     {
       /* If we've moved into a lower loop nest, then that becomes
 	 our best block.  */
-      if (temp_bb->loop_depth < best_bb->loop_depth)
+      if (bb_loop_depth (temp_bb) < bb_loop_depth (best_bb))
 	best_bb = temp_bb;
 
       /* Walk up the dominator tree, hopefully we'll find a shallower
@@ -223,7 +222,7 @@ select_best_block (basic_block early_bb,
   /* If we found a shallower loop nest, then we always consider that
      a win.  This will always give us the most control dependent block
      within that loop nest.  */
-  if (best_bb->loop_depth < early_bb->loop_depth)
+  if (bb_loop_depth (best_bb) < bb_loop_depth (early_bb))
     return best_bb;
 
   /* Get the sinking threshold.  If the statement to be moved has memory
@@ -239,7 +238,7 @@ select_best_block (basic_block early_bb,
 
   /* If BEST_BB is at the same nesting level, then require it to have
      significantly lower execution frequency to avoid gratutious movement.  */
-  if (best_bb->loop_depth == early_bb->loop_depth
+  if (bb_loop_depth (best_bb) == bb_loop_depth (early_bb)
       && best_bb->frequency < (early_bb->frequency * threshold / 100.0))
     return best_bb;
 
@@ -332,11 +331,19 @@ statement_sink_location (gimple stmt, basic_block frombb,
 	  gimple use_stmt = USE_STMT (use_p);
 
 	  /* A killing definition is not a use.  */
-	  if (gimple_assign_single_p (use_stmt)
-	      && gimple_vdef (use_stmt)
-	      && operand_equal_p (gimple_assign_lhs (stmt),
-				  gimple_assign_lhs (use_stmt), 0))
-	    continue;
+	  if ((gimple_has_lhs (use_stmt)
+	       && operand_equal_p (gimple_assign_lhs (stmt),
+				   gimple_get_lhs (use_stmt), 0))
+	      || stmt_kills_ref_p (use_stmt, gimple_assign_lhs (stmt)))
+	    {
+	      /* If use_stmt is or might be a nop assignment then USE_STMT
+	         acts as a use as well as definition.  */
+	      if (stmt != use_stmt
+		  && ref_maybe_used_by_stmt_p (use_stmt,
+					       gimple_assign_lhs (stmt)))
+		return false;
+	      continue;
+	    }
 
 	  if (gimple_code (use_stmt) != GIMPLE_PHI)
 	    return false;
@@ -584,6 +591,7 @@ struct gimple_opt_pass pass_sink_code =
  {
   GIMPLE_PASS,
   "sink",				/* name */
+  OPTGROUP_NONE,                        /* optinfo_flags */
   gate_sink,				/* gate */
   do_sink,				/* execute */
   NULL,					/* sub */
@@ -597,7 +605,6 @@ struct gimple_opt_pass pass_sink_code =
   0,					/* todo_flags_start */
   TODO_update_ssa
     | TODO_verify_ssa
-    | TODO_verify_flow
-    | TODO_ggc_collect			/* todo_flags_finish */
+    | TODO_verify_flow			/* todo_flags_finish */
  }
 };

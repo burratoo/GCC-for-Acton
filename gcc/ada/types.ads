@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -102,8 +102,8 @@ package Types is
    --  Graphic characters, as defined in ARM
 
    subtype Line_Terminator is Character range ASCII.LF .. ASCII.CR;
-   --  Line terminator characters (LF, VT, FF, CR). For further details,
-   --  see the extensive discussion of line termination in the Sinput spec.
+   --  Line terminator characters (LF, VT, FF, CR). For further details, see
+   --  the extensive discussion of line termination in the Sinput spec.
 
    subtype Upper_Half_Character is
      Character range Character'Val (16#80#) .. Character'Val (16#FF#);
@@ -257,12 +257,12 @@ package Types is
    --  possible values for each of the above types is disjoint so that this
    --  distinction is possible.
 
-   type Union_Id is new Int;
-   --  The type in the tree for a union of possible ID values
-
    --  Note: it is also helpful for debugging purposes to make these ranges
    --  distinct. If a bug leads to misidentification of a value, then it will
    --  typically result in an out of range value and a Constraint_Error.
+
+   type Union_Id is new Int;
+   --  The type in the tree for a union of possible ID values
 
    List_Low_Bound : constant := -100_000_000;
    --  The List_Id values are subscripts into an array of list headers which
@@ -577,7 +577,7 @@ package Types is
    --  the source file (we assume that the host system has the concept of a
    --  file time stamp which is modified when a file is modified). These
    --  time stamps are used to ensure consistency of the set of units that
-   --  constitutes a library. Time stamps are 12 character strings with
+   --  constitutes a library. Time stamps are 14-character strings with
    --  with the following format:
 
    --     YYYYMMDDHHMMSS
@@ -646,9 +646,9 @@ package Types is
       TS      : out Time_Stamp_Type);
    --  Given the components of a time stamp, initialize the value
 
-   -----------------------------------------------
-   -- Types used for Pragma Suppress Management --
-   -----------------------------------------------
+   -------------------------------------
+   -- Types used for Check Management --
+   -------------------------------------
 
    type Check_Id is new Nat;
    --  Type used to represent a check id
@@ -666,15 +666,16 @@ package Types is
    Index_Check            : constant :=  8;
    Length_Check           : constant :=  9;
    Overflow_Check         : constant := 10;
-   Range_Check            : constant := 11;
-   Storage_Check          : constant := 12;
-   Tag_Check              : constant := 13;
-   Validity_Check         : constant := 14;
+   Predicate_Check        : constant := 11;
+   Range_Check            : constant := 12;
+   Storage_Check          : constant := 13;
+   Tag_Check              : constant := 14;
+   Validity_Check         : constant := 15;
    --  Values used to represent individual predefined checks (including the
    --  setting of Atomic_Synchronization, which is implemented internally using
-   --  a "check" whose name is Atomic_Synchronization.
+   --  a "check" whose name is Atomic_Synchronization).
 
-   All_Checks : constant := 15;
+   All_Checks : constant := 16;
    --  Value used to represent All_Checks value
 
    subtype Predefined_Check_Id is Check_Id range 1 .. All_Checks;
@@ -702,6 +703,59 @@ package Types is
    --    3.  Add a new function to Checks to handle the new check test
    --    4.  Add a new Do_xxx_Check flag to Sinfo (if required)
    --    5.  Add appropriate checks for the new test
+
+   --  The following provides precise details on the mode used to generate
+   --  code for intermediate operations in expressions for signed integer
+   --  arithmetic (and how to generate overflow checks if enabled). Note
+   --  that this only affects handling of intermediate results. The final
+   --  result must always fit within the target range, and if overflow
+   --  checking is enabled, the check on the final result is against this
+   --  target range.
+
+   type Overflow_Mode_Type is (
+      Not_Set,
+      --  Dummy value used during initialization process to show that the
+      --  corresponding value has not yet been initialized.
+
+      Strict,
+      --  Operations are done in the base type of the subexpression. If
+      --  overflow checks are enabled, then the check is against the range
+      --  of this base type.
+
+      Minimized,
+      --  Where appropriate, intermediate arithmetic operations are performed
+      --  with an extended range, using Long_Long_Integer if necessary. If
+      --  overflow checking is enabled, then the check is against the range
+      --  of Long_Long_Integer.
+
+      Eliminated);
+      --  In this mode arbitrary precision arithmetic is used as needed to
+      --  ensure that it is impossible for intermediate arithmetic to cause an
+      --  overflow. In this mode, intermediate expressions are not affected by
+      --  the overflow checking mode, since overflows are eliminated.
+
+   subtype Minimized_Or_Eliminated is
+     Overflow_Mode_Type range Minimized .. Eliminated;
+   --  Define subtype so that clients don't need to know ordering. Note that
+   --  Overflow_Mode_Type is not marked as an ordered enumeration type.
+
+   --  The following structure captures the state of check suppression or
+   --  activation at a particular point in the program execution.
+
+   type Suppress_Record is record
+      Suppress : Suppress_Array;
+      --  Indicates suppression status of each possible check
+
+      Overflow_Mode_General : Overflow_Mode_Type;
+      --  This field indicates the mode for handling code generation and
+      --  overflow checking (if enabled) for intermediate expression values.
+      --  This applies to general expressions outside assertions.
+
+      Overflow_Mode_Assertions : Overflow_Mode_Type;
+      --  This field indicates the mode for handling code generation and
+      --  overflow checking (if enabled) for intermediate expression values.
+      --  This applies to any expression occuring inside assertions.
+   end record;
 
    -----------------------------------
    -- Global Exception Declarations --

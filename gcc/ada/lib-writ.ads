@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -195,6 +195,10 @@ package Lib.Writ is
    --
    --         DB   Detect_Blocking pragma is in effect for all units in this
    --              file.
+   --
+   --         Ex   A valid Partition_Elaboration_Policy pragma applies to all
+   --              the units in this file, where x is the first character
+   --              (upper case) of the policy name (e.g. 'C' for Concurrent).
    --
    --         FD   Configuration pragmas apply to all the units in this file
    --              specifying a possibly non-standard floating point format
@@ -797,21 +801,23 @@ package Lib.Writ is
    --------------------------
 
    --  The cross-reference data follows the dependency lines. See the spec of
-   --  Lib.Xref for details on the format of this data.
+   --  Lib.Xref in file lib-xref.ads for details on the format of this data.
 
    ---------------------------------
    -- Source Coverage Obligations --
    ---------------------------------
 
    --  The Source Coverage Obligation (SCO) information follows the cross-
-   --  reference data. See the spec of Par_SCO for full details of the format.
+   --  reference data. See the spec of Par_SCO in file par_sco.ads for full
+   --  details of the format.
 
-   ----------------------
-   -- Alfa Information --
-   ----------------------
+   ---------------------------------------
+   -- SPARK Cross-Reference Information --
+   ---------------------------------------
 
-   --  The Alfa information follows the SCO information. See the spec of Alfa
-   --  for full details of the format.
+   --  The SPARK cross-reference information follows the SCO information. See
+   --  the spec of SPARK_Xrefs in file spark_xrefs.ads for full details of the
+   --  format.
 
    ----------------------
    -- Global Variables --

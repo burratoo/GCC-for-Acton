@@ -1,4 +1,4 @@
-/* Copyright (C) 2009 Free Software Foundation, Inc.
+/* Copyright (C) 2009-2013 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -44,9 +44,21 @@ __lzcnt32 (unsigned int __X)
   return __builtin_clz (__X);
 }
 
+extern __inline unsigned int __attribute__((__gnu_inline__, __always_inline__, __artificial__))
+_lzcnt_u32 (unsigned int __X)
+{
+  return __builtin_clz (__X);
+}
+
 #ifdef __x86_64__
 extern __inline unsigned long long __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 __lzcnt64 (unsigned long long __X)
+{
+  return __builtin_clzll (__X);
+}
+
+extern __inline unsigned long long __attribute__((__gnu_inline__, __always_inline__, __artificial__))
+_lzcnt_u64 (unsigned long long __X)
 {
   return __builtin_clzll (__X);
 }

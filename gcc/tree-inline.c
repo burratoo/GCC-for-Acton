@@ -1,6 +1,5 @@
 /* Tree inlining.
-   Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
-   2012 Free Software Foundation, Inc.
+   Copyright (C) 2001-2013 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva <aoliva@redhat.com>
 
 This file is part of GCC.
@@ -48,6 +47,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "value-prof.h"
 #include "tree-pass.h"
 #include "target.h"
+#include "cfgloop.h"
 
 #include "rtl.h"	/* FIXME: For asm_str_count.  */
 
@@ -115,9 +115,6 @@ eni_weights eni_time_weights;
 static tree declare_return_variable (copy_body_data *, tree, tree, basic_block);
 static void remap_block (tree *, copy_body_data *);
 static void copy_bind_expr (tree *, int *, copy_body_data *);
-static tree mark_local_for_remap_r (tree *, int *, void *);
-static void unsave_expr_1 (tree);
-static tree unsave_r (tree *, int *, void *);
 static void declare_inline_vars (tree, tree);
 static void remap_save_expr (tree *, void *, int *);
 static void prepend_lexical_block (tree current_block, tree new_block);
@@ -176,7 +173,7 @@ static int processing_debug_stmt = 0;
 static tree
 remap_ssa_name (tree name, copy_body_data *id)
 {
-  tree new_tree;
+  tree new_tree, var;
   tree *n;
 
   gcc_assert (TREE_CODE (name) == SSA_NAME);
@@ -187,8 +184,8 @@ remap_ssa_name (tree name, copy_body_data *id)
 
   if (processing_debug_stmt)
     {
-      if (TREE_CODE (SSA_NAME_VAR (name)) == PARM_DECL
-	  && SSA_NAME_IS_DEFAULT_DEF (name)
+      if (SSA_NAME_IS_DEFAULT_DEF (name)
+	  && TREE_CODE (SSA_NAME_VAR (name)) == PARM_DECL
 	  && id->entry_bb == NULL
 	  && single_succ_p (ENTRY_BLOCK_PTR))
 	{
@@ -218,26 +215,23 @@ remap_ssa_name (tree name, copy_body_data *id)
       return name;
     }
 
-  /* Do not set DEF_STMT yet as statement is not copied yet. We do that
-     in copy_bb.  */
-  new_tree = remap_decl (SSA_NAME_VAR (name), id);
-
-  /* We might've substituted constant or another SSA_NAME for
-     the variable.
-
-     Replace the SSA name representing RESULT_DECL by variable during
-     inlining:  this saves us from need to introduce PHI node in a case
-     return value is just partly initialized.  */
-  if ((TREE_CODE (new_tree) == VAR_DECL || TREE_CODE (new_tree) == PARM_DECL)
-      && (TREE_CODE (SSA_NAME_VAR (name)) != RESULT_DECL
-	  || !id->transform_return_to_modify))
+  /* Remap anonymous SSA names or SSA names of anonymous decls.  */
+  var = SSA_NAME_VAR (name);
+  if (!var
+      || (!SSA_NAME_IS_DEFAULT_DEF (name)
+	  && TREE_CODE (var) == VAR_DECL
+	  && !VAR_DECL_IS_VIRTUAL_OPERAND (var)
+	  && DECL_ARTIFICIAL (var)
+	  && DECL_IGNORED_P (var)
+	  && !DECL_NAME (var)))
     {
       struct ptr_info_def *pi;
-      new_tree = make_ssa_name (new_tree, NULL);
+      new_tree = make_ssa_name (remap_type (TREE_TYPE (name), id), NULL);
+      if (!var && SSA_NAME_IDENTIFIER (name))
+	SET_SSA_NAME_VAR_OR_IDENTIFIER (new_tree, SSA_NAME_IDENTIFIER (name));
       insert_decl_map (id, name, new_tree);
       SSA_NAME_OCCURS_IN_ABNORMAL_PHI (new_tree)
 	= SSA_NAME_OCCURS_IN_ABNORMAL_PHI (name);
-      TREE_TYPE (new_tree) = TREE_TYPE (SSA_NAME_VAR (new_tree));
       /* At least IPA points-to info can be directly transferred.  */
       if (id->src_cfun->gimple_df
 	  && id->src_cfun->gimple_df->ipa_pta
@@ -247,7 +241,39 @@ remap_ssa_name (tree name, copy_body_data *id)
 	  struct ptr_info_def *new_pi = get_ptr_info (new_tree);
 	  new_pi->pt = pi->pt;
 	}
-      if (gimple_nop_p (SSA_NAME_DEF_STMT (name)))
+      return new_tree;
+    }
+
+  /* Do not set DEF_STMT yet as statement is not copied yet. We do that
+     in copy_bb.  */
+  new_tree = remap_decl (var, id);
+
+  /* We might've substituted constant or another SSA_NAME for
+     the variable.
+
+     Replace the SSA name representing RESULT_DECL by variable during
+     inlining:  this saves us from need to introduce PHI node in a case
+     return value is just partly initialized.  */
+  if ((TREE_CODE (new_tree) == VAR_DECL || TREE_CODE (new_tree) == PARM_DECL)
+      && (!SSA_NAME_VAR (name)
+	  || TREE_CODE (SSA_NAME_VAR (name)) != RESULT_DECL
+	  || !id->transform_return_to_modify))
+    {
+      struct ptr_info_def *pi;
+      new_tree = make_ssa_name (new_tree, NULL);
+      insert_decl_map (id, name, new_tree);
+      SSA_NAME_OCCURS_IN_ABNORMAL_PHI (new_tree)
+	= SSA_NAME_OCCURS_IN_ABNORMAL_PHI (name);
+      /* At least IPA points-to info can be directly transferred.  */
+      if (id->src_cfun->gimple_df
+	  && id->src_cfun->gimple_df->ipa_pta
+	  && (pi = SSA_NAME_PTR_INFO (name))
+	  && !pi->pt.anything)
+	{
+	  struct ptr_info_def *new_pi = get_ptr_info (new_tree);
+	  new_pi->pt = pi->pt;
+	}
+      if (SSA_NAME_IS_DEFAULT_DEF (name))
 	{
 	  /* By inlining function having uninitialized variable, we might
 	     extend the lifetime (variable might get reused).  This cause
@@ -259,9 +285,9 @@ remap_ssa_name (tree name, copy_body_data *id)
 	     this for all BBs that are not inside strongly connected
 	     regions of the CFG, but this is expensive to test.  */
 	  if (id->entry_bb
-	      && is_gimple_reg (SSA_NAME_VAR (name))
 	      && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (name)
-	      && TREE_CODE (SSA_NAME_VAR (name)) != PARM_DECL
+	      && (!SSA_NAME_VAR (name)
+		  || TREE_CODE (SSA_NAME_VAR (name)) != PARM_DECL)
 	      && (id->entry_bb != EDGE_SUCC (ENTRY_BLOCK_PTR, 0)->dest
 		  || EDGE_COUNT (id->entry_bb->preds) != 1))
 	    {
@@ -276,9 +302,7 @@ remap_ssa_name (tree name, copy_body_data *id)
 	  else
 	    {
 	      SSA_NAME_DEF_STMT (new_tree) = gimple_build_nop ();
-	      if (gimple_default_def (id->src_cfun, SSA_NAME_VAR (name))
-		  == name)
-	        set_default_def (SSA_NAME_VAR (new_tree), new_tree);
+	      set_ssa_default_def (cfun, SSA_NAME_VAR (new_tree), new_tree);
 	    }
 	}
     }
@@ -338,17 +362,6 @@ remap_decl (tree decl, copy_body_data *id)
 	    walk_tree (&DECL_QUALIFIER (t), copy_tree_body_r, id, NULL);
 	}
 
-      if ((TREE_CODE (t) == VAR_DECL
-	   || TREE_CODE (t) == RESULT_DECL
-	   || TREE_CODE (t) == PARM_DECL)
-	  && id->src_fn && DECL_STRUCT_FUNCTION (id->src_fn)
-	  && gimple_referenced_vars (DECL_STRUCT_FUNCTION (id->src_fn))
-	  /* We don't want to mark as referenced VAR_DECLs that were
-	     not marked as such in the src function.  */
-	  && (TREE_CODE (decl) != VAR_DECL
-	      || referenced_var_lookup (DECL_STRUCT_FUNCTION (id->src_fn),
-					DECL_UID (decl))))
-	add_referenced_var (t);
       return t;
     }
 
@@ -501,26 +514,6 @@ remap_type (tree type, copy_body_data *id)
   return tmp;
 }
 
-/* Return previously remapped type of TYPE in ID.  Return NULL if TYPE
-   is NULL or TYPE has not been remapped before.  */
-
-static tree
-remapped_type (tree type, copy_body_data *id)
-{
-  tree *node;
-
-  if (type == NULL)
-    return type;
-
-  /* See if we have remapped this type.  */
-  node = (tree *) pointer_map_contains (id->decl_map, type);
-  if (node)
-    return *node;
-  else
-    return NULL;
-}
-
-  /* The type only needs remapping if it's variably modified.  */
 /* Decide if DECL can be put into BLOCK_NONLOCAL_VARs.  */
 
 static bool
@@ -536,30 +529,12 @@ can_be_nonlocal (tree decl, copy_body_data *id)
       && !auto_var_in_fn_p (decl, id->src_fn))
     return true;
 
-  /* At the moment dwarf2out can handle only these types of nodes.  We
-     can support more later.  */
-  if (TREE_CODE (decl) != VAR_DECL && TREE_CODE (decl) != PARM_DECL)
-    return false;
-
-  /* We must use global type.  We call remapped_type instead of
-     remap_type since we don't want to remap this type here if it
-     hasn't been remapped before.  */
-  if (TREE_TYPE (decl) != remapped_type (TREE_TYPE (decl), id))
-    return false;
-
-  /* Wihtout SSA we can't tell if variable is used.  */
-  if (!gimple_in_ssa_p (cfun))
-    return false;
-
-  /* Live variables must be copied so we can attach DECL_RTL.  */
-  if (var_ann (decl))
-    return false;
-
-  return true;
+  return false;
 }
 
 static tree
-remap_decls (tree decls, VEC(tree,gc) **nonlocalized_list, copy_body_data *id)
+remap_decls (tree decls, vec<tree, va_gc> **nonlocalized_list,
+	     copy_body_data *id)
 {
   tree old_var;
   tree new_decls = NULL_TREE;
@@ -571,14 +546,15 @@ remap_decls (tree decls, VEC(tree,gc) **nonlocalized_list, copy_body_data *id)
 
       if (can_be_nonlocal (old_var, id))
 	{
+	  /* We need to add this variable to the local decls as otherwise
+	     nothing else will do so.  */
 	  if (TREE_CODE (old_var) == VAR_DECL
-	      && ! DECL_EXTERNAL (old_var)
-	      && (var_ann (old_var) || !gimple_in_ssa_p (cfun)))
+	      && ! DECL_EXTERNAL (old_var))
 	    add_local_decl (cfun, old_var);
 	  if ((!optimize || debug_info_level > DINFO_LEVEL_TERSE)
 	      && !DECL_IGNORED_P (old_var)
 	      && nonlocalized_list)
-	    VEC_safe_push (tree, gc, *nonlocalized_list, old_var);
+	    vec_safe_push (*nonlocalized_list, old_var);
 	  continue;
 	}
 
@@ -596,7 +572,7 @@ remap_decls (tree decls, VEC(tree,gc) **nonlocalized_list, copy_body_data *id)
 	  if ((!optimize || debug_info_level > DINFO_LEVEL_TERSE)
 	      && !DECL_IGNORED_P (old_var)
 	      && nonlocalized_list)
-	    VEC_safe_push (tree, gc, *nonlocalized_list, old_var);
+	    vec_safe_push (*nonlocalized_list, old_var);
 	}
       else
 	{
@@ -638,7 +614,7 @@ remap_block (tree *block, copy_body_data *id)
   BLOCK_ABSTRACT_ORIGIN (new_block) = old_block;
   BLOCK_SOURCE_LOCATION (new_block) = BLOCK_SOURCE_LOCATION (old_block);
   BLOCK_NONLOCALIZED_VARS (new_block)
-    = VEC_copy (tree, gc, BLOCK_NONLOCALIZED_VARS (old_block));
+    = vec_safe_copy (BLOCK_NONLOCALIZED_VARS (old_block));
   *block = new_block;
 
   /* Remap its variables.  */
@@ -671,6 +647,16 @@ remap_blocks (tree block, copy_body_data *id)
      not swap order when producing a copy.  */
   BLOCK_SUBBLOCKS (new_tree) = blocks_nreverse (BLOCK_SUBBLOCKS (new_tree));
   return new_tree;
+}
+
+/* Remap the block tree rooted at BLOCK to nothing.  */
+static void
+remap_blocks_to_null (tree block, copy_body_data *id)
+{
+  tree t;
+  insert_decl_map (id, block, NULL_TREE);
+  for (t = BLOCK_SUBBLOCKS (block); t ; t = BLOCK_CHAIN (t))
+    remap_blocks_to_null (t, id);
 }
 
 static void
@@ -852,10 +838,6 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
       /* Otherwise, just copy the node.  Note that copy_tree_r already
 	 knows not to copy VAR_DECLs, etc., so this is safe.  */
 
-      /* We should never have TREE_BLOCK set on non-statements.  */
-      if (EXPR_P (*tp))
-	gcc_assert (!TREE_BLOCK (*tp));
-
       if (TREE_CODE (*tp) == MEM_REF)
 	{
 	  tree ptr = TREE_OPERAND (*tp, 0);
@@ -870,6 +852,7 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
 			     ptr, TREE_OPERAND (*tp, 1));
 	  TREE_THIS_NOTRAP (*tp) = TREE_THIS_NOTRAP (old);
 	  TREE_THIS_VOLATILE (*tp) = TREE_THIS_VOLATILE (old);
+	  TREE_SIDE_EFFECTS (*tp) = TREE_SIDE_EFFECTS (old);
 	  TREE_NO_WARNING (*tp) = TREE_NO_WARNING (old);
 	  *walk_subtrees = 0;
 	  return NULL;
@@ -882,14 +865,6 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
       if (TREE_CODE (*tp) != OMP_CLAUSE)
 	TREE_TYPE (*tp) = remap_type (TREE_TYPE (*tp), id);
 
-      /* Global variables we haven't seen yet need to go into referenced
-	 vars.  If not referenced from types only.  */
-      if (gimple_referenced_vars (cfun)
-	  && TREE_CODE (*tp) == VAR_DECL && !is_global_var (*tp)
-	  && id->remapping_type_depth == 0
-	  && !processing_debug_stmt)
-	add_referenced_var (*tp);
-
       if (TREE_CODE (*tp) == TARGET_EXPR && TREE_OPERAND (*tp, 3))
 	{
 	  /* The copied TARGET_EXPR has never been expanded, even if the
@@ -901,13 +876,9 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
 	{
 	  /* Variable substitution need not be simple.  In particular,
 	     the MEM_REF substitution above.  Make sure that
-	     TREE_CONSTANT and friends are up-to-date.  But make sure
-	     to not improperly set TREE_BLOCK on some sub-expressions.  */
+	     TREE_CONSTANT and friends are up-to-date.  */
 	  int invariant = is_gimple_min_invariant (*tp);
-	  tree block = id->block;
-	  id->block = NULL_TREE;
 	  walk_tree (&TREE_OPERAND (*tp, 0), remap_gimple_op_r, data, NULL);
-	  id->block = block;
 	  recompute_tree_invariant_for_addr_expr (*tp);
 
 	  /* If this used to be invariant, but is not any longer,
@@ -917,6 +888,22 @@ remap_gimple_op_r (tree *tp, int *walk_subtrees, void *data)
 
 	  *walk_subtrees = 0;
 	}
+    }
+
+  /* Update the TREE_BLOCK for the cloned expr.  */
+  if (EXPR_P (*tp))
+    {
+      tree new_block = id->remapping_type_depth == 0 ? id->block : NULL;
+      tree old_block = TREE_BLOCK (*tp);
+      if (old_block)
+	{
+	  tree *n;
+	  n = (tree *) pointer_map_contains (id->decl_map,
+					     TREE_BLOCK (*tp));
+	  if (n)
+	    new_block = *n;
+	}
+      TREE_SET_BLOCK (*tp, new_block);
     }
 
   /* Keep iterating.  */
@@ -1103,35 +1090,27 @@ copy_tree_body_r (tree *tp, int *walk_subtrees, void *data)
 	}
       else if (TREE_CODE (*tp) == MEM_REF)
 	{
-	  /* We need to re-canonicalize MEM_REFs from inline substitutions
-	     that can happen when a pointer argument is an ADDR_EXPR.  */
-	  tree decl = TREE_OPERAND (*tp, 0);
-	  tree *n;
+	  tree ptr = TREE_OPERAND (*tp, 0);
+	  tree type = remap_type (TREE_TYPE (*tp), id);
+	  tree old = *tp;
 
-	  n = (tree *) pointer_map_contains (id->decl_map, decl);
-	  if (n)
-	    {
-	      tree old = *tp;
-	      *tp = fold_build2 (MEM_REF, TREE_TYPE (*tp),
-				 unshare_expr (*n), TREE_OPERAND (*tp, 1));
-	      TREE_THIS_VOLATILE (*tp) = TREE_THIS_VOLATILE (old);
-	      TREE_NO_WARNING (*tp) = TREE_NO_WARNING (old);
-	      *walk_subtrees = 0;
-	      return NULL;
-	    }
+	  /* We need to re-canonicalize MEM_REFs from inline substitutions
+	     that can happen when a pointer argument is an ADDR_EXPR.
+	     Recurse here manually to allow that.  */
+	  walk_tree (&ptr, copy_tree_body_r, data, NULL);
+	  *tp = fold_build2 (MEM_REF, type,
+			     ptr, TREE_OPERAND (*tp, 1));
+	  TREE_THIS_NOTRAP (*tp) = TREE_THIS_NOTRAP (old);
+	  TREE_THIS_VOLATILE (*tp) = TREE_THIS_VOLATILE (old);
+	  TREE_SIDE_EFFECTS (*tp) = TREE_SIDE_EFFECTS (old);
+	  TREE_NO_WARNING (*tp) = TREE_NO_WARNING (old);
+	  *walk_subtrees = 0;
+	  return NULL;
 	}
 
       /* Here is the "usual case".  Copy this tree node, and then
 	 tweak some special cases.  */
       copy_tree_r (tp, walk_subtrees, NULL);
-
-      /* Global variables we haven't seen yet needs to go into referenced
-	 vars.  If not referenced from types or debug stmts only.  */
-      if (gimple_referenced_vars (cfun)
-	  && TREE_CODE (*tp) == VAR_DECL && !is_global_var (*tp)
-	  && id->remapping_type_depth == 0
-	  && !processing_debug_stmt)
-	add_referenced_var (*tp);
 
       /* If EXPR has block defined, map it to newly constructed block.
          When inlining we want EXPRs without block appear in the block
@@ -1144,11 +1123,10 @@ copy_tree_body_r (tree *tp, int *walk_subtrees, void *data)
 	      tree *n;
 	      n = (tree *) pointer_map_contains (id->decl_map,
 						 TREE_BLOCK (*tp));
-	      gcc_assert (n || id->remapping_type_depth != 0);
 	      if (n)
 		new_block = *n;
 	    }
-	  TREE_BLOCK (*tp) = new_block;
+	  TREE_SET_BLOCK (*tp, new_block);
 	}
 
       if (TREE_CODE (*tp) != OMP_CLAUSE)
@@ -1228,7 +1206,6 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
 {
   gimple copy = NULL;
   struct walk_stmt_info wi;
-  tree new_block;
   bool skip_first = false;
 
   /* Begin by recognizing trees that we'll completely rewrite for the
@@ -1253,6 +1230,7 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
       if (retval
 	  && (TREE_CODE (retval) != RESULT_DECL
 	      && (TREE_CODE (retval) != SSA_NAME
+		  || ! SSA_NAME_VAR (retval)
 		  || TREE_CODE (SSA_NAME_VAR (retval)) != RESULT_DECL)))
         {
 	  copy = gimple_build_assign (id->retvar, retval);
@@ -1414,7 +1392,7 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
 	  copy = gimple_build_debug_bind (gimple_debug_bind_get_var (stmt),
 					  gimple_debug_bind_get_value (stmt),
 					  stmt);
-	  VEC_safe_push (gimple, heap, id->debug_stmts, copy);
+	  id->debug_stmts.safe_push (copy);
 	  return copy;
 	}
       if (gimple_debug_source_bind_p (stmt))
@@ -1422,7 +1400,7 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
 	  copy = gimple_build_debug_source_bind
 		   (gimple_debug_source_bind_get_var (stmt),
 		    gimple_debug_source_bind_get_value (stmt), stmt);
-	  VEC_safe_push (gimple, heap, id->debug_stmts, copy);
+	  id->debug_stmts.safe_push (copy);
 	  return copy;
 	}
 
@@ -1487,18 +1465,14 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
     }
 
   /* If STMT has a block defined, map it to the newly constructed
-     block.  When inlining we want statements without a block to
-     appear in the block of the function call.  */
-  new_block = id->block;
+     block.  */
   if (gimple_block (copy))
     {
       tree *n;
       n = (tree *) pointer_map_contains (id->decl_map, gimple_block (copy));
       gcc_assert (n);
-      new_block = *n;
+      gimple_set_block (copy, *n);
     }
-
-  gimple_set_block (copy, new_block);
 
   if (gimple_debug_bind_p (copy) || gimple_debug_source_bind_p (copy))
     return copy;
@@ -1545,11 +1519,11 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
      basic_block_info automatically.  */
   copy_basic_block = create_basic_block (NULL, (void *) 0,
                                          (basic_block) prev->aux);
-  copy_basic_block->count = bb->count * count_scale / REG_BR_PROB_BASE;
+  copy_basic_block->count = apply_scale (bb->count, count_scale);
 
   /* We are going to rebuild frequencies from scratch.  These values
      have just small importance to drive canonicalize_loop_headers.  */
-  freq = ((gcov_type)bb->frequency * frequency_scale / REG_BR_PROB_BASE);
+  freq = apply_scale ((gcov_type)bb->frequency, frequency_scale);
 
   /* We recompute frequencies after inlining, so this is quite safe.  */
   if (freq > BB_FREQ_MAX)
@@ -1614,7 +1588,7 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 		 all arguments corresponding to ... in the caller.  */
 	      tree p;
 	      gimple new_call;
-	      VEC(tree, heap) *argarray;
+	      vec<tree> argarray;
 	      size_t nargs = gimple_call_num_args (id->gimple_call);
 	      size_t n;
 
@@ -1623,16 +1597,16 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 
 	      /* Create the new array of arguments.  */
 	      n = nargs + gimple_call_num_args (stmt);
-	      argarray = VEC_alloc (tree, heap, n);
-	      VEC_safe_grow (tree, heap, argarray, n);
+	      argarray.create (n);
+	      argarray.safe_grow_cleared (n);
 
 	      /* Copy all the arguments before '...'  */
-	      memcpy (VEC_address (tree, argarray),
+	      memcpy (argarray.address (),
 		      gimple_call_arg_ptr (stmt, 0),
 		      gimple_call_num_args (stmt) * sizeof (tree));
 
 	      /* Append the arguments passed in '...'  */
-	      memcpy (VEC_address(tree, argarray) + gimple_call_num_args (stmt),
+	      memcpy (argarray.address () + gimple_call_num_args (stmt),
 		      gimple_call_arg_ptr (id->gimple_call, 0)
 			+ (gimple_call_num_args (id->gimple_call) - nargs),
 		      nargs * sizeof (tree));
@@ -1640,7 +1614,7 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 	      new_call = gimple_build_call_vec (gimple_call_fn (stmt),
 						argarray);
 
-	      VEC_free (tree, heap, argarray);
+	      argarray.release ();
 
 	      /* Copy all GIMPLE_CALL flags, location and block, except
 		 GF_CALL_VA_ARG_PACK.  */
@@ -1752,7 +1726,7 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 	      if ((!edge
 		   || (edge->indirect_inlining_edge
 		       && id->transform_call_graph_edges == CB_CGE_MOVE_CLONES))
-		  && id->dst_node->analyzed
+		  && id->dst_node->symbol.definition
 		  && (fn = gimple_call_fndecl (stmt)) != NULL)
 		{
 		  struct cgraph_node *dest = cgraph_get_node (fn);
@@ -1763,10 +1737,10 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 		     producing dead clone (for further cloning).  In all
 		     other cases we hit a bug (incorrect node sharing is the
 		     most common reason for missing edges).  */
-		  gcc_assert (!dest->analyzed
+		  gcc_assert (!dest->symbol.definition
 			      || dest->symbol.address_taken
-		  	      || !id->src_node->analyzed
-			      || !id->dst_node->analyzed);
+		  	      || !id->src_node->symbol.definition
+			      || !id->dst_node->symbol.definition);
 		  if (id->transform_call_graph_edges == CB_CGE_MOVE_CLONES)
 		    cgraph_create_edge_including_clones
 		      (id->dst_node, dest, orig_stmt, stmt, bb->count,
@@ -1802,7 +1776,6 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
 	      ssa_op_iter i;
 	      tree def;
 
-	      find_referenced_vars_in (gsi_stmt (copy_gsi));
 	      FOR_EACH_SSA_TREE_OPERAND (def, stmt, i, SSA_OP_DEF)
 		if (TREE_CODE (def) == SSA_NAME)
 		  SSA_NAME_DEF_STMT (def) = stmt;
@@ -1862,20 +1835,14 @@ update_ssa_across_abnormal_edges (basic_block bb, basic_block ret_bb,
 
 	    phi = gsi_stmt (si);
 
-	    /* There shouldn't be any PHI nodes in the ENTRY_BLOCK.  */
-	    gcc_assert (!e->dest->aux);
+	    /* For abnormal goto/call edges the receiver can be the
+	       ENTRY_BLOCK.  Do not assert this cannot happen.  */
 
 	    gcc_assert ((e->flags & EDGE_EH)
 			|| SSA_NAME_OCCURS_IN_ABNORMAL_PHI (PHI_RESULT (phi)));
 
-	    if (!is_gimple_reg (PHI_RESULT (phi)))
-	      {
-		mark_sym_for_renaming (SSA_NAME_VAR (PHI_RESULT (phi)));
-		continue;
-	      }
-
 	    re = find_edge (ret_bb, e->dest);
-	    gcc_assert (re);
+	    gcc_checking_assert (re);
 	    gcc_assert ((re->flags & (EDGE_EH | EDGE_ABNORMAL))
 			== (e->flags & (EDGE_EH | EDGE_ABNORMAL)));
 
@@ -1892,7 +1859,8 @@ update_ssa_across_abnormal_edges (basic_block bb, basic_block ret_bb,
    debug stmts are left after a statement that must end the basic block.  */
 
 static bool
-copy_edges_for_bb (basic_block bb, gcov_type count_scale, basic_block ret_bb)
+copy_edges_for_bb (basic_block bb, gcov_type count_scale, basic_block ret_bb,
+		   bool can_make_abnormal_goto)
 {
   basic_block new_bb = (basic_block) bb->aux;
   edge_iterator ei;
@@ -1915,7 +1883,7 @@ copy_edges_for_bb (basic_block bb, gcov_type count_scale, basic_block ret_bb)
 	    && old_edge->dest->aux != EXIT_BLOCK_PTR)
 	  flags |= EDGE_FALLTHRU;
 	new_edge = make_edge (new_bb, (basic_block) old_edge->dest->aux, flags);
-	new_edge->count = old_edge->count * count_scale / REG_BR_PROB_BASE;
+	new_edge->count = apply_scale (old_edge->count, count_scale);
 	new_edge->probability = old_edge->probability;
       }
 
@@ -1974,6 +1942,10 @@ copy_edges_for_bb (basic_block bb, gcov_type count_scale, basic_block ret_bb)
       else if (can_throw)
 	make_eh_edges (copy_stmt);
 
+      /* If the call we inline cannot make abnormal goto do not add
+         additional abnormal edges but only retain those already present
+	 in the original function body.  */
+      nonlocal_goto &= can_make_abnormal_goto;
       if (nonlocal_goto)
 	make_abnormal_goto_edges (gimple_bb (copy_stmt), true);
 
@@ -2008,18 +1980,17 @@ copy_phis_for_bb (basic_block bb, copy_body_data *id)
       phi = gsi_stmt (si);
       res = PHI_RESULT (phi);
       new_res = res;
-      if (is_gimple_reg (res))
+      if (!virtual_operand_p (res))
 	{
 	  walk_tree (&new_res, copy_tree_body_r, id, NULL);
-	  SSA_NAME_DEF_STMT (new_res)
-	    = new_phi = create_phi_node (new_res, new_bb);
+	  new_phi = create_phi_node (new_res, new_bb);
 	  FOR_EACH_EDGE (new_edge, ei, new_bb->preds)
 	    {
 	      edge old_edge = find_edge ((basic_block) new_edge->src->aux, bb);
 	      tree arg;
 	      tree new_arg;
-	      tree block = id->block;
 	      edge_iterator ei2;
+	      location_t locus;
 
 	      /* When doing partial cloning, we allow PHIs on the entry block
 		 as long as all the arguments are the same.  Find any input
@@ -2031,9 +2002,7 @@ copy_phis_for_bb (basic_block bb, copy_body_data *id)
 
 	      arg = PHI_ARG_DEF_FROM_EDGE (phi, old_edge);
 	      new_arg = arg;
-	      id->block = NULL_TREE;
 	      walk_tree (&new_arg, copy_tree_body_r, id, NULL);
-	      id->block = block;
 	      gcc_assert (new_arg);
 	      /* With return slot optimization we can end up with
 	         non-gimple (foo *)&this->m, fix that here.  */
@@ -2046,8 +2015,19 @@ copy_phis_for_bb (basic_block bb, copy_body_data *id)
 		  gsi_insert_seq_on_edge (new_edge, stmts);
 		  inserted = true;
 		}
-	      add_phi_arg (new_phi, new_arg, new_edge,
-			   gimple_phi_arg_location_from_edge (phi, old_edge));
+	      locus = gimple_phi_arg_location_from_edge (phi, old_edge);
+	      if (LOCATION_BLOCK (locus))
+		{
+		  tree *n;
+		  n = (tree *) pointer_map_contains (id->decl_map,
+			LOCATION_BLOCK (locus));
+		  gcc_assert (n);
+		  locus = COMBINE_LOCATION_DATA (line_table, locus, *n);
+		}
+	      else
+		locus = LOCATION_LOCUS (locus);
+
+	      add_phi_arg (new_phi, new_arg, new_edge, locus);
 	    }
 	}
     }
@@ -2068,7 +2048,8 @@ remap_decl_1 (tree decl, void *data)
 }
 
 /* Build struct function and associated datastructures for the new clone
-   NEW_FNDECL to be build.  CALLEE_FNDECL is the original */
+   NEW_FNDECL to be build.  CALLEE_FNDECL is the original.  Function changes
+   the cfun to the function of new_fndecl (and current_function_decl too).  */
 
 static void
 initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
@@ -2077,8 +2058,9 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   gcov_type count_scale;
 
   if (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count)
-    count_scale = (REG_BR_PROB_BASE * count
-		   / ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
+    count_scale
+        = GCOV_COMPUTE_SCALE (count,
+                              ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
   else
     count_scale = REG_BR_PROB_BASE;
 
@@ -2098,7 +2080,7 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   cfun->static_chain_decl = src_cfun->static_chain_decl;
   cfun->nonlocal_goto_save_area = src_cfun->nonlocal_goto_save_area;
   cfun->function_end_locus = src_cfun->function_end_locus;
-  cfun->curr_properties = src_cfun->curr_properties & ~PROP_loops;
+  cfun->curr_properties = src_cfun->curr_properties;
   cfun->last_verified = src_cfun->last_verified;
   cfun->va_list_gpr_size = src_cfun->va_list_gpr_size;
   cfun->va_list_fpr_size = src_cfun->va_list_fpr_size;
@@ -2110,7 +2092,6 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   cfun->can_delete_dead_exceptions = src_cfun->can_delete_dead_exceptions;
   cfun->returns_struct = src_cfun->returns_struct;
   cfun->returns_pcc_struct = src_cfun->returns_pcc_struct;
-  cfun->after_tree_profile = src_cfun->after_tree_profile;
 
   init_empty_tree_cfg ();
 
@@ -2134,7 +2115,6 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
       cfun->gimple_df->in_ssa_p = true;
       init_ssa_operands (cfun);
     }
-  pop_cfun ();
 }
 
 /* Helper function for copy_cfg_body.  Move debug stmts from the end
@@ -2199,9 +2179,51 @@ maybe_move_debug_stmts_to_successors (copy_body_data *id, basic_block new_bb)
 	  else
 	    gcc_unreachable ();
 	  gsi_insert_before (&dsi, new_stmt, GSI_SAME_STMT);
-	  VEC_safe_push (gimple, heap, id->debug_stmts, new_stmt);
+	  id->debug_stmts.safe_push (new_stmt);
 	  gsi_prev (&ssi);
 	}
+    }
+}
+
+/* Make a copy of the sub-loops of SRC_PARENT and place them
+   as siblings of DEST_PARENT.  */
+
+static void
+copy_loops (bitmap blocks_to_copy,
+	    struct loop *dest_parent, struct loop *src_parent)
+{
+  struct loop *src_loop = src_parent->inner;
+  while (src_loop)
+    {
+      if (!blocks_to_copy
+	  || bitmap_bit_p (blocks_to_copy, src_loop->header->index))
+	{
+	  struct loop *dest_loop = alloc_loop ();
+
+	  /* Assign the new loop its header and latch and associate
+	     those with the new loop.  */
+	  if (src_loop->header != NULL)
+	    {
+	      dest_loop->header = (basic_block)src_loop->header->aux;
+	      dest_loop->header->loop_father = dest_loop;
+	    }
+	  if (src_loop->latch != NULL)
+	    {
+	      dest_loop->latch = (basic_block)src_loop->latch->aux;
+	      dest_loop->latch->loop_father = dest_loop;
+	    }
+
+	  /* Copy loop meta-data.  */
+	  copy_loop_info (src_loop, dest_loop);
+
+	  /* Finally place it into the loop array and the loop tree.  */
+	  place_new_loop (cfun, dest_loop);
+	  flow_loop_tree_node_add (dest_parent, dest_loop);
+
+	  /* Recurse.  */
+	  copy_loops (blocks_to_copy, dest_loop, src_loop);
+	}
+      src_loop = src_loop->next;
     }
 }
 
@@ -2226,8 +2248,9 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
   gcov_type incoming_count = 0;
 
   if (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count)
-    count_scale = (REG_BR_PROB_BASE * count
-		   / ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
+    count_scale
+        = GCOV_COMPUTE_SCALE (count,
+                              ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
   else
     count_scale = REG_BR_PROB_BASE;
 
@@ -2249,9 +2272,9 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
 	    incoming_frequency += EDGE_FREQUENCY (e);
 	    incoming_count += e->count;
 	  }
-      incoming_count = incoming_count * count_scale / REG_BR_PROB_BASE;
+      incoming_count = apply_scale (incoming_count, count_scale);
       incoming_frequency
-	= incoming_frequency * frequency_scale / REG_BR_PROB_BASE;
+	= apply_scale ((gcov_type)incoming_frequency, frequency_scale);
       ENTRY_BLOCK_PTR->count = incoming_count;
       ENTRY_BLOCK_PTR->frequency = incoming_frequency;
     }
@@ -2279,15 +2302,19 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
 	basic_block new_bb = copy_bb (id, bb, frequency_scale, count_scale);
 	bb->aux = new_bb;
 	new_bb->aux = bb;
+	new_bb->loop_father = entry_block_map->loop_father;
       }
 
   last = last_basic_block;
 
   /* Now that we've duplicated the blocks, duplicate their edges.  */
+  bool can_make_abormal_goto
+    = id->gimple_call && stmt_can_make_abnormal_goto (id->gimple_call);
   FOR_ALL_BB_FN (bb, cfun_to_copy)
     if (!blocks_to_copy
         || (bb->index > 0 && bitmap_bit_p (blocks_to_copy, bb->index)))
-      need_debug_cleanup |= copy_edges_for_bb (bb, count_scale, exit_block_map);
+      need_debug_cleanup |= copy_edges_for_bb (bb, count_scale, exit_block_map,
+					       can_make_abormal_goto);
 
   if (new_entry)
     {
@@ -2295,6 +2322,21 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
       e->probability = REG_BR_PROB_BASE;
       e->count = incoming_count;
     }
+
+  /* Duplicate the loop tree, if available and wanted.  */
+  if (loops_for_fn (src_cfun) != NULL
+      && current_loops != NULL)
+    {
+      copy_loops (blocks_to_copy, entry_block_map->loop_father,
+		  get_loop (src_cfun, 0));
+      /* Defer to cfgcleanup to update loop-father fields of basic-blocks.  */
+      loops_state_set (LOOPS_NEED_FIXUP);
+    }
+
+  /* If the loop tree in the source function needed fixup, mark the
+     destination loop tree for fixup, too.  */
+  if (loops_for_fn (src_cfun)->state & LOOPS_NEED_FIXUP)
+    loops_state_set (LOOPS_NEED_FIXUP);
 
   if (gimple_in_ssa_p (cfun))
     FOR_ALL_BB_FN (bb, cfun_to_copy)
@@ -2345,14 +2387,11 @@ copy_debug_stmt (gimple stmt, copy_body_data *id)
   tree t, *n;
   struct walk_stmt_info wi;
 
-  t = id->block;
   if (gimple_block (stmt))
     {
       n = (tree *) pointer_map_contains (id->decl_map, gimple_block (stmt));
-      if (n)
-	t = *n;
+      gimple_set_block (stmt, n ? *n : id->block);
     }
-  gimple_set_block (stmt, t);
 
   /* Remap all the operands in COPY.  */
   memset (&wi, 0, sizeof (wi));
@@ -2372,10 +2411,8 @@ copy_debug_stmt (gimple stmt, copy_body_data *id)
       t = *n;
     }
   else if (TREE_CODE (t) == VAR_DECL
-	   && !TREE_STATIC (t)
-	   && gimple_in_ssa_p (cfun)
-	   && !pointer_map_contains (id->decl_map, t)
-	   && !var_ann (t))
+	   && !is_global_var (t)
+	   && !pointer_map_contains (id->decl_map, t))
     /* T is a non-localized variable.  */;
   else
     walk_tree (&t, remap_gimple_op_r, &wi, NULL);
@@ -2397,6 +2434,30 @@ copy_debug_stmt (gimple stmt, copy_body_data *id)
       gimple_debug_source_bind_set_var (stmt, t);
       walk_tree (gimple_debug_source_bind_get_value_ptr (stmt),
 		 remap_gimple_op_r, &wi, NULL);
+      /* When inlining and source bind refers to one of the optimized
+	 away parameters, change the source bind into normal debug bind
+	 referring to the corresponding DEBUG_EXPR_DECL that should have
+	 been bound before the call stmt.  */
+      t = gimple_debug_source_bind_get_value (stmt);
+      if (t != NULL_TREE
+	  && TREE_CODE (t) == PARM_DECL
+	  && id->gimple_call)
+	{
+	  vec<tree, va_gc> **debug_args = decl_debug_args_lookup (id->src_fn);
+	  unsigned int i;
+	  if (debug_args != NULL)
+	    {
+	      for (i = 0; i < vec_safe_length (*debug_args); i += 2)
+		if ((**debug_args)[i] == DECL_ORIGIN (t)
+		    && TREE_CODE ((**debug_args)[i + 1]) == DEBUG_EXPR_DECL)
+		  {
+		    t = (**debug_args)[i + 1];
+		    stmt->gsbase.subcode = GIMPLE_DEBUG_BIND;
+		    gimple_debug_bind_set_value (stmt, t);
+		    break;
+		  }
+	    }
+	}      
     }
 
   processing_debug_stmt = 0;
@@ -2415,13 +2476,13 @@ copy_debug_stmts (copy_body_data *id)
   size_t i;
   gimple stmt;
 
-  if (!id->debug_stmts)
+  if (!id->debug_stmts.exists ())
     return;
 
-  FOR_EACH_VEC_ELT (gimple, id->debug_stmts, i, stmt)
+  FOR_EACH_VEC_ELT (id->debug_stmts, i, stmt)
     copy_debug_stmt (stmt, id);
 
-  VEC_free (gimple, heap, id->debug_stmts);
+  id->debug_stmts.release ();
 }
 
 /* Make a copy of the body of SRC_FN so that it can be inserted inline in
@@ -2548,14 +2609,8 @@ insert_init_stmt (copy_body_data *id, basic_block bb, gimple init_stmt)
 
       if (!is_gimple_debug (init_stmt) && MAY_HAVE_DEBUG_STMTS)
 	{
-	  tree var, def = gimple_assign_lhs (init_stmt);
-
-	  if (TREE_CODE (def) == SSA_NAME)
-	    var = SSA_NAME_VAR (def);
-	  else
-	    var = def;
-
-	  insert_init_debug_bind (id, bb, var, def, init_stmt);
+	  tree def = gimple_assign_lhs (init_stmt);
+	  insert_init_debug_bind (id, bb, def, def, init_stmt);
 	}
     }
 }
@@ -2571,7 +2626,7 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
   tree var;
   tree rhs = value;
   tree def = (gimple_in_ssa_p (cfun)
-	      ? gimple_default_def (id->src_cfun, p) : NULL);
+	      ? ssa_default_def (id->src_cfun, p) : NULL);
 
   if (value
       && value != error_mark_node
@@ -2599,27 +2654,12 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
      function.  */
   var = copy_decl_to_var (p, id);
 
-  /* We're actually using the newly-created var.  */
-  if (gimple_in_ssa_p (cfun) && TREE_CODE (var) == VAR_DECL)
-    add_referenced_var (var);
-
   /* Declare this new variable.  */
   DECL_CHAIN (var) = *vars;
   *vars = var;
 
   /* Make gimplifier happy about this variable.  */
   DECL_SEEN_IN_BIND_EXPR_P (var) = 1;
-
-  /* We are eventually using the value - make sure all variables
-     referenced therein are properly recorded.  */
-  if (value
-      && gimple_referenced_vars (cfun)
-      && TREE_CODE (value) == ADDR_EXPR)
-    {
-      tree base = get_base_address (TREE_OPERAND (value, 0));
-      if (base && TREE_CODE (base) == VAR_DECL && !is_global_var (base))
-	add_referenced_var (base);
-    }
 
   /* If the parameter is never assigned to, has no SSA_NAMEs created,
      we would not need to create a new variable here at all, if it
@@ -2719,7 +2759,7 @@ setup_one_parameter (copy_body_data *id, tree p, tree value, tree fn,
 	      def = remap_ssa_name (def, id);
 	      init_stmt = gimple_build_assign (def, rhs);
 	      SSA_NAME_IS_DEFAULT_DEF (def) = 0;
-	      set_default_def (var, NULL);
+	      set_ssa_default_def (cfun, var, NULL);
 	    }
 	  else if (!optimize)
 	    {
@@ -2771,7 +2811,7 @@ initialize_inlined_parameters (copy_body_data *id, gimple stmt,
 	  && TREE_CODE (*varp) == VAR_DECL)
 	{
 	  tree def = (gimple_in_ssa_p (cfun) && is_gimple_reg (p)
-		      ? gimple_default_def (id->src_cfun, p) : NULL);
+		      ? ssa_default_def (id->src_cfun, p) : NULL);
 	  tree var = *varp;
 	  TREE_TYPE (var) = remap_type (TREE_TYPE (var), id);
 	  /* Also remap the default definition if it was remapped
@@ -2926,9 +2966,6 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
   gcc_assert (TREE_CODE (TYPE_SIZE_UNIT (callee_type)) == INTEGER_CST);
 
   var = copy_result_decl_to_var (result, id);
-  if (gimple_referenced_vars (cfun))
-    add_referenced_var (var);
-
   DECL_SEEN_IN_BIND_EXPR_P (var) = 1;
 
   /* Do not have the rest of GCC warn about this variable as it should
@@ -2970,11 +3007,6 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
       TREE_ADDRESSABLE (var) = 1;
       var = build_fold_addr_expr (var);
     }
-  else if (gimple_in_ssa_p (cfun)
-	   && is_gimple_reg (var))
-    /* ???  Re-org id->retval and its special handling so that we can
-       record an SSA name directly and not need to invoke the SSA renamer.  */
-    mark_sym_for_renaming (var);
 
  done:
   /* Register the VAR_DECL as the equivalent for the RESULT_DECL; that
@@ -2987,8 +3019,6 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
       && !is_gimple_val (var))
     {
       tree temp = create_tmp_var (TREE_TYPE (result), "retvalptr");
-      if (gimple_referenced_vars (cfun))
-	add_referenced_var (temp);
       insert_decl_map (id, result, temp);
       /* When RESULT_DECL is in SSA form, we need to remap and initialize
 	 it's default_def SSA_NAME.  */
@@ -2996,8 +3026,7 @@ declare_return_variable (copy_body_data *id, tree return_slot, tree modify_dest,
 	  && is_gimple_reg (result))
 	{
 	  temp = make_ssa_name (temp, NULL);
-	  insert_decl_map (id, gimple_default_def (id->src_cfun, result),
-			   temp);
+	  insert_decl_map (id, ssa_default_def (id->src_cfun, result), temp);
 	}
       insert_init_stmt (id, entry_bb, gimple_build_assign (temp, var));
     }
@@ -3542,12 +3571,12 @@ estimate_num_insns (gimple stmt, eni_weights *weights)
       lhs = gimple_assign_lhs (stmt);
       rhs = gimple_assign_rhs1 (stmt);
 
-      if (is_gimple_reg (lhs))
-	cost = 0;
-      else
-	cost = estimate_move_cost (TREE_TYPE (lhs));
+      cost = 0;
 
-      if (!is_gimple_reg (rhs) && !is_gimple_min_invariant (rhs))
+      /* Account for the cost of moving to / from memory.  */
+      if (gimple_store_p (stmt))
+	cost += estimate_move_cost (TREE_TYPE (lhs));
+      if (gimple_assign_load_p (stmt))
 	cost += estimate_move_cost (TREE_TYPE (rhs));
 
       cost += estimate_operator_cost (gimple_assign_rhs_code (stmt), weights,
@@ -3582,7 +3611,7 @@ estimate_num_insns (gimple stmt, eni_weights *weights)
 
 	/* Do not special case builtins where we see the body.
 	   This just confuse inliner.  */
-	if (!decl || !(node = cgraph_get_node (decl)) || node->analyzed)
+	if (!decl || !(node = cgraph_get_node (decl)) || node->symbol.definition)
 	  ;
 	/* For buitins that are likely expanded to nothing or
 	   inlined do not account operand costs.  */
@@ -3781,25 +3810,19 @@ prepend_lexical_block (tree current_block, tree new_block)
 
 static inline void
 add_local_variables (struct function *callee, struct function *caller,
-		     copy_body_data *id, bool check_var_ann)
+		     copy_body_data *id)
 {
   tree var;
   unsigned ix;
 
   FOR_EACH_LOCAL_DECL (callee, ix, var)
-    if (TREE_STATIC (var) && !TREE_ASM_WRITTEN (var))
-      {
-	if (!check_var_ann
-	    || (var_ann (var) && add_referenced_var (var)))
-	  add_local_decl (caller, var);
-      }
-    else if (!can_be_nonlocal (var, id))
+    if (!can_be_nonlocal (var, id))
       {
         tree new_var = remap_decl (var, id);
 
         /* Remap debug-expressions.  */
 	if (TREE_CODE (new_var) == VAR_DECL
-	    && DECL_DEBUG_EXPR_IS_FROM (new_var)
+	    && DECL_HAS_DEBUG_EXPR_P (var)
 	    && new_var != var)
 	  {
 	    tree tem = DECL_DEBUG_EXPR (var);
@@ -3809,6 +3832,7 @@ add_local_variables (struct function *callee, struct function *caller,
 	    id->remapping_type_depth--;
 	    id->regimplify = old_regimplify;
 	    SET_DECL_DEBUG_EXPR (new_var, tem);
+	    DECL_HAS_DEBUG_EXPR_P (new_var) = 1;
 	  }
 	add_local_decl (caller, new_var);
       }
@@ -3875,6 +3899,12 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
 	goto egress;
 
       if (lookup_attribute ("always_inline", DECL_ATTRIBUTES (fn))
+          /* For extern inline functions that get redefined we always
+	     silently ignored always_inline flag. Better behaviour would
+	     be to be able to keep both bodies and use extern inline body
+	     for inlining, but we can't do that because frontends overwrite
+	     the body.  */
+	  && !cg_edge->callee->local.redefined_extern_inline
 	  /* Avoid warnings during early inline pass. */
 	  && cgraph_global_info_ready
 	  /* PR 20090218-1_0.c. Body can be provided by another module. */
@@ -3949,11 +3979,20 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
   /* Build a block containing code to initialize the arguments, the
      actual inline expansion of the body, and a label for the return
      statements within the function to jump to.  The type of the
-     statement expression is the return type of the function call.  */
-  id->block = make_node (BLOCK);
-  BLOCK_ABSTRACT_ORIGIN (id->block) = fn;
-  BLOCK_SOURCE_LOCATION (id->block) = input_location;
-  prepend_lexical_block (gimple_block (stmt), id->block);
+     statement expression is the return type of the function call.
+     ???  If the call does not have an associated block then we will
+     remap all callee blocks to NULL, effectively dropping most of
+     its debug information.  This should only happen for calls to
+     artificial decls inserted by the compiler itself.  We need to
+     either link the inlined blocks into the caller block tree or
+     not refer to them in any way to not break GC for locations.  */
+  if (gimple_block (stmt))
+    {
+      id->block = make_node (BLOCK);
+      BLOCK_ABSTRACT_ORIGIN (id->block) = fn;
+      BLOCK_SOURCE_LOCATION (id->block) = LOCATION_LOCUS (input_location);
+      prepend_lexical_block (gimple_block (stmt), id->block);
+    }
 
   /* Local declarations will be replaced by their equivalents in this
      map.  */
@@ -3981,7 +4020,35 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
   initialize_inlined_parameters (id, stmt, fn, bb);
 
   if (DECL_INITIAL (fn))
-    prepend_lexical_block (id->block, remap_blocks (DECL_INITIAL (fn), id));
+    {
+      if (gimple_block (stmt))
+	{
+	  tree *var;
+
+	  prepend_lexical_block (id->block,
+				 remap_blocks (DECL_INITIAL (fn), id));
+	  gcc_checking_assert (BLOCK_SUBBLOCKS (id->block)
+			       && (BLOCK_CHAIN (BLOCK_SUBBLOCKS (id->block))
+				   == NULL_TREE));
+	  /* Move vars for PARM_DECLs from DECL_INITIAL block to id->block,
+	     otherwise for DWARF DW_TAG_formal_parameter will not be children of
+	     DW_TAG_inlined_subroutine, but of a DW_TAG_lexical_block
+	     under it.  The parameters can be then evaluated in the debugger,
+	     but don't show in backtraces.  */
+	  for (var = &BLOCK_VARS (BLOCK_SUBBLOCKS (id->block)); *var; )
+	    if (TREE_CODE (DECL_ORIGIN (*var)) == PARM_DECL)
+	      {
+		tree v = *var;
+		*var = TREE_CHAIN (v);
+		TREE_CHAIN (v) = BLOCK_VARS (id->block);
+		BLOCK_VARS (id->block) = v;
+	      }
+	    else
+	      var = &TREE_CHAIN (*var);
+	}
+      else
+	remap_blocks_to_null (DECL_INITIAL (fn), id);
+    }
 
   /* Return statements in the function body will be replaced by jumps
      to the RET_LABEL.  */
@@ -4027,7 +4094,7 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
   use_retvar = declare_return_variable (id, return_slot, modify_dest, bb);
 
   /* Add local vars in this inlined callee to caller.  */
-  add_local_variables (id->src_cfun, cfun, id, true);
+  add_local_variables (id->src_cfun, cfun, id);
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
@@ -4044,7 +4111,7 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
      a self-referential call; if we're calling ourselves, we need to
      duplicate our body before altering anything.  */
   copy_body (id, bb->count,
-  	     cg_edge->frequency * REG_BR_PROB_BASE / CGRAPH_FREQ_BASE,
+  	     GCOV_COMPUTE_SCALE (cg_edge->frequency, CGRAPH_FREQ_BASE),
 	     bb, return_block, NULL, NULL);
 
   /* Reset the escaped solution.  */
@@ -4083,7 +4150,7 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
 	{
 	  tree name = gimple_call_lhs (stmt);
 	  tree var = SSA_NAME_VAR (name);
-	  tree def = gimple_default_def (cfun, var);
+	  tree def = ssa_default_def (cfun, var);
 
 	  if (def)
 	    {
@@ -4096,7 +4163,7 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
 	    {
 	      /* Otherwise make this variable undefined.  */
 	      gsi_remove (&stmt_gsi, true);
-	      set_default_def (var, name);
+	      set_ssa_default_def (cfun, var, name);
 	      SSA_NAME_DEF_STMT (name) = gimple_build_nop ();
 	    }
 	}
@@ -4124,7 +4191,8 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
      inlined.  If we don't do this now, we can lose the information about the
      variables in the function when the blocks get blown away as soon as we
      remove the cgraph node.  */
-  (*debug_hooks->outlining_inline_function) (cg_edge->callee->symbol.decl);
+  if (gimple_block (stmt))
+    (*debug_hooks->outlining_inline_function) (cg_edge->callee->symbol.decl);
 
   /* Update callgraph if needed.  */
   cgraph_remove_node (cg_edge->callee);
@@ -4276,7 +4344,7 @@ optimize_inline_calls (tree fn)
   memset (&id, 0, sizeof (id));
 
   id.src_node = id.dst_node = cgraph_get_node (fn);
-  gcc_assert (id.dst_node->analyzed);
+  gcc_assert (id.dst_node->symbol.definition);
   id.dst_fn = fn;
   /* Or any functions that aren't finished yet.  */
   if (current_function_decl)
@@ -4325,7 +4393,7 @@ optimize_inline_calls (tree fn)
   fold_marked_statements (last, id.statements_to_fold);
   pointer_set_destroy (id.statements_to_fold);
 
-  gcc_assert (!id.debug_stmts);
+  gcc_assert (!id.debug_stmts.exists ());
 
   /* If we didn't inline into the function there is nothing to do.  */
   if (!inlined_p)
@@ -4405,8 +4473,7 @@ copy_tree_r (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
       if (flag_mudflap && mf_marked_p (*tp))
         mf_mark (new_tree);
 
-      CONSTRUCTOR_ELTS (new_tree) = VEC_copy (constructor_elt, gc,
-					 CONSTRUCTOR_ELTS (*tp));
+      CONSTRUCTOR_ELTS (new_tree) = vec_safe_copy (CONSTRUCTOR_ELTS (*tp));
       *tp = new_tree;
     }
   else if (code == STATEMENT_LIST)
@@ -4456,137 +4523,6 @@ remap_save_expr (tree *tp, void *st_, int *walk_subtrees)
 
   /* Replace this SAVE_EXPR with the copy.  */
   *tp = t;
-}
-
-/* Called via walk_tree.  If *TP points to a DECL_STMT for a local label,
-   copies the declaration and enters it in the splay_tree in DATA (which is
-   really an `copy_body_data *').  */
-
-static tree
-mark_local_for_remap_r (tree *tp, int *walk_subtrees ATTRIBUTE_UNUSED,
-			void *data)
-{
-  copy_body_data *id = (copy_body_data *) data;
-
-  /* Don't walk into types.  */
-  if (TYPE_P (*tp))
-    *walk_subtrees = 0;
-
-  else if (TREE_CODE (*tp) == LABEL_EXPR)
-    {
-      tree decl = TREE_OPERAND (*tp, 0);
-
-      /* Copy the decl and remember the copy.  */
-      insert_decl_map (id, decl, id->copy_decl (decl, id));
-    }
-
-  return NULL_TREE;
-}
-
-/* Perform any modifications to EXPR required when it is unsaved.  Does
-   not recurse into EXPR's subtrees.  */
-
-static void
-unsave_expr_1 (tree expr)
-{
-  switch (TREE_CODE (expr))
-    {
-    case TARGET_EXPR:
-      /* Don't mess with a TARGET_EXPR that hasn't been expanded.
-         It's OK for this to happen if it was part of a subtree that
-         isn't immediately expanded, such as operand 2 of another
-         TARGET_EXPR.  */
-      if (TREE_OPERAND (expr, 1))
-	break;
-
-      TREE_OPERAND (expr, 1) = TREE_OPERAND (expr, 3);
-      TREE_OPERAND (expr, 3) = NULL_TREE;
-      break;
-
-    default:
-      break;
-    }
-}
-
-/* Called via walk_tree when an expression is unsaved.  Using the
-   splay_tree pointed to by ST (which is really a `splay_tree'),
-   remaps all local declarations to appropriate replacements.  */
-
-static tree
-unsave_r (tree *tp, int *walk_subtrees, void *data)
-{
-  copy_body_data *id = (copy_body_data *) data;
-  struct pointer_map_t *st = id->decl_map;
-  tree *n;
-
-  /* Only a local declaration (variable or label).  */
-  if ((TREE_CODE (*tp) == VAR_DECL && !TREE_STATIC (*tp))
-      || TREE_CODE (*tp) == LABEL_DECL)
-    {
-      /* Lookup the declaration.  */
-      n = (tree *) pointer_map_contains (st, *tp);
-
-      /* If it's there, remap it.  */
-      if (n)
-	*tp = *n;
-    }
-
-  else if (TREE_CODE (*tp) == STATEMENT_LIST)
-    gcc_unreachable ();
-  else if (TREE_CODE (*tp) == BIND_EXPR)
-    copy_bind_expr (tp, walk_subtrees, id);
-  else if (TREE_CODE (*tp) == SAVE_EXPR
-	   || TREE_CODE (*tp) == TARGET_EXPR)
-    remap_save_expr (tp, st, walk_subtrees);
-  else
-    {
-      copy_tree_r (tp, walk_subtrees, NULL);
-
-      /* Do whatever unsaving is required.  */
-      unsave_expr_1 (*tp);
-    }
-
-  /* Keep iterating.  */
-  return NULL_TREE;
-}
-
-/* Copies everything in EXPR and replaces variables, labels
-   and SAVE_EXPRs local to EXPR.  */
-
-tree
-unsave_expr_now (tree expr)
-{
-  copy_body_data id;
-
-  /* There's nothing to do for NULL_TREE.  */
-  if (expr == 0)
-    return expr;
-
-  /* Set up ID.  */
-  memset (&id, 0, sizeof (id));
-  id.src_fn = current_function_decl;
-  id.dst_fn = current_function_decl;
-  id.decl_map = pointer_map_create ();
-  id.debug_map = NULL;
-
-  id.copy_decl = copy_decl_no_change;
-  id.transform_call_graph_edges = CB_CGE_DUPLICATE;
-  id.transform_new_cfg = false;
-  id.transform_return_to_modify = false;
-  id.transform_lang_insert_block = NULL;
-
-  /* Walk the tree once to find local labels.  */
-  walk_tree_without_duplicates (&expr, mark_local_for_remap_r, &id);
-
-  /* Walk the tree again, copying, remapping, and unsaving.  */
-  walk_tree (&expr, unsave_r, &id, NULL);
-
-  /* Clean up.  */
-  pointer_map_destroy (id.decl_map);
-  if (id.debug_map)
-    pointer_map_destroy (id.debug_map);
-
-  return expr;
 }
 
 /* Called via walk_gimple_seq.  If *GSIP points to a GIMPLE_LABEL for a local
@@ -4688,7 +4624,8 @@ replace_locals_stmt (gimple_stmt_iterator *gsip,
       /* This will remap a lot of the same decls again, but this should be
 	 harmless.  */
       if (gimple_bind_vars (stmt))
-	gimple_bind_set_vars (stmt, remap_decls (gimple_bind_vars (stmt), NULL, id));
+	gimple_bind_set_vars (stmt, remap_decls (gimple_bind_vars (stmt),
+						 NULL, id));
     }
 
   /* Keep iterating.  */
@@ -4825,14 +4762,6 @@ copy_decl_for_dup_finish (copy_body_data *id, tree decl, tree copy)
        new function.  */
     DECL_CONTEXT (copy) = id->dst_fn;
 
-  if (TREE_CODE (decl) == VAR_DECL
-      /* C++ clones functions during parsing, before
-	 referenced_vars.  */
-      && gimple_referenced_vars (DECL_STRUCT_FUNCTION (id->src_fn))
-      && referenced_var_lookup (DECL_STRUCT_FUNCTION (id->src_fn),
-				DECL_UID (decl)))
-    add_referenced_var (copy);
-
   return copy;
 }
 
@@ -4946,7 +4875,6 @@ copy_arguments_for_versioning (tree orig_parm, copy_body_data * id,
 	   as temporary variable later in function, the uses will be
 	   replaced by local variable.  */
 	tree var = copy_decl_to_var (arg, id);
-	add_referenced_var (var);
 	insert_decl_map (id, arg, var);
         /* Declare this new variable.  */
         DECL_CHAIN (var) = *vars;
@@ -5064,10 +4992,10 @@ update_clone_info (copy_body_data * id)
       if (node->clone.tree_map)
         {
 	  unsigned int i;
-          for (i = 0; i < VEC_length (ipa_replace_map_p, node->clone.tree_map); i++)
+          for (i = 0; i < vec_safe_length (node->clone.tree_map); i++)
 	    {
 	      struct ipa_replace_map *replace_info;
-	      replace_info = VEC_index (ipa_replace_map_p, node->clone.tree_map, i);
+	      replace_info = (*node->clone.tree_map)[i];
 	      walk_tree (&replace_info->old_tree, copy_tree_body_r, id, NULL);
 	      walk_tree (&replace_info->new_tree, copy_tree_body_r, id, NULL);
 	    }
@@ -5103,7 +5031,7 @@ update_clone_info (copy_body_data * id)
 */
 void
 tree_function_versioning (tree old_decl, tree new_decl,
-			  VEC(ipa_replace_map_p,gc)* tree_map,
+			  vec<ipa_replace_map_p, va_gc> *tree_map,
 			  bool update_clones, bitmap args_to_skip,
 			  bool skip_return, bitmap blocks_to_copy,
 			  basic_block new_entry)
@@ -5115,9 +5043,8 @@ tree_function_versioning (tree old_decl, tree new_decl,
   unsigned i;
   struct ipa_replace_map *replace_info;
   basic_block old_entry_block, bb;
-  VEC (gimple, heap) *init_stmts = VEC_alloc (gimple, heap, 10);
-
-  tree old_current_function_decl = current_function_decl;
+  vec<gimple> init_stmts;
+  init_stmts.create (10);
   tree vars = NULL_TREE;
 
   gcc_assert (TREE_CODE (old_decl) == FUNCTION_DECL
@@ -5132,14 +5059,14 @@ tree_function_versioning (tree old_decl, tree new_decl,
   /* Copy over debug args.  */
   if (DECL_HAS_DEBUG_ARGS_P (old_decl))
     {
-      VEC(tree, gc) **new_debug_args, **old_debug_args;
+      vec<tree, va_gc> **new_debug_args, **old_debug_args;
       gcc_checking_assert (decl_debug_args_lookup (new_decl) == NULL);
       DECL_HAS_DEBUG_ARGS_P (new_decl) = 0;
       old_debug_args = decl_debug_args_lookup (old_decl);
       if (old_debug_args)
 	{
 	  new_debug_args = decl_debug_args_insert (new_decl);
-	  *new_debug_args = VEC_copy (tree, gc, *old_debug_args);
+	  *new_debug_args = vec_safe_copy (*old_debug_args);
 	}
     }
 
@@ -5166,18 +5093,17 @@ tree_function_versioning (tree old_decl, tree new_decl,
   id.src_node = old_version_node;
   id.dst_node = new_version_node;
   id.src_cfun = DECL_STRUCT_FUNCTION (old_decl);
-  if (id.src_node->ipa_transforms_to_apply)
+  if (id.src_node->ipa_transforms_to_apply.exists ())
     {
-      VEC(ipa_opt_pass,heap) * old_transforms_to_apply = id.dst_node->ipa_transforms_to_apply;
+      vec<ipa_opt_pass> old_transforms_to_apply
+	    = id.dst_node->ipa_transforms_to_apply;
       unsigned int i;
 
-      id.dst_node->ipa_transforms_to_apply = VEC_copy (ipa_opt_pass, heap,
-					               id.src_node->ipa_transforms_to_apply);
-      for (i = 0; i < VEC_length (ipa_opt_pass, old_transforms_to_apply); i++)
-        VEC_safe_push (ipa_opt_pass, heap, id.dst_node->ipa_transforms_to_apply,
-		       VEC_index (ipa_opt_pass,
-		       		  old_transforms_to_apply,
-				  i));
+      id.dst_node->ipa_transforms_to_apply
+	    = id.src_node->ipa_transforms_to_apply.copy ();
+      for (i = 0; i < old_transforms_to_apply.length (); i++)
+        id.dst_node->ipa_transforms_to_apply.safe_push (old_transforms_to_apply[i]);
+      old_transforms_to_apply.release ();
     }
 
   id.copy_decl = copy_decl_no_change;
@@ -5187,14 +5113,12 @@ tree_function_versioning (tree old_decl, tree new_decl,
   id.transform_return_to_modify = false;
   id.transform_lang_insert_block = NULL;
 
-  current_function_decl = new_decl;
   old_entry_block = ENTRY_BLOCK_PTR_FOR_FUNCTION
     (DECL_STRUCT_FUNCTION (old_decl));
   initialize_cfun (new_decl, old_decl,
 		   old_entry_block->count);
   DECL_STRUCT_FUNCTION (new_decl)->gimple_df->ipa_pta
     = id.src_cfun->gimple_df->ipa_pta;
-  push_cfun (DECL_STRUCT_FUNCTION (new_decl));
 
   /* Copy the function's static chain.  */
   p = DECL_STRUCT_FUNCTION (old_decl)->static_chain_decl;
@@ -5205,13 +5129,12 @@ tree_function_versioning (tree old_decl, tree new_decl,
 
   /* If there's a tree_map, prepare for substitution.  */
   if (tree_map)
-    for (i = 0; i < VEC_length (ipa_replace_map_p, tree_map); i++)
+    for (i = 0; i < tree_map->length (); i++)
       {
 	gimple init;
-	replace_info = VEC_index (ipa_replace_map_p, tree_map, i);
+	replace_info = (*tree_map)[i];
 	if (replace_info->replace_p)
 	  {
-	    tree op = replace_info->new_tree;
 	    if (!replace_info->old_tree)
 	      {
 		int i = replace_info->parm_num;
@@ -5220,26 +5143,13 @@ tree_function_versioning (tree old_decl, tree new_decl,
 		  i --;
 		replace_info->old_tree = parm;
 	      }
-		
-
-	    STRIP_NOPS (op);
-
-	    if (TREE_CODE (op) == VIEW_CONVERT_EXPR)
-	      op = TREE_OPERAND (op, 0);
-
-	    if (TREE_CODE (op) == ADDR_EXPR)
-	      {
-		op = get_base_address (TREE_OPERAND (op, 0));
-		if (op && TREE_CODE (op) == VAR_DECL && !is_global_var (op))
-		  add_referenced_var (op);
-	      }
 	    gcc_assert (TREE_CODE (replace_info->old_tree) == PARM_DECL);
 	    init = setup_one_parameter (&id, replace_info->old_tree,
 	    			        replace_info->new_tree, id.src_fn,
 				        NULL,
 				        &vars);
 	    if (init)
-	      VEC_safe_push (gimple, heap, init_stmts, init);
+	      init_stmts.safe_push (init);
 	  }
       }
   /* Copy the function's arguments.  */
@@ -5253,9 +5163,9 @@ tree_function_versioning (tree old_decl, tree new_decl,
 
   declare_inline_vars (DECL_INITIAL (new_decl), vars);
 
-  if (!VEC_empty (tree, DECL_STRUCT_FUNCTION (old_decl)->local_decls))
+  if (!vec_safe_is_empty (DECL_STRUCT_FUNCTION (old_decl)->local_decls))
     /* Add local vars.  */
-    add_local_variables (DECL_STRUCT_FUNCTION (old_decl), cfun, &id, false);
+    add_local_variables (DECL_STRUCT_FUNCTION (old_decl), cfun, &id);
 
   if (DECL_RESULT (old_decl) == NULL_TREE)
     ;
@@ -5275,14 +5185,21 @@ tree_function_versioning (tree old_decl, tree new_decl,
       lang_hooks.dup_lang_specific_decl (DECL_RESULT (new_decl));
       if (gimple_in_ssa_p (id.src_cfun)
 	  && DECL_BY_REFERENCE (DECL_RESULT (old_decl))
-	  && (old_name
-	      = gimple_default_def (id.src_cfun, DECL_RESULT (old_decl))))
+	  && (old_name = ssa_default_def (id.src_cfun, DECL_RESULT (old_decl))))
 	{
 	  tree new_name = make_ssa_name (DECL_RESULT (new_decl), NULL);
 	  insert_decl_map (&id, old_name, new_name);
 	  SSA_NAME_DEF_STMT (new_name) = gimple_build_nop ();
-	  set_default_def (DECL_RESULT (new_decl), new_name);
+	  set_ssa_default_def (cfun, DECL_RESULT (new_decl), new_name);
 	}
+    }
+
+  /* Set up the destination functions loop tree.  */
+  if (loops_for_fn (DECL_STRUCT_FUNCTION (old_decl)) != NULL)
+    {
+      cfun->curr_properties &= ~PROP_loops;
+      loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+      cfun->curr_properties |= PROP_loops;
     }
 
   /* Copy the Function's body.  */
@@ -5296,8 +5213,8 @@ tree_function_versioning (tree old_decl, tree new_decl,
      debug stmts doesn't affect BB count, which may in the end cause
      codegen differences.  */
   bb = split_edge (single_succ_edge (ENTRY_BLOCK_PTR));
-  while (VEC_length (gimple, init_stmts))
-    insert_init_stmt (&id, bb, VEC_pop (gimple, init_stmts));
+  while (init_stmts.length ())
+    insert_init_stmt (&id, bb, init_stmts.pop ());
   update_clone_info (&id);
 
   /* Remap the nonlocal_goto_save_area, if any.  */
@@ -5321,7 +5238,7 @@ tree_function_versioning (tree old_decl, tree new_decl,
   pointer_set_destroy (id.statements_to_fold);
   fold_cond_expr_cond ();
   delete_unreachable_blocks_update_callgraph (&id);
-  if (id.dst_node->analyzed)
+  if (id.dst_node->symbol.definition)
     cgraph_rebuild_references ();
   update_ssa (TODO_update_ssa);
 
@@ -5352,12 +5269,9 @@ tree_function_versioning (tree old_decl, tree new_decl,
   free_dominance_info (CDI_DOMINATORS);
   free_dominance_info (CDI_POST_DOMINATORS);
 
-  gcc_assert (!id.debug_stmts);
-  VEC_free (gimple, heap, init_stmts);
+  gcc_assert (!id.debug_stmts.exists ());
+  init_stmts.release ();
   pop_cfun ();
-  current_function_decl = old_current_function_decl;
-  gcc_assert (!current_function_decl
-	      || DECL_STRUCT_FUNCTION (current_function_decl) == cfun);
   return;
 }
 

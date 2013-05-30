@@ -1,4 +1,4 @@
-;; Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2013 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -108,7 +108,7 @@
 
 (define_insn_reservation "ir_sb1_unknown" 1
   (and (eq_attr "cpu" "sb1,sb1a")
-       (eq_attr "type" "unknown,multi"))
+       (eq_attr "type" "unknown,multi,atomic,syncloop"))
   "sb1_ls0+sb1_ls1+sb1_ex0+sb1_ex1+sb1_fp0+sb1_fp1")
 
 ;; predicted taken branch causes 2 cycle ifetch bubble.  predicted not

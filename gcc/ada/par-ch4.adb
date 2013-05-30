@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -509,27 +509,46 @@ package body Ch4 is
               and then not
                 Is_Parameterless_Attribute (Get_Attribute_Id (Attr_Name))
             then
-               Set_Expressions (Name_Node, New_List);
-               Scan; -- past left paren
+               --  Attribute Loop_Entry has no effect on the name extension
+               --  parsing logic, as if the attribute never existed in the
+               --  source. Continue parsing the subsequent expressions or
+               --  ranges.
 
-               loop
-                  declare
-                     Expr : constant Node_Id := P_Expression_If_OK;
+               if Attr_Name = Name_Loop_Entry then
+                  Scan; -- past left paren
+                  goto Scan_Name_Extension_Left_Paren;
 
-                  begin
-                     if Token = Tok_Arrow then
-                        Error_Msg_SC
-                          ("named parameters not permitted for attributes");
-                        Scan; -- past junk arrow
+               --  Attribute Update contains an array or record association
+               --  list which provides new values for various components or
+               --  elements. The list is parsed as an aggregate.
 
-                     else
-                        Append (Expr, Expressions (Name_Node));
-                        exit when not Comma_Present;
-                     end if;
-                  end;
-               end loop;
+               elsif Attr_Name = Name_Update then
+                  Set_Expressions (Name_Node, New_List);
+                  Append (P_Aggregate, Expressions (Name_Node));
 
-               T_Right_Paren;
+               else
+                  Set_Expressions (Name_Node, New_List);
+                  Scan; -- past left paren
+
+                  loop
+                     declare
+                        Expr : constant Node_Id := P_Expression_If_OK;
+
+                     begin
+                        if Token = Tok_Arrow then
+                           Error_Msg_SC
+                             ("named parameters not permitted for attributes");
+                           Scan; -- past junk arrow
+
+                        else
+                           Append (Expr, Expressions (Name_Node));
+                           exit when not Comma_Present;
+                        end if;
+                     end;
+                  end loop;
+
+                  T_Right_Paren;
+               end if;
             end if;
 
             goto Scan_Name_Extension;
@@ -553,7 +572,7 @@ package body Ch4 is
          --      case of a name which can be extended in the normal manner.
          --      This case is handled by LP_State_Name or LP_State_Expr.
 
-         --      Note: conditional expressions (without an extra level of
+         --      Note: if and case expressions (without an extra level of
          --      parentheses) are permitted in this context).
 
          --   (..., identifier => expression , ...)
@@ -679,16 +698,17 @@ package body Ch4 is
 
          if Token = Tok_Arrow then
             Error_Msg
-              ("expect identifier in parameter association",
-                Sloc (Expr_Node));
+              ("expect identifier in parameter association", Sloc (Expr_Node));
             Scan;  -- past arrow
 
          elsif not Comma_Present then
             T_Right_Paren;
+
             Prefix_Node := Name_Node;
             Name_Node := New_Node (N_Indexed_Component, Sloc (Prefix_Node));
             Set_Prefix (Name_Node, Prefix_Node);
             Set_Expressions (Name_Node, Arg_List);
+
             goto Scan_Name_Extension;
          end if;
 
@@ -1233,37 +1253,44 @@ package body Ch4 is
       Lparen_Sloc := Token_Ptr;
       T_Left_Paren;
 
-      --  Conditional expression case
+      --  Note on parentheses count. For cases like an if expression, the
+      --  parens here really count as real parentheses for the paren count,
+      --  so we adjust the paren count accordingly after scanning the expr.
+
+      --  If expression
 
       if Token = Tok_If then
-         Expr_Node := P_Conditional_Expression;
+         Expr_Node := P_If_Expression;
          T_Right_Paren;
+         Set_Paren_Count (Expr_Node, Paren_Count (Expr_Node) + 1);
          return Expr_Node;
 
-      --  Case expression case
+      --  Case expression
 
       elsif Token = Tok_Case then
          Expr_Node := P_Case_Expression;
          T_Right_Paren;
+         Set_Paren_Count (Expr_Node, Paren_Count (Expr_Node) + 1);
          return Expr_Node;
 
-      --  Quantified expression case
+      --  Quantified expression
 
       elsif Token = Tok_For then
          Expr_Node := P_Quantified_Expression;
          T_Right_Paren;
+         Set_Paren_Count (Expr_Node, Paren_Count (Expr_Node) + 1);
          return Expr_Node;
 
       --  Note: the mechanism used here of rescanning the initial expression
       --  is distinctly unpleasant, but it saves a lot of fiddling in scanning
       --  out the discrete choice list.
 
-      --  Deal with expression and extension aggregate cases first
+      --  Deal with expression and extension aggregates first
 
       elsif Token /= Tok_Others then
          Save_Scan_State (Scan_State); -- at start of expression
 
-         --  Deal with (NULL RECORD) case
+         --  Deal with (NULL RECORD)
 
          if Token = Tok_Null then
             Scan; -- past NULL
@@ -1287,7 +1314,7 @@ package body Ch4 is
             Expr_Node := P_Expression_Or_Range_Attribute_If_OK;
          end if;
 
-         --  Extension aggregate case
+         --  Extension aggregate
 
          if Token = Tok_With then
             if Nkind (Expr_Node) = N_Attribute_Reference
@@ -1329,7 +1356,7 @@ package body Ch4 is
                Expr_Node := Empty;
             end if;
 
-         --  Expression case
+         --  Expression
 
          elsif Token = Tok_Right_Paren or else Token in Token_Class_Eterm then
             if Nkind (Expr_Node) = N_Attribute_Reference
@@ -1350,13 +1377,13 @@ package body Ch4 is
             T_Right_Paren; -- past right paren (error message if none)
             return Expr_Node;
 
-         --  Normal aggregate case
+         --  Normal aggregate
 
          else
             Aggregate_Node := New_Node (N_Aggregate, Lparen_Sloc);
          end if;
 
-      --  Others case
+      --  Others
 
       else
          Aggregate_Node := New_Node (N_Aggregate, Lparen_Sloc);
@@ -1801,12 +1828,15 @@ package body Ch4 is
 
    --  RELATION ::=
    --    SIMPLE_EXPRESSION [not] in MEMBERSHIP_CHOICE_LIST
+   --  | RAISE_EXPRESSION
 
    --  MEMBERSHIP_CHOICE_LIST ::=
    --    MEMBERSHIP_CHOICE {'|' MEMBERSHIP CHOICE}
 
    --  MEMBERSHIP_CHOICE ::=
    --    CHOICE_EXPRESSION | RANGE | SUBTYPE_MARK
+
+   --  RAISE_EXPRESSION ::= raise exception_NAME [with string_EXPRESSION]
 
    --  On return, Expr_Form indicates the categorization of the expression
 
@@ -1822,6 +1852,15 @@ package body Ch4 is
       Optok        : Source_Ptr;
 
    begin
+      --  First check for raise expression
+
+      if Token = Tok_Raise then
+         Expr_Form := EF_Non_Simple;
+         return P_Raise_Expression;
+      end if;
+
+      --  All other cases
+
       Node1 := P_Simple_Expression;
 
       if Token not in Token_Class_Relop then
@@ -2362,8 +2401,14 @@ package body Ch4 is
       Scan_State : Saved_Scan_State;
       Node1      : Node_Id;
 
+      Lparen : constant Boolean := Prev_Token = Tok_Left_Paren;
+      --  Remember if previous token is a left parenthesis. This is used to
+      --  deal with checking whether IF/CASE/FOR expressions appearing as
+      --  primaries require extra parenthesization.
+
    begin
       --  The loop runs more than once only if misplaced pragmas are found
+      --  or if a misplaced unary minus is skipped.
 
       loop
          case Token is
@@ -2454,7 +2499,7 @@ package body Ch4 is
             when Tok_Pragma =>
                P_Pragmas_Misplaced;
 
-            --  Deal with IF (possible unparenthesized conditional expression)
+            --  Deal with IF (possible unparenthesized if expression)
 
             when Tok_If =>
 
@@ -2462,7 +2507,7 @@ package body Ch4 is
                --  the start of a new line, then we consider we have a missing
                --  operand. If in Ada 2012 and the IF is not properly indented
                --  for a statement, we prefer to issue a message about an ill-
-               --  parenthesized conditional expression.
+               --  parenthesized if expression.
 
                if Token_Is_At_Start_Of_Line
                  and then not
@@ -2473,13 +2518,19 @@ package body Ch4 is
                   Error_Msg_AP ("missing operand");
                   return Error;
 
-               --  If this looks like a conditional expression, then treat it
-               --  that way with an error message.
+               --  If this looks like an if expression, then treat it that way
+               --  with an error message if not explicitly surrounded by
+               --  parentheses.
 
                elsif Ada_Version >= Ada_2012 then
-                  Error_Msg_SC
-                    ("conditional expression must be parenthesized");
-                  return P_Conditional_Expression;
+                  Node1 := P_If_Expression;
+
+                  if not (Lparen and then Token = Tok_Right_Paren) then
+                     Error_Msg
+                       ("if expression must be parenthesized", Sloc (Node1));
+                  end if;
+
+                  return Node1;
 
                --  Otherwise treat as misused identifier
 
@@ -2507,11 +2558,17 @@ package body Ch4 is
                   return Error;
 
                --  If this looks like a case expression, then treat it that way
-               --  with an error message.
+               --  with an error message if not within parentheses.
 
                elsif Ada_Version >= Ada_2012 then
-                  Error_Msg_SC ("case expression must be parenthesized");
-                  return P_Case_Expression;
+                  Node1 := P_Case_Expression;
+
+                  if not (Lparen and then Token = Tok_Right_Paren) then
+                     Error_Msg
+                       ("case expression must be parenthesized", Sloc (Node1));
+                  end if;
+
+                  return Node1;
 
                --  Otherwise treat as misused identifier
 
@@ -2522,24 +2579,36 @@ package body Ch4 is
             --  For [all | some]  indicates a quantified expression
 
             when Tok_For =>
-
                if Token_Is_At_Start_Of_Line then
                   Error_Msg_AP ("misplaced loop");
                   return Error;
 
                elsif Ada_Version >= Ada_2012 then
-                  Error_Msg_SC ("quantified expression must be parenthesized");
-                  return P_Quantified_Expression;
+                  Node1 := P_Quantified_Expression;
 
-               else
+                  if not (Lparen and then Token = Tok_Right_Paren) then
+                     Error_Msg
+                      ("quantified expression must be parenthesized",
+                        Sloc (Node1));
+                  end if;
+
+                  return Node1;
 
                --  Otherwise treat as misused identifier
 
+               else
                   return P_Identifier;
                end if;
 
+            --  Minus may well be an improper attempt at a unary minus. Give
+            --  a message, skip the minus and keep going!
+
+            when Tok_Minus =>
+               Error_Msg_SC ("parentheses required for unary minus");
+               Scan; -- past minus
+
             --  Anything else is illegal as the first token of a primary, but
-            --  we test for a reserved identifier so that it is treated nicely
+            --  we test for some common errors, to improve error messages.
 
             when others =>
                if Is_Reserved_Identifier then
@@ -2706,7 +2775,16 @@ package body Ch4 is
 
       Scan; -- past operator token
 
+      --  Deal with NOT IN, if previous token was NOT, we must have IN now
+
       if Prev_Token = Tok_Not then
+
+         --  Style check, for NOT IN, we require one space between NOT and IN
+
+         if Style_Check and then Token = Tok_In then
+            Style.Check_Not_In;
+         end if;
+
          T_In;
       end if;
 
@@ -2872,6 +2950,16 @@ package body Ch4 is
          Set_Expression
            (Alloc_Node,
             P_Subtype_Indication (Type_Node, Null_Exclusion_Present));
+
+         --  AI05-0104: An explicit null exclusion is not allowed for an
+         --  allocator without initialization. In previous versions of the
+         --  language it just raises constraint error.
+
+         if Ada_Version >= Ada_2012 and then Null_Exclusion_Present then
+            Error_Msg_N
+              ("an allocator with a subtype indication "
+               & "cannot have a null exclusion", Alloc_Node);
+         end if;
       end if;
 
       return Alloc_Node;
@@ -2965,21 +3053,21 @@ package body Ch4 is
       return Case_Alt_Node;
    end P_Case_Expression_Alternative;
 
-   ------------------------------
-   -- P_Conditional_Expression --
-   ------------------------------
+   ---------------------
+   -- P_If_Expression --
+   ---------------------
 
-   function P_Conditional_Expression return Node_Id is
+   function P_If_Expression return Node_Id is
       Exprs : constant List_Id    := New_List;
       Loc   : constant Source_Ptr := Token_Ptr;
       Expr  : Node_Id;
       State : Saved_Scan_State;
 
    begin
-      Inside_Conditional_Expression := Inside_Conditional_Expression + 1;
+      Inside_If_Expression := Inside_If_Expression + 1;
 
       if Token = Tok_If and then Ada_Version < Ada_2012 then
-         Error_Msg_SC ("|conditional expression is an Ada 2012 feature");
+         Error_Msg_SC ("|if expression is an Ada 2012 feature");
          Error_Msg_SC ("\|unit must be compiled with -gnat2012 switch");
       end if;
 
@@ -3008,7 +3096,7 @@ package body Ch4 is
       --  Scan out ELSIF sequence if present
 
       if Token = Tok_Elsif then
-         Expr := P_Conditional_Expression;
+         Expr := P_If_Expression;
          Set_Is_Elsif (Expr);
          Append_To (Exprs, Expr);
 
@@ -3030,8 +3118,7 @@ package body Ch4 is
       --  If we have an END IF, diagnose as not needed
 
       if Token = Tok_End then
-         Error_Msg_SC
-           ("`END IF` not allowed at end of conditional expression");
+         Error_Msg_SC ("`END IF` not allowed at end of if expression");
          Scan; -- past END
 
          if Token = Tok_If then
@@ -3039,14 +3126,14 @@ package body Ch4 is
          end if;
       end if;
 
-      Inside_Conditional_Expression := Inside_Conditional_Expression - 1;
+      Inside_If_Expression := Inside_If_Expression - 1;
 
-      --  Return the Conditional_Expression node
+      --  Return the If_Expression node
 
       return
-        Make_Conditional_Expression (Loc,
+        Make_If_Expression (Loc,
           Expressions => Exprs);
-   end P_Conditional_Expression;
+   end P_If_Expression;
 
    -----------------------
    -- P_Membership_Test --
@@ -3104,18 +3191,16 @@ package body Ch4 is
          Result := P_Case_Expression;
 
          if not (Lparen and then Token = Tok_Right_Paren) then
-            Error_Msg_N
-              ("case expression must be parenthesized!", Result);
+            Error_Msg_N ("case expression must be parenthesized!", Result);
          end if;
 
-      --  Conditional expression
+      --  If expression
 
       elsif Token = Tok_If then
-         Result := P_Conditional_Expression;
+         Result := P_If_Expression;
 
          if not (Lparen and then Token = Tok_Right_Paren) then
-            Error_Msg_N
-              ("conditional expression must be parenthesized!", Result);
+            Error_Msg_N ("if expression must be parenthesized!", Result);
          end if;
 
       --  Quantified expression

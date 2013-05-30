@@ -1,6 +1,5 @@
 ;;  Octeon pipeline description.
-;;  Copyright (C) 2008
-;;  Free Software Foundation, Inc.
+;;  Copyright (C) 2008-2013 Free Software Foundation, Inc.
 
 ;; This file is part of GCC.
 
@@ -133,5 +132,5 @@
 
 (define_insn_reservation "octeon_unknown" 1
   (and (eq_attr "cpu" "octeon,octeon2")
-       (eq_attr "type" "unknown,multi"))
+       (eq_attr "type" "unknown,multi,atomic,syncloop"))
   "octeon_pipe0 + octeon_pipe1")

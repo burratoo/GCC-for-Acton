@@ -1,7 +1,6 @@
 /* Definitions of target machine needed for option handling for GNU compiler,
    for IBM RS/6000.
-   Copyright (C) 2010, 2011
-   Free Software Foundation, Inc.
+   Copyright (C) 2010-2013 Free Software Foundation, Inc.
    Contributed by Michael Meissner (meissner@linux.vnet.ibm.com)
 
    This file is part of GCC.
@@ -31,8 +30,6 @@
 /* Processor type.  Order must match cpu attribute in MD file.  */
 enum processor_type
  {
-   PROCESSOR_RIOS1,
-   PROCESSOR_RIOS2,
    PROCESSOR_RS64A,
    PROCESSOR_MPCCORE,
    PROCESSOR_PPC403,
@@ -62,7 +59,8 @@ enum processor_type
    PROCESSOR_POWER7,
    PROCESSOR_CELL,
    PROCESSOR_PPCA2,
-   PROCESSOR_TITAN
+   PROCESSOR_TITAN,
+   PROCESSOR_POWER8
 };
 
 /* FP processor type.  */
@@ -134,11 +132,14 @@ enum rs6000_cmodel {
   CMODEL_LARGE
 };
 
-/* Describe which vector unit to use for a given machine mode.  */
+/* Describe which vector unit to use for a given machine mode.  The
+   VECTOR_MEM_* and VECTOR_UNIT_* macros assume that Altivec, VSX, and
+   P8_VECTOR are contiguous.  */
 enum rs6000_vector {
   VECTOR_NONE,			/* Type is not  a vector or not supported */
   VECTOR_ALTIVEC,		/* Use altivec for vector processing */
   VECTOR_VSX,			/* Use VSX for vector processing */
+  VECTOR_P8_VECTOR,		/* Use ISA 2.07 VSX for vector processing */
   VECTOR_PAIRED,		/* Use paired floating point for vectors */
   VECTOR_SPE,			/* Use SPE for vector processing */
   VECTOR_OTHER			/* Some other vector unit */

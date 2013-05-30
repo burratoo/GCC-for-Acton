@@ -1,6 +1,6 @@
 ;; Pipeline model for ST Microelectronics Loongson-2E/2F cores.
 
-;; Copyright (C) 2008, 2010 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2013 Free Software Foundation, Inc.
 ;; Contributed by CodeSourcery.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
@@ -98,7 +98,7 @@
 ;; ls2_[f]alu{1,2}_turn_enabled units according to this attribute.
 ;; These instructions are used in mips.c: sched_ls2_dfa_post_advance_cycle.
 
-(define_attr "ls2_turn_type" "alu1,alu2,falu1,falu2,unknown"
+(define_attr "ls2_turn_type" "alu1,alu2,falu1,falu2,unknown,atomic,syncloop"
   (const_string "unknown"))
 
 ;; Subscribe ls2_alu1_turn_enabled.

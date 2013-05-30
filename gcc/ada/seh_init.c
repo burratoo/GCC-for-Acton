@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *           Copyright (C) 2005-2012, Free Software Foundation, Inc.        *
+ *           Copyright (C) 2005-2013, Free Software Foundation, Inc.        *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -32,10 +32,6 @@
 /*  This unit contains support for SEH (Structured Exception Handling).
     Right now the only implementation is for Win32.  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifdef IN_RTS
 #include "tconfig.h"
 #include "tsystem.h"
@@ -50,6 +46,10 @@ extern "C" {
 
 #include "raise.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Addresses of exception data blocks for predefined exceptions. */
 extern struct Exception_Data constraint_error;
 extern struct Exception_Data numeric_error;
@@ -60,7 +60,8 @@ extern struct Exception_Data _abort_signal;
 
 #define Raise_From_Signal_Handler \
                       ada__exceptions__raise_from_signal_handler
-extern void Raise_From_Signal_Handler (struct Exception_Data *, const char *);
+extern void Raise_From_Signal_Handler (struct Exception_Data *, const char *)
+  ATTRIBUTE_NORETURN;
 
 
 #if defined (_WIN32)
@@ -72,7 +73,7 @@ extern void Raise_From_Signal_Handler (struct Exception_Data *, const char *);
 extern void _global_unwind2 (void *);
 
 EXCEPTION_DISPOSITION __gnat_SEH_error_handler
-(struct _EXCEPTION_RECORD*, void*, struct _CONTEXT*, void*);
+(struct _EXCEPTION_RECORD*, void*, struct _CONTEXT*, void*) ATTRIBUTE_NORETURN;
 
 struct Exception_Data *
 __gnat_map_SEH (EXCEPTION_RECORD* ExceptionRecord, const char **msg);
@@ -91,7 +92,7 @@ __gnat_map_SEH (EXCEPTION_RECORD* ExceptionRecord, const char **msg)
       */
       if ((ExceptionRecord->ExceptionInformation[1] & 3) != 0
 	  || IsBadCodePtr
-	  ((void *)(ExceptionRecord->ExceptionInformation[1] + 4096)))
+	  ((FARPROC)(ExceptionRecord->ExceptionInformation[1] + 4096)))
 	{
 	  *msg = "EXCEPTION_ACCESS_VIOLATION";
 	  return &program_error;
@@ -169,9 +170,11 @@ __gnat_map_SEH (EXCEPTION_RECORD* ExceptionRecord, const char **msg)
     }
 }
 
+#if !(defined (_WIN64) && defined (__SEH__))
+
 EXCEPTION_DISPOSITION
 __gnat_SEH_error_handler (struct _EXCEPTION_RECORD* ExceptionRecord,
-			  void *EstablisherFrame,
+			  void *EstablisherFrame ATTRIBUTE_UNUSED,
 			  struct _CONTEXT* ContextRecord ATTRIBUTE_UNUSED,
 			  void *DispatcherContext ATTRIBUTE_UNUSED)
 {
@@ -182,14 +185,8 @@ __gnat_SEH_error_handler (struct _EXCEPTION_RECORD* ExceptionRecord,
 
   if (exception == NULL)
     {
-#if defined (_WIN64) && defined (__SEH__)
-      /* On Windows x64, do not transform other exception as they could
-	 be caught by user (when SEH is used to propagate exceptions).  */
-      return;
-#else
       exception = &program_error;
       msg = "unhandled signal";
-#endif
     }
 
 #if ! defined (_WIN64)
@@ -202,8 +199,8 @@ __gnat_SEH_error_handler (struct _EXCEPTION_RECORD* ExceptionRecord,
 #endif
 
   Raise_From_Signal_Handler (exception, msg);
-  return 0; /* This is never reached, avoid compiler warning  */
 }
+#endif /* !(defined (_WIN64) && defined (__SEH__)) */
 
 #if defined (_WIN64)
 /*  On x86_64 windows exception mechanism is no more based on a chained list

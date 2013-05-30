@@ -1,6 +1,5 @@
 /* Help friends in C++.
-   Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
-   2007, 2008, 2010, 2011  Free Software Foundation, Inc.
+   Copyright (C) 1997-2013 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -166,7 +165,8 @@ add_friend (tree type, tree decl, bool complain)
 
   ctx = DECL_CONTEXT (decl);
   if (ctx && CLASS_TYPE_P (ctx) && !uses_template_parms (ctx))
-    perform_or_defer_access_check (TYPE_BINFO (ctx), decl, decl);
+    perform_or_defer_access_check (TYPE_BINFO (ctx), decl, decl,
+				   tf_warning_or_error);
 
   maybe_add_class_template_decl_list (type, decl, /*friend_p=*/1);
 
@@ -223,7 +223,8 @@ make_friend_class (tree type, tree friend_type, bool complain)
   int class_template_depth = template_class_depth (type);
   int friend_depth = processing_template_decl - class_template_depth;
 
-  if (! MAYBE_CLASS_TYPE_P (friend_type))
+  if (! MAYBE_CLASS_TYPE_P (friend_type)
+      && TREE_CODE (friend_type) != TEMPLATE_TEMPLATE_PARM)
     {
       /* N1791: If the type specifier in a friend declaration designates a
 	 (possibly cv-qualified) class type, that class is declared as a
@@ -348,6 +349,8 @@ make_friend_class (tree type, tree friend_type, bool complain)
       error ("template parameter type %qT declared %<friend%>", friend_type);
       return;
     }
+  else if (TREE_CODE (friend_type) == TEMPLATE_TEMPLATE_PARM)
+    friend_type = TYPE_NAME (friend_type);
   else if (!CLASSTYPE_TEMPLATE_INFO (friend_type))
     {
       /* template <class T> friend class A; where A is not a template */
@@ -482,8 +485,7 @@ do_friend (tree ctype, tree declarator, tree decl,
 	 to be a friend, so we do lookup here even if CTYPE is in
 	 the process of being defined.  */
       if (class_template_depth
-	  || COMPLETE_TYPE_P (ctype)
-	  || (CLASS_TYPE_P (ctype) && TYPE_BEING_DEFINED (ctype)))
+	  || COMPLETE_OR_OPEN_TYPE_P (ctype))
 	{
 	  if (DECL_TEMPLATE_INFO (decl))
 	    /* DECL is a template specialization.  No need to

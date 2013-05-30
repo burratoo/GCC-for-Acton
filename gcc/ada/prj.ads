@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2001-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -45,6 +45,10 @@ package Prj is
    --  Call by gprbuild for each language specify by switch
    --  --restricted-to-languages=.
 
+   procedure Remove_All_Restricted_Languages;
+   --  Call by gprbuild in CodePeer mode to ignore switches
+   --  --restricted-to-languages=.
+
    function Is_Allowed_Language (Name : Name_Id) return Boolean;
    --  Returns True if --restricted-to-languages= is not used or if Name
    --  is one of the restricted languages.
@@ -68,14 +72,21 @@ package Prj is
    type Yes_No_Unknown is (Yes, No, Unknown);
    --  Tri-state to decide if -lgnarl is needed when linking
 
+   pragma Warnings (Off);
    type Project_Qualifier is
      (Unspecified,
+
+      --  The following clash with Standard is OK, and justified by the context
+      --  which really wants to use the same set of qualifiers.
+
       Standard,
+
       Library,
       Configuration,
       Dry,
       Aggregate,
       Aggregate_Library);
+   pragma Warnings (On);
    --  Qualifiers that can prefix the reserved word "project" in a project
    --  file:
    --    Standard:             standard project ...
@@ -1188,7 +1199,17 @@ package Prj is
 
    --  The following record describes a project file representation
 
-   type Standalone is (No, Standard, Encapsulated);
+   pragma Warnings (Off);
+   type Standalone is
+     (No,
+
+      --  The following clash with Standard is OK, and justified by the context
+      --  which really wants to use the same set of qualifiers.
+
+      Standard,
+
+      Encapsulated);
+   pragma Warnings (On);
 
    type Project_Data (Qualifier : Project_Qualifier := Unspecified) is record
 
@@ -1449,10 +1470,12 @@ package Prj is
      (In_Tree           : Project_Tree_Ref;
       Project           : Project_Id := No_Project;
       Language          : Name_Id    := No_Name;
-      Encapsulated_Libs : Boolean    := True) return Source_Iterator;
+      Encapsulated_Libs : Boolean    := True;
+      Locally_Removed   : Boolean    := True) return Source_Iterator;
    --  Returns an iterator for all the sources of a project tree, or a specific
    --  project, or a specific language. Include sources from aggregated libs if
-   --  Aggregated_Libs is True.
+   --  Aggregated_Libs is True. If Locally_Removed is set to False the
+   --  Locally_Removed files won't be reported.
 
    function Element (Iter : Source_Iterator) return Source_Id;
    --  Return the current source (or No_Source if there are no more sources)
@@ -1810,6 +1833,7 @@ package Prj is
 
    Gprbuild_Flags : constant Processing_Flags;
    Gprclean_Flags : constant Processing_Flags;
+   Gprexec_Flags  : constant Processing_Flags;
    Gnatmake_Flags : constant Processing_Flags;
    --  Flags used by the various tools. They all display the error messages
    --  through Prj.Err.
@@ -1906,6 +1930,8 @@ private
 
       Encapsulated_Libs : Boolean;
       --  True if we want to include the sources from encapsulated libs
+
+      Locally_Removed : Boolean;
    end record;
 
    procedure Add_To_Buffer
@@ -1980,6 +2006,18 @@ private
                        Require_Obj_Dirs           => Warning,
                        Allow_Invalid_External     => Error,
                        Missing_Source_Files       => Error,
+                       Ignore_Missing_With        => False);
+
+   Gprexec_Flags :  constant Processing_Flags :=
+                      (Report_Error               => null,
+                       When_No_Sources            => Silent,
+                       Require_Sources_Other_Lang => False,
+                       Allow_Duplicate_Basenames  => False,
+                       Compiler_Driver_Mandatory  => False,
+                       Error_On_Unknown_Language  => True,
+                       Require_Obj_Dirs           => Silent,
+                       Allow_Invalid_External     => Error,
+                       Missing_Source_Files       => Silent,
                        Ignore_Missing_With        => False);
 
    Gnatmake_Flags : constant Processing_Flags :=
