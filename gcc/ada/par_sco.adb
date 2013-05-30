@@ -139,7 +139,7 @@ package body Par_SCO is
 
    procedure Traverse_Atomic_Body                  (N : Node_Id);
 
-    procedure Traverse_Cycle_Statement_Sequence
+   procedure Traverse_Cycle_Statement_Sequence
      (N : Node_Id;
       D : Dominant_Info := No_Dominant);
 

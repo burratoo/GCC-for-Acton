@@ -122,6 +122,7 @@ package Rtsfind is
 
       Ada_Atomic_Actions,
       Ada_Calendar,
+      Ada_Cyclic_Tasks,
       Ada_Dispatching,
       Ada_Exceptions,
       Ada_Finalization,
@@ -622,6 +623,11 @@ package Rtsfind is
      RO_CA_Delay_For,                    -- Ada.Calendar.Delays
      RO_CA_Delay_Until,                  -- Ada.Calendar.Delays
      RO_CA_To_Duration,                  -- Ada.Calendar.Delays
+
+     RE_Action_Handler,                  -- Ada.Cyclic_Tasks
+     RE_Cycle_Type,                      -- Ada.Cyclic_Tasks
+     RE_Event_Action,                    -- Ada.Cyclic_Tasks
+     RE_Execution_Server,                -- Ada.Cyclic_Tasks
 
      RE_Set_Deadline,                    -- Ada.Dispatching.EDF
 
@@ -1890,6 +1896,11 @@ package Rtsfind is
      RO_CA_Delay_For                     => Ada_Calendar_Delays,
      RO_CA_Delay_Until                   => Ada_Calendar_Delays,
      RO_CA_To_Duration                   => Ada_Calendar_Delays,
+
+     RE_Action_Handler                   => Ada_Cyclic_Tasks,
+     RE_Cycle_Type                       => Ada_Cyclic_Tasks,
+     RE_Event_Action                     => Ada_Cyclic_Tasks,
+     RE_Execution_Server                 => Ada_Cyclic_Tasks,
 
      RE_Set_Deadline                     => Ada_Dispatching_EDF,
 
