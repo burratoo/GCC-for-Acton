@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -265,6 +265,7 @@ package body Prj.Attr is
    "Ladefault_switches#" &
    "LcOleading_switches#" &
    "LcOswitches#" &
+   "LcOtrailing_switches#" &
    "LVlinker_options#" &
    "SVmap_file_option#" &
 
@@ -360,6 +361,11 @@ package body Prj.Attr is
    "SVlib_subdir#" &
    "SVproject_subdir#" &
    "SVactive#" &
+
+   --  package Remote
+
+   "Premote#" &
+   "SVroot_dir#" &
 
    --  package Stack
 
@@ -851,7 +857,7 @@ package body Prj.Attr is
 
       for Index in Package_Attributes.First .. Package_Attributes.Last loop
          if Package_Attributes.Table (Index).Name = Pkg_Name then
-            Fail ("cannot register a package with a non unique name"""
+            Fail ("cannot register a package with a non unique name """
                   & Name
                   & """");
             Id := Empty_Package;
@@ -889,7 +895,7 @@ package body Prj.Attr is
 
       for Index in Package_Attributes.First .. Package_Attributes.Last loop
          if Package_Attributes.Table (Index).Name = Pkg_Name then
-            Fail ("cannot register a package with a non unique name"""
+            Fail ("cannot register a package with a non unique name """
                   & Name
                   & """");
             raise Project_Error;

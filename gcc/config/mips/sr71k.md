@@ -1,4 +1,4 @@
-;; Copyright (C) 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2013 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -144,7 +144,7 @@
 
 (define_insn_reservation "ir_sr70_unknown" 1
   (and (eq_attr "cpu" "sr71000")
-       (eq_attr "type" "unknown"))
+       (eq_attr "type" "unknown,atomic,syncloop"))
   "serial_dispatch")
 
 

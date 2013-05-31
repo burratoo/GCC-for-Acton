@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -149,6 +149,7 @@ package body Exp_Ch7 is
    --  Set the field Node_To_Be_Wrapped of the current scope
 
    --  ??? The entire comment needs to be rewritten
+   --  ??? which entire comment?
 
    -----------------------------
    -- Finalization Management --
@@ -1003,10 +1004,10 @@ package body Exp_Ch7 is
       then
          return;
 
-      --  Do not create finalization masters in Alfa mode because they result
+      --  Do not create finalization masters in SPARK mode because they result
       --  in unwanted expansion.
 
-      elsif Alfa_Mode then
+      elsif SPARK_Mode then
          return;
       end if;
 
@@ -1967,8 +1968,8 @@ package body Exp_Ch7 is
                then
                   Processing_Actions (Has_No_Init => True);
 
-               --  Process intermediate results of conditional expression with
-               --  one of the alternatives using a controlled function call.
+               --  Process intermediate results of an if expression with one
+               --  of the alternatives using a controlled function call.
 
                elsif Is_Access_Type (Obj_Typ)
                  and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
@@ -2720,7 +2721,18 @@ package body Exp_Ch7 is
                 Obj_Ref => Obj_Ref,
                 Typ     => Obj_Typ);
 
-            if Exceptions_OK then
+            --  For CodePeer, the exception handlers normally generated here
+            --  generate complex flowgraphs which result in capacity problems.
+            --  Omitting these handlers for CodePeer is justified as follows:
+
+            --    If a handler is dead, then omitting it is surely ok
+
+            --    If a handler is live, then CodePeer should flag the
+            --      potentially-exception-raising construct that causes it
+            --      to be live. That is what we are interested in, not what
+            --      happens after the exception is raised.
+
+            if Exceptions_OK and not CodePeer_Mode then
                Fin_Stmts := New_List (
                  Make_Block_Statement (Loc,
                    Handled_Statement_Sequence =>
@@ -2868,10 +2880,10 @@ package body Exp_Ch7 is
    begin
       Fin_Id := Empty;
 
-      --  Do not perform this expansion in Alfa mode because it is not
+      --  Do not perform this expansion in SPARK mode because it is not
       --  necessary.
 
-      if Alfa_Mode then
+      if SPARK_Mode then
          return;
       end if;
 
@@ -3030,10 +3042,10 @@ package body Exp_Ch7 is
       HSS : Node_Id;
 
    begin
-      --  Do not perform this expansion in Alfa mode because we do not create
+      --  Do not perform this expansion in SPARK mode because we do not create
       --  finalizers in the first place.
 
-      if Alfa_Mode then
+      if SPARK_Mode then
          return;
       end if;
 
@@ -3443,7 +3455,7 @@ package body Exp_Ch7 is
          --  with the array case and non-discriminated record cases.
 
          Error_Msg_N
-           ("task/protected object in variant record will not be freed?", N);
+           ("task/protected object in variant record will not be freed??", N);
          return New_List (Make_Null_Statement (Loc));
       end if;
 
@@ -3703,16 +3715,20 @@ package body Exp_Ch7 is
       --  If the node to wrap is an iteration_scheme, the expression is
       --  one of the bounds, and the expansion will make an explicit
       --  declaration for it (see Analyze_Iteration_Scheme, sem_ch5.adb),
-      --  so do not apply any transformations here.
+      --  so do not apply any transformations here. Same for an Ada 2012
+      --  iterator specification, where a block is created for the expression
+      --  that build the container.
 
-      elsif Nkind (Wrap_Node) = N_Iteration_Scheme then
+      elsif Nkind_In (Wrap_Node, N_Iteration_Scheme,
+                                 N_Iterator_Specification)
+      then
          null;
 
       --  In formal verification mode, if the node to wrap is a pragma check,
       --  this node and enclosed expression are not expanded, so do not apply
       --  any transformations here.
 
-      elsif Alfa_Mode
+      elsif SPARK_Mode
         and then Nkind (Wrap_Node) = N_Pragma
         and then Get_Pragma_Id (Wrap_Node) = Pragma_Check
       then
@@ -4422,9 +4438,13 @@ package body Exp_Ch7 is
    ------------------------------------
 
    procedure Insert_Actions_In_Scope_Around (N : Node_Id) is
-      SE     : Scope_Stack_Entry renames Scope_Stack.Table (Scope_Stack.Last);
-      After  : List_Id renames SE.Actions_To_Be_Wrapped_After;
-      Before : List_Id renames SE.Actions_To_Be_Wrapped_Before;
+      After  : constant List_Id :=
+        Scope_Stack.Table (Scope_Stack.Last).Actions_To_Be_Wrapped_After;
+      Before : constant List_Id :=
+        Scope_Stack.Table (Scope_Stack.Last).Actions_To_Be_Wrapped_Before;
+      --  Note: We used to use renamings of Scope_Stack.Table (Scope_Stack.
+      --  Last), but this was incorrect as Process_Transient_Object may
+      --  introduce new scopes and cause a reallocation of Scope_Stack.Table.
 
       procedure Process_Transient_Objects
         (First_Object : Node_Id;
@@ -4457,12 +4477,16 @@ package body Exp_Ch7 is
          function Requires_Hooking return Boolean is
          begin
             --  The context is either a procedure or function call or an object
-            --  declaration initialized by a function call. In all these cases,
-            --  the calls might raise an exception.
+            --  declaration initialized by a function call. Note that in the
+            --  latter case, a function call that returns on the secondary
+            --  stack is usually rewritten into something else. Its proper
+            --  detection requires examination of the original initialization
+            --  expression.
 
             return Nkind (N) in N_Subprogram_Call
-               or else (Nkind (N) = N_Object_Declaration
-                         and then Nkind (Expression (N)) = N_Function_Call);
+              or else (Nkind (N) = N_Object_Declaration
+                         and then Nkind (Original_Node (Expression (N))) =
+                                    N_Function_Call);
          end Requires_Hooking;
 
          --  Local variables
@@ -4478,9 +4502,12 @@ package body Exp_Ch7 is
          Obj_Id    : Entity_Id;
          Obj_Ref   : Node_Id;
          Obj_Typ   : Entity_Id;
+         Prev_Fin  : Node_Id := Empty;
          Stmt      : Node_Id;
          Stmts     : List_Id;
          Temp_Id   : Entity_Id;
+
+      --  Start of processing for Process_Transient_Objects
 
       begin
          --  Examine all objects in the list First_Object .. Last_Object
@@ -4516,7 +4543,6 @@ package body Exp_Ch7 is
                   Fin_Decls := New_List;
 
                   Build_Object_Declarations (Fin_Data, Fin_Decls, Loc);
-                  Insert_List_Before_And_Analyze (First_Object, Fin_Decls);
 
                   Built := True;
                end if;
@@ -4648,56 +4674,30 @@ package body Exp_Ch7 is
                        Exception_Handlers => New_List (
                          Build_Exception_Handler (Fin_Data))));
 
-               Insert_After_And_Analyze (Last_Object, Fin_Block);
+               --  The single raise statement must be inserted after all the
+               --  finalization blocks, and we put everything into a wrapper
+               --  block to clearly expose the construct to the back-end.
 
-               --  The raise statement must be inserted after all the
-               --  finalization blocks.
+               if Present (Prev_Fin) then
+                  Insert_Before_And_Analyze (Prev_Fin, Fin_Block);
+               else
+                  Insert_After_And_Analyze (Last_Object,
+                    Make_Block_Statement (Loc,
+                      Declarations => Fin_Decls,
+                      Handled_Statement_Sequence =>
+                        Make_Handled_Sequence_Of_Statements (Loc,
+                          Statements => New_List (Fin_Block))));
 
-               if No (Last_Fin) then
                   Last_Fin := Fin_Block;
                end if;
 
-            --  When the associated node is an array object, the expander may
-            --  sometimes generate a loop and create transient objects inside
-            --  the loop.
+               Prev_Fin := Fin_Block;
+            end if;
 
-            elsif Nkind (Related_Node) = N_Object_Declaration
-              and then Is_Array_Type
-                         (Base_Type
-                           (Etype (Defining_Identifier (Related_Node))))
-              and then Nkind (Stmt) = N_Loop_Statement
-            then
-               declare
-                  Block_HSS : Node_Id := First (Statements (Stmt));
+            --  Terminate the scan after the last object has been processed to
+            --  avoid touching unrelated code.
 
-               begin
-                  --  The loop statements may have been wrapped in a block by
-                  --  Process_Statements_For_Controlled_Objects, inspect the
-                  --  handled sequence of statements.
-
-                  if Nkind (Block_HSS) = N_Block_Statement
-                    and then No (Next (Block_HSS))
-                  then
-                     Block_HSS := Handled_Statement_Sequence (Block_HSS);
-
-                     Process_Transient_Objects
-                       (First_Object => First (Statements (Block_HSS)),
-                        Last_Object  => Last (Statements (Block_HSS)),
-                        Related_Node => Related_Node);
-
-                  --  Inspect the statements of the loop
-
-                  else
-                     Process_Transient_Objects
-                       (First_Object => First (Statements (Stmt)),
-                        Last_Object  => Last (Statements (Stmt)),
-                        Related_Node => Related_Node);
-                  end if;
-               end;
-
-            --  Terminate the scan after the last object has been processed
-
-            elsif Stmt = Last_Object then
+            if Stmt = Last_Object then
                exit;
             end if;
 
@@ -4725,10 +4725,10 @@ package body Exp_Ch7 is
       end if;
 
       declare
-         Node_To_Wrap  : constant Node_Id := Node_To_Be_Wrapped;
-         First_Obj  : Node_Id;
-         Last_Obj   : Node_Id;
-         Target     : Node_Id;
+         Node_To_Wrap : constant Node_Id := Node_To_Be_Wrapped;
+         First_Obj    : Node_Id;
+         Last_Obj     : Node_Id;
+         Target       : Node_Id;
 
       begin
          --  If the node to be wrapped is the trigger of an asynchronous
@@ -4788,11 +4788,13 @@ package body Exp_Ch7 is
          --  Reset the action lists
 
          if Present (Before) then
-            Before := No_List;
+            Scope_Stack.Table (Scope_Stack.Last).
+              Actions_To_Be_Wrapped_Before := No_List;
          end if;
 
          if Present (After) then
-            After := No_List;
+            Scope_Stack.Table (Scope_Stack.Last).
+              Actions_To_Be_Wrapped_After := No_List;
          end if;
       end;
    end Insert_Actions_In_Scope_Around;

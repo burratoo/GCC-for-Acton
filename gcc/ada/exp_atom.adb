@@ -1237,10 +1237,10 @@ package body Exp_Atom is
 
       procedure Move_PPC_List (From_Entity   : Entity_Id;
                                To_Subprogram : Node_Id) is
-         PPC : Node_Id := Spec_PPC_List (Contract (From_Entity));
+         PPC : Node_Id := Pre_Post_Conditions (Contract (From_Entity));
          C   : constant Node_Id :=
                  Make_Contract (Sloc (From_Entity),
-                                Spec_PPC_List => Relocate_Node (PPC));
+                                Pre_Post_Conditions => Relocate_Node (PPC));
       begin
          Set_Contract (Defining_Unit_Name (Specification (To_Subprogram)), C);
       end Move_PPC_List;

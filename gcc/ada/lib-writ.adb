@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,7 +33,6 @@ with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Lib.Util; use Lib.Util;
 with Lib.Xref; use Lib.Xref;
-               use Lib.Xref.Alfa;
 with Nlists;   use Nlists;
 with Gnatvsn;  use Gnatvsn;
 with Opt;      use Opt;
@@ -818,11 +817,11 @@ package body Lib.Writ is
                      Nkind (Unit (Cunit)) in N_Generic_Renaming_Declaration)
                     and then Generic_May_Lack_ALI (Fname))
 
-              --  In Alfa mode, always generate the dependencies on ALI
+              --  In SPARK mode, always generate the dependencies on ALI
               --  files, which are required to compute frame conditions
               --  of subprograms.
 
-              or else Alfa_Mode
+              or else SPARK_Mode
             then
                Write_Info_Tab (25);
 
@@ -1104,6 +1103,11 @@ package body Lib.Writ is
             Write_Info_Str (Get_Name_String (Task_Dispatching_Policy));
             Write_Info_Char (' ');
          end if;
+      end if;
+
+      if Partition_Elaboration_Policy /= ' ' then
+         Write_Info_Str  (" E");
+         Write_Info_Char (Partition_Elaboration_Policy);
       end if;
 
       if not Object then
@@ -1437,11 +1441,12 @@ package body Lib.Writ is
          SCO_Output;
       end if;
 
-      --  Output Alfa information if needed
+      --  Output SPARK cross-reference information if needed
 
-      if Opt.Xref_Active and then Alfa_Mode then
-         Collect_Alfa (Sdep_Table => Sdep_Table, Num_Sdep => Num_Sdep);
-         Output_Alfa;
+      if Opt.Xref_Active and then SPARK_Mode then
+         SPARK_Specific.Collect_SPARK_Xrefs (Sdep_Table => Sdep_Table,
+                                             Num_Sdep   => Num_Sdep);
+         SPARK_Specific.Output_SPARK_Xrefs;
       end if;
 
       --  Output final blank line and we are done. This final blank line is
