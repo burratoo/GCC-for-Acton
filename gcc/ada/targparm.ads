@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -213,6 +213,9 @@ package Targparm is
    OpenVMS_On_Target : Boolean := False;
    --  Set to True if target is OpenVMS
 
+   VAX_Float_On_Target : Boolean := False;
+   --  Set to True if target float format is VAX Float
+
    RTX_RTSS_Kernel_Module_On_Target : Boolean := False;
    --  Set to True if target is RTSS module for RTX
 
@@ -395,7 +398,7 @@ package Targparm is
    --  used at the source level, and the corresponding flag is false, then an
    --  error message will be issued saying the feature is not supported.
 
-   Atomic_Sync_Default : Boolean := True;
+   Atomic_Sync_Default_On_Target : Boolean := True;
    --  Access to atomic variables requires memory barrier synchronization in
    --  the general case to ensure proper behavior when such accesses are used
    --  on a multi-processor to synchronize tasks (e.g. by using spin locks).
@@ -414,6 +417,14 @@ package Targparm is
    --  memmove, and bcopy. This flag is set to True if these routines
    --  are available. If any of these routines is not available, then
    --  this flag is False, and the use of aggregates is not permitted.
+
+   Support_Atomic_Primitives_On_Target : Boolean := False;
+   --  If this flag is True, then the back-end support GCC built-in atomic
+   --  operations for memory model such as atomic load or atomic compare
+   --  exchange (see the GCC manual for more information). If the flag is
+   --  False, then the back-end doesn't provide this support. Note this flag is
+   --  set to True only if the target supports all atomic primitives up to 64
+   --  bits. ??? To be modified.
 
    Support_Composite_Assign_On_Target : Boolean := True;
    --  The assignment of composite objects other than small records and
@@ -434,6 +445,11 @@ package Targparm is
    --  If True, the back end supports 64-bit shift operations. If False, then
    --  the source program may not contain explicit 64-bit shifts. In addition,
    --  the code generated for packed arrays will avoid the use of long shifts.
+
+   Support_Nondefault_SSO_On_Target : Boolean := False;
+   --  If True, the back end supports the non-default Scalar_Storage_Order
+   --  (i.e. allows non-confirming Scalar_Storage_Order attribute definition
+   --  clauses).
 
    --------------------
    -- Indirect Calls --

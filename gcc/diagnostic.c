@@ -1,6 +1,5 @@
 /* Language-independent diagnostic subroutines for the GNU Compiler Collection
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-   2009, 2010, 2011, 2012 Free Software Foundation, Inc.
+   Copyright (C) 1999-2013 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@codesourcery.com>
 
 This file is part of GCC.
@@ -27,9 +26,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "version.h"
+#include "demangle.h"
 #include "input.h"
 #include "intl.h"
+#include "backtrace.h"
 #include "diagnostic.h"
+#include "diagnostic-color.h"
 
 #define pedantic_warning_kind(DC)			\
   ((DC)->pedantic_errors ? DK_ERROR : DK_WARNING)
@@ -52,7 +54,6 @@ const char *progname;
 /* A diagnostic_context surrogate for stderr.  */
 static diagnostic_context global_diagnostic_context;
 diagnostic_context *global_dc = &global_diagnostic_context;
-
 
 /* Return a malloc'd string containing MSG formatted a la printf.  The
    caller is responsible for freeing the memory.  */
@@ -71,9 +72,12 @@ build_message_string (const char *msg, ...)
 
 /* Same as diagnostic_build_prefix, but only the source FILE is given.  */
 char *
-file_name_as_prefix (const char *f)
+file_name_as_prefix (diagnostic_context *context, const char *f)
 {
-  return build_message_string ("%s: ", f);
+  const char *locus_cs
+    = colorize_start (pp_show_color (context->printer), "locus");
+  const char *locus_ce = colorize_stop (pp_show_color (context->printer));
+  return build_message_string ("%s%s:%s ", locus_cs, f, locus_ce);
 }
 
 
@@ -172,7 +176,7 @@ diagnostic_finish (diagnostic_context *context)
 	pp_verbatim (context->printer,
 		     _("%s: some warnings being treated as errors"),
 		     progname);
-      pp_flush (context->printer);
+      pp_newline_and_flush (context->printer);
     }
 }
 
@@ -206,15 +210,34 @@ diagnostic_set_info (diagnostic_info *diagnostic, const char *gmsgid,
    responsible for freeing the memory.  */
 char *
 diagnostic_build_prefix (diagnostic_context *context,
-			 diagnostic_info *diagnostic)
+			 const diagnostic_info *diagnostic)
 {
   static const char *const diagnostic_kind_text[] = {
-#define DEFINE_DIAGNOSTIC_KIND(K, T) (T),
+#define DEFINE_DIAGNOSTIC_KIND(K, T, C) (T),
 #include "diagnostic.def"
 #undef DEFINE_DIAGNOSTIC_KIND
     "must-not-happen"
   };
+  static const char *const diagnostic_kind_color[] = {
+#define DEFINE_DIAGNOSTIC_KIND(K, T, C) (C),
+#include "diagnostic.def"
+#undef DEFINE_DIAGNOSTIC_KIND
+    NULL
+  };
   const char *text = _(diagnostic_kind_text[diagnostic->kind]);
+  const char *text_cs = "", *text_ce = "";
+  const char *locus_cs, *locus_ce;
+  pretty_printer *pp = context->printer;
+
+  if (diagnostic_kind_color[diagnostic->kind])
+    {
+      text_cs = colorize_start (pp_show_color (pp),
+				diagnostic_kind_color[diagnostic->kind]);
+      text_ce = colorize_stop (pp_show_color (pp));
+    }
+  locus_cs = colorize_start (pp_show_color (pp), "locus");
+  locus_ce = colorize_stop (pp_show_color (pp));
+
   expanded_location s = expand_location_to_spelling_point (diagnostic->location);
   if (diagnostic->override_column)
     s.column = diagnostic->override_column;
@@ -222,10 +245,13 @@ diagnostic_build_prefix (diagnostic_context *context,
 
   return
     (s.file == NULL
-     ? build_message_string ("%s: %s", progname, text)
+     ? build_message_string ("%s%s:%s %s%s%s", locus_cs, progname, locus_ce,
+			     text_cs, text, text_ce)
      : context->show_column
-     ? build_message_string ("%s:%d:%d: %s", s.file, s.line, s.column, text)
-     : build_message_string ("%s:%d: %s", s.file, s.line, text));
+     ? build_message_string ("%s%s:%d:%d:%s %s%s%s", locus_cs, s.file, s.line,
+			     s.column, locus_ce, text_cs, text, text_ce)
+     : build_message_string ("%s%s:%d:%s %s%s%s", locus_cs, s.file, s.line, locus_ce,
+			     text_cs, text, text_ce));
 }
 
 /* If LINE is longer than MAX_WIDTH, and COLUMN is not smaller than
@@ -261,7 +287,7 @@ diagnostic_show_locus (diagnostic_context * context,
   expanded_location s;
   int max_width;
   const char *saved_prefix;
-
+  const char *caret_cs, *caret_ce;
 
   if (!context->show_caret
       || diagnostic->location <= BUILTINS_LOCATION
@@ -289,11 +315,108 @@ diagnostic_show_locus (diagnostic_context * context,
       line++;
     }
   pp_newline (context->printer);
+  caret_cs = colorize_start (pp_show_color (context->printer), "caret");
+  caret_ce = colorize_stop (pp_show_color (context->printer));
+
   /* pp_printf does not implement %*c.  */
-  buffer = XALLOCAVEC (char, s.column + 3);
-  snprintf (buffer, s.column + 3, " %*c", s.column, '^');
+  size_t len = s.column + 3 + strlen (caret_cs) + strlen (caret_ce);
+  buffer = XALLOCAVEC (char, len);
+  snprintf (buffer, len, "%s %*c%s", caret_cs, s.column, '^', caret_ce);
   pp_string (context->printer, buffer);
   pp_set_prefix (context->printer, saved_prefix);
+}
+
+/* Functions at which to stop the backtrace print.  It's not
+   particularly helpful to print the callers of these functions.  */
+
+static const char * const bt_stop[] =
+{
+  "main",
+  "toplev_main",
+  "execute_one_pass",
+  "compile_file",
+};
+
+/* A callback function passed to the backtrace_full function.  */
+
+static int
+bt_callback (void *data, uintptr_t pc, const char *filename, int lineno,
+	     const char *function)
+{
+  int *pcount = (int *) data;
+
+  /* If we don't have any useful information, don't print
+     anything.  */
+  if (filename == NULL && function == NULL)
+    return 0;
+
+  /* Skip functions in diagnostic.c.  */
+  if (*pcount == 0
+      && filename != NULL
+      && strcmp (lbasename(filename), "diagnostic.c") == 0)
+    return 0;
+
+  /* Print up to 20 functions.  We could make this a --param, but
+     since this is only for debugging just use a constant for now.  */
+  if (*pcount >= 20)
+    {
+      /* Returning a non-zero value stops the backtrace.  */
+      return 1;
+    }
+  ++*pcount;
+
+  char *alc = NULL;
+  if (function != NULL)
+    {
+      char *str = cplus_demangle_v3 (function,
+				     (DMGL_VERBOSE | DMGL_ANSI
+				      | DMGL_GNU_V3 | DMGL_PARAMS));
+      if (str != NULL)
+	{
+	  alc = str;
+	  function = str;
+	}
+
+      for (size_t i = 0; i < ARRAY_SIZE (bt_stop); ++i)
+	{
+	  size_t len = strlen (bt_stop[i]);
+	  if (strncmp (function, bt_stop[i], len) == 0
+	      && (function[len] == '\0' || function[len] == '('))
+	    {
+	      if (alc != NULL)
+		free (alc);
+	      /* Returning a non-zero value stops the backtrace.  */
+	      return 1;
+	    }
+	}
+    }
+
+  fprintf (stderr, "0x%lx %s\n\t%s:%d\n",
+	   (unsigned long) pc,
+	   function == NULL ? "???" : function,
+	   filename == NULL ? "???" : filename,
+	   lineno);
+
+  if (alc != NULL)
+    free (alc);
+
+  return 0;
+}
+
+/* A callback function passed to the backtrace_full function.  This is
+   called if backtrace_full has an error.  */
+
+static void
+bt_err_callback (void *data ATTRIBUTE_UNUSED, const char *msg, int errnum)
+{
+  if (errnum < 0)
+    {
+      /* This means that no debug info was available.  Just quietly
+	 skip printing backtrace info.  */
+      return;
+    }
+  fprintf (stderr, "%s%s%s\n", msg, errnum == 0 ? "" : ": ",
+	   errnum == 0 ? "" : xstrerror (errnum));
 }
 
 /* Take any action which is expected to happen after the diagnostic
@@ -334,13 +457,27 @@ diagnostic_action_after_output (diagnostic_context *context,
       break;
 
     case DK_ICE:
-      if (context->abort_on_error)
-	real_abort ();
+      {
+	struct backtrace_state *state =
+	  backtrace_create_state (NULL, 0, bt_err_callback, NULL);
+	int count = 0;
+	if (state != NULL)
+	  backtrace_full (state, 2, bt_callback, bt_err_callback,
+			  (void *) &count);
 
-      fnotice (stderr, "Please submit a full bug report,\n"
-	       "with preprocessed source if appropriate.\n"
-	       "See %s for instructions.\n", bug_report_url);
-      exit (ICE_EXIT_CODE);
+	if (context->abort_on_error)
+	  real_abort ();
+
+	fnotice (stderr, "Please submit a full bug report,\n"
+		 "with preprocessed source if appropriate.\n");
+	if (count > 0)
+	  fnotice (stderr,
+		   ("Please include the complete backtrace "
+		    "with any bug report.\n"));
+	fnotice (stderr, "See %s for instructions.\n", bug_report_url);
+
+	exit (ICE_EXIT_CODE);
+      }
 
     case DK_FATAL:
       if (context->abort_on_error)
@@ -380,18 +517,18 @@ diagnostic_report_current_module (diagnostic_context *context, location_t where)
 	  map = INCLUDED_FROM (line_table, map);
 	  if (context->show_column)
 	    pp_verbatim (context->printer,
-			 "In file included from %s:%d:%d",
+			 "In file included from %r%s:%d:%d%R", "locus",
 			 LINEMAP_FILE (map),
 			 LAST_SOURCE_LINE (map), LAST_SOURCE_COLUMN (map));
 	  else
 	    pp_verbatim (context->printer,
-			 "In file included from %s:%d",
+			 "In file included from %r%s:%d%R", "locus",
 			 LINEMAP_FILE (map), LAST_SOURCE_LINE (map));
 	  while (! MAIN_FILE_P (map))
 	    {
 	      map = INCLUDED_FROM (line_table, map);
 	      pp_verbatim (context->printer,
-			   ",\n                 from %s:%d",
+			   ",\n                 from %r%s:%d%R", "locus",
 			   LINEMAP_FILE (map), LAST_SOURCE_LINE (map));
 	    }
 	  pp_verbatim (context->printer, ":");
@@ -410,10 +547,9 @@ default_diagnostic_starter (diagnostic_context *context,
 }
 
 void
-default_diagnostic_finalizer (diagnostic_context *context,
+default_diagnostic_finalizer (diagnostic_context *context ATTRIBUTE_UNUSED,
 			      diagnostic_info *diagnostic ATTRIBUTE_UNUSED)
 {
-  pp_destroy_prefix (context->printer);
 }
 
 /* Interface to specify diagnostic kind overrides.  Returns the
@@ -530,7 +666,7 @@ diagnostic_report_diagnostic (diagnostic_context *context,
 	 try to flush out the previous error, then let this one
 	 through.  Don't do this more than once.  */
       if (diagnostic->kind == DK_ICE && context->lock == 1)
-	pp_flush (context->printer);
+	pp_newline_and_flush (context->printer);
       else
 	error_recursion (context);
     }
@@ -622,7 +758,10 @@ diagnostic_report_diagnostic (diagnostic_context *context,
 				    diagnostic->message.format_spec,
 				    diagnostic->message.args_ptr);
     }
-  ++diagnostic_kind_count (context, diagnostic->kind);
+  if (diagnostic->kind == DK_ERROR && orig_diag_kind == DK_WARNING)
+    ++diagnostic_kind_count (context, DK_WERROR);
+  else
+    ++diagnostic_kind_count (context, diagnostic->kind);
 
   saved_format_spec = diagnostic->message.format_spec;
   if (context->show_option_requested)
@@ -650,7 +789,8 @@ diagnostic_report_diagnostic (diagnostic_context *context,
   pp_output_formatted_text (context->printer);
   diagnostic_show_locus (context, diagnostic);
   (*diagnostic_finalizer (context)) (context, diagnostic);
-  pp_flush (context->printer);
+  pp_destroy_prefix (context->printer);
+  pp_newline_and_flush (context->printer);
   diagnostic_action_after_output (context, diagnostic);
   diagnostic->message.format_spec = saved_format_spec;
   diagnostic->x_data = NULL;
@@ -708,8 +848,37 @@ verbatim (const char *gmsgid, ...)
   text.locus = NULL;
   text.x_data = NULL;
   pp_format_verbatim (global_dc->printer, &text);
-  pp_flush (global_dc->printer);
+  pp_newline_and_flush (global_dc->printer);
   va_end (ap);
+}
+
+/* Add a note with text GMSGID and with LOCATION to the diagnostic CONTEXT.  */
+void
+diagnostic_append_note (diagnostic_context *context,
+                        location_t location,
+                        const char * gmsgid, ...)
+{
+  diagnostic_info diagnostic;
+  va_list ap;
+  const char *saved_prefix;
+
+  va_start (ap, gmsgid);
+  diagnostic_set_info (&diagnostic, gmsgid, &ap, location, DK_NOTE);
+  if (context->inhibit_notes_p)
+    {
+      va_end (ap);
+      return;
+    }
+  saved_prefix = pp_get_prefix (context->printer);
+  pp_set_prefix (context->printer,
+                 diagnostic_build_prefix (context, &diagnostic));
+  pp_newline (context->printer);
+  pp_format (context->printer, &diagnostic.message);
+  pp_output_formatted_text (context->printer);
+  pp_destroy_prefix (context->printer);
+  pp_set_prefix (context->printer, saved_prefix);
+  diagnostic_show_locus (context, &diagnostic);
+  va_end(ap);
 }
 
 bool
@@ -986,7 +1155,7 @@ error_recursion (diagnostic_context *context)
   diagnostic_info diagnostic;
 
   if (context->lock < 3)
-    pp_flush (context->printer);
+    pp_newline_and_flush (context->printer);
 
   fnotice (stderr,
 	   "Internal compiler error: Error reporting routines re-entered.\n");

@@ -53,20 +53,32 @@ package body Bindgen is
    Num_Elab_Calls : Nat := 0;
    --  Number of generated calls to elaboration routines
 
-   System_Restrictions_Used : Boolean;
+   System_Restrictions_Used : Boolean := False;
    --  Flag indicating whether the unit System.Restrictions is in the closure
-   --  of the partition. This is set by Check_System_Restrictions_Used, and
-   --  is used to determine whether or not to initialize the restrictions
-   --  information in the body of the binder generated file (we do not want
-   --  to do this unconditionally, since it drags in the System.Restrictions
-   --  unit unconditionally, which is unpleasand, especially for ZFP etc.)
+   --  of the partition. This is set by Resolve_Binder_Options, and is used
+   --  to determine whether or not to initialize the restrictions information
+   --  in the body of the binder generated file (we do not want to do this
+   --  unconditionally, since it drags in the System.Restrictions unit
+   --  unconditionally, which is unpleasand, especially for ZFP etc.)
 
-   Dispatching_Domains_Used : Boolean;
+   Dispatching_Domains_Used : Boolean := False;
    --  Flag indicating whether multiprocessor dispatching domains are used in
-   --  the closure of the partition. This is set by
-   --  Check_Dispatching_Domains_Used, and is used to call the routine to
-   --  disallow the creation of new dispatching domains just before calling
-   --  the main procedure from the environment task.
+   --  the closure of the partition. This is set by Resolve_Binder_Options, and
+   --  is used to call the routine to disallow the creation of new dispatching
+   --  domains just before calling the main procedure from the environment
+   --  task.
+
+   System_Tasking_Restricted_Stages_Used : Boolean := False;
+   --  Flag indicating whether the unit System.Tasking.Restricted.Stages is in
+   --  the closure of the partition. This is set by Resolve_Binder_Options,
+   --  and it used to call a routine to active all the tasks at the end of
+   --  the elaboration when partition elaboration policy is sequential.
+
+   System_Interrupts_Used : Boolean := False;
+   --  Flag indicating whether the unit System.Interrups is in the closure of
+   --  the partition. This is set by Resolve_Binder_Options, and it used to
+   --  attach interrupt handlers at the end of the elaboration when partition
+   --  elaboration policy is sequential.
 
    Lib_Final_Built : Boolean := False;
    --  Flag indicating whether the finalize_library rountine has been built
@@ -123,7 +135,6 @@ package body Bindgen is
    --     Num_Interrupt_States          : Integer;
    --     Unreserve_All_Interrupts      : Integer;
    --     Exception_Tracebacks          : Integer;
-   --     Zero_Cost_Exceptions          : Integer;
    --     Detect_Blocking               : Integer;
    --     Default_Stack_Size            : Integer;
    --     Leap_Seconds_Support          : Integer;
@@ -173,9 +184,6 @@ package body Bindgen is
    --  tracebacks are provided by default, so a value of zero for this
    --  parameter does not necessarily mean no trace backs are available.
 
-   --  Zero_Cost_Exceptions is set to one if zero cost exceptions are used for
-   --  this partition, and to zero if longjmp/setjmp exceptions are used.
-
    --  Detect_Blocking indicates whether pragma Detect_Blocking is active or
    --  not. A value of zero indicates that the pragma is not present, while a
    --  value of 1 signals its presence in the partition.
@@ -193,21 +201,6 @@ package body Bindgen is
    -----------------------
    -- Local Subprograms --
    -----------------------
-
-   procedure Check_File_In_Partition
-     (File_Name : String;
-      Flag      : out Boolean);
-   --  If the file indicated by File_Name is in the partition the Flag is set
-   --  to True, False otherwise.
-
-   procedure Check_System_Restrictions_Used;
-   --  Sets flag System_Restrictions_Used (Set to True if and only if the unit
-   --  System.Restrictions is present in the partition, otherwise False).
-
-   procedure Check_Dispatching_Domains_Used;
-   --  Sets flag Dispatching_Domains_Used to True when using the unit
-   --  System.Multiprocessors.Dispatching_Domains is present in the partition,
-   --  otherwise set to False.
 
    procedure Gen_Adainit;
    --  Generates the Adainit procedure
@@ -343,43 +336,6 @@ package body Bindgen is
    procedure Write_Statement_Buffer (S : String);
    --  First writes its argument (using Set_String (S)), then writes out the
    --  contents of statement buffer up to Last, and reset Last to 0
-
-   ------------------------------------
-   -- Check_Dispatching_Domains_Used --
-   ------------------------------------
-
-   procedure Check_Dispatching_Domains_Used is
-   begin
-      Check_File_In_Partition ("s-mudido.ads", Dispatching_Domains_Used);
-   end Check_Dispatching_Domains_Used;
-
-   -----------------------------
-   -- Check_File_In_Partition --
-   -----------------------------
-
-   procedure Check_File_In_Partition
-     (File_Name : String;
-      Flag      : out Boolean)
-   is
-   begin
-      for J in Units.First .. Units.Last loop
-         if Get_Name_String (Units.Table (J).Sfile) = File_Name then
-            Flag := True;
-            return;
-         end if;
-      end loop;
-
-      Flag := False;
-   end Check_File_In_Partition;
-
-   ------------------------------------
-   -- Check_System_Restrictions_Used --
-   ------------------------------------
-
-   procedure Check_System_Restrictions_Used is
-   begin
-      Check_File_In_Partition ("s-restri.ads", System_Restrictions_Used);
-   end Check_System_Restrictions_Used;
 
    ------------------
    -- Gen_Adafinal --
@@ -520,9 +476,6 @@ package body Bindgen is
                  """__gl_exception_tracebacks"");");
          end if;
 
-         WBI ("      Zero_Cost_Exceptions : Integer;");
-         WBI ("      pragma Import (C, Zero_Cost_Exceptions, " &
-              """__gl_zero_cost_exceptions"");");
          WBI ("      Detect_Blocking : Integer;");
          WBI ("      pragma Import (C, Detect_Blocking, " &
               """__gl_detect_blocking"");");
@@ -544,6 +497,33 @@ package body Bindgen is
          WBI ("      Handler_Installed : Integer;");
          WBI ("      pragma Import (C, Handler_Installed, " &
               """__gnat_handler_installed"");");
+
+         --  Import handlers attach procedure for sequential elaboration policy
+
+         if System_Interrupts_Used
+           and then Partition_Elaboration_Policy_Specified = 'S'
+         then
+            WBI ("      procedure Install_Restricted_Handlers_Sequential;");
+            WBI ("      pragma Import (C," &
+                 "Install_Restricted_Handlers_Sequential," &
+                 " ""__gnat_attach_all_handlers"");");
+            WBI ("");
+         end if;
+
+         --  Import task activation procedure for sequential elaboration
+         --  policy.
+
+         if System_Tasking_Restricted_Stages_Used
+           and then Partition_Elaboration_Policy_Specified = 'S'
+         then
+            WBI ("      Partition_Elaboration_Policy : Character;");
+            WBI ("      pragma Import (C, Partition_Elaboration_Policy," &
+                 " ""__gnat_partition_elaboration_policy"");");
+            WBI ("");
+            WBI ("      procedure Activate_All_Tasks_Sequential;");
+            WBI ("      pragma Import (C, Activate_All_Tasks_Sequential," &
+                 " ""__gnat_activate_all_tasks"");");
+         end if;
 
          --  The import of the soft link which performs library-level object
          --  finalization is not needed for VM targets; regular Ada is used in
@@ -661,6 +641,15 @@ package body Bindgen is
          Set_String ("';");
          Write_Statement_Buffer;
 
+         if System_Tasking_Restricted_Stages_Used
+           and then Partition_Elaboration_Policy_Specified = 'S'
+         then
+            Set_String ("      Partition_Elaboration_Policy := '");
+            Set_Char   (Partition_Elaboration_Policy_Specified);
+            Set_String ("';");
+            Write_Statement_Buffer;
+         end if;
+
          Gen_Restrictions;
 
          Set_String ("      Main_CPU := ");
@@ -689,17 +678,6 @@ package body Bindgen is
          if Exception_Tracebacks then
             WBI ("      Exception_Tracebacks := 1;");
          end if;
-
-         Set_String ("      Zero_Cost_Exceptions := ");
-
-         if Zero_Cost_Exceptions_Specified then
-            Set_String ("1");
-         else
-            Set_String ("0");
-         end if;
-
-         Set_String (";");
-         Write_Statement_Buffer;
 
          Set_String ("      Detect_Blocking := ");
 
@@ -848,6 +826,18 @@ package body Bindgen is
 
       if Dispatching_Domains_Used then
          WBI ("      Freeze_Dispatching_Domains;");
+      end if;
+
+      --  Sequential partition elaboration policy
+
+      if Partition_Elaboration_Policy_Specified = 'S' then
+         if System_Interrupts_Used then
+            WBI ("      Install_Restricted_Handlers_Sequential;");
+         end if;
+
+         if System_Tasking_Restricted_Stages_Used then
+            WBI ("      Activate_All_Tasks_Sequential;");
+         end if;
       end if;
 
       --  Case of main program is CIL function or procedure
@@ -1996,9 +1986,6 @@ package body Bindgen is
 
       --  Generate output file in appropriate language
 
-      Check_System_Restrictions_Used;
-      Check_Dispatching_Domains_Used;
-
       Gen_Output_File_Ada (Filename);
    end Gen_Output_File;
 
@@ -2013,8 +2000,7 @@ package body Bindgen is
       --  function Get_Ada_Main_Name for details on the form of the name.
 
       Needs_Library_Finalization : constant Boolean :=
-                                     not Configurable_Run_Time_On_Target
-                                       and then Has_Finalizer;
+        not Configurable_Run_Time_On_Target and then Has_Finalizer;
       --  For restricted run-time libraries (ZFP and Ravenscar) tasks are
       --  non-terminating, so we do not want finalization.
 
@@ -2255,8 +2241,13 @@ package body Bindgen is
 
          --  The B.1 (39) implementation advice says that the adainit/adafinal
          --  routines should be idempotent. Generate a flag to ensure that.
+         --  This is not needed if we are suppressing the standard library
+         --  since it would never be referenced.
 
-         WBI ("   Is_Elaborated : Boolean := False;");
+         if not Suppress_Standard_Library_On_Target then
+            WBI ("   Is_Elaborated : Boolean := False;");
+         end if;
+
          WBI ("");
       end if;
 
@@ -2469,7 +2460,7 @@ package body Bindgen is
    function Get_Ada_Main_Name return String is
       Suffix : constant String := "_00";
       Name   : String (1 .. Opt.Ada_Main_Name.all'Length + Suffix'Length) :=
-                 Opt.Ada_Main_Name.all & Suffix;
+        Opt.Ada_Main_Name.all & Suffix;
       Nlen   : Natural;
 
    begin
@@ -2739,9 +2730,9 @@ package body Bindgen is
          loop
             declare
                Inum : constant Int :=
-                        Interrupt_States.Table (K).Interrupt_Id;
+                 Interrupt_States.Table (K).Interrupt_Id;
                Stat : constant Character :=
-                        Interrupt_States.Table (K).Interrupt_State;
+                 Interrupt_States.Table (K).Interrupt_State;
 
             begin
                while IS_Pragma_Settings.Last < Inum loop

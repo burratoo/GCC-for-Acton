@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,12 +27,12 @@ with Atree;    use Atree;
 with Debug;    use Debug;
 with Debug_A;  use Debug_A;
 with Elists;   use Elists;
-with Errout;   use Errout;
 with Expander; use Expander;
 with Fname;    use Fname;
 with Lib;      use Lib;
 with Lib.Load; use Lib.Load;
 with Nlists;   use Nlists;
+with Opt;      use Opt;
 with Output;   use Output;
 with Restrict; use Restrict;
 with Sem_Atom; use Sem_Atom;
@@ -195,9 +195,6 @@ package body Sem is
          when N_Component_Declaration =>
             Analyze_Component_Declaration (N);
 
-         when N_Conditional_Expression =>
-            Analyze_Conditional_Expression (N);
-
          when N_Conditional_Entry_Call =>
             Analyze_Conditional_Entry_Call (N);
 
@@ -305,6 +302,9 @@ package body Sem is
 
          when N_Identifier =>
             Analyze_Identifier (N);
+
+         when N_If_Expression =>
+            Analyze_If_Expression (N);
 
          when N_If_Statement =>
             Analyze_If_Statement (N);
@@ -497,6 +497,9 @@ package body Sem is
 
          when N_Quantified_Expression =>
             Analyze_Quantified_Expression (N);
+
+         when N_Raise_Expression =>
+            Analyze_Raise_Expression (N);
 
          when N_Raise_Statement =>
             Analyze_Raise_Statement (N);
@@ -756,20 +759,20 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Analyze (N);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
-      else
+      elsif Suppress = Overflow_Check then
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Analyze (N);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Analyze;
@@ -795,20 +798,20 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Analyze_List (L);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
       else
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Analyze_List (L);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Analyze_List;
@@ -1056,20 +1059,20 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Insert_After_And_Analyze (N, M);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
       else
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Insert_After_And_Analyze (N, M);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Insert_After_And_Analyze;
@@ -1116,20 +1119,20 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Insert_Before_And_Analyze (N, M);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
       else
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Insert_Before_And_Analyze (N, M);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Insert_Before_And_Analyze;
@@ -1175,20 +1178,20 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Insert_List_After_And_Analyze (N, L);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
       else
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Insert_List_After_And_Analyze (N, L);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Insert_List_After_And_Analyze;
@@ -1233,76 +1236,23 @@ package body Sem is
    begin
       if Suppress = All_Checks then
          declare
-            Svg : constant Suppress_Array := Scope_Suppress;
+            Svs : constant Suppress_Array := Scope_Suppress.Suppress;
          begin
-            Scope_Suppress := (others => True);
+            Scope_Suppress.Suppress := (others => True);
             Insert_List_Before_And_Analyze (N, L);
-            Scope_Suppress := Svg;
+            Scope_Suppress.Suppress := Svs;
          end;
 
       else
          declare
-            Svg : constant Boolean := Scope_Suppress (Suppress);
+            Svg : constant Boolean := Scope_Suppress.Suppress (Suppress);
          begin
-            Scope_Suppress (Suppress) := True;
+            Scope_Suppress.Suppress (Suppress) := True;
             Insert_List_Before_And_Analyze (N, L);
-            Scope_Suppress (Suppress) := Svg;
+            Scope_Suppress.Suppress (Suppress) := Svg;
          end;
       end if;
    end Insert_List_Before_And_Analyze;
-
-   -------------------------
-   -- Is_Check_Suppressed --
-   -------------------------
-
-   function Is_Check_Suppressed (E : Entity_Id; C : Check_Id) return Boolean is
-
-      Ptr : Suppress_Stack_Entry_Ptr;
-
-   begin
-      --  First search the local entity suppress stack. We search this from the
-      --  top of the stack down so that we get the innermost entry that applies
-      --  to this case if there are nested entries.
-
-      Ptr := Local_Suppress_Stack_Top;
-      while Ptr /= null loop
-         if (Ptr.Entity = Empty or else Ptr.Entity = E)
-           and then (Ptr.Check = All_Checks or else Ptr.Check = C)
-         then
-            return Ptr.Suppress;
-         end if;
-
-         Ptr := Ptr.Prev;
-      end loop;
-
-      --  Now search the global entity suppress table for a matching entry.
-      --  We also search this from the top down so that if there are multiple
-      --  pragmas for the same entity, the last one applies (not clear what
-      --  or whether the RM specifies this handling, but it seems reasonable).
-
-      Ptr := Global_Suppress_Stack_Top;
-      while Ptr /= null loop
-         if (Ptr.Entity = Empty or else Ptr.Entity = E)
-           and then (Ptr.Check = All_Checks or else Ptr.Check = C)
-         then
-            return Ptr.Suppress;
-         end if;
-
-         Ptr := Ptr.Prev;
-      end loop;
-
-      --  If we did not find a matching entry, then use the normal scope
-      --  suppress value after all (actually this will be the global setting
-      --  since it clearly was not overridden at any point). For a predefined
-      --  check, we test the specific flag. For a user defined check, we check
-      --  the All_Checks flag.
-
-      if C in Predefined_Check_Id then
-         return Scope_Suppress (C);
-      else
-         return Scope_Suppress (All_Checks);
-      end if;
-   end Is_Check_Suppressed;
 
    ----------
    -- Lock --
@@ -1387,19 +1337,25 @@ package body Sem is
       --  these variables, and also that such calls do not disturb the settings
       --  for units being analyzed at a higher level.
 
-      S_Current_Sem_Unit : constant Unit_Number_Type := Current_Sem_Unit;
-      S_Full_Analysis    : constant Boolean          := Full_Analysis;
-      S_GNAT_Mode        : constant Boolean          := GNAT_Mode;
-      S_Global_Dis_Names : constant Boolean          := Global_Discard_Names;
-      S_In_Spec_Expr     : constant Boolean          := In_Spec_Expression;
-      S_Inside_A_Generic : constant Boolean          := Inside_A_Generic;
-      S_Outer_Gen_Scope  : constant Entity_Id        := Outer_Generic_Scope;
+      S_Current_Sem_Unit  : constant Unit_Number_Type := Current_Sem_Unit;
+      S_Full_Analysis     : constant Boolean          := Full_Analysis;
+      S_GNAT_Mode         : constant Boolean          := GNAT_Mode;
+      S_Global_Dis_Names  : constant Boolean          := Global_Discard_Names;
+      S_In_Assertion_Expr : constant Nat              := In_Assertion_Expr;
+      S_In_Spec_Expr      : constant Boolean          := In_Spec_Expression;
+      S_Inside_A_Generic  : constant Boolean          := Inside_A_Generic;
+      S_Outer_Gen_Scope   : constant Entity_Id        := Outer_Generic_Scope;
+      S_Style_Check       : constant Boolean          := Style_Check;
 
       Generic_Main : constant Boolean :=
                        Nkind (Unit (Cunit (Main_Unit)))
                          in N_Generic_Declaration;
       --  If the main unit is generic, every compiled unit, including its
       --  context, is compiled with expansion disabled.
+
+      Ext_Main_Source_Unit : constant Boolean :=
+                               In_Extended_Main_Source_Unit (Comp_Unit);
+      --  Determine if unit is in extended main source unit
 
       Save_Config_Switches : Config_Switches_Type;
       --  Variable used to save values of config switches while we analyze the
@@ -1469,9 +1425,6 @@ package body Sem is
       --  Sequential_IO) as this would prevent pragma Extend_System from being
       --  taken into account, for example when Text_IO is renaming DEC.Text_IO.
 
-      --  Cleaner might be to do the kludge at the point of excluding the
-      --  pragma (do not exclude for renamings ???)
-
       if Is_Predefined_File_Name
            (Unit_File_Name (Current_Sem_Unit), Renamings_Included => False)
       then
@@ -1487,6 +1440,7 @@ package body Sem is
 
       Full_Analysis      := True;
       Inside_A_Generic   := False;
+      In_Assertion_Expr  := 0;
       In_Spec_Expression := False;
 
       Set_Comes_From_Source_Default (False);
@@ -1505,10 +1459,26 @@ package body Sem is
       --  For unit in main extended unit, we reset the configuration values
       --  for the non-partition-wide restrictions. For other units reset them.
 
-      if In_Extended_Main_Source_Unit (Comp_Unit) then
+      if Ext_Main_Source_Unit then
          Restore_Config_Cunit_Boolean_Restrictions;
       else
          Reset_Cunit_Boolean_Restrictions;
+      end if;
+
+      --  Turn off style checks for unit that is not in the extended main
+      --  source unit. This improves processing efficiency for such units
+      --  (for which we don't want style checks anyway, and where they will
+      --  get suppressed), and is definitely needed to stop some style checks
+      --  from invading the run-time units (e.g. overriding checks).
+
+      if not Ext_Main_Source_Unit then
+         Style_Check := False;
+
+      --  If this is part of the extended main source unit, set style check
+      --  mode to match the style check mode of the main source unit itself.
+
+      else
+         Style_Check := Style_Check_Main;
       end if;
 
       --  Only do analysis of unit that has not already been analyzed
@@ -1560,9 +1530,11 @@ package body Sem is
       Full_Analysis        := S_Full_Analysis;
       Global_Discard_Names := S_Global_Dis_Names;
       GNAT_Mode            := S_GNAT_Mode;
+      In_Assertion_Expr    := S_In_Assertion_Expr;
       In_Spec_Expression   := S_In_Spec_Expr;
       Inside_A_Generic     := S_Inside_A_Generic;
       Outer_Generic_Scope  := S_Outer_Gen_Scope;
+      Style_Check          := S_Style_Check;
 
       Restore_Opt_Config_Switches (Save_Config_Switches);
 
