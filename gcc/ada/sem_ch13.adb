@@ -1359,7 +1359,6 @@ package body Sem_Ch13 is
                     Aspect_Budget_Handler       |
                     Aspect_Component_Size       |
                     Aspect_Constant_Indexing    |
-                    Aspect_Cycle_Kind           |
                     Aspect_Cycle_Period         |
                     Aspect_Cycle_Phase          |
                     Aspect_Deadline_Action      |
@@ -1382,6 +1381,7 @@ package body Sem_Ch13 is
                     Aspect_Storage_Pool         |
                     Aspect_Storage_Size         |
                     Aspect_Stream_Size          |
+                    Aspect_Timing_Behaviour     |
                     Aspect_Value_Size           |
                     Aspect_Variable_Indexing    |
                     Aspect_Write                =>
@@ -3606,45 +3606,6 @@ package body Sem_Ch13 is
             end if;
          end CPU;
 
-         ----------------
-         -- Cycle_Kind --
-         ----------------
-
-         when Attribute_Cycle_Kind => Cycle_Kind :
-         begin
-            --  Phase attribute definition clause not allowed except from
-            --  aspect specification.
-
-            if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N
-                    ("Cycle_Kind can only be defined for task", Nam);
-
-               elsif Duplicate_Clause then
-                  null;
-
-               else
-                  --  The expression must be analyzed in the special manner
-                  --  described in "Handling of Default and Per-Object
-                  --  Expressions" in sem.ads.
-
-                  --  The visibility to the discriminants must be restored
-
-                  Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Cycle_Type));
-                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
-
-                  if not Is_Static_Expression (Expr) then
-                     Check_Restriction (Static_Priorities, Expr);
-                  end if;
-               end if;
-
-            else
-               Error_Msg_N
-                 ("attribute& cannot be set with definition clause", N);
-            end if;
-         end Cycle_Kind;
-
          ------------------
          -- Cycle_Period --
          ------------------
@@ -3937,7 +3898,8 @@ package body Sem_Ch13 is
                   --  The visibility to the discriminants must be restored
 
                   Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Execution_Server));
+                  Preanalyze_Spec_Expression (Expr,
+                    RTE (RE_Execution_Server));
                   Uninstall_Discriminants_And_Pop_Scope (U_Ent);
 
                   if not Is_Static_Expression (Expr) then
@@ -4681,6 +4643,45 @@ package body Sem_Ch13 is
                Set_RM_Size (U_Ent, Size);
             end if;
          end Value_Size;
+
+         ----------------------
+         -- Timing_Behaviour --
+         ----------------------
+
+         when Attribute_Timing_Behaviour => Timing_Behaviour :
+         begin
+            --  Phase attribute definition clause not allowed except from
+            --  aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N
+                    ("Timing_Behaviour can only be defined for task", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Behaviour));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Timing_Behaviour;
 
          -----------------------
          -- Variable_Indexing --
@@ -7804,9 +7805,6 @@ package body Sem_Ch13 is
          when Aspect_Budget_Handler | Aspect_Deadline_Handler =>
             T := RTE (RE_Action_Handler);
 
-         when Aspect_Cycle_Kind =>
-            T := RTE (RE_Cycle_Type);
-
          when Aspect_Cycle_Period | Aspect_Cycle_Phase =>
             T := RTE (RE_Time_Span);
 
@@ -7854,6 +7852,9 @@ package body Sem_Ch13 is
 
          when Aspect_Storage_Pool =>
             T := Class_Wide_Type (RTE (RE_Root_Storage_Pool));
+
+         when Aspect_Timing_Behaviour =>
+            T := RTE (RE_Behaviour);
 
          when Aspect_Alignment      |
               Aspect_Component_Size |

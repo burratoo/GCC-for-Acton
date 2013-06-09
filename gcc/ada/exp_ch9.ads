@@ -345,6 +345,11 @@ package Exp_Ch9 is
    --  Given the entity of the record type created for a task type, build
    --  the call to Create_Task
 
+   function Make_Task_Init_Declarations (Task_Rec : Entity_Id) return List_Id;
+   --  Given the enitiy of the record type created for a task type, build the
+   --  declarations of the variables that will be used by the above
+   --  Make_Task_Create_Call.
+
    function Make_Initialize_Protection
      (Protect_Rec : Entity_Id) return List_Id;
    --  Given the entity of the record type created for a protected type, build

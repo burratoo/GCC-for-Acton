@@ -10731,14 +10731,11 @@ package body Exp_Ch9 is
    --  values of this task. The general form of this type declaration is
 
    --    type taskV (discriminants) is record
-   --      _OTCR              : Task_Agent;
-   --      entry_family       : array (bounds) of Void;
-   --      _Priority          : Integer         := priority_expression;
-   --      _Size              : Storage_Count
+   --      _OTCR               : Task_Agent;
+   --      entry_family        : array (bounds) of Void;
+   --      _Priority           : Integer         := priority_expression;
+   --      _Size               : Storage_Count
    --                               := Storage_Count (size_expression);
-   --      _Relative_Deadline : Ada.Real_Time.Time_Span := Deadline;
-   --      _Cycle_Period      : Ada.Real_Time.Time_Span := Task_Cycle_Period;
-   --      _Cycle_Phase       : Ada.Real_Time.Time_Span := Task_Cycle_Phase; 
    --    end record;
 
    --  The discriminants are present only if the corresponding task type has
@@ -10776,11 +10773,6 @@ package body Exp_Ch9 is
    --  Exp_Ch3). Note that it cannot be filled here since aspect evaluations
    --  are delayed till the freeze point.
 
-   --  The _Relative_Deadline field is present only if a Relative_Deadline
-   --  pragma appears in the task definition. The expression captures the
-   --  argument that was present in the pragma, and is used to provide the
-   --  Relative_Deadline parameter to the call to Create_Task.
-
    --  The _Domain field is present only if the task entity has a
    --  Dispatching_Domain rep item (pragma, aspect specification or attribute
    --  definition clause). It will be filled at the freeze point, when the
@@ -10788,15 +10780,9 @@ package body Exp_Ch9 is
    --  (see Build_Record_Init_Proc in Exp_Ch3). Note that it cannot be filled
    --  here since aspect evaluations are delayed till the freeze point.
 
-   --  The _Cycle_Period field is present only if a _Cycle_Period
-   --  pragma appears in the task definition. The expression captures the
-   --  argument that was present in the pragma, and is used to provide the
-   --  _Cycle_Period parameter to the call to Create_Task.
-
-   --  The _Cycle_Phase field is present only if a _Cycle_Phase pragma appears
-   --  in the task definition. The expression captures the argument that was
-   --  present in the pragma, and is used to provide the _Cycle_Phase parameter
-   --   to the call to Create_Task.
+   --  The other task aspects do not appear here as there is no need to capture
+   --  their values in the task's value record as these parameters will be
+   --  stored in the task's OTCR.
 
    --  When a task is declared, an instance of the task value record is
    --  created. The elaboration of this declaration creates the correct bounds
@@ -11127,36 +11113,6 @@ package body Exp_Ch9 is
                    Expression (First (
                      Pragma_Argument_Associations (
                        Get_Relative_Deadline_Pragma (Taskdef))))))));
-      end if;
-
-      --  Add the _Cycle_Period component if a Cycle_Period aspect is present
-
-      if Has_Rep_Item (TaskId, Name_Cycle_Period, Check_Parents => False) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uCycle_Period),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Time_Span), Loc))));
-      end if;
-
-      --  Add the _Cycle_Phase component if a Cycle_Phase aspect is present
-
-      if Has_Rep_Item (TaskId, Name_Cycle_Phase, Check_Parents => False) then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uCycle_Phase),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Time_Span), Loc))));
       end if;
 
       --  Add the _Dispatching_Domain component if a Dispatching_Domain rep
@@ -11907,6 +11863,9 @@ package body Exp_Ch9 is
       if not Present (CSS) then
          return;
       end if;
+
+      --  Record in the task's entity that the task has a cylic section
+      Set_Has_Cyclic_Section (Corresponding_Spec (Parent (N)));
 
       Change_Cycle_To_Handle_Statement_Sequence (CSS);
 
@@ -13185,106 +13144,6 @@ package body Exp_Ch9 is
          Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
       end if;
 
-      --  Priority parameter. Set to Unspecified_Priority unless there is a
-      --  priority pragma, in which case we take the value from the pragma.
-
-      if Has_Rep_Item (Ttyp, Name_Priority, Check_Parents => False) then
-         Append_To (Args,
-           Make_Selected_Component (Loc,
-             Prefix        => Make_Identifier (Loc, Name_uInit),
-             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
-      else
-         Append_To (Args,
-           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
-      end if;
-
-      --  Deadline parameter. If no Relative_Deadline pragma is present,
-      --  then the deadline is Time_Span_Zero. If a pragma is present, then
-      --  the deadline is taken from the _Relative_Deadline field of the
-      --  task value record, which was set from the pragma value. Note that
-      --  this parameter must not be generated for the restricted profiles
-      --  since Ravenscar does not allow deadlines.
-
-      --  Note that we let it here because we can.
-
-      --  Case where pragma Relative_Deadline applies: use given value
-
-      if Present (Tdef) and then Has_Relative_Deadline_Pragma (Tdef) then
-         Append_To (Args,
-           Make_Function_Call (Loc,
-             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-             Parameter_Associations => New_List (
-               Make_Selected_Component (Loc,
-                 Prefix        =>
-                   Make_Identifier (Loc, Name_uInit),
-                 Selector_Name =>
-                   Make_Identifier (Loc, Name_uRelative_Deadline)))));
-
-      --  No pragma Relative_Deadline apply to the task
-
-      else
-         Append_To (Args,
-            Make_Function_Call (Loc,
-              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-              Parameter_Associations => New_List (
-                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
-      end if;
-
-      --  Cycle_Period parameter. Set to Time_Span_Zero unless there is a
-      --  Cycle_Period pragma, in which case we take the value from the pragma.
-
-      if Has_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False) then
-         Append_To (Args,
-           Make_Function_Call (Loc,
-             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-             Parameter_Associations => New_List (
-               Make_Selected_Component (Loc,
-                 Prefix        => Make_Identifier (Loc, Name_uInit),
-                 Selector_Name =>
-                   Make_Identifier (Loc, Name_uCycle_Period)))));
-      else
-         Append_To (Args,
-            Make_Function_Call (Loc,
-              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-              Parameter_Associations => New_List (
-                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
-      end if;
-
-      --  Cycle_Phase parameter. Set to Time_Span_Zero unless there is a
-      --  Cycle_Phase aspect, in which case we take the value from the aspect.
-
-      if Has_Rep_Item (Ttyp, Name_Cycle_Phase, Check_Parents => False) then
-         Append_To (Args,
-           Make_Function_Call (Loc,
-             Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-             Parameter_Associations => New_List (
-               Make_Selected_Component (Loc,
-               Prefix        => Make_Identifier (Loc, Name_uInit),
-               Selector_Name => Make_Identifier (Loc, Name_uCycle_Phase)))));
-      else
-         Append_To (Args,
-            Make_Function_Call (Loc,
-              Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
-              Parameter_Associations => New_List (
-                New_Reference_To (RTE (RE_Time_Span_Zero), Loc))));
-      end if;
-
-      --  CPU parameter. Set to Unspecified_CPU unless there is a CPU rep item,
-      --  in which case we take the value from the rep item. The parameter is
-      --  passed as an Integer because in the case of unspecified CPU the
-      --  value is not in the range of CPU_Range.
-
-      --  if Has_Rep_Item (Ttyp, Name_CPU, Check_Parents => False) then
-      --     Append_To (Args,
-      --       Convert_To (Standard_Integer,
-      --         Make_Selected_Component (Loc,
-      --           Prefix        => Make_Identifier (Loc, Name_uInit),
-      --           Selector_Name => Make_Identifier (Loc, Name_uCPU))));
-      --  else
-      --     Append_To (Args,
-      --       New_Reference_To (RTE (RE_Unspecified_CPU), Loc));
-      --  end if;
-
       --  Run_Loop parameter. This is a pointer to the task body procedure. The
       --  required value is obtained by taking 'Address of the task
       --  body procedure.
@@ -13301,6 +13160,82 @@ package body Exp_Ch9 is
         Make_Attribute_Reference (Loc,
           Prefix => Make_Identifier (Loc, Name_uInit),
           Attribute_Name => Name_Address));
+
+      --  Priority parameter. Set to Unspecified_Priority unless there is a
+      --  priority pragma, in which case we take the value from the pragma.
+
+      if Has_Rep_Item (Ttyp, Name_Priority, Check_Parents => False) then
+         Append_To (Args,
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name => Make_Identifier (Loc, Name_uPriority)));
+      else
+         Append_To (Args,
+           New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
+      end if;
+
+      --  Timing_Behaviour parameter
+      Append_To (Args, Make_Identifier (Loc, Name_uTiming_Behaviour));
+
+      --  Cycle_Period parameter. Required to use
+      --  Oak.Real_Time.To_Oak_Time_Span to convert the cycle period from
+      --  an Ada.Real_Time type to the internal Oak.Real_Time equivalent.
+
+      Append_To (Args,
+         Make_Function_Call (Loc,
+           Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+           Parameter_Associations => New_List (
+             Make_Identifier (Loc, Name_uCycle_Period))));
+
+      --  Cycle_Phase parameter. Required to use
+      --  Oak.Real_Time.To_Oak_Time_Span to convert the cycle period from
+      --  an Ada.Real_Time type to the internal Oak.Real_Time equivalent.
+
+      Append_To (Args,
+         Make_Function_Call (Loc,
+           Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+           Parameter_Associations => New_List (
+             Make_Identifier (Loc, Name_uCycle_Phase))));
+
+      --  Execution Budget parameter. Required to use
+      --  Oak.Real_Time.To_Oak_Time_Span to convert the cycle period from
+      --  an Ada.Real_Time type to the internal Oak.Real_Time equivalent.
+
+      Append_To (Args,
+         Make_Function_Call (Loc,
+           Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+           Parameter_Associations => New_List (
+             Make_Identifier (Loc, Name_uExecution_Budget))));
+
+      --  Budget Action parameter
+
+      Append_To (Args, Make_Identifier (Loc, Name_uBudget_Action));
+
+      --  Budget Handler parameter
+
+      Append_To (Args, Make_Identifier (Loc, Name_uBudget_Handler));
+
+      --  Relative_Deadline parameter. Required to use
+      --  Oak.Real_Time.To_Oak_Time_Span to convert the cycle period from
+      --  an Ada.Real_Time type to the internal Oak.Real_Time equivalent.
+
+      Append_To (Args,
+         Make_Function_Call (Loc,
+           Name => New_Occurrence_Of (RTE (RE_To_Oak_Time_Span), Loc),
+           Parameter_Associations => New_List (
+             Make_Identifier (Loc, Name_uRelative_Deadline))));
+
+      --  Deadline Action parameter
+
+      Append_To (Args, Make_Identifier (Loc, Name_uDeadline_Action));
+
+      --  Deadline Handler parameter
+
+      Append_To (Args, Make_Identifier (Loc, Name_uDeadline_Handler));
+
+      --  Execution Server parameter
+
+      Append_To (Args, Make_Identifier (Loc, Name_uExecution_Server));
 
       --  Add Chain parameter (not done for sequential elaboration policy, see
       --  comment for Create_Restricted_Task_Sequential in s-tarest.ads).
@@ -13323,6 +13258,248 @@ package body Exp_Ch9 is
           Name => Name,
           Parameter_Associations => Args);
    end Make_Task_Create_Call;
+
+   function Make_Task_Init_Declarations (Task_Rec : Entity_Id)
+     return List_Id is
+      Loc    : constant Source_Ptr := Sloc (Task_Rec);
+      Ttyp   : constant Node_Id := Corresponding_Concurrent_Type (Task_Rec);
+
+      Decls  : List_Id := New_List;
+      Expr   : Node_Id;
+   begin
+
+      --  Add the _Timing_Behaviour variable and set it value to NORMAL if the
+      --  task does not contain a Timing_Behaviour aspect. If the aspect is
+      --  present _Timing_Behaviour is set to the value contained within the
+      --  aspect.
+
+      if Has_Rep_Item
+           (Ttyp, Name_Timing_Behaviour, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp,
+                Name_Timing_Behaviour,
+                Check_Parents => False));
+
+      else
+         Expr := New_Reference_To (RTE (RE_Normal), Loc);
+
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uTiming_Behaviour),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Behaviour), Loc),
+          Expression          => Expr));
+
+      --  Add the _Cycle_Period variable and set to Time_Span_Zero unless there
+      --  is a Cycle_Period aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Zero), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uCycle_Period),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
+          Expression          => Expr));
+
+      --  Add the _Cycle_Phase variable and set to Time_Span_Zero unless there
+      --  is a Cycle_Phase aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item (Ttyp, Name_Cycle_Phase, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item (Ttyp, Name_Cycle_Phase, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Zero), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uCycle_Phase),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
+          Expression          => Expr));
+
+      --  Add the _Execution_Budget variable and set to Time_Span_Last unless
+      --  there is an Execution_Budget aspect, in which case we take the value
+      --  from the aspect.
+
+      if Has_Rep_Item
+         (Ttyp, Name_Execution_Budget, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Execution_Budget, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uExecution_Budget),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
+          Expression          => Expr));
+
+      --  Add the _Budget_Action variable and set to No_Action unless there
+      --  is a Budget_Action aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item (Ttyp, Name_Budget_Action, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item (Ttyp, Name_Budget_Action, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_No_Action), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uBudget_Action),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Event_Action), Loc),
+          Expression          => Expr));
+
+      --  Add the _Budget_Handler variable and set to null unless there
+      --  is a Budget_Handler aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item (Ttyp, Name_Budget_Handler, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Budget_Handler, Check_Parents => False));
+      else
+         Expr := Make_Null (Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uBudget_Handler),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To
+                                   (RTE (RE_Action_Handler), Loc),
+          Expression          => Expr));
+
+      --  Add the _Relative_Deadline variable and set to Time_Span_Last unless
+      --  there is an Relative_Deadline aspect, in which case we take the value
+      --  from the aspect.
+
+      if Has_Rep_Item
+         (Ttyp, Name_Relative_Deadline, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Relative_Deadline, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uRelative_Deadline),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
+          Expression          => Expr));
+
+      --  Add the _Deadline_Action variable and set to No_Action unless there
+      --  is a Budget_Action aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item (Ttyp, Name_Deadline_Action, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Deadline_Action, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_No_Action), Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uDeadline_Action),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To (RTE (RE_Event_Action), Loc),
+          Expression          => Expr));
+
+      --  Add the _Deadline_Handler variable and set to null unless there is a
+      --  a Deadline_Handler aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item
+           (Ttyp, Name_Deadline_Handler, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Deadline_Handler, Check_Parents => False));
+      else
+         Expr := Make_Null (Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uDeadline_Handler),
+          Constant_Present    => True,
+          Object_Definition   => New_Reference_To
+                                   (RTE (RE_Action_Handler), Loc),
+          Expression          => Expr));
+
+      --  Add the _Execution_Server variable and set to null unless there is a
+      --  a Execution_Server aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item
+           (Ttyp, Name_Execution_Server, Check_Parents => False)
+      then
+         Expr :=
+           Make_Attribute_Reference (Loc,
+             Prefix         =>
+               Expression
+                 (Get_Rep_Item
+                   (Ttyp, Name_Execution_Server, Check_Parents => False)),
+             Attribute_Name => Name_Unchecked_Access);
+
+      else
+         Expr := Make_Null (Loc);
+      end if;
+
+      Append_To (Decls,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier =>
+            Make_Defining_Identifier (Loc, Name_uExecution_Server),
+          Constant_Present    => True,
+          Object_Definition   => Make_Access_Definition (Loc,
+            Subtype_Mark      => New_Reference_To
+                                   (RTE (RE_Execution_Server), Loc)),
+          Expression          => Expr));
+
+      return Decls;
+   end Make_Task_Init_Declarations;
 
    ------------------------------
    -- Next_Protected_Operation --

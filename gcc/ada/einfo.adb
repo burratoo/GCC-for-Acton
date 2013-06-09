@@ -580,7 +580,7 @@ package body Einfo is
    --    (unused)                        Flag283
    --    (unused)                        Flag284
    --    (unused)                        Flag285
-   --    (unused)                        Flag286
+   --    Has_Cyclic_Section              Flag286
 
    --  Note: Flag287-317 are defined in atree.ads/adb, but not yet in atree.h
 
@@ -1392,6 +1392,12 @@ package body Einfo is
    begin
       return Flag119 (Id);
    end Has_Convention_Pragma;
+
+   function Has_Cyclic_Section (Id : E) return B is
+   begin
+      pragma Assert (Ekind (Id) in Task_Kind);
+      return Flag286 (Id);
+   end Has_Cyclic_Section;
 
    function Has_Default_Aspect (Id : E) return B is
    begin
@@ -4014,6 +4020,12 @@ package body Einfo is
    begin
       Set_Flag119 (Id, V);
    end Set_Has_Convention_Pragma;
+
+   procedure Set_Has_Cyclic_Section (Id : E; V : B := True) is
+   begin
+      pragma Assert (Ekind (Id) in Task_Kind);
+      Set_Flag286 (Id, V);
+   end Set_Has_Cyclic_Section;
 
    procedure Set_Has_Default_Aspect (Id : E; V : B := True) is
    begin
@@ -7916,6 +7928,7 @@ package body Einfo is
       W ("Has_Controlled_Component",        Flag43  (Id));
       W ("Has_Controlling_Result",          Flag98  (Id));
       W ("Has_Convention_Pragma",           Flag119 (Id));
+      W ("Has_Cyclic_Section",              Flag286 (Id));
       W ("Has_Default_Aspect",              Flag39  (Id));
       W ("Has_Delayed_Aspects",             Flag200 (Id));
       W ("Has_Delayed_Freeze",              Flag18  (Id));

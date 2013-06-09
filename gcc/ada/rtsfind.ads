@@ -125,6 +125,7 @@ package Rtsfind is
       Ada_Cyclic_Tasks,
       Ada_Dispatching,
       Ada_Exceptions,
+      Ada_Execution_Server,
       Ada_Finalization,
       Ada_Interrupts,
       Ada_Numerics,
@@ -626,9 +627,10 @@ package Rtsfind is
      RO_CA_To_Duration,                  -- Ada.Calendar.Delays
 
      RE_Action_Handler,                  -- Ada.Cyclic_Tasks
-     RE_Cycle_Type,                      -- Ada.Cyclic_Tasks
+     RE_Behaviour,                       -- Ada.Cyclic_Tasks
      RE_Event_Action,                    -- Ada.Cyclic_Tasks
-     RE_Execution_Server,                -- Ada.Cyclic_Tasks
+     RE_No_Action,                       -- Ada.Cyclic_Tasks
+     RE_Normal,                          -- Ada.Cyclic_Tasks
 
      RE_Set_Deadline,                    -- Ada.Dispatching.EDF
 
@@ -653,6 +655,8 @@ package Rtsfind is
      RE_Save_Occurrence,                 -- Ada.Exceptions
      RE_Triggered_By_Abort,              -- Ada.Exceptions
 
+     RE_Execution_Server,                -- Ada.Exectuion_Server
+
      RE_Interrupt_ID,                    -- Ada.Interrupts
      RE_Is_Reserved,                     -- Ada.Interrupts
      RE_Is_Attached,                     -- Ada.Interrupts
@@ -666,6 +670,7 @@ package Rtsfind is
 
      RE_Clock,                           -- Ada.Real_Time
      RE_Time_Span,                       -- Ada.Real_Time
+     RE_Time_Span_Last,                  -- Ada.Real_Time
      RE_Time_Span_Zero,                  -- Ada.Real_Time
      RO_RT_Time,                         -- Ada.Real_Time
 
@@ -1925,9 +1930,10 @@ package Rtsfind is
      RO_CA_To_Duration                   => Ada_Calendar_Delays,
 
      RE_Action_Handler                   => Ada_Cyclic_Tasks,
-     RE_Cycle_Type                       => Ada_Cyclic_Tasks,
+     RE_Behaviour                        => Ada_Cyclic_Tasks,
      RE_Event_Action                     => Ada_Cyclic_Tasks,
-     RE_Execution_Server                 => Ada_Cyclic_Tasks,
+     RE_No_Action                        => Ada_Cyclic_Tasks,
+     RE_Normal                           => Ada_Cyclic_Tasks,
 
      RE_Set_Deadline                     => Ada_Dispatching_EDF,
 
@@ -1952,6 +1958,8 @@ package Rtsfind is
      RE_Save_Occurrence                  => Ada_Exceptions,
      RE_Triggered_By_Abort               => Ada_Exceptions,
 
+     RE_Execution_Server                 => Ada_Execution_Server,
+
      RE_Interrupt_ID                     => Ada_Interrupts,
      RE_Is_Reserved                      => Ada_Interrupts,
      RE_Is_Attached                      => Ada_Interrupts,
@@ -1965,6 +1973,7 @@ package Rtsfind is
 
      RE_Clock                            => Ada_Real_Time,
      RE_Time_Span                        => Ada_Real_Time,
+     RE_Time_Span_Last                   => Ada_Real_Time,
      RE_Time_Span_Zero                   => Ada_Real_Time,
      RO_RT_Time                          => Ada_Real_Time,
 
