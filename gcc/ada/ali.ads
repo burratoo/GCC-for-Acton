@@ -162,6 +162,11 @@ package ALI is
       --  this is a language defined unit. Otherwise set to first character
       --  (upper case) of policy name. Not set if 'P' appears in Ignore_Lines.
 
+      Global_Start_Offset : Int;
+      --  Indicates value of global start offset system attribute. A value of
+      --  -1 indicates that no pragma Global_Start_Offset, or no M line was
+      --  present. Not set if 'M' appears in Ignore_Lines.
+
       Partition_Elaboration_Policy : Character;
       --  Indicates partition elaboration policy for units in this file. Space
       --  means that no Partition_Elaboration_Policy pragma was present or that
@@ -226,9 +231,10 @@ package ALI is
 
    end record;
 
-   No_Main_CPU          : constant Int := -1;
-   No_Main_Priority     : constant Int := -1;
-   No_Main_Stack_Size   : constant Int := -1;
+   No_Main_CPU            : constant Int := -1;
+   No_Global_Start_Offset : constant Int := -1;
+   No_Main_Priority       : constant Int := -1;
+   No_Main_Stack_Size     : constant Int := -1;
 
    package ALIs is new Table.Table (
      Table_Component_Type => ALIs_Record,
@@ -474,6 +480,11 @@ package ALI is
    --  Set to blank by Initialize_ALI. Set to appropriate float format
    --  character (V or I, see Opt.Float_Format) if an ali file that
    --  is read contains an F line setting the floating point format.
+
+   Global_Start_Offset_Specified : Int := No_Global_Start_Offset;
+   --  Set to No_Global_Start_Offset by Initialize_ALI. Set to the value of
+   --  the global start offset proprerity in an ali file if it contains a P
+   --  line setting the offset.
 
    Initialize_Scalars_Used : Boolean := False;
    --  Set True if an ali file contains the Initialize_Scalars flag

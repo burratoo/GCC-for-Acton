@@ -218,6 +218,10 @@ package Lib.Writ is
    --              specifying a possibly non-standard floating point format
    --              (IEEE Float).
    --
+   --         Gu   A valid Global_Start_Offset pragma applies to all the units
+   --              in this file, where u is the unsigned integer of the
+   --              corresponding policy name.
+   --
    --         Lx   A valid Locking_Policy pragma applies to all the units in
    --              this file, where x is the first character (upper case) of
    --              the policy name (e.g. 'C' for Ceiling_Locking).

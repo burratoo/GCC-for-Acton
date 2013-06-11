@@ -426,6 +426,7 @@ package Snames is
 
    Name_Favor_Top_Level                : constant Name_Id := N + $; -- GNAT
    Name_Float_Representation           : constant Name_Id := N + $; -- GNAT
+   Name_Global_Start_Offset            : constant Name_Id := N + $; -- Acton
    Name_Implicit_Packing               : constant Name_Id := N + $; -- GNAT
    Name_Initialize_Scalars             : constant Name_Id := N + $; -- GNAT
    Name_Interrupt_State                : constant Name_Id := N + $; -- GNAT
@@ -1075,19 +1076,6 @@ package Snames is
    Name_FIFO_Queuing                   : constant Name_Id := N + $;
    Name_Priority_Queuing               : constant Name_Id := N + $;
    Last_Queuing_Policy_Name            : constant Name_Id := N + $;
-
-   --  Names of recognized task dispatching policy identifiers
-
-   --  Note: policies are identified by the first character of the name (e.g. F
-   --  for FIFO_Within_Priorities). If new policy names are added, the first
-   --  character must be distinct.
-
-   First_Task_Dispatching_Policy_Name    : constant Name_Id := N + $;
-   Name_EDF_Across_Priorities            : constant Name_Id := N + $;
-   Name_FIFO_Within_Priorities           : constant Name_Id := N + $;
-   Name_Non_Preemptive_Within_Priorities : constant Name_Id := N + $;
-   Name_Round_Robin_Within_Priorities    : constant Name_Id := N + $;
-   Last_Task_Dispatching_Policy_Name     : constant Name_Id := N + $;
 
    --  Names of recognized partition elaboration policy identifiers
 
@@ -1772,6 +1760,7 @@ package Snames is
       Pragma_External_Name_Casing,
       Pragma_Favor_Top_Level,
       Pragma_Float_Representation,
+      Pragma_Global_Start_Offset,
       Pragma_Implicit_Packing,
       Pragma_Initialize_Scalars,
       Pragma_Interrupt_State,
@@ -1969,14 +1958,6 @@ package Snames is
       Queuing_Policy_FIFO_Queuing,
       Queuing_Policy_Priority_Queuing);
 
-   --------------------------------------------
-   -- Task Dispatching Policy ID definitions --
-   --------------------------------------------
-
-   type Task_Dispatching_Policy_Id is (
-      Task_Dispatching_FIFO_Within_Priorities);
-   --  Id values used to identify task dispatching policies
-
    -----------------
    -- Subprograms --
    -----------------
@@ -2057,10 +2038,6 @@ package Snames is
    function Is_Queuing_Policy_Name (N : Name_Id) return Boolean;
    --  Test to see if the name N is the name of a recognized queuing policy
 
-   function Is_Task_Dispatching_Policy_Name (N : Name_Id) return Boolean;
-   --  Test to see if the name N is the name of a recognized task
-   --  dispatching policy.
-
    function Get_Attribute_Id (N : Name_Id) return Attribute_Id;
    --  Returns Id of attribute corresponding to given name. It is an error to
    --  call this function with a name that is not the name of a attribute. Note
@@ -2094,12 +2071,6 @@ package Snames is
    --  Returns Id of queuing policy corresponding to given name. It is an error
    --  to call this function with a name that is not the name of a check.
 
-   function Get_Task_Dispatching_Policy_Id
-     (N : Name_Id) return Task_Dispatching_Policy_Id;
-   --  Returns Id of task dispatching policy corresponding to given name. It
-   --  is an error to call this function with a name that is not the name of
-   --  a defined check.
-
    procedure Record_Convention_Identifier
      (Id         : Name_Id;
       Convention : Convention_Id);
@@ -2116,6 +2087,5 @@ private
    pragma Inline (Is_Operator_Symbol_Name);
    pragma Inline (Is_Queuing_Policy_Name);
    pragma Inline (Is_Pragma_Name);
-   pragma Inline (Is_Task_Dispatching_Policy_Name);
 
 end Snames;

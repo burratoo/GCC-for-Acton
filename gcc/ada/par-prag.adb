@@ -1172,6 +1172,7 @@ begin
            Pragma_Finalize_Storage_Only          |
            Pragma_Float_Representation           |
            Pragma_Global                         |
+           Pragma_Global_Start_Offset            |
            Pragma_Ident                          |
            Pragma_Implementation_Defined         |
            Pragma_Implemented                    |

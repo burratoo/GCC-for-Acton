@@ -2752,10 +2752,11 @@ package body Sem_Prag is
       begin
          Check_Arg_Is_Identifier (Argx);
 
-         if not Is_Task_Dispatching_Policy_Name (Chars (Argx)) then
-            Error_Pragma_Arg
-              ("& is not a valid task dispatching policy name", Argx);
-         end if;
+      --  TODO: Find a way to check this.
+--         if not Is_Task_Dispatching_Policy_Name (Chars (Argx)) then
+--            Error_Pragma_Arg
+--              ("& is not a valid task dispatching policy name", Argx);
+--         end if;
       end Check_Arg_Is_Task_Dispatching_Policy;
 
       ---------------------
@@ -11928,6 +11929,37 @@ package body Sem_Prag is
             end if;
          end Global;
 
+         -------------------------
+         -- Global_Start_Offset --
+         -------------------------
+
+         --  pragma Global_Start_Offset (static_integer_EXPRESSION)
+
+         when Pragma_Global_Start_Offset => declare
+            Arg : Node_Id;
+            Val : Uint;
+         begin
+            Check_Arg_Count (1);
+            Check_No_Identifiers;
+
+            Arg := Get_Pragma_Arg (Arg1);
+            Check_Arg_Is_Static_Expression (Arg, Any_Integer);
+
+            Val := Expr_Value (Arg);
+
+            if Val <= 0 then
+               Error_Pragma_Arg
+                 ("maximum size for pragma% must be positive", Arg1);
+
+            elsif UI_Is_In_Int_Range (Val) then
+               Global_Start_Offset := UI_To_Int (Val);
+
+            else
+               Error_Pragma_Arg
+                 ("Supplied value for pragma% is too large", Arg1);
+            end if;
+         end;
+
          -----------
          -- Ident --
          -----------
@@ -18523,6 +18555,7 @@ package body Sem_Prag is
       Pragma_Finalize_Storage_Only          =>  0,
       Pragma_Float_Representation           =>  0,
       Pragma_Global                         => -1,
+      Pragma_Global_Start_Offset            => -1,
       Pragma_Ident                          => -1,
       Pragma_Implementation_Defined         => -1,
       Pragma_Implemented                    => -1,

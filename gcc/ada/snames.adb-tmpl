@@ -274,18 +274,6 @@ package body Snames is
       return Queuing_Policy_Id'Val (N - First_Queuing_Policy_Name);
    end Get_Queuing_Policy_Id;
 
-   ------------------------------------
-   -- Get_Task_Dispatching_Policy_Id --
-   ------------------------------------
-
-   function Get_Task_Dispatching_Policy_Id
-     (N : Name_Id) return Task_Dispatching_Policy_Id
-   is
-   begin
-      return Task_Dispatching_Policy_Id'Val
-        (N - First_Task_Dispatching_Policy_Name);
-   end Get_Task_Dispatching_Policy_Id;
-
    ----------------
    -- Initialize --
    ----------------
@@ -498,16 +486,6 @@ package body Snames is
    begin
       return N in First_Queuing_Policy_Name .. Last_Queuing_Policy_Name;
    end Is_Queuing_Policy_Name;
-
-   -------------------------------------
-   -- Is_Task_Dispatching_Policy_Name --
-   -------------------------------------
-
-   function Is_Task_Dispatching_Policy_Name (N : Name_Id) return Boolean is
-   begin
-      return N in First_Task_Dispatching_Policy_Name ..
-                  Last_Task_Dispatching_Policy_Name;
-   end Is_Task_Dispatching_Policy_Name;
 
    ----------------------------
    -- Is_Type_Attribute_Name --
