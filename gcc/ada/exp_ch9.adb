@@ -4941,7 +4941,7 @@ package body Exp_Ch9 is
    --  The expression returned for a reference to a concurrent object has the
    --  form:
 
-   --    taskV!(name)._Task_Id
+   --    taskV!(name)._Task_Handler
 
    --  for a task, and
 
@@ -4950,12 +4950,12 @@ package body Exp_Ch9 is
    --  for a protected object. For the case of an access to a concurrent
    --  object, there is an extra explicit dereference:
 
-   --    taskV!(name.all)._Task_Id
+   --    taskV!(name.all)._Task_Handler
    --    objectV!(name.all)._Object
 
    --  here taskV and objectV are the types for the associated records, which
-   --  contain the required _Task_Id and _Object fields for tasks and protected
-   --  objects, respectively.
+   --  contain the required _Task_Handler and _Object fields for tasks and
+   --  protected objects, respectively.
 
    --  For the case of a task type name, the expression is
 
@@ -5028,7 +5028,7 @@ package body Exp_Ch9 is
          if Is_Protected_Type (Dtyp) then
             Sel := Name_uObject;
          else
-            Sel := Name_uTask_Id;
+            Sel := Name_uTask_Handler;
          end if;
 
          return
@@ -5081,7 +5081,7 @@ package body Exp_Ch9 is
             Sel := Name_uObject;
 
          elsif Is_Task_Type (Ntyp) then
-            Sel := Name_uTask_Id;
+            Sel := Name_uTask_Handler;
 
          else
             raise Program_Error;

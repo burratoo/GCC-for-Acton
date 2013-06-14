@@ -158,6 +158,7 @@ package Snames is
 
    Name_uAbort_Signal                  : constant Name_Id := N + $;
    Name_uAction_Id                     : constant Name_Id := N + $;
+   Name_uAgent_Handler                 : constant Name_Id := N + $;
    Name_uAlignment                     : constant Name_Id := N + $;
    Name_uAssign                        : constant Name_Id := N + $;
    Name_uBarriers                      : constant Name_Id := N + $;
