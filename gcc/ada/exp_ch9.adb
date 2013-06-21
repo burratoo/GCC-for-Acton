@@ -8402,6 +8402,29 @@ package body Exp_Ch9 is
 
       --  Fill in the component declarations
 
+      --  Start with a access pointer to the protected agent. This allows
+      --  Oak to access the protected agent with only a reference to the
+      --  object.
+
+      if not Lock_Free_Active then
+         Object_Comp :=
+           Make_Component_Declaration (Loc,
+             Defining_Identifier =>
+               Make_Defining_Identifier (Loc, Name_uAgent_Handler),
+             Component_Definition =>
+               Make_Component_Definition (Loc,
+                 Aliased_Present   => True,
+                 Access_Definition =>
+                   Make_Access_Definition (Loc,
+                     Subtype_Mark =>
+                       New_Reference_To (RTE (RE_Protected_Agent), Loc))));
+
+         --  Put the _Object component after the private component so that it
+         --  be finalized early as required by 9.4 (20)
+
+         Append_To (Cdecls, Object_Comp);
+      end if;
+
       --  Add components for entry families. For each entry family, create an
       --  anonymous type declaration with the same size, and analyze the type.
 
@@ -10832,47 +10855,6 @@ package body Exp_Ch9 is
       Size_Decl  : Entity_Id;
       Task_Size  : Node_Id;
 
-      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id;
-      --  Searches the task definition T for the first occurrence of the pragma
-      --  Relative Deadline. The caller has ensured that the pragma is present
-      --  in the task definition. Note that this routine cannot be implemented
-      --  with the Rep Item chain mechanism since Relative_Deadline pragmas are
-      --  not chained because their expansion into a procedure call statement
-      --  would cause a break in the chain.
-
-      ----------------------------------
-      -- Get_Relative_Deadline_Pragma --
-      ----------------------------------
-
-      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id is
-         N : Node_Id;
-
-      begin
-         N := First (Visible_Declarations (T));
-         while Present (N) loop
-            if Nkind (N) = N_Pragma
-              and then Pragma_Name (N) = Name_Relative_Deadline
-            then
-               return N;
-            end if;
-
-            Next (N);
-         end loop;
-
-         N := First (Private_Declarations (T));
-         while Present (N) loop
-            if Nkind (N) = N_Pragma
-              and then Pragma_Name (N) = Name_Relative_Deadline
-            then
-               return N;
-            end if;
-
-            Next (N);
-         end loop;
-
-         raise Program_Error;
-      end Get_Relative_Deadline_Pragma;
-
    --  Start of processing for Expand_N_Task_Type_Declaration
 
    begin
@@ -11091,28 +11073,6 @@ package body Exp_Ch9 is
                    Expression (First (
                      Pragma_Argument_Associations (
                        Get_Rep_Pragma (TaskId, Name_Storage_Size))))))));
-      end if;
-
-      if Present (Taskdef)
-        and then Has_Relative_Deadline_Pragma (Taskdef)
-      then
-         Append_To (Cdecls,
-           Make_Component_Declaration (Loc,
-             Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uRelative_Deadline),
-
-             Component_Definition =>
-               Make_Component_Definition (Loc,
-                 Aliased_Present    => False,
-                 Subtype_Indication =>
-                   New_Reference_To (RTE (RE_Time_Span), Loc)),
-
-             Expression =>
-               Convert_To (RTE (RE_Time_Span),
-                 Relocate_Node (
-                   Expression (First (
-                     Pragma_Argument_Associations (
-                       Get_Relative_Deadline_Pragma (Taskdef))))))));
       end if;
 
       --  Add the _Dispatching_Domain component if a Dispatching_Domain rep
@@ -12811,6 +12771,23 @@ package body Exp_Ch9 is
          Next (Pdec);
       end loop;
 
+      --  First up the agent handler component of the protected object is
+      --  set to the protected object's protected agent.
+
+      Append_To (L,
+        Make_Assignment_Statement (Loc,
+          Name         =>
+            Make_Selected_Component (Loc,
+              Prefix        => Make_Identifier (Loc, Name_uInit),
+              Selector_Name => Make_Identifier (Loc, Name_uAgent_Handler)),
+            Expression =>
+              Make_Attribute_Reference (Loc,
+                Prefix          =>
+                  Make_Selected_Component (Loc,
+                    Prefix        => Make_Identifier (Loc, Name_uInit),
+                    Selector_Name => Make_Identifier (Loc, Name_uObject)),
+                 Attribute_Name => Name_Unchecked_Access)));
+
       --  Build the parameter list for the call. Note that _Init is the name
       --  of the formal for the object to be initialized, which is the task
       --  value record itself.
@@ -12821,8 +12798,8 @@ package body Exp_Ch9 is
       --  object.
 
       if not Uses_Lock_Free (Defining_Identifier (Pdec)) then
-         --  Object parameter. This is a pointer to the object of type
-         --  Protection used by the Oak to control the protected object.
+         --  Object parameter. This is the Agent that is used by Oak to control
+         --  the protected object.
 
          Append_To (Args,
            Make_Attribute_Reference (Loc,
@@ -12832,7 +12809,7 @@ package body Exp_Ch9 is
                  Selector_Name => Make_Identifier (Loc, Name_uObject)),
              Attribute_Name => Name_Unchecked_Access));
 
-         --  Name parameter. Since protected objects are are acorns they have
+         --  Name parameter. Since protected objects are are agents they have
          --  can have names attached to them.
 
          Append_To (Args, Make_Identifier (Loc, Name_uTask_Name));
@@ -13262,11 +13239,75 @@ package body Exp_Ch9 is
    function Make_Task_Init_Declarations (Task_Rec : Entity_Id)
      return List_Id is
       Loc    : constant Source_Ptr := Sloc (Task_Rec);
+      Tdec   : Node_Id;
+      Tdef   : Node_Id;
       Ttyp   : constant Node_Id := Corresponding_Concurrent_Type (Task_Rec);
 
       Decls  : List_Id := New_List;
       Expr   : Node_Id;
+
+      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id;
+      --  Searches the task definition T for the first occurrence of the pragma
+      --  Relative Deadline. The caller has ensured that the pragma is present
+      --  in the task definition. Note that this routine cannot be implemented
+      --  with the Rep Item chain mechanism since Relative_Deadline pragmas are
+      --  not chained because their expansion into a procedure call statement
+      --  would cause a break in the chain.
+
+      ----------------------------------
+      -- Get_Relative_Deadline_Pragma --
+      ----------------------------------
+
+      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id is
+         N : Node_Id;
+
+      begin
+         N := First (Visible_Declarations (T));
+         while Present (N) loop
+            if Nkind (N) = N_Pragma
+              and then Pragma_Name (N) = Name_Relative_Deadline
+            then
+               return N;
+            end if;
+
+            Next (N);
+         end loop;
+
+         N := First (Private_Declarations (T));
+         while Present (N) loop
+            if Nkind (N) = N_Pragma
+              and then Pragma_Name (N) = Name_Relative_Deadline
+            then
+               return N;
+            end if;
+
+            Next (N);
+         end loop;
+
+         raise Program_Error;
+      end Get_Relative_Deadline_Pragma;
+
    begin
+
+      --  Get task declaration. In the case of a task type declaration, this is
+      --  simply the parent of the task type entity. In the single task
+      --  declaration, this parent will be the implicit type, and we can find
+      --  the corresponding single task declaration by searching forward in the
+      --  declaration list in the tree.
+
+      --  Is the test for N_Single_Task_Declaration needed here??? Nodes of
+      --  this type should have been removed during semantic analysis.
+
+      Tdec := Parent (Ttyp);
+      while not Nkind_In (Tdec, N_Task_Type_Declaration,
+                                N_Single_Task_Declaration)
+      loop
+         Next (Tdec);
+      end loop;
+
+      --  Now we can find the task definition from this declaration
+
+      Tdef := Task_Definition (Tdec);
 
       --  Add the _Timing_Behaviour variable and set it value to NORMAL if the
       --  task does not contain a Timing_Behaviour aspect. If the aspect is
@@ -13405,13 +13446,14 @@ package body Exp_Ch9 is
       --  there is an Relative_Deadline aspect, in which case we take the value
       --  from the aspect.
 
-      if Has_Rep_Item
-         (Ttyp, Name_Relative_Deadline, Check_Parents => False)
-      then
+      if Present (Tdef)
+        and then Has_Relative_Deadline_Pragma (Tdef) then
          Expr :=
-           Expression
-             (Get_Rep_Item
-               (Ttyp, Name_Relative_Deadline, Check_Parents => False));
+           Convert_To (RTE (RE_Time_Span),
+             Relocate_Node (
+               Expression (First (
+                 Pragma_Argument_Associations (
+                   Get_Relative_Deadline_Pragma (Tdef))))));
       else
          Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
       end if;
