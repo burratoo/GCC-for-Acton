@@ -1336,6 +1336,9 @@ package body Exp_Ch9 is
          return;
       end if;
 
+      --  ??? Disable masters in acton for now.
+      return;
+
       --  Find the declaration that created the access type. It is either a
       --  type declaration, or an object declaration with an access definition,
       --  in which case the type is anonymous.
