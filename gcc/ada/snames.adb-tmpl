@@ -127,16 +127,30 @@ package body Snames is
 
    function Get_Attribute_Id (N : Name_Id) return Attribute_Id is
    begin
-      if N = Name_CPU then
+      if N = Name_Budget_Action then
+         return Attribute_Budget_Action;
+      elsif N = Name_Budget_Handler then
+         return Attribute_Budget_Handler;
+      elsif N = Name_CPU then
          return Attribute_CPU;
       elsif N = Name_Cycle_Period then
          return Attribute_Cycle_Period;
+      elsif N = Name_Cycle_Phase then
+         return Attribute_Cycle_Phase;
+      elsif N = Name_Deadline_Action then
+         return Attribute_Deadline_Action;
+      elsif N = Name_Deadline_Handler then
+         return Attribute_Deadline_Handler;
       elsif N = Name_Dispatching_Domain then
          return Attribute_Dispatching_Domain;
+      elsif N = Name_Execution_Budget then
+         return Attribute_Execution_Budget;
+      elsif N = Name_Execution_Server then
+         return Attribute_Execution_Server;
       elsif N = Name_Interrupt_Priority then
          return Attribute_Interrupt_Priority;
-      elsif N = Name_Phase then
-         return Attribute_Phase;
+      elsif N = Name_Timing_Behaviour then
+         return Attribute_Timing_Behaviour;
       else
          return Attribute_Id'Val (N - First_Attribute_Name);
       end if;
@@ -226,8 +240,6 @@ package body Snames is
          return Pragma_AST_Entry;
       elsif N = Name_CPU then
          return Pragma_CPU;
-      elsif N = Name_Cycle_Period then
-         return Pragma_Cycle_Period;
       elsif N = Name_Dispatching_Domain then
          return Pragma_Dispatching_Domain;
       elsif N = Name_Fast_Math then
@@ -238,8 +250,6 @@ package body Snames is
          return Pragma_Interrupt_Priority;
       elsif N = Name_Lock_Free then
          return Pragma_Lock_Free;
-      elsif N = Name_Phase then
-         return Pragma_Phase;
       elsif N = Name_Priority then
          return Pragma_Priority;
       elsif N = Name_Relative_Deadline then
@@ -263,18 +273,6 @@ package body Snames is
    begin
       return Queuing_Policy_Id'Val (N - First_Queuing_Policy_Name);
    end Get_Queuing_Policy_Id;
-
-   ------------------------------------
-   -- Get_Task_Dispatching_Policy_Id --
-   ------------------------------------
-
-   function Get_Task_Dispatching_Policy_Id
-     (N : Name_Id) return Task_Dispatching_Policy_Id
-   is
-   begin
-      return Task_Dispatching_Policy_Id'Val
-        (N - First_Task_Dispatching_Policy_Name);
-   end Get_Task_Dispatching_Policy_Id;
 
    ----------------
    -- Initialize --
@@ -460,14 +458,12 @@ package body Snames is
       return N in First_Pragma_Name .. Last_Pragma_Name
         or else N = Name_AST_Entry
         or else N = Name_CPU
-        or else N = Name_Cycle_Period
         or else N = Name_Dispatching_Domain
         or else N = Name_Fast_Math
         or else N = Name_Interface
         or else N = Name_Interrupt_Priority
         or else N = Name_Lock_Free
         or else N = Name_Relative_Deadline
-        or else N = Name_Phase
         or else N = Name_Priority
         or else N = Name_Storage_Size
         or else N = Name_Storage_Unit;
@@ -490,16 +486,6 @@ package body Snames is
    begin
       return N in First_Queuing_Policy_Name .. Last_Queuing_Policy_Name;
    end Is_Queuing_Policy_Name;
-
-   -------------------------------------
-   -- Is_Task_Dispatching_Policy_Name --
-   -------------------------------------
-
-   function Is_Task_Dispatching_Policy_Name (N : Name_Id) return Boolean is
-   begin
-      return N in First_Task_Dispatching_Policy_Name ..
-                  Last_Task_Dispatching_Policy_Name;
-   end Is_Task_Dispatching_Policy_Name;
 
    ----------------------------
    -- Is_Type_Attribute_Name --

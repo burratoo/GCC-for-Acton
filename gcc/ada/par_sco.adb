@@ -147,6 +147,10 @@ package body Par_SCO is
    procedure Record_Instance (Id : Instance_Id; Inst_Sloc : Source_Ptr);
    --  Add one entry from the instance table to the corresponding SCO table
 
+   procedure Traverse_Cycle_Statement_Sequence
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant);
+
    procedure Traverse_Declarations_Or_Statements
      (L : List_Id;
       D : Dominant_Info := No_Dominant;
@@ -2121,6 +2125,35 @@ package body Par_SCO is
 
       return Current_Dominant;
    end Traverse_Declarations_Or_Statements;
+   ----------------------------------------
+   -- Traverse_Cycle_Statement_Sequence --
+   ----------------------------------------
+
+   procedure Traverse_Cycle_Statement_Sequence
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant)
+   is
+      Handler : Node_Id;
+
+   begin
+      if Present (N) and then Comes_From_Source (N) then
+         Traverse_Declarations_Or_Statements (Statements (N), D);
+
+         if Present (Exception_Handlers (N)) then
+            Handler := First (Exception_Handlers (N));
+            while Present (Handler) loop
+               Traverse_Declarations_Or_Statements
+                 (L => Statements (Handler),
+                  D => ('E', Handler));
+               Next (Handler);
+            end loop;
+         end if;
+      end if;
+   end Traverse_Cycle_Statement_Sequence;
+
+   ------------------------------------
+   -- Traverse_Generic_Instantiation --
+   ------------------------------------
 
    ------------------------------------------
    -- Traverse_Generic_Package_Declaration --
@@ -2256,9 +2289,23 @@ package body Par_SCO is
       Dom_Info := Traverse_Declarations_Or_Statements
                     (L => Decls, D => Dom_Info);
 
-      Traverse_Handled_Statement_Sequence
-        (N => Handled_Statement_Sequence (N),
-         D => Dom_Info);
+      if Nkind (N) = N_Task_Body then
+         declare
+            Body_Statements : constant Node_Id :=
+                                Task_Body_Statement_Sequence (N);
+         begin
+            Traverse_Handled_Statement_Sequence
+              (Handled_Statement_Sequence (Body_Statements), D);
+            if Present (Cycle_Statement_Sequence (Body_Statements)) then
+               Traverse_Cycle_Statement_Sequence
+                 (Handled_Statement_Sequence (Body_Statements), D);
+            end if;
+         end;
+      else
+         Traverse_Handled_Statement_Sequence
+           (N => Handled_Statement_Sequence (N),
+            D => Dom_Info);
+      end if;
    end Traverse_Subprogram_Or_Task_Body;
 
 end Par_SCO;

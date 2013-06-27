@@ -2822,16 +2822,13 @@ package body Exp_Ch3 is
                      Actions := Build_Assignment (Id, Expression (Decl));
                   end if;
 
-               --  CPU, Cycle_Period, Dispatching_Domain, Phase, Priority and
-               --  Size components are filled with the corresponding rep item
-               --  expression of the concurrent type (if any).
+               --  Dispatching_Domain, Priority and Size components are filled
+               --  with the corresponding rep item expression of the concurrent
+               --  type (if any).
 
                elsif Ekind (Scope (Id)) = E_Record_Type
                  and then Present (Corresponding_Concurrent_Type (Scope (Id)))
-                 and then Nam_In (Chars (Id), Name_uCPU,
-                                              Name_uCycle_Period,
-                                              Name_uDispatching_Domain,
-                                              Name_uPhase,
+                 and then Nam_In (Chars (Id), Name_uDispatching_Domain,
                                               Name_uPriority)
                then
                   declare
@@ -2840,17 +2837,8 @@ package body Exp_Ch3 is
                      Ritem : Node_Id;
 
                   begin
-                     if Chars (Id) = Name_uCPU then
-                        Nam := Name_CPU;
-
-                     elsif Chars (Id) = Name_uCycle_Period then
-                        Nam := Name_Cycle_Period;
-
-                     elsif Chars (Id) = Name_uDispatching_Domain then
+                     if Chars (Id) = Name_uDispatching_Domain then
                         Nam := Name_Dispatching_Domain;
-
-                     elsif Chars (Id) = Name_uPhase then
-                        Nam := Name_Phase;
 
                      elsif Chars (Id) = Name_uPriority then
                         Nam := Name_Priority;
@@ -3013,6 +3001,7 @@ package body Exp_Ch3 is
                         Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
                     Attribute_Name => Name_Unchecked_Access)));
 
+            Append_List_To (Decls, Make_Task_Init_Declarations (Rec_Type));
             Append_To (Stmts, Make_Task_Create_Call (Rec_Type));
 
             declare

@@ -2907,7 +2907,13 @@ package body Exp_Ch7 is
 
       else
          Decls := Declarations (N);
-         HSS   := Handled_Statement_Sequence (N);
+
+         if Nkind (N) = N_Task_Body then
+            HSS := Handled_Statement_Sequence
+              (Task_Body_Statement_Sequence (N));
+         else
+            HSS := Handled_Statement_Sequence (N);
+         end if;
 
          if Present (HSS) then
             if Present (Statements (HSS)) then
@@ -3051,7 +3057,7 @@ package body Exp_Ch7 is
 
       --  The At_End handler should have been assimilated by the finalizer
 
-      HSS := Handled_Statement_Sequence (N);
+      HSS := Get_Handled_Statement_Sequence (N);
       pragma Assert (No (At_End_Proc (HSS)));
 
       --  If the construct to be cleaned up is a protected subprogram body, the
@@ -3794,7 +3800,7 @@ package body Exp_Ch7 is
                                  or else Is_Task_Body
                                  or else Needs_Sec_Stack_Mark;
 
-      HSS : Node_Id := Handled_Statement_Sequence (N);
+      HSS : Node_Id := Get_Handled_Statement_Sequence (N);
       Loc : Source_Ptr;
 
       procedure Wrap_HSS_In_Block;
@@ -3839,6 +3845,7 @@ package body Exp_Ch7 is
    --  Start of processing for Expand_Cleanup_Actions
 
    begin
+
       --  The current construct does not need any form of servicing
 
       if not Actions_Required then

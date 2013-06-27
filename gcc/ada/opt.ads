@@ -771,6 +771,11 @@ package Opt is
    --  GNAT
    --  Set True to activate SCIL code generation.
 
+   Global_Start_Offset : Int := -1;
+   --  GNAT, GNATBIND
+   --  Set to -1 for the default case where no pragma Global_Start_Offset is
+   --  supplied, otherwise set to the value provided by the pragma.
+
    Invalid_Value_Used : Boolean := False;
    --  GNAT
    --  Set True if a valid Invalid_Value attribute is encountered

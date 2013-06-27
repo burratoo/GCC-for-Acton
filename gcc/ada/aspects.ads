@@ -79,12 +79,17 @@ package Aspects is
       Aspect_Alignment,
       Aspect_Attach_Handler,
       Aspect_Bit_Order,
+      Aspect_Budget_Action,                 -- Acton
+      Aspect_Budget_Handler,                -- Acton
       Aspect_Component_Size,
       Aspect_Constant_Indexing,
       Aspect_Contract_Cases,                -- GNAT
       Aspect_Convention,
       Aspect_CPU,
       Aspect_Cycle_Period,                  -- Acton
+      Aspect_Cycle_Phase,                   -- Acton
+      Aspect_Deadline_Action,               -- Acton
+      Aspect_Deadline_Handler,              -- Acton
       Aspect_Default_Component_Value,
       Aspect_Default_Iterator,
       Aspect_Default_Value,
@@ -94,6 +99,8 @@ package Aspects is
       Aspect_Dispatching_Domain,
       Aspect_Dynamic_Predicate,
       Aspect_Ensure,                        -- Acton
+      Aspect_Execution_Budget,              -- Acton
+      Aspect_Execution_Server,              -- Acton
       Aspect_External_Name,
       Aspect_External_Tag,
       Aspect_Global,                        -- GNAT
@@ -109,7 +116,6 @@ package Aspects is
       Aspect_Object_Size,                   -- GNAT
       Aspect_Output,
       Aspect_Participating_Actions,         -- Acton
-      Aspect_Phase,                         -- Acton
       Aspect_Post,
       Aspect_Postcondition,
       Aspect_Pre,
@@ -130,6 +136,7 @@ package Aspects is
       Aspect_Suppress,
       Aspect_Synchronization,
       Aspect_Test_Case,                     -- GNAT
+      Aspect_Timing_Behaviour,              -- Acton
       Aspect_Type_Invariant,
       Aspect_Unsuppress,
       Aspect_Value_Size,                    -- GNAT
@@ -215,12 +222,19 @@ package Aspects is
      (Aspect_Abstract_State           => True,
       Aspect_Ada_2005                 => True,
       Aspect_Ada_2012                 => True,
+      Aspect_Budget_Action            => True,
+      Aspect_Budget_Handler           => True,
       Aspect_Compiler_Unit            => True,
       Aspect_Contract_Cases           => True,
       Aspect_Cycle_Period             => True,
+      Aspect_Cycle_Phase              => True,
+      Aspect_Deadline_Action          => True,
+      Aspect_Deadline_Handler         => True,
       Aspect_Depends                  => True,
       Aspect_Dimension                => True,
       Aspect_Dimension_System         => True,
+      Aspect_Execution_Budget         => True,
+      Aspect_Execution_Server         => True,
       Aspect_Favor_Top_Level          => True,
       Aspect_Global                   => True,
       Aspect_Inline_Always            => True,
@@ -231,7 +245,6 @@ package Aspects is
       Aspect_Object_Size              => True,
       Aspect_Participating_Actions    => True,
       Aspect_Persistent_BSS           => True,
-      Aspect_Phase                    => True,
       Aspect_Predicate                => True,
       Aspect_Preelaborate_05          => True,
       Aspect_Pure_05                  => True,
@@ -245,6 +258,7 @@ package Aspects is
       Aspect_Simple_Storage_Pool_Type => True,
       Aspect_Suppress_Debug_Info      => True,
       Aspect_Test_Case                => True,
+      Aspect_Timing_Behaviour         => True,
       Aspect_Universal_Aliasing       => True,
       Aspect_Universal_Data           => True,
       Aspect_Unmodified               => True,
@@ -298,12 +312,17 @@ package Aspects is
       Aspect_Alignment               => Expression,
       Aspect_Attach_Handler          => Expression,
       Aspect_Bit_Order               => Expression,
+      Aspect_Budget_Action           => Expression,
+      Aspect_Budget_Handler          => Expression,
       Aspect_Component_Size          => Expression,
       Aspect_Constant_Indexing       => Name,
       Aspect_Contract_Cases          => Expression,
       Aspect_Convention              => Name,
       Aspect_CPU                     => Expression,
       Aspect_Cycle_Period            => Expression,
+      Aspect_Cycle_Phase             => Expression,
+      Aspect_Deadline_Action         => Expression,
+      Aspect_Deadline_Handler        => Expression,
       Aspect_Default_Component_Value => Expression,
       Aspect_Default_Iterator        => Name,
       Aspect_Default_Value           => Expression,
@@ -312,6 +331,8 @@ package Aspects is
       Aspect_Dimension_System        => Expression,
       Aspect_Dispatching_Domain      => Expression,
       Aspect_Dynamic_Predicate       => Expression,
+      Aspect_Execution_Budget        => Expression,
+      Aspect_Execution_Server        => Expression,
       Aspect_Ensure                  => Expression,
       Aspect_External_Name           => Expression,
       Aspect_External_Tag            => Expression,
@@ -328,7 +349,6 @@ package Aspects is
       Aspect_Object_Size             => Expression,
       Aspect_Output                  => Name,
       Aspect_Participating_Actions   => Name,
-      Aspect_Phase                   => Expression,
       Aspect_Post                    => Expression,
       Aspect_Postcondition           => Expression,
       Aspect_Pre                     => Expression,
@@ -349,6 +369,7 @@ package Aspects is
       Aspect_Suppress                => Name,
       Aspect_Synchronization         => Name,
       Aspect_Test_Case               => Expression,
+      Aspect_Timing_Behaviour        => Expression,
       Aspect_Type_Invariant          => Expression,
       Aspect_Unsuppress              => Name,
       Aspect_Value_Size              => Expression,
@@ -378,6 +399,8 @@ package Aspects is
       Aspect_Atomic_Components            => Name_Atomic_Components,
       Aspect_Attach_Handler               => Name_Attach_Handler,
       Aspect_Bit_Order                    => Name_Bit_Order,
+      Aspect_Budget_Action                => Name_Budget_Action,
+      Aspect_Budget_Handler               => Name_Budget_Handler,
       Aspect_Compiler_Unit                => Name_Compiler_Unit,
       Aspect_Component_Size               => Name_Component_Size,
       Aspect_Constant_Indexing            => Name_Constant_Indexing,
@@ -385,6 +408,9 @@ package Aspects is
       Aspect_Convention                   => Name_Convention,
       Aspect_CPU                          => Name_CPU,
       Aspect_Cycle_Period                 => Name_Cycle_Period,
+      Aspect_Cycle_Phase                  => Name_Cycle_Phase,
+      Aspect_Deadline_Action              => Name_Deadline_Action,
+      Aspect_Deadline_Handler             => Name_Deadline_Handler,
       Aspect_Default_Iterator             => Name_Default_Iterator,
       Aspect_Default_Value                => Name_Default_Value,
       Aspect_Default_Component_Value      => Name_Default_Component_Value,
@@ -396,6 +422,8 @@ package Aspects is
       Aspect_Dynamic_Predicate            => Name_Dynamic_Predicate,
       Aspect_Elaborate_Body               => Name_Elaborate_Body,
       Aspect_Ensure                       => Name_Ensure,
+      Aspect_Execution_Budget             => Name_Execution_Budget,
+      Aspect_Execution_Server             => Name_Execution_Server,
       Aspect_External_Name                => Name_External_Name,
       Aspect_External_Tag                 => Name_External_Tag,
       Aspect_Export                       => Name_Export,
@@ -423,7 +451,6 @@ package Aspects is
       Aspect_Pack                         => Name_Pack,
       Aspect_Participating_Actions        => Name_Participating_Actions,
       Aspect_Persistent_BSS               => Name_Persistent_BSS,
-      Aspect_Phase                        => Name_Phase,
       Aspect_Post                         => Name_Post,
       Aspect_Postcondition                => Name_Postcondition,
       Aspect_Pre                          => Name_Pre,
@@ -458,6 +485,7 @@ package Aspects is
       Aspect_Suppress_Debug_Info          => Name_Suppress_Debug_Info,
       Aspect_Synchronization              => Name_Synchronization,
       Aspect_Test_Case                    => Name_Test_Case,
+      Aspect_Timing_Behaviour             => Name_Timing_Behaviour,
       Aspect_Type_Invariant               => Name_Type_Invariant,
       Aspect_Unchecked_Union              => Name_Unchecked_Union,
       Aspect_Universal_Aliasing           => Name_Universal_Aliasing,

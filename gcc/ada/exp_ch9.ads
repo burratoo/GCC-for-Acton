@@ -268,6 +268,11 @@ package Exp_Ch9 is
    --  details of the nature and use of these declarations. The second argument
    --  is the entity for the corresponding protected type declaration.
 
+   procedure Expand_Task_Body_Sequence_Of_Statements (N : Node_Id);
+   --  Expands a task body's sequence of statements to incorporate a task's
+   --  cycle sequence of statements into the task's existing handled sequence
+   --  of statements.
+
    function External_Subprogram (E : Entity_Id) return Entity_Id;
    --  return the external version of a protected operation, which locks
    --  the object before invoking the internal protected subprogram body.
@@ -339,6 +344,11 @@ package Exp_Ch9 is
    function Make_Task_Create_Call (Task_Rec : Entity_Id) return Node_Id;
    --  Given the entity of the record type created for a task type, build
    --  the call to Create_Task
+
+   function Make_Task_Init_Declarations (Task_Rec : Entity_Id) return List_Id;
+   --  Given the enitiy of the record type created for a task type, build the
+   --  declarations of the variables that will be used by the above
+   --  Make_Task_Create_Call.
 
    function Make_Initialize_Protection
      (Protect_Rec : Entity_Id) return List_Id;

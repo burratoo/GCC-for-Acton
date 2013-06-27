@@ -2890,10 +2890,11 @@ package body Exp_Attr is
       --  For an exception returns a reference to the exception data:
       --      Exception_Id!(Prefix'Reference)
 
-      --  For a task it returns a reference to the _task_id component of
+      --  For a task it returns a reference to the _Task_Handler component of
       --  corresponding record:
 
-      --    taskV!(Prefix)._Task_Id, converted to the type Task_Id defined
+      --    taskV!(Prefix)._Task_Handler, converted to the type Task_Id
+      --    defined
 
       --  in Ada.Task_Identification
 

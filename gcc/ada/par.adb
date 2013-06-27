@@ -383,6 +383,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --  The above are the only allowed values of Pf_Rec arguments
 
    type SS_Rec is record
+      Cytm : Boolean;      -- CYCLES can terminate sequence
       Eftm : Boolean;      -- ELSIF can terminate sequence
       Eltm : Boolean;      -- ELSE can terminate sequence
       Extm : Boolean;      -- EXCEPTION can terminate sequence
@@ -394,17 +395,20 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    end record;
    pragma Pack (SS_Rec);
 
-   SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(T, T, F, F, T, F, F, F);
-   SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, T, F, T, F, T, F, F);
-   SS_Eltm           : constant SS_Rec := SS_Rec'(F, T, F, F, F, F, F, F);
-   SS_Eltm_Sreq      : constant SS_Rec := SS_Rec'(F, T, F, F, F, T, F, F);
-   SS_Extm_Sreq      : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, F, F);
-   SS_None           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, F);
-   SS_Ortm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, T, T, F, F, F);
-   SS_Sreq           : constant SS_Rec := SS_Rec'(F, F, F, F, T, F, F, F);
-   SS_Sreq_Whtm      : constant SS_Rec := SS_Rec'(F, F, F, F, T, F, T, F);
-   SS_Whtm           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, T, F);
-   SS_Unco           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, T);
+   SS_Cytm_Extm_Sreq : constant SS_Rec := SS_Rec'(T, F, F, F, F, T, F, F, F);
+   SS_Cytm_Sreq_Whtm : constant SS_Rec := SS_Rec'(T, F, F, F, F, F, F, T, F);
+   SS_Cytm_Sreq      : constant SS_Rec := SS_Rec'(T, F, F, T, F, T, F, F, F);
+   SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(F, T, T, F, F, T, F, F, F);
+   SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, T, F, F);
+   SS_Eltm           : constant SS_Rec := SS_Rec'(F, F, T, F, F, F, F, F, F);
+   SS_Eltm_Sreq      : constant SS_Rec := SS_Rec'(F, F, T, F, F, F, T, F, F);
+   SS_Extm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, T, F, T, F, F, F);
+   SS_None           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, F, F);
+   SS_Ortm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, F, T, T, F, F, F);
+   SS_Sreq           : constant SS_Rec := SS_Rec'(F, F, F, F, F, T, F, F, F);
+   SS_Sreq_Whtm      : constant SS_Rec := SS_Rec'(F, F, F, F, F, T, F, T, F);
+   SS_Whtm           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, T, F);
+   SS_Unco           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, F, T);
 
    Goto_List : Elist_Id;
    --  List of goto nodes appearing in the current compilation. Used to
@@ -803,6 +807,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Abort_Statement                      return Node_Id;
       function P_Abortable_Part                       return Node_Id;
       function P_Accept_Statement                     return Node_Id;
+      function P_Cycle_Sequence_Of_Statements         return Node_Id;
       function P_Delay_Statement                      return Node_Id;
       function P_Entry_Body                           return Node_Id;
       function P_Protected                            return Node_Id;
@@ -812,9 +817,9 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Terminate_Alternative                return Node_Id;
    end Ch9;
 
-   -------------
+   --------------
    -- Par.Atom --
-   -------------
+   --------------
 
    package Atom is
       --  Placed here as it is envisioned it will end up in Ch9.
@@ -848,9 +853,15 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --------------
 
    package Ch11 is
-      function P_Handled_Sequence_Of_Statements       return Node_Id;
       function P_Raise_Expression                     return Node_Id;
       function P_Raise_Statement                      return Node_Id;
+
+      function P_Handled_Sequence_Of_Statements
+        (In_Task_Body : Boolean := False) return Node_Id;
+      --  Parses a handled sequence of statments. The function needs to know
+      --  if the sequence appears as part of the body of a task since the
+      --  sequence in this case can be terminated by the CYCLES keyword. In
+      --  other use, the appearance of CYCLES is erroneous.
 
       function Parse_Exception_Handlers               return List_Id;
       --  Parses the partial construct EXCEPTION followed by a list of

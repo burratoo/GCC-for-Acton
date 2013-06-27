@@ -145,6 +145,7 @@ package body Scans is
 
       Set_Reserved (Name_Action,        Tok_Action);
       Set_Reserved (Name_Atomic_Action, Tok_Atomic_Action);
+      Set_Reserved (Name_Cycles, Tok_Cycles);
    end Initialize_Ada_Keywords;
 
    ------------------------

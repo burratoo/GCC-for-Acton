@@ -2752,10 +2752,11 @@ package body Sem_Prag is
       begin
          Check_Arg_Is_Identifier (Argx);
 
-         if not Is_Task_Dispatching_Policy_Name (Chars (Argx)) then
-            Error_Pragma_Arg
-              ("& is not a valid task dispatching policy name", Argx);
-         end if;
+      --  TODO: Find a way to check this.
+--         if not Is_Task_Dispatching_Policy_Name (Chars (Argx)) then
+--            Error_Pragma_Arg
+--              ("& is not a valid task dispatching policy name", Argx);
+--         end if;
       end Check_Arg_Is_Task_Dispatching_Policy;
 
       ---------------------
@@ -10414,52 +10415,6 @@ package body Sem_Prag is
             Record_Rep_Item (Ent, N);
          end CPU;
 
-         ------------------
-         -- Cycle_Period --
-         ------------------
-
-         --  pragma Cycle_Period (time_span_EXPRESSION);
-
-         when Pragma_Cycle_Period => Cycle_Period : declare
-            P   : constant Node_Id := Parent (N);
-            Arg : Node_Id;
-            Ent : Entity_Id;
-
-         begin
-            Ada_2012_Pragma;
-            Check_No_Identifiers;
-            Check_Arg_Count (1);
-
-            --  This pragma is born obsolete, but not the aspect
-
-            if not From_Aspect_Specification (N) then
-               Check_Restriction
-                 (No_Obsolescent_Features, Pragma_Identifier (N));
-            end if;
-
-            if Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-               Ent := Defining_Identifier (Parent (P));
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
-               --  Check duplicate pragma before we chain the pragma in the Rep
-               --  Item chain of Ent.
-
-               Check_Duplicate_Pragma (Ent);
-               Record_Rep_Item (Ent, N);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-         end Cycle_Period;
-
          -----------
          -- Debug --
          -----------
@@ -11973,6 +11928,37 @@ package body Sem_Prag is
                Add_Contract_Item (N, Subp_Id);
             end if;
          end Global;
+
+         -------------------------
+         -- Global_Start_Offset --
+         -------------------------
+
+         --  pragma Global_Start_Offset (static_integer_EXPRESSION)
+
+         when Pragma_Global_Start_Offset => declare
+            Arg : Node_Id;
+            Val : Uint;
+         begin
+            Check_Arg_Count (1);
+            Check_No_Identifiers;
+
+            Arg := Get_Pragma_Arg (Arg1);
+            Check_Arg_Is_Static_Expression (Arg, Any_Integer);
+
+            Val := Expr_Value (Arg);
+
+            if Val <= 0 then
+               Error_Pragma_Arg
+                 ("maximum size for pragma% must be positive", Arg1);
+
+            elsif UI_Is_In_Int_Range (Val) then
+               Global_Start_Offset := UI_To_Int (Val);
+
+            else
+               Error_Pragma_Arg
+                 ("Supplied value for pragma% is too large", Arg1);
+            end if;
+         end;
 
          -----------
          -- Ident --
@@ -15056,52 +15042,6 @@ package body Sem_Prag is
                Persistent_BSS_Mode := True;
             end if;
          end Persistent_BSS;
-
-         -----------
-         -- Phase --
-         -----------
-
-         --  pragma Phase (time_span_EXPRESSION);
-
-         when Pragma_Phase => Phase : declare
-            P   : constant Node_Id := Parent (N);
-            Arg : Node_Id;
-            Ent : Entity_Id;
-
-         begin
-            Ada_2012_Pragma;
-            Check_No_Identifiers;
-            Check_Arg_Count (1);
-
-            --  This pragma is born obsolete, but not the aspect
-
-            if not From_Aspect_Specification (N) then
-               Check_Restriction
-                 (No_Obsolescent_Features, Pragma_Identifier (N));
-            end if;
-
-            if Nkind (P) = N_Task_Definition then
-               Arg := Get_Pragma_Arg (Arg1);
-               Ent := Defining_Identifier (Parent (P));
-
-               --  The expression must be analyzed in the special manner
-               --  described in "Handling of Default and Per-Object
-               --  Expressions" in sem.ads.
-
-               Preanalyze_Spec_Expression (Arg, RTE (RE_Time_Span));
-
-               --  Check duplicate pragma before we chain the pragma in the Rep
-               --  Item chain of Ent.
-
-               Check_Duplicate_Pragma (Ent);
-               Record_Rep_Item (Ent, N);
-
-            --  Anything else is incorrect
-
-            else
-               Pragma_Misplaced;
-            end if;
-         end Phase;
 
          -------------
          -- Polling --
@@ -18584,7 +18524,6 @@ package body Sem_Prag is
       Pragma_Controlled                     =>  0,
       Pragma_Convention                     =>  0,
       Pragma_Convention_Identifier          =>  0,
-      Pragma_Cycle_Period                   => -1,
       Pragma_Debug                          => -1,
       Pragma_Debug_Policy                   =>  0,
       Pragma_Detect_Blocking                => -1,
@@ -18616,6 +18555,7 @@ package body Sem_Prag is
       Pragma_Finalize_Storage_Only          =>  0,
       Pragma_Float_Representation           =>  0,
       Pragma_Global                         => -1,
+      Pragma_Global_Start_Offset            => -1,
       Pragma_Ident                          => -1,
       Pragma_Implementation_Defined         => -1,
       Pragma_Implemented                    => -1,
@@ -18676,7 +18616,6 @@ package body Sem_Prag is
       Pragma_Page                           => -1,
       Pragma_Partition_Elaboration_Policy   => -1,
       Pragma_Passive                        => -1,
-      Pragma_Phase                          => -1,
       Pragma_Preelaborable_Initialization   => -1,
       Pragma_Polling                        => -1,
       Pragma_Persistent_BSS                 =>  0,

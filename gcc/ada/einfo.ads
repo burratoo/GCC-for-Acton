@@ -1480,12 +1480,16 @@ package Einfo is
 --       Convention, Import, or Export pragma has been given. Used to prevent
 --       more than one such pragma appearing for a given entity (RM B.1(45)).
 
+--    Has_Cyclic_Section (Flag286)
+--       Defined in E_Task_Type and E_Task_Subtype entities. Set true for a
+--       task that contains a Cycle_Sequence_Of_Statements in its body.
+
 --    Has_Delayed_Aspects (Flag200)
---      Defined in all entities. Set true if the Rep_Item chain for the entity
---      has one or more N_Aspect_Definition nodes chained which are not to be
---      evaluated till the freeze point. The aspect definition expression
---      clause has been preanalyzed to get visibility at the point of use,
---      but no other action has been taken.
+--       Defined in all entities. Set true if the Rep_Item chain for the entity
+--       has one or more N_Aspect_Definition nodes chained which are not to be
+--       evaluated till the freeze point. The aspect definition expression
+--       clause has been preanalyzed to get visibility at the point of use,
+--       but no other action has been taken.
 
 --    Has_Delayed_Freeze (Flag18)
 --       Defined in all entities. Set to indicate that an explicit freeze
@@ -5995,6 +5999,7 @@ package Einfo is
    --    Has_Entries                         (synth)
    --    Number_Entries                      (synth)
    --    Relative_Deadline_Variable          (Node26)   (base type only)
+   --    Has_Cyclic_Section                  (Flag286)
    --    (plus type attributes)
 
    --  E_Variable
@@ -6400,6 +6405,7 @@ package Einfo is
    function Has_Controlled_Component            (Id : E) return B;
    function Has_Controlling_Result              (Id : E) return B;
    function Has_Convention_Pragma               (Id : E) return B;
+   function Has_Cyclic_Section                  (Id : E) return B;
    function Has_Default_Aspect                  (Id : E) return B;
    function Has_Delayed_Aspects                 (Id : E) return B;
    function Has_Delayed_Freeze                  (Id : E) return B;
@@ -7016,6 +7022,7 @@ package Einfo is
    procedure Set_Has_Controlled_Component        (Id : E; V : B := True);
    procedure Set_Has_Controlling_Result          (Id : E; V : B := True);
    procedure Set_Has_Convention_Pragma           (Id : E; V : B := True);
+   procedure Set_Has_Cyclic_Section              (Id : E; V : B := True);
    procedure Set_Has_Default_Aspect              (Id : E; V : B := True);
    procedure Set_Has_Delayed_Aspects             (Id : E; V : B := True);
    procedure Set_Has_Delayed_Freeze              (Id : E; V : B := True);
@@ -7725,6 +7732,7 @@ package Einfo is
    pragma Inline (Has_Controlled_Component);
    pragma Inline (Has_Controlling_Result);
    pragma Inline (Has_Convention_Pragma);
+   pragma Inline (Has_Cyclic_Section);
    pragma Inline (Has_Default_Aspect);
    pragma Inline (Has_Delayed_Aspects);
    pragma Inline (Has_Delayed_Freeze);
@@ -8189,6 +8197,7 @@ package Einfo is
    pragma Inline (Set_Has_Controlled_Component);
    pragma Inline (Set_Has_Controlling_Result);
    pragma Inline (Set_Has_Convention_Pragma);
+   pragma Inline (Set_Has_Cyclic_Section);
    pragma Inline (Set_Has_Default_Aspect);
    pragma Inline (Set_Has_Delayed_Aspects);
    pragma Inline (Set_Has_Delayed_Freeze);

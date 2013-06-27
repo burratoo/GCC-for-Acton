@@ -1143,7 +1143,6 @@ begin
            Pragma_Component_Alignment            |
            Pragma_Controlled                     |
            Pragma_Convention                     |
-           Pragma_Cycle_Period                   |
            Pragma_Debug_Policy                   |
            Pragma_Depends                        |
            Pragma_Detect_Blocking                |
@@ -1173,6 +1172,7 @@ begin
            Pragma_Finalize_Storage_Only          |
            Pragma_Float_Representation           |
            Pragma_Global                         |
+           Pragma_Global_Start_Offset            |
            Pragma_Ident                          |
            Pragma_Implementation_Defined         |
            Pragma_Implemented                    |
@@ -1234,7 +1234,6 @@ begin
            Pragma_Preelaborable_Initialization   |
            Pragma_Polling                        |
            Pragma_Persistent_BSS                 |
-           Pragma_Phase                          |
            Pragma_Postcondition                  |
            Pragma_Precondition                   |
            Pragma_Predicate                      |

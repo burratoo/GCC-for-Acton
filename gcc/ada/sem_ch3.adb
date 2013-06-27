@@ -4447,28 +4447,18 @@ package body Sem_Ch3 is
          Conditional_Delay (Id, Full_View (T));
 
       --  The subtypes of components or subcomponents of protected types
-      --  do not need freeze nodes, which would otherwise appear in the
-      --  wrong scope (before the freeze node for the protected type). The
-      --  proper subtypes are those of the subcomponents of the corresponding
-      --  record.
+      --  and atomic types do not need freeze nodes, which would otherwise
+      --  appear in the wrong scope (before the freeze node for the protected
+      --  type). The proper subtypes are those of the subcomponents of the
+      --  corresponding record.
 
-      elsif Ekind (Scope (Id)) /= E_Protected_Type
+      elsif not Ekind_In (Scope (Id), E_Protected_Type, E_Atomic_Type)
         and then Present (Scope (Scope (Id))) -- error defense!
-        and then Ekind (Scope (Scope (Id))) /= E_Protected_Type
+        and then not
+          Ekind_In (Scope (Scope (Id)), E_Protected_Type, E_Atomic_Type)
       then
          Conditional_Delay (Id, T);
 
-      --  The subtypes of components or subcomponents of atomic types
-      --  do not need freeze nodes, which would otherwise appear in the
-      --  wrong scope (before the freeze node for the atomic type). The
-      --  proper subtypes are those of the subcomponents of the corresponding
-      --  record.
-
-      elsif Ekind (Scope (Id)) /= E_Atomic_Type
-        and then Present (Scope (Scope (Id))) -- error defense!
-        and then Ekind (Scope (Scope (Id))) /= E_Atomic_Type
-      then
-         Conditional_Delay (Id, T);
       end if;
 
       --  Check that Constraint_Error is raised for a scalar subtype indication

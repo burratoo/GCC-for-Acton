@@ -5258,8 +5258,19 @@ package Sinfo is
       --    is
       --      DECLARATIVE_PART
       --    begin
-      --      HANDLED_SEQUENCE_OF_STATEMENTS
+      --      TASK_BODY_STATEMENTS
       --    end [task_IDENTIFIER];
+
+      --  TASK_BODY_STATEMENTS ::=
+      --      HANDLED_SEQUENCE_OF_STATEMENTS
+      --    [cycles
+      --      CYCLE_SEQUENCE_OF_STATEMENTS]
+
+      --  The RM grammer for a task body is changed here since the N_Task_Body
+      --  is not large enough to contain reference to both the
+      --  HANDLED_SEQUENCE_OF_STATEMENTS and the CYCLE_SEQUENCE_OF_STATEMENTS.
+      --  Instead a new node TASK_BODY_STATEMENTS is used to contain these
+      --  References.
 
       --  Gigi restriction: This node never appears
 
@@ -5267,11 +5278,37 @@ package Sinfo is
       --  Sloc points to TASK
       --  Defining_Identifier (Node1)
       --  Declarations (List2)
-      --  Handled_Statement_Sequence (Node4)
+      --  Task_Body_Statement_Sequence (Node4)
       --  Is_Task_Master (Flag5-Sem)
       --  Activation_Chain_Entity (Node3-Sem)
       --  Corresponding_Spec (Node5-Sem)
       --  Was_Originally_Stub (Flag13-Sem)
+
+      --  N_Task_Body_Statement_Sequence
+      --  Handled_Statement_Sequence (Node4)
+      --  Cycle_Statement_Sequence (Node1)
+
+      ---------------------------------------
+      -- 9.1  Cycle_Sequence_Of_Statements --
+      ---------------------------------------
+
+      --  CYCLE_SEQUENCE_OF_STATEMENTS ::=
+      --      SEQUENCE_OF_STATEMENTS
+      --    [cycle exception
+      --      EXCEPTION_HANDLER
+      --      {EXCEPTION_HANDLER}]
+
+      --  The N_Cycle_Sequence_Of_Statements node follows the same layout as
+      --  the N_Handled_Sequence_Of_Statement node to allow it to be easily
+      --  converted to that node when needed to.
+
+      --  Gigi restriction: This node never appears
+
+      --  N_Cycle_Sequence_Of_Statements
+      --  Sloc points to first token of first statement
+      --  Statements (List3)
+      --  Exception_Handlers (List5) (set to No_List if none present)
+      --  First_Real_Statement (Node2-Sem)
 
       -------------------------------------
       -- 9.4  Protected Type Declaration --
@@ -8196,6 +8233,7 @@ package Sinfo is
       N_Component_Definition,
       N_Component_List,
       N_Contract,
+      N_Cycle_Sequence_Of_Statements,
       N_Derived_Type_Definition,
       N_Decimal_Fixed_Point_Definition,
       N_Defining_Program_Unit_Name,
@@ -8244,6 +8282,7 @@ package Sinfo is
       N_Single_Protected_Declaration,
       N_Subunit,
       N_Task_Definition,
+      N_Task_Body_Statement_Sequence,
       N_Triggering_Alternative,
       N_Use_Type_Clause,
       N_Validate_Unchecked_Conversion,
@@ -8672,6 +8711,9 @@ package Sinfo is
 
    function Corresponding_Stub
      (N : Node_Id) return Node_Id;    -- Node3
+
+   function Cycle_Statement_Sequence
+     (N : Node_Id) return Node_Id;    -- Node1
 
    function Dcheck_Function
      (N : Node_Id) return Entity_Id;  -- Node5
@@ -9393,6 +9435,9 @@ package Sinfo is
    function Target_Type
      (N : Node_Id) return Entity_Id;  -- Node2
 
+   function Task_Body_Statement_Sequence
+     (N : Node_Id) return Node_Id;    -- Node4
+
    function Task_Definition
      (N : Node_Id) return Node_Id;    -- Node3
 
@@ -9680,6 +9725,9 @@ package Sinfo is
 
    procedure Set_Corresponding_Stub
      (N : Node_Id; Val : Node_Id);            -- Node3
+
+   procedure Set_Cycle_Statement_Sequence
+     (N : Node_Id; Val : Node_Id);            -- Node1
 
    procedure Set_Dcheck_Function
      (N : Node_Id; Val : Entity_Id);          -- Node5
@@ -10397,6 +10445,9 @@ package Sinfo is
 
    procedure Set_Target_Type
      (N : Node_Id; Val : Entity_Id);          -- Node2
+
+   procedure Set_Task_Body_Statement_Sequence
+     (N : Node_Id; Val : Node_Id);            -- Node4
 
    procedure Set_Task_Definition
      (N : Node_Id; Val : Node_Id);            -- Node3
@@ -11521,8 +11572,15 @@ package Sinfo is
        (1 => True,    --  Defining_Identifier (Node1)
         2 => True,    --  Declarations (List2)
         3 => False,   --  Activation_Chain_Entity (Node3-Sem)
-        4 => True,    --  Handled_Statement_Sequence (Node4)
+        4 => True,    --  Task_Body_Statement_Sequence (Node4)
         5 => False),  --  Corresponding_Spec (Node5-Sem)
+
+     N_Task_Body_Statement_Sequence =>
+       (1 => True,    --  Cycle_Statement_Sequence (Node1)
+        2 => False,   --  unused
+        3 => False,   --  unused
+        4 => True,    --  Handled_Statement_Sequence (Node4)
+        5 => False),  --  unused
 
      N_Protected_Type_Declaration =>
        (1 => True,    --  Defining_Identifier (Node1)
@@ -11839,7 +11897,14 @@ package Sinfo is
         4 => True,    --  End_Label (Node4)
         5 => True),   --  Exception_Handlers (List5)
 
-     N_Exception_Handler =>
+     N_Cycle_Sequence_Of_Statements =>
+       (1 => False,   --  unused
+        2 => False,   --  First_Real_Statement (Node2-Sem)
+        3 => True,    --  Statements (List3)
+        4 => False,   --  unused
+        5 => True),   --  Exception_Handlers (List5)
+
+     N_Exception_Handler                      =>
        (1 => False,   --  Local_Raise_Statements (Elist1)
         2 => True,    --  Choice_Parameter (Node2)
         3 => True,    --  Statements (List3)
@@ -12385,6 +12450,7 @@ package Sinfo is
    pragma Inline (Corresponding_Integer_Value);
    pragma Inline (Corresponding_Spec);
    pragma Inline (Corresponding_Stub);
+   pragma Inline (Cycle_Statement_Sequence);
    pragma Inline (Dcheck_Function);
    pragma Inline (Declarations);
    pragma Inline (Default_Expression);
@@ -12625,6 +12691,7 @@ package Sinfo is
    pragma Inline (Synchronized_Present);
    pragma Inline (Tagged_Present);
    pragma Inline (Target_Type);
+   pragma Inline (Task_Body_Statement_Sequence);
    pragma Inline (Task_Definition);
    pragma Inline (Task_Present);
    pragma Inline (Then_Actions);
@@ -12718,6 +12785,7 @@ package Sinfo is
    pragma Inline (Set_Corresponding_Integer_Value);
    pragma Inline (Set_Corresponding_Spec);
    pragma Inline (Set_Corresponding_Stub);
+   pragma Inline (Set_Cycle_Statement_Sequence);
    pragma Inline (Set_Dcheck_Function);
    pragma Inline (Set_Declarations);
    pragma Inline (Set_Default_Expression);
@@ -12955,6 +13023,7 @@ package Sinfo is
    pragma Inline (Set_TSS_Elist);
    pragma Inline (Set_Tagged_Present);
    pragma Inline (Set_Target_Type);
+   pragma Inline (Set_Task_Body_Statement_Sequence);
    pragma Inline (Set_Task_Definition);
    pragma Inline (Set_Task_Present);
    pragma Inline (Set_Then_Actions);

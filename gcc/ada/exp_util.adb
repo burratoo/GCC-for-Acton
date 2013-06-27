@@ -2944,6 +2944,19 @@ package body Exp_Util is
       end;
    end Get_Current_Value_Condition;
 
+   -------------------------------------
+   --  Get_Handled_Statement_Sequence --
+   -------------------------------------
+
+   function Get_Handled_Statement_Sequence (N : Node_Id) return Node_Id is
+   begin
+      if Nkind (N) = N_Task_Body then
+         return Handled_Statement_Sequence (Task_Body_Statement_Sequence (N));
+      else
+         return Handled_Statement_Sequence (N);
+      end if;
+   end Get_Handled_Statement_Sequence;
+
    ---------------------
    -- Get_Stream_Size --
    ---------------------
@@ -3633,6 +3646,7 @@ package body Exp_Util is
                N_Component_Definition                   |
                N_Component_List                         |
                N_Constrained_Array_Definition           |
+               N_Cycle_Sequence_Of_Statements           |
                N_Decimal_Fixed_Point_Definition         |
                N_Defining_Character_Literal             |
                N_Defining_Identifier                    |
@@ -3746,6 +3760,7 @@ package body Exp_Util is
                N_Subprogram_Info                        |
                N_Subtype_Indication                     |
                N_Subunit                                |
+               N_Task_Body_Statement_Sequence           |
                N_Task_Definition                        |
                N_Terminate_Alternative                  |
                N_Triggering_Alternative                 |
@@ -7191,10 +7206,10 @@ package body Exp_Util is
             return
               Requires_Cleanup_Actions (Declarations (N), At_Lib_Level, True)
                 or else
-                  (Present (Handled_Statement_Sequence (N))
+                  (Present (Get_Handled_Statement_Sequence (N))
                     and then
                       Requires_Cleanup_Actions
-                        (Statements (Handled_Statement_Sequence (N)),
+                        (Statements (Get_Handled_Statement_Sequence (N)),
                          At_Lib_Level, True));
 
          when N_Package_Specification =>

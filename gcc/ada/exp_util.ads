@@ -486,6 +486,14 @@ package Exp_Util is
    --  N_Op_Eq), or to determine the result of some other test in other cases
    --  (e.g. no access check required if N_Op_Ne Null).
 
+   function Get_Handled_Statement_Sequence (N : Node_Id) return Node_Id;
+   --  Return the N_Handled_Statement_Sequence node for the given node. Bodies
+   --  that contain a Handled Sequence of Statements usually contain
+   --  the N_Handled_Statement_Sequence in their corresponding node, with the
+   --  notable execption of task bodies which locate the
+   --  N_Handled_Statement_Sequence node in a child node. This function
+   --  abstracts these differences.
+
    function Get_Stream_Size (E : Entity_Id) return Uint;
    --  Return the stream size value of the subtype E
 

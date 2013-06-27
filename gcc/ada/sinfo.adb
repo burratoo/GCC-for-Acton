@@ -739,6 +739,14 @@ package body Sinfo is
       return Node3 (N);
    end Corresponding_Stub;
 
+   function Cycle_Statement_Sequence
+      (N : Node_Id) return Node_Id is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Task_Body_Statement_Sequence);
+      return Node1 (N);
+   end Cycle_Statement_Sequence;
+
    function Dcheck_Function
       (N : Node_Id) return Entity_Id is
    begin
@@ -1227,6 +1235,7 @@ package body Sinfo is
       (N : Node_Id) return List_Id is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       return List5 (N);
    end Exception_Handlers;
@@ -1369,6 +1378,7 @@ package body Sinfo is
       (N : Node_Id) return Node_Id is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       return Node2 (N);
    end First_Real_Statement;
@@ -1487,7 +1497,7 @@ package body Sinfo is
         or else NT (N).Nkind = N_Extended_Return_Statement
         or else NT (N).Nkind = N_Package_Body
         or else NT (N).Nkind = N_Subprogram_Body
-        or else NT (N).Nkind = N_Task_Body);
+        or else NT (N).Nkind = N_Task_Body_Statement_Sequence);
       return Node4 (N);
    end Handled_Statement_Sequence;
 
@@ -2964,6 +2974,7 @@ package body Sinfo is
         or else NT (N).Nkind = N_Accept_Alternative
         or else NT (N).Nkind = N_Action_Call_Alternative
         or else NT (N).Nkind = N_Case_Statement_Alternative
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Delay_Alternative
         or else NT (N).Nkind = N_Entry_Call_Alternative
         or else NT (N).Nkind = N_Exception_Handler
@@ -3085,6 +3096,14 @@ package body Sinfo is
         or else NT (N).Nkind = N_Validate_Unchecked_Conversion);
       return Node2 (N);
    end Target_Type;
+
+   function Task_Body_Statement_Sequence
+      (N : Node_Id) return Node_Id is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Task_Body);
+      return Node4 (N);
+   end Task_Body_Statement_Sequence;
 
    function Task_Definition
       (N : Node_Id) return Node_Id is
@@ -3932,6 +3951,14 @@ package body Sinfo is
       Set_Node3 (N, Val);
    end Set_Corresponding_Stub;
 
+   procedure Set_Cycle_Statement_Sequence
+      (N : Node_Id; Val : Node_Id) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Task_Body_Statement_Sequence);
+      Set_Node1_With_Parent (N, Val);
+   end Set_Cycle_Statement_Sequence;
+
    procedure Set_Dcheck_Function
       (N : Node_Id; Val : Entity_Id) is
    begin
@@ -4411,6 +4438,7 @@ package body Sinfo is
       (N : Node_Id; Val : List_Id) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       Set_List5_With_Parent (N, Val);
    end Set_Exception_Handlers;
@@ -4553,6 +4581,7 @@ package body Sinfo is
       (N : Node_Id; Val : Node_Id) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       Set_Node2 (N, Val); -- semantic field, no parent set
    end Set_First_Real_Statement;
@@ -4671,7 +4700,7 @@ package body Sinfo is
         or else NT (N).Nkind = N_Extended_Return_Statement
         or else NT (N).Nkind = N_Package_Body
         or else NT (N).Nkind = N_Subprogram_Body
-        or else NT (N).Nkind = N_Task_Body);
+        or else NT (N).Nkind = N_Task_Body_Statement_Sequence);
       Set_Node4_With_Parent (N, Val);
    end Set_Handled_Statement_Sequence;
 
@@ -6148,6 +6177,7 @@ package body Sinfo is
         or else NT (N).Nkind = N_Accept_Alternative
         or else NT (N).Nkind = N_Action_Call_Alternative
         or else NT (N).Nkind = N_Case_Statement_Alternative
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Delay_Alternative
         or else NT (N).Nkind = N_Entry_Call_Alternative
         or else NT (N).Nkind = N_Exception_Handler
@@ -6269,6 +6299,14 @@ package body Sinfo is
         or else NT (N).Nkind = N_Validate_Unchecked_Conversion);
       Set_Node2 (N, Val); -- semantic field, no parent set
    end Set_Target_Type;
+
+   procedure Set_Task_Body_Statement_Sequence
+      (N : Node_Id; Val : Node_Id) is
+   begin
+      pragma Assert (False
+        or else NT (N).Nkind = N_Task_Body);
+      Set_Node4_With_Parent (N, Val);
+   end Set_Task_Body_Statement_Sequence;
 
    procedure Set_Task_Definition
       (N : Node_Id; Val : Node_Id) is

@@ -681,6 +681,7 @@ package body Sem is
            N_Component_List                         |
            N_Constrained_Array_Definition           |
            N_Contract                               |
+           N_Cycle_Sequence_Of_Statements           |
            N_Decimal_Fixed_Point_Definition         |
            N_Defining_Character_Literal             |
            N_Defining_Identifier                    |
@@ -719,6 +720,7 @@ package body Sem is
            N_Real_Range_Specification               |
            N_Record_Definition                      |
            N_Signed_Integer_Type_Definition         |
+           N_Task_Body_Statement_Sequence           |
            N_Unconstrained_Array_Definition         |
            N_Unused_At_Start                        |
            N_Unused_At_End                          |

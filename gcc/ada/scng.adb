@@ -168,7 +168,7 @@ package body Scng is
               (System.CRC32.CRC32 (Checksum),
                Character'Val (Token_Type'Pos (Token)));
 
-         when Tok_Some =>
+         when Tok_Action | Tok_Atomic_Action | Tok_Cycles | Tok_Some =>
 
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),
@@ -186,8 +186,7 @@ package body Scng is
               Tok_Separate | Tok_EOF | Tok_Semicolon | Tok_Arrow |
               Tok_Vertical_Bar | Tok_Dot_Dot | Tok_Project | Tok_Extends |
               Tok_External | Tok_External_As_List | Tok_Comment |
-              Tok_End_Of_Line | Tok_Special | Tok_SPARK_Hide |
-              Tok_Action | Tok_Atomic_Action |  No_Token =>
+              Tok_End_Of_Line | Tok_Special | Tok_SPARK_Hide | No_Token =>
 
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),
@@ -223,7 +222,8 @@ package body Scng is
               (System.CRC32.CRC32 (Checksum),
                Character'Val (Token_Type'Pos (Token)));
 
-         when Tok_Interface | Tok_Some | Tok_Overriding | Tok_Synchronized =>
+         when Tok_Action | Tok_Atomic_Action | Tok_Cycles |
+              Tok_Interface | Tok_Some | Tok_Overriding | Tok_Synchronized =>
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),
                Character'Val (Token_Type'Pos (Tok_Identifier)));
@@ -241,8 +241,7 @@ package body Scng is
               Tok_Raise | Tok_Requeue | Tok_Return | Tok_Select |
               Tok_Terminate | Tok_Until | Tok_When | Tok_Begin | Tok_Declare |
               Tok_For | Tok_Loop | Tok_While | Tok_Entry | Tok_Protected |
-              Tok_Task | Tok_Type | Tok_Subtype | Tok_Action |
-              Tok_Atomic_Action =>
+              Tok_Task | Tok_Type | Tok_Subtype =>
 
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),

@@ -32,6 +32,12 @@
 
 package Sinfo.CN is
 
+   procedure Change_Cycle_To_Handle_Statement_Sequence (N : in out Node_Id);
+   --  N must refer to a node of type N_Cycle_Statement_Sequence. The node
+   --  is modified to be of type N_Handle_Statement_Sequence. The expander
+   --  uses this routine when it expands the cycle sequence of statements into
+   --  a handled sequence of statements.
+
    procedure Change_Identifier_To_Defining_Identifier (N : in out Node_Id);
    --  N must refer to a node of type N_Identifier. This node is modified to
    --  be of type N_Defining_Identifier. The scanner always returns identifiers
