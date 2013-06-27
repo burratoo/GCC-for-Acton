@@ -1525,36 +1525,6 @@ package body Bindgen is
          Write_Statement_Buffer;
          WBI ("");
 
-         --  For the above reasons we call the scheduler agents' initialise
-         --  procedure through a pragma Import with the procedure's link name.
-
-         for J in Unique_Dispatching_Policies.First
-                    .. Unique_Dispatching_Policies.Last
-         loop
-            declare
-               Policy_Str : String := Get_Name_String
-                                   (Unique_Dispatching_Policies.Table (J));
-            begin
-               Set_String ("   procedure Create_Scheduler_Agent_");
-               Set_String (Policy_Str);
-               Set_String (" (");
-               Write_Statement_Buffer;
-               WBI ("     Agent        : in out Oak.Agent.Schedulers" &
-                                                    ".Scheduler_Agent'Class;");
-               WBI ("     Min_Priority : System.Any_Priority;");
-               WBI ("     Max_Priority : System.Any_Priority);");
-
-               Set_String ("   pragma Import (Ada, Create_Scheduler_Agent_");
-               Set_String (Policy_Str);
-               Set_String (", ""__acton_scheduler_agents_");
-               Set_String (Policy_Str);
-               Set_String (""");");
-               Write_Statement_Buffer;
-            end;
-
-            WBI ("");
-         end loop;
-
          WBI ("   procedure Main_Task is");
          WBI ("   begin");
          WBI ("      " & Ada_Init_Name.all & ";");
@@ -1635,10 +1605,24 @@ package body Bindgen is
       --  And now the OTCRs for the Scheduler Agents.
 
       for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
-         Set_String ("      Scheduler_Agent_");
-         Set_Int (Int (J));
-         Set_String (" : aliased Oak.Agent.Schedulers.Scheduler_Agent;");
-         Write_Statement_Buffer;
+         declare
+            Policy_Str : String :=
+              Get_Name_String
+                (Scheduler_Agents.Table (J).Dispatching_Policy);
+         begin
+            Set_String ("      Scheduler_Agent_");
+            Set_Int (Int (J));
+            Set_String (" : aliased Acton.Scheduler_Agents.");
+            Set_String (Policy_Str);
+            Set_String (".");
+            Set_String (Policy_Str);
+            Set_String (" (");
+            Set_Int (Scheduler_Agents.Table (J).First_Priority);
+            Set_String (", ");
+            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
+            Set_String (");");
+            Write_Statement_Buffer;
+         end;
       end loop;
 
       WBI ("");
@@ -1676,17 +1660,18 @@ package body Bindgen is
          WBI ("      Initialise_Oak;");
 
          for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
-            Set_String ("      Create_Scheduler_Agent_");
-            Set_String (Get_Name_String
-                          (Scheduler_Agents.Table (J).Dispatching_Policy));
-            Set_String (" (Scheduler_Agent_");
-            Set_Int (Int (J));
-            Set_String (", ");
-            Set_Int (Scheduler_Agents.Table (J).First_Priority);
-            Set_String (", ");
-            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
-            Set_String (");");
-            Write_Statement_Buffer;
+            declare
+               Policy_Str : String :=
+                 Get_Name_String
+                   (Scheduler_Agents.Table (J).Dispatching_Policy);
+            begin
+               Set_String ("      Acton.Scheduler_Agents.");
+               Set_String (Policy_Str);
+               Set_String (".Initialise_Scheduler_Agent (Scheduler_Agent_");
+               Set_Int (Int (J));
+               Set_String (");");
+               Write_Statement_Buffer;
+            end;
          end loop;
 
          --  Initalise main task call
@@ -2091,7 +2076,6 @@ package body Bindgen is
       --  OTCR. This only happens when we bind the main program.
 
       if Bind_Main_Program then
-         WBI ("with Oak.Agent.Schedulers;");
          WBI ("with Oak.Agent.Tasks;");
          WBI ("with Oak.Agent.Tasks.Main_Task;");
       end if;
@@ -2226,6 +2210,23 @@ package body Bindgen is
          WBI ("with Ada.Real_Time;");
          WBI ("with Oak.Core_Support_Package.Call_Stack;");
          WBI ("with System.Storage_Elements;");
+
+         for J in Unique_Dispatching_Policies.First
+                    .. Unique_Dispatching_Policies.Last
+         loop
+            declare
+               Policy_Str : String := Get_Name_String
+                                   (Unique_Dispatching_Policies.Table (J));
+            begin
+               Set_String ("with Acton.Scheduler_Agents.");
+               Set_String (Policy_Str);
+               Set_String (";");
+               Write_Statement_Buffer;
+            end;
+
+            WBI ("");
+         end loop;
+
       end if;
 
       WBI ("");

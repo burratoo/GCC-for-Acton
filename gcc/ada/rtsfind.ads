@@ -427,9 +427,9 @@ package Rtsfind is
       Oak_Atomic_Actions,
       Oak_Indices,
       Oak_Memory,
+      Oak_Message,
       Oak_Oak_Time,
       Oak_Processor_Support_Package,
-      Oak_Protected_Objects,
 
       --  Children of Oak.Agent
 
@@ -1882,12 +1882,12 @@ package Rtsfind is
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Unspecified_Call_Stack_Size,     -- Oak.Memory.Call_Stack
 
+     RE_Protected_Function,              -- Oak.Message
+     RE_Protected_Procedure,             -- Oak.Message
+     RE_Protected_Entry,                 -- Oak.Message
+
      RE_Default_Interrupt_Priority, -- Oak.Processor_Support_Package.Interrupts
      RE_Oak_Interrupt_Id,           -- Oak.Processor_Support_Package.Interrupts
-
-     RE_Protected_Function,              -- Oak.Protected_Objects
-     RE_Protected_Procedure,             -- Oak.Protected_Objects
-     RE_Protected_Entry,                 -- Oak.Protected_Objects
 
      RE_To_Oak_Time,                     -- Oak.Oak_Time.Conversion
      RE_To_Oak_Time_Span,                -- Oak.Oak_Time.Conversion
@@ -3229,14 +3229,14 @@ package Rtsfind is
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
+     RE_Protected_Function               => Oak_Message,
+     RE_Protected_Procedure              => Oak_Message,
+     RE_Protected_Entry                  => Oak_Message,
+
      RE_Default_Interrupt_Priority       =>
        Oak_Processor_Support_Package_Interrupts,
      RE_Oak_Interrupt_Id                 =>
        Oak_Processor_Support_Package_Interrupts,
-
-     RE_Protected_Function               => Oak_Protected_Objects,
-     RE_Protected_Procedure              => Oak_Protected_Objects,
-     RE_Protected_Entry                  => Oak_Protected_Objects,
 
      RE_To_Oak_Time                      => Oak_Oak_Time_Conversion,
      RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion,
