@@ -655,7 +655,7 @@ package Rtsfind is
      RE_Save_Occurrence,                 -- Ada.Exceptions
      RE_Triggered_By_Abort,              -- Ada.Exceptions
 
-     RE_Execution_Server,                -- Ada.Exectuion_Server
+     RE_Execution_Server,                -- Ada.Execution_Server
 
      RE_Interrupt_ID,                    -- Ada.Interrupts
      RE_Is_Reserved,                     -- Ada.Interrupts
@@ -1862,6 +1862,8 @@ package Rtsfind is
      RE_Expunge_Unactivated_Tasks,       -- System.Tasking.Stages
      RE_Move_Activation_Chain,           -- System_Tasking_Stages
      RE_Terminated,                      -- System.Tasking.Stages
+
+     RE_Scheduler_Agent,                 -- Oak.Agent.Schedulers
 
      RE_Activation_Chain,                -- Oak.Agent.Tasks
      RE_Activation_Chain_Access,         -- Oak.Agent.Tasks
@@ -3209,6 +3211,8 @@ package Rtsfind is
      RE_Expunge_Unactivated_Tasks        => System_Tasking_Stages,
      RE_Move_Activation_Chain            => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
+
+     RE_Scheduler_Agent                  => Oak_Agent_Schedulers,
 
      RE_Activation_Chain                 => Oak_Agent_Tasks,
      RE_Activation_Chain_Access          => Oak_Agent_Tasks,

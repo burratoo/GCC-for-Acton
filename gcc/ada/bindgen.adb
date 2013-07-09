@@ -1540,6 +1540,31 @@ package body Bindgen is
          end if;
       end if;
 
+      --  And now the OTCRs for the Scheduler Agents.
+
+      for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
+         declare
+            Policy_Str : String :=
+              Get_Name_String
+                (Scheduler_Agents.Table (J).Dispatching_Policy);
+         begin
+            Set_String ("   Scheduler_Agent_");
+            Set_Int (Int (J));
+            Set_String (" : aliased Acton.Scheduler_Agents.");
+            Set_String (Policy_Str);
+            Set_String (".");
+            Set_String (Policy_Str);
+            Set_String (" (");
+            Set_Int (Scheduler_Agents.Table (J).First_Priority);
+            Set_String (", ");
+            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
+            Set_String (");");
+            Write_Statement_Buffer;
+         end;
+      end loop;
+
+      WBI ("");
+
       Set_String ("   procedure ");
       Set_String (Get_Main_Name);
       Set_String (" is");
@@ -1602,31 +1627,6 @@ package body Bindgen is
          WBI ("");
       end if;
 
-      --  And now the OTCRs for the Scheduler Agents.
-
-      for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
-         declare
-            Policy_Str : String :=
-              Get_Name_String
-                (Scheduler_Agents.Table (J).Dispatching_Policy);
-         begin
-            Set_String ("      Scheduler_Agent_");
-            Set_Int (Int (J));
-            Set_String (" : aliased Acton.Scheduler_Agents.");
-            Set_String (Policy_Str);
-            Set_String (".");
-            Set_String (Policy_Str);
-            Set_String (" (");
-            Set_Int (Scheduler_Agents.Table (J).First_Priority);
-            Set_String (", ");
-            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
-            Set_String (");");
-            Write_Statement_Buffer;
-         end;
-      end loop;
-
-      WBI ("");
-
       WBI ("   begin");
 
       if Dynamic_Stack_Measurement then
@@ -1649,12 +1649,13 @@ package body Bindgen is
          end if;
       end if;
 
+      WBI ("      Initialise_Acton;");
+      WBI ("      ada_main'Elab_Body;");
+
       Set_String ("      Global_Start_Offset := Ada.Real_Time.Milliseconds (");
       Set_Int (Global_Start_Offset_Specified);
       Set_String (");");
       Write_Statement_Buffer;
-
-      WBI ("      Initialise_Acton;");
 
       if not No_Main_Subprogram then
          WBI ("      Initialise_Oak;");

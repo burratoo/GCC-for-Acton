@@ -13215,7 +13215,7 @@ package body Exp_Ch9 is
 
       --  Execution Server parameter
 
-      Append_To (Args, Make_Identifier (Loc, Name_uExecution_Server));
+      Append_To (Args, Make_Identifier (Loc, Name_uScheduler_Agent));
 
       --  Add Chain parameter (not done for sequential elaboration policy, see
       --  comment for Create_Restricted_Task_Sequential in s-tarest.ads).
@@ -13536,11 +13536,11 @@ package body Exp_Ch9 is
       Append_To (Decls,
         Make_Object_Declaration (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uExecution_Server),
+            Make_Defining_Identifier (Loc, Name_uScheduler_Agent),
           Constant_Present    => True,
           Object_Definition   => Make_Access_Definition (Loc,
             Subtype_Mark      => New_Reference_To
-                                   (RTE (RE_Execution_Server), Loc)),
+                                   (RTE (RE_Scheduler_Agent), Loc)),
           Expression          => Expr));
 
       return Decls;

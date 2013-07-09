@@ -3251,7 +3251,8 @@ package body Exp_Disp is
 
                    Make_Selected_Component (Loc,         -- O._Agent_Handler
                      Prefix        => Make_Identifier (Loc, Name_uO),
-                     Selector_Name => Make_Identifier (Loc, Name_uAgent_Handler)),
+                     Selector_Name => Make_Identifier
+                       (Loc, Name_uAgent_Handler)),
 
                    Make_Unchecked_Type_Conversion (Loc,  -- entry index
                      Subtype_Mark =>
@@ -3271,7 +3272,8 @@ package body Exp_Disp is
 
                    Make_Selected_Component (Loc,         -- O._Agent_Handler
                      Prefix        => Make_Identifier (Loc, Name_uO),
-                     Selector_Name => Make_Identifier (Loc, Name_uAgent_Handler)),
+                     Selector_Name => Make_Identifier
+                       (Loc, Name_uAgent_Handler)),
 
                    Make_Unchecked_Type_Conversion (Loc,  -- entry index
                      Subtype_Mark =>
