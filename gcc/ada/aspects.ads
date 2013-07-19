@@ -200,6 +200,7 @@ package Aspects is
       --  Aspects that have a static boolean value but don't correspond to
       --  pragmas
 
+      Aspect_Execution_Server_Object,       -- Acton
       Aspect_Lock_Free);                    -- GNAT
 
    subtype Aspect_Id_Exclude_No_Aspect is
@@ -235,6 +236,7 @@ package Aspects is
       Aspect_Dimension_System         => True,
       Aspect_Execution_Budget         => True,
       Aspect_Execution_Server         => True,
+      Aspect_Execution_Server_Object  => True,
       Aspect_Favor_Top_Level          => True,
       Aspect_Global                   => True,
       Aspect_Inline_Always            => True,
@@ -424,6 +426,7 @@ package Aspects is
       Aspect_Ensure                       => Name_Ensure,
       Aspect_Execution_Budget             => Name_Execution_Budget,
       Aspect_Execution_Server             => Name_Execution_Server,
+      Aspect_Execution_Server_Object      => Name_Execution_Server_Object,
       Aspect_External_Name                => Name_External_Name,
       Aspect_External_Tag                 => Name_External_Tag,
       Aspect_Export                       => Name_Export,

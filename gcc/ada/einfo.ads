@@ -3599,12 +3599,6 @@ package Einfo is
 --       associated dispatch table to point to entities containing primary or
 --       secondary tags. Not set in the _tag component of record types.
 
---    Relative_Deadline_Variable (Node26) [implementation base type only]
---       Defined in task type entities. This flag is set if a valid and
---       effective pragma Relative_Deadline applies to the base type. Points
---       to the entity for a variable that is created to hold the value given
---       in a Relative_Deadline pragma for a task type.
-
 --    Renamed_Entity (Node18)
 --       Defined in exceptions, packages, subprograms and generic units. Set
 --       for entities that are defined by a renaming declaration. Denotes the
@@ -5998,7 +5992,6 @@ package Einfo is
    --    Sec_Stack_Needed_For_Return         (Flag167)  ???
    --    Has_Entries                         (synth)
    --    Number_Entries                      (synth)
-   --    Relative_Deadline_Variable          (Node26)   (base type only)
    --    Has_Cyclic_Section                  (Flag286)
    --    (plus type attributes)
 
@@ -6643,7 +6636,6 @@ package Einfo is
    function Related_Expression                  (Id : E) return N;
    function Related_Instance                    (Id : E) return E;
    function Related_Type                        (Id : E) return E;
-   function Relative_Deadline_Variable          (Id : E) return E;
    function Renamed_Entity                      (Id : E) return N;
    function Renamed_In_Spec                     (Id : E) return B;
    function Renamed_Object                      (Id : E) return N;
@@ -7265,7 +7257,6 @@ package Einfo is
    procedure Set_Related_Expression              (Id : E; V : N);
    procedure Set_Related_Instance                (Id : E; V : E);
    procedure Set_Related_Type                    (Id : E; V : E);
-   procedure Set_Relative_Deadline_Variable      (Id : E; V : E);
    procedure Set_Renamed_Entity                  (Id : E; V : N);
    procedure Set_Renamed_In_Spec                 (Id : E; V : B := True);
    procedure Set_Renamed_Object                  (Id : E; V : N);
@@ -8019,7 +8010,6 @@ package Einfo is
    pragma Inline (Related_Expression);
    pragma Inline (Related_Instance);
    pragma Inline (Related_Type);
-   pragma Inline (Relative_Deadline_Variable);
    pragma Inline (Renamed_Entity);
    pragma Inline (Renamed_In_Spec);
    pragma Inline (Renamed_Object);
@@ -8439,7 +8429,6 @@ package Einfo is
    pragma Inline (Set_Related_Expression);
    pragma Inline (Set_Related_Instance);
    pragma Inline (Set_Related_Type);
-   pragma Inline (Set_Relative_Deadline_Variable);
    pragma Inline (Set_Renamed_Entity);
    pragma Inline (Set_Renamed_In_Spec);
    pragma Inline (Set_Renamed_Object);

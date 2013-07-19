@@ -1587,15 +1587,6 @@ package body Sinfo is
       return Flag11 (N);
    end Has_Private_View;
 
-   function Has_Relative_Deadline_Pragma
-      (N : Node_Id) return Boolean is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body
-        or else NT (N).Nkind = N_Task_Definition);
-      return Flag9 (N);
-   end Has_Relative_Deadline_Pragma;
-
    function Has_Self_Reference
       (N : Node_Id) return Boolean is
    begin
@@ -4789,15 +4780,6 @@ package body Sinfo is
        or else NT (N).Nkind = N_Operator_Symbol);
       Set_Flag11 (N, Val);
    end Set_Has_Private_View;
-
-   procedure Set_Has_Relative_Deadline_Pragma
-      (N : Node_Id; Val : Boolean := True) is
-   begin
-      pragma Assert (False
-        or else NT (N).Nkind = N_Subprogram_Body
-        or else NT (N).Nkind = N_Task_Definition);
-      Set_Flag9 (N, Val);
-   end Set_Has_Relative_Deadline_Pragma;
 
    procedure Set_Has_Self_Reference
       (N : Node_Id; Val : Boolean := True) is

@@ -233,7 +233,6 @@ package body Einfo is
    --    Original_Access_Type            Node26
    --    Overridden_Operation            Node26
    --    Package_Instantiation           Node26
-   --    Relative_Deadline_Variable      Node26
    --    Barrier_Service_Function        Node26
 
    --    Current_Use_Clause              Node27
@@ -2740,12 +2739,6 @@ package body Einfo is
       pragma Assert (Ekind_In (Id, E_Component, E_Constant, E_Variable));
       return Node27 (Id);
    end Related_Type;
-
-   function Relative_Deadline_Variable (Id : E) return E is
-   begin
-      pragma Assert (Is_Task_Type (Id));
-      return Node26 (Implementation_Base_Type (Id));
-   end Relative_Deadline_Variable;
 
    function Renamed_Entity (Id : E) return N is
    begin
@@ -5428,12 +5421,6 @@ package body Einfo is
       pragma Assert (Ekind_In (Id, E_Component, E_Constant, E_Variable));
       Set_Node27 (Id, V);
    end Set_Related_Type;
-
-   procedure Set_Relative_Deadline_Variable (Id : E; V : E) is
-   begin
-      pragma Assert (Is_Task_Type (Id) and then Is_Base_Type (Id));
-      Set_Node26 (Id, V);
-   end Set_Relative_Deadline_Variable;
 
    procedure Set_Renamed_Entity (Id : E; V : N) is
    begin
@@ -9157,9 +9144,6 @@ package body Einfo is
          when E_Component                                  |
               E_Constant                                   =>
             Write_Str ("Related_Type");
-
-         when Task_Kind                                    =>
-            Write_Str ("Relative_Deadline_Variable");
 
          when E_Procedure                                  |
               E_Function                                   =>

@@ -149,6 +149,8 @@ package body Snames is
          return Attribute_Execution_Server;
       elsif N = Name_Interrupt_Priority then
          return Attribute_Interrupt_Priority;
+      elsif N = Name_Relative_Deadline then
+         return Attribute_Relative_Deadline;
       elsif N = Name_Timing_Behaviour then
          return Attribute_Timing_Behaviour;
       else

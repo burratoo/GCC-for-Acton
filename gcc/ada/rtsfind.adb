@@ -311,6 +311,9 @@ package body Rtsfind is
          elsif U_Id in Ada_Dispatching_Child then
             Name_Buffer (16) := '.';
 
+         elsif U_Id in Ada_Execution_Server_Child then
+            Name_Buffer (21) := '.';
+
          elsif U_Id in Ada_Interrupts_Child then
             Name_Buffer (15) := '.';
 

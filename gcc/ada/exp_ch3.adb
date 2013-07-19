@@ -5035,6 +5035,21 @@ package body Exp_Ch3 is
 
       if No (Expr) then
 
+         --  If the object declaration contains the aspect
+         --  Execution_Server_Object create the initialisation call for
+         --  the execution server. The analysis of the aspect ensures that it
+         --  only appears for declarations of objects that derived from
+         --  Ada.Execution_Server.Execution_Server. We do this call first
+         --  so that the call will ultimately appear after the object's
+         --  record initialisation.
+
+         if Has_Rep_Item
+           (Def_Id, Name_Execution_Server_Object, Check_Parents => False)
+         then
+            Insert_After (N,
+              Node => Make_Initialise_Execution_Server_Call (Def_Id));
+         end if;
+
          --  For the default initialization case, if we have a private type
          --  with invariants, and invariant checks are enabled, then insert an
          --  invariant check after the object declaration. Note that it is OK

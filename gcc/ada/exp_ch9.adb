@@ -13239,6 +13239,10 @@ package body Exp_Ch9 is
           Parameter_Associations => Args);
    end Make_Task_Create_Call;
 
+   ---------------------------------
+   -- Make_Task_Init_Declarations --
+   ---------------------------------
+
    function Make_Task_Init_Declarations (Task_Rec : Entity_Id)
      return List_Id is
       Loc    : constant Source_Ptr := Sloc (Task_Rec);
@@ -13248,47 +13252,6 @@ package body Exp_Ch9 is
 
       Decls  : List_Id := New_List;
       Expr   : Node_Id;
-
-      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id;
-      --  Searches the task definition T for the first occurrence of the pragma
-      --  Relative Deadline. The caller has ensured that the pragma is present
-      --  in the task definition. Note that this routine cannot be implemented
-      --  with the Rep Item chain mechanism since Relative_Deadline pragmas are
-      --  not chained because their expansion into a procedure call statement
-      --  would cause a break in the chain.
-
-      ----------------------------------
-      -- Get_Relative_Deadline_Pragma --
-      ----------------------------------
-
-      function Get_Relative_Deadline_Pragma (T : Node_Id) return Node_Id is
-         N : Node_Id;
-
-      begin
-         N := First (Visible_Declarations (T));
-         while Present (N) loop
-            if Nkind (N) = N_Pragma
-              and then Pragma_Name (N) = Name_Relative_Deadline
-            then
-               return N;
-            end if;
-
-            Next (N);
-         end loop;
-
-         N := First (Private_Declarations (T));
-         while Present (N) loop
-            if Nkind (N) = N_Pragma
-              and then Pragma_Name (N) = Name_Relative_Deadline
-            then
-               return N;
-            end if;
-
-            Next (N);
-         end loop;
-
-         raise Program_Error;
-      end Get_Relative_Deadline_Pragma;
 
    begin
 
@@ -13340,7 +13303,7 @@ package body Exp_Ch9 is
           Object_Definition   => New_Reference_To (RTE (RE_Behaviour), Loc),
           Expression          => Expr));
 
-      --  Add the _Cycle_Period variable and set to Time_Span_Zero unless there
+      --  Add the _Cycle_Period variable and set to Time_Span_Last unless there
       --  is a Cycle_Period aspect, in which case we take the value from the
       --  aspect.
 
@@ -13349,7 +13312,7 @@ package body Exp_Ch9 is
            Expression
              (Get_Rep_Item (Ttyp, Name_Cycle_Period, Check_Parents => False));
       else
-         Expr := New_Reference_To (RTE (RE_Time_Span_Zero), Loc);
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
       end if;
 
       Append_To (Decls,
@@ -13449,14 +13412,13 @@ package body Exp_Ch9 is
       --  there is an Relative_Deadline aspect, in which case we take the value
       --  from the aspect.
 
-      if Present (Tdef)
-        and then Has_Relative_Deadline_Pragma (Tdef) then
+      if Has_Rep_Item
+        (Ttyp, Name_Relative_Deadline, Check_Parents => False)
+      then
          Expr :=
-           Convert_To (RTE (RE_Time_Span),
-             Relocate_Node (
-               Expression (First (
-                 Pragma_Argument_Associations (
-                   Get_Relative_Deadline_Pragma (Tdef))))));
+           Expression
+             (Get_Rep_Item
+               (Ttyp, Name_Relative_Deadline, Check_Parents => False));
       else
          Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
       end if;
@@ -13514,7 +13476,7 @@ package body Exp_Ch9 is
                                    (RTE (RE_Action_Handler), Loc),
           Expression          => Expr));
 
-      --  Add the _Execution_Server variable and set to null unless there is a
+      --  Add the _Scheduler_Agent variable and set to null unless there is a
       --  a Execution_Server aspect, in which case we take the value from the
       --  aspect.
 
@@ -13522,12 +13484,13 @@ package body Exp_Ch9 is
            (Ttyp, Name_Execution_Server, Check_Parents => False)
       then
          Expr :=
-           Make_Attribute_Reference (Loc,
-             Prefix         =>
-               Expression
-                 (Get_Rep_Item
-                   (Ttyp, Name_Execution_Server, Check_Parents => False)),
-             Attribute_Name => Name_Unchecked_Access);
+           Make_Function_Call (Loc,
+             Name => New_Occurrence_Of (RTE (RE_Scheduler_Agent_Handler), Loc),
+             Parameter_Associations =>
+               New_List (
+                 Expression
+                   (Get_Rep_Item
+                     (Ttyp, Name_Execution_Server, Check_Parents => False))));
 
       else
          Expr := Make_Null (Loc);
@@ -13545,6 +13508,118 @@ package body Exp_Ch9 is
 
       return Decls;
    end Make_Task_Init_Declarations;
+
+   -------------------------------------------
+   -- Make_Initialise_Execution_Server_Call --
+   -------------------------------------------
+
+   function Make_Initialise_Execution_Server_Call
+     (Exec_Object : Entity_Id) return Node_Id
+   is
+      Loc    : constant Source_Ptr := Sloc (Exec_Object);
+      Args   : List_Id := New_List;
+      Expr   : Node_Id;
+      Name   : Node_Id;
+
+   begin
+
+      --  Pass the execution server object
+
+      Append_To (Args, New_Reference_To (Exec_Object, Loc));
+
+      --  Add Execution_Budget parameter and set to Time_Span_Last unless
+      --  there is an Execution_Budget aspect, in which case we take the value
+      --  from the aspect.
+
+      if Has_Rep_Item
+         (Exec_Object, Name_Execution_Budget, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Exec_Object, Name_Execution_Budget, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
+      end if;
+
+      Append_To (Args, Expr);
+
+      --  Add the Priority parameter and set to Default_Priority unless
+      --  there is an Priority aspect, in which case we take the value
+      --  from the aspect.
+
+      if Has_Rep_Item
+         (Exec_Object, Name_Priority, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Exec_Object, Name_Priority, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Default_Priority), Loc);
+      end if;
+
+      Append_To (Args, Expr);
+
+      --  Add the Cycle_Period period and set to Time_Span_Last unless there
+      --  is a Cycle_Period aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item
+           (Exec_Object, Name_Cycle_Period, Check_Parents => False) then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Exec_Object, Name_Cycle_Period, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
+      end if;
+
+      Append_To (Args, Expr);
+
+      --  Add the Cycle_Phase parameter and set to Time_Span_Zero unless there
+      --  is a Cycle_Phase aspect, in which case we take the value from the
+      --  aspect.
+
+      if Has_Rep_Item
+           (Exec_Object, Name_Cycle_Phase, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Exec_Object, Name_Cycle_Phase, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Zero), Loc);
+      end if;
+
+      Append_To (Args, Expr);
+
+      --  Add the Relative_Deadline parameter and set to Time_Span_Last unless
+      --  there is an Relative_Deadline aspect, in which case we take the value
+      --  from the aspect.
+
+      if Has_Rep_Item
+        (Exec_Object, Name_Relative_Deadline, Check_Parents => False)
+      then
+         Expr :=
+           Expression
+             (Get_Rep_Item
+               (Exec_Object, Name_Relative_Deadline, Check_Parents => False));
+      else
+         Expr := New_Reference_To (RTE (RE_Time_Span_Last), Loc);
+      end if;
+
+      Append_To (Args, Expr);
+
+      return
+         Make_Procedure_Call_Statement (Loc,
+           Name                  =>
+             New_Reference_To
+               (Find_Prim_Op
+                 (Etype (Exec_Object), Name_Initialise_Execution_Server),
+                Loc),
+           Parameter_Associations => Args);
+   end Make_Initialise_Execution_Server_Call;
 
    ------------------------------
    -- Next_Protected_Operation --

@@ -144,6 +144,10 @@ package Rtsfind is
 
       Ada_Dispatching_EDF,
 
+      --  Children of Ada.Execution_Server
+
+      Ada_Execution_Server_Ops,
+
       --  Children of Ada.Interrupts
 
       Ada_Interrupts_Names,
@@ -475,6 +479,10 @@ package Rtsfind is
      range Ada_Dispatching_EDF .. Ada_Dispatching_EDF;
    --  Range of values for children of Ada.Dispatching
 
+   subtype Ada_Execution_Server_Child is RTU_Id
+     range Ada_Execution_Server_Ops .. Ada_Execution_Server_Ops;
+   --  Range of values for children of Ada.Execution_Server
+
    subtype Ada_Interrupts_Child is Ada_Child range
      Ada_Interrupts_Names .. Ada_Interrupts_Names;
    --  Range of values for children of Ada.Interrupts
@@ -633,6 +641,8 @@ package Rtsfind is
      RE_Normal,                          -- Ada.Cyclic_Tasks
 
      RE_Set_Deadline,                    -- Ada.Dispatching.EDF
+
+     RE_Scheduler_Agent_Handler,         -- Ada.Execution_Server.Ops
 
      RE_Code_Loc,                        -- Ada.Exceptions
      RE_Current_Target_Exception,        -- Ada.Exceptions (JGNAT use only)
@@ -803,6 +813,7 @@ package Rtsfind is
      RE_Address,                         -- System
      RE_Any_Priority,                    -- System
      RE_Bit_Order,                       -- System
+     RE_Default_Priority,                -- System
      RE_High_Order_First,                -- System
      RE_Interrupt_Priority,              -- System
      RE_Lib_Stop,                        -- System
@@ -1939,6 +1950,8 @@ package Rtsfind is
 
      RE_Set_Deadline                     => Ada_Dispatching_EDF,
 
+     RE_Scheduler_Agent_Handler          => Ada_Execution_Server_Ops,
+
      RE_Code_Loc                         => Ada_Exceptions,
      RE_Current_Target_Exception         => Ada_Exceptions, -- of JGNAT
      RE_Exception_Id                     => Ada_Exceptions,
@@ -2108,6 +2121,7 @@ package Rtsfind is
      RE_Address                          => System,
      RE_Any_Priority                     => System,
      RE_Bit_Order                        => System,
+     RE_Default_Priority                 => System,
      RE_High_Order_First                 => System,
      RE_Interrupt_Priority               => System,
      RE_Lib_Stop                         => System,

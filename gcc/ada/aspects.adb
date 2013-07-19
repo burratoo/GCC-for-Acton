@@ -366,6 +366,7 @@ package body Aspects is
     Aspect_Ensure                       => Aspect_Ensure,
     Aspect_Execution_Budget             => Aspect_Execution_Budget,
     Aspect_Execution_Server             => Aspect_Execution_Server,
+    Aspect_Execution_Server_Object      => Aspect_Execution_Server_Object,
     Aspect_Export                       => Aspect_Export,
     Aspect_External_Name                => Aspect_External_Name,
     Aspect_External_Tag                 => Aspect_External_Tag,
