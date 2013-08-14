@@ -13154,8 +13154,8 @@ package body Exp_Ch9 is
            New_Reference_To (RTE (RE_Unspecified_Priority), Loc));
       end if;
 
-      --  Timing_Behaviour parameter
-      Append_To (Args, Make_Identifier (Loc, Name_uTiming_Behaviour));
+      --  Cycle_Behaviour parameter
+      Append_To (Args, Make_Identifier (Loc, Name_uCycle_Behaviour));
 
       --  Cycle_Period parameter. Required to use
       --  Oak.Real_Time.To_Oak_Time_Span to convert the cycle period from
@@ -13275,19 +13275,19 @@ package body Exp_Ch9 is
 
       Tdef := Task_Definition (Tdec);
 
-      --  Add the _Timing_Behaviour variable and set it value to NORMAL if the
-      --  task does not contain a Timing_Behaviour aspect. If the aspect is
-      --  present _Timing_Behaviour is set to the value contained within the
+      --  Add the _Cycle_Behaviour variable and set it value to NORMAL if the
+      --  task does not contain a Cycle_Behaviour aspect. If the aspect is
+      --  present _Cycle_Behaviour is set to the value contained within the
       --  aspect.
 
       if Has_Rep_Item
-           (Ttyp, Name_Timing_Behaviour, Check_Parents => False)
+           (Ttyp, Name_Cycle_Behaviour, Check_Parents => False)
       then
          Expr :=
            Expression
              (Get_Rep_Item
                (Ttyp,
-                Name_Timing_Behaviour,
+                Name_Cycle_Behaviour,
                 Check_Parents => False));
 
       else
@@ -13298,7 +13298,7 @@ package body Exp_Ch9 is
       Append_To (Decls,
         Make_Object_Declaration (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uTiming_Behaviour),
+            Make_Defining_Identifier (Loc, Name_uCycle_Behaviour),
           Constant_Present    => True,
           Object_Definition   => New_Reference_To (RTE (RE_Behaviour), Loc),
           Expression          => Expr));

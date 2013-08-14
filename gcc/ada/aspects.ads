@@ -86,6 +86,7 @@ package Aspects is
       Aspect_Contract_Cases,                -- GNAT
       Aspect_Convention,
       Aspect_CPU,
+      Aspect_Cycle_Behaviour,              -- Acton
       Aspect_Cycle_Period,                  -- Acton
       Aspect_Cycle_Phase,                   -- Acton
       Aspect_Deadline_Action,               -- Acton
@@ -136,7 +137,6 @@ package Aspects is
       Aspect_Suppress,
       Aspect_Synchronization,
       Aspect_Test_Case,                     -- GNAT
-      Aspect_Timing_Behaviour,              -- Acton
       Aspect_Type_Invariant,
       Aspect_Unsuppress,
       Aspect_Value_Size,                    -- GNAT
@@ -227,6 +227,7 @@ package Aspects is
       Aspect_Budget_Handler           => True,
       Aspect_Compiler_Unit            => True,
       Aspect_Contract_Cases           => True,
+      Aspect_Cycle_Behaviour          => True,
       Aspect_Cycle_Period             => True,
       Aspect_Cycle_Phase              => True,
       Aspect_Deadline_Action          => True,
@@ -260,7 +261,6 @@ package Aspects is
       Aspect_Simple_Storage_Pool_Type => True,
       Aspect_Suppress_Debug_Info      => True,
       Aspect_Test_Case                => True,
-      Aspect_Timing_Behaviour         => True,
       Aspect_Universal_Aliasing       => True,
       Aspect_Universal_Data           => True,
       Aspect_Unmodified               => True,
@@ -321,6 +321,7 @@ package Aspects is
       Aspect_Contract_Cases          => Expression,
       Aspect_Convention              => Name,
       Aspect_CPU                     => Expression,
+      Aspect_Cycle_Behaviour         => Expression,
       Aspect_Cycle_Period            => Expression,
       Aspect_Cycle_Phase             => Expression,
       Aspect_Deadline_Action         => Expression,
@@ -371,7 +372,6 @@ package Aspects is
       Aspect_Suppress                => Name,
       Aspect_Synchronization         => Name,
       Aspect_Test_Case               => Expression,
-      Aspect_Timing_Behaviour        => Expression,
       Aspect_Type_Invariant          => Expression,
       Aspect_Unsuppress              => Name,
       Aspect_Value_Size              => Expression,
@@ -409,6 +409,7 @@ package Aspects is
       Aspect_Contract_Cases               => Name_Contract_Cases,
       Aspect_Convention                   => Name_Convention,
       Aspect_CPU                          => Name_CPU,
+      Aspect_Cycle_Behaviour              => Name_Cycle_Behaviour,
       Aspect_Cycle_Period                 => Name_Cycle_Period,
       Aspect_Cycle_Phase                  => Name_Cycle_Phase,
       Aspect_Deadline_Action              => Name_Deadline_Action,
@@ -488,7 +489,6 @@ package Aspects is
       Aspect_Suppress_Debug_Info          => Name_Suppress_Debug_Info,
       Aspect_Synchronization              => Name_Synchronization,
       Aspect_Test_Case                    => Name_Test_Case,
-      Aspect_Timing_Behaviour             => Name_Timing_Behaviour,
       Aspect_Type_Invariant               => Name_Type_Invariant,
       Aspect_Unchecked_Union              => Name_Unchecked_Union,
       Aspect_Universal_Aliasing           => Name_Universal_Aliasing,
