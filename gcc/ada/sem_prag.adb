@@ -11930,12 +11930,12 @@ package body Sem_Prag is
          end Global;
 
          -------------------------
-         -- Global_Start_Offset --
+         -- Global_Start_Phase --
          -------------------------
 
-         --  pragma Global_Start_Offset (static_integer_EXPRESSION)
+         --  pragma Global_Start_Phase (static_integer_EXPRESSION)
 
-         when Pragma_Global_Start_Offset => declare
+         when Pragma_Global_Start_Phase => declare
             Arg : Node_Id;
             Val : Uint;
          begin
@@ -11952,7 +11952,7 @@ package body Sem_Prag is
                  ("maximum size for pragma% must be positive", Arg1);
 
             elsif UI_Is_In_Int_Range (Val) then
-               Global_Start_Offset := UI_To_Int (Val);
+               Global_Start_Phase := UI_To_Int (Val);
 
             else
                Error_Pragma_Arg
@@ -18553,7 +18553,7 @@ package body Sem_Prag is
       Pragma_Finalize_Storage_Only          =>  0,
       Pragma_Float_Representation           =>  0,
       Pragma_Global                         => -1,
-      Pragma_Global_Start_Offset            => -1,
+      Pragma_Global_Start_Phase            => -1,
       Pragma_Ident                          => -1,
       Pragma_Implementation_Defined         => -1,
       Pragma_Implemented                    => -1,

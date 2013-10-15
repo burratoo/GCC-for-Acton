@@ -1355,15 +1355,15 @@ package body Sem_Ch13 is
                when Aspect_Address              |
                     Aspect_Alignment            |
                     Aspect_Bit_Order            |
-                    Aspect_Budget_Action        |
                     Aspect_Budget_Handler       |
+                    Aspect_Budget_Response      |
                     Aspect_Component_Size       |
                     Aspect_Constant_Indexing    |
                     Aspect_Cycle_Behaviour      |
                     Aspect_Cycle_Period         |
                     Aspect_Cycle_Phase          |
-                    Aspect_Deadline_Action      |
                     Aspect_Deadline_Handler     |
+                    Aspect_Deadline_Response    |
                     Aspect_Default_Iterator     |
                     Aspect_Dispatching_Domain   |
                     Aspect_Execution_Budget     |
@@ -3400,45 +3400,6 @@ package body Sem_Ch13 is
             end if;
          end Bit_Order;
 
-         -------------------
-         -- Budget_Action --
-         -------------------
-
-         when Attribute_Budget_Action => Budget_Action :
-         begin
-            --  Budget_Action attribute definition clause not allowed except
-            --  from aspect specification.
-
-            if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N
-                    ("Budget_Action can only be defined for task", Nam);
-
-               elsif Duplicate_Clause then
-                  null;
-
-               else
-                  --  The expression must be analyzed in the special manner
-                  --  described in "Handling of Default and Per-Object
-                  --  Expressions" in sem.ads.
-
-                  --  The visibility to the discriminants must be restored
-
-                  Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Event_Action));
-                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
-
-                  if not Is_Static_Expression (Expr) then
-                     Check_Restriction (Static_Priorities, Expr);
-                  end if;
-               end if;
-
-            else
-               Error_Msg_N
-                 ("attribute& cannot be set with definition clause", N);
-            end if;
-         end Budget_Action;
-
          --------------------
          -- Budget_Handler --
          --------------------
@@ -3464,7 +3425,7 @@ package body Sem_Ch13 is
                   --  The visibility to the discriminants must be restored
 
                   Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Action_Handler));
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Response_Handler));
                   Uninstall_Discriminants_And_Pop_Scope (U_Ent);
 
                   if not Is_Static_Expression (Expr) then
@@ -3477,6 +3438,45 @@ package body Sem_Ch13 is
                  ("attribute& cannot be set with definition clause", N);
             end if;
          end Budget_Handler;
+
+         -------------------
+         -- Budget_Response --
+         -------------------
+
+         when Attribute_Budget_Response => Budget_Response :
+         begin
+            --  Budget_Response attribute definition clause not allowed except
+            --  from aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N
+                    ("Budget_Response can only be defined for task", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Event_Response));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Budget_Response;
 
          --------------------
          -- Component_Size --
@@ -3802,45 +3802,6 @@ package body Sem_Ch13 is
             end if;
          end Cycle_Phase;
 
-         ---------------------
-         -- Deadline_Action --
-         ---------------------
-
-         when Attribute_Deadline_Action => Deadline_Action :
-         begin
-            --  Deadline_Action attribute definition clause not allowed except
-            --  from aspect specification.
-
-            if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N
-                    ("Daedline_Action can only be defined for task", Nam);
-
-               elsif Duplicate_Clause then
-                  null;
-
-               else
-                  --  The expression must be analyzed in the special manner
-                  --  described in "Handling of Default and Per-Object
-                  --  Expressions" in sem.ads.
-
-                  --  The visibility to the discriminants must be restored
-
-                  Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Event_Action));
-                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
-
-                  if not Is_Static_Expression (Expr) then
-                     Check_Restriction (Static_Priorities, Expr);
-                  end if;
-               end if;
-
-            else
-               Error_Msg_N
-                 ("attribute& cannot be set with definition clause", N);
-            end if;
-         end Deadline_Action;
-
          --------------------
          -- Deadline_Handler --
          --------------------
@@ -3866,7 +3827,7 @@ package body Sem_Ch13 is
                   --  The visibility to the discriminants must be restored
 
                   Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Action_Handler));
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Response_Handler));
                   Uninstall_Discriminants_And_Pop_Scope (U_Ent);
 
                   if not Is_Static_Expression (Expr) then
@@ -3879,6 +3840,45 @@ package body Sem_Ch13 is
                  ("attribute& cannot be set with definition clause", N);
             end if;
          end Deadline_Handler;
+
+         ---------------------
+         -- Deadline_Response --
+         ---------------------
+
+         when Attribute_Deadline_Response => Deadline_Response :
+         begin
+            --  Deadline_Response attribute definition clause not allowed
+            --  except from aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N
+                    ("Deadline_Response can only be defined for task", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Event_Response));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Deadline_Response;
 
          ----------------------
          -- Default_Iterator --
@@ -7977,11 +7977,12 @@ package body Sem_Ch13 is
 
          when Aspect_Depends =>
             return;
-         when Aspect_Budget_Action | Aspect_Deadline_Action =>
-            T := RTE (RE_Event_Action);
 
          when Aspect_Budget_Handler | Aspect_Deadline_Handler =>
-            T := RTE (RE_Action_Handler);
+            T := RTE (RE_Response_Handler);
+
+         when Aspect_Budget_Response | Aspect_Deadline_Response =>
+            T := RTE (RE_Event_Response);
 
          when Aspect_Cycle_Period | Aspect_Cycle_Phase =>
             T := RTE (RE_Time_Span);

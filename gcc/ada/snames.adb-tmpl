@@ -127,10 +127,10 @@ package body Snames is
 
    function Get_Attribute_Id (N : Name_Id) return Attribute_Id is
    begin
-      if N = Name_Budget_Action then
-         return Attribute_Budget_Action;
-      elsif N = Name_Budget_Handler then
+      if N = Name_Budget_Handler then
          return Attribute_Budget_Handler;
+      elsif N = Name_Budget_Response then
+         return Attribute_Budget_Response;
       elsif N = Name_CPU then
          return Attribute_CPU;
       elsif N = Name_Cycle_Behaviour then
@@ -139,10 +139,10 @@ package body Snames is
          return Attribute_Cycle_Period;
       elsif N = Name_Cycle_Phase then
          return Attribute_Cycle_Phase;
-      elsif N = Name_Deadline_Action then
-         return Attribute_Deadline_Action;
       elsif N = Name_Deadline_Handler then
          return Attribute_Deadline_Handler;
+      elsif N = Name_Deadline_Response then
+         return Attribute_Deadline_Response;
       elsif N = Name_Dispatching_Domain then
          return Attribute_Dispatching_Domain;
       elsif N = Name_Execution_Budget then
