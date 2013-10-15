@@ -109,7 +109,7 @@ package body ALI is
 
       Dynamic_Elaboration_Checks_Specified   := False;
       Float_Format_Specified                 := ' ';
-      Global_Start_Offset_Specified          := No_Global_Start_Offset;
+      Global_Start_Phase_Specified           := No_Global_Start_Phase;
       Locking_Policy_Specified               := ' ';
       No_Normalize_Scalars_Specified         := False;
       No_Object_Specified                    := False;
@@ -822,7 +822,7 @@ package body ALI is
         First_Specific_Dispatching   => Specific_Dispatching.Last + 1,
         First_Unit                   => No_Unit_Id,
         Float_Format                 => 'I',
-        Global_Start_Offset          => No_Global_Start_Offset,
+        Global_Start_Phase           => No_Global_Start_Phase,
         Last_Interrupt_State         => Interrupt_States.Last,
         Last_Sdep                    => No_Sdep_Id,
         Last_Specific_Dispatching    => Specific_Dispatching.Last,
@@ -1064,9 +1064,9 @@ package body ALI is
             --  Processing for Gx
 
             elsif C = 'G' then
-               Global_Start_Offset_Specified := Get_Nat;
-               ALIs.Table (Id).Global_Start_Offset :=
-                 Global_Start_Offset_Specified;
+               Global_Start_Phase_Specified := Get_Nat;
+               ALIs.Table (Id).Global_Start_Phase :=
+                 Global_Start_Phase_Specified;
 
             --  Processing for Lx
 

@@ -1093,9 +1093,9 @@ package body Lib.Writ is
             Write_Info_Char (Locking_Policy);
          end if;
 
-         if Global_Start_Offset /= No_Global_Start_Offset then
+         if Global_Start_Phase /= No_Global_Start_Phase then
             Write_Info_Str (" G");
-            Write_Info_Nat (Global_Start_Offset);
+            Write_Info_Nat (Global_Start_Phase);
          end if;
 
          if Queuing_Policy /= ' ' then

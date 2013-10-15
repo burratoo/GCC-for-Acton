@@ -162,7 +162,7 @@ package Snames is
    Name_uAlignment                     : constant Name_Id := N + $;
    Name_uAssign                        : constant Name_Id := N + $;
    Name_uBarriers                      : constant Name_Id := N + $;
-   Name_uBudget_Action                 : constant Name_Id := N + $;
+   Name_uBudget_Response               : constant Name_Id := N + $;
    Name_uBudget_Handler                : constant Name_Id := N + $;
    Name_uATCB                          : constant Name_Id := N + $;
    Name_uChain                         : constant Name_Id := N + $;
@@ -171,7 +171,7 @@ package Snames is
    Name_uCycle_Behaviour               : constant Name_Id := N + $;
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uCycle_Phase                   : constant Name_Id := N + $;
-   Name_uDeadline_Action               : constant Name_Id := N + $;
+   Name_uDeadline_Response             : constant Name_Id := N + $;
    Name_uDeadline_Handler              : constant Name_Id := N + $;
    Name_uDispatching_Domain            : constant Name_Id := N + $;
    Name_uEnsure                        : constant Name_Id := N + $;
@@ -427,7 +427,7 @@ package Snames is
 
    Name_Favor_Top_Level                : constant Name_Id := N + $; -- GNAT
    Name_Float_Representation           : constant Name_Id := N + $; -- GNAT
-   Name_Global_Start_Offset            : constant Name_Id := N + $; -- Acton
+   Name_Global_Start_Phase             : constant Name_Id := N + $; -- Acton
    Name_Implicit_Packing               : constant Name_Id := N + $; -- GNAT
    Name_Initialize_Scalars             : constant Name_Id := N + $; -- GNAT
    Name_Interrupt_State                : constant Name_Id := N + $; -- GNAT
@@ -1051,14 +1051,14 @@ package Snames is
    --  internal attributes is not permitted).
 
    First_Internal_Attribute_Name       : constant Name_Id := N + $;
-   Name_Budget_Action                  : constant Name_Id := N + $;
+   Name_Budget_Response                : constant Name_Id := N + $;
    Name_Budget_Handler                 : constant Name_Id := N + $;
    Name_CPU                            : constant Name_Id := N + $;
    Name_Cycle_Behaviour                : constant Name_Id := N + $;
    Name_Cycle_Period                   : constant Name_Id := N + $;
    Name_Cycle_Phase                    : constant Name_Id := N + $;
    Name_Dispatching_Domain             : constant Name_Id := N + $;
-   Name_Deadline_Action                : constant Name_Id := N + $;
+   Name_Deadline_Response              : constant Name_Id := N + $;
    Name_Deadline_Handler               : constant Name_Id := N + $;
    Name_Execution_Budget               : constant Name_Id := N + $;
    Name_Execution_Server               : constant Name_Id := N + $;
@@ -1652,14 +1652,14 @@ package Snames is
       --  the special processing required to deal with the fact that their
       --  names are not attribute names.
 
-      Attribute_Budget_Action,
       Attribute_Budget_Handler,
+      Attribute_Budget_Response,
       Attribute_CPU,
       Attribute_Cycle_Behaviour,
       Attribute_Cycle_Period,
       Attribute_Cycle_Phase,
-      Attribute_Deadline_Action,
       Attribute_Deadline_Handler,
+      Attribute_Deadline_Response,
       Attribute_Dispatching_Domain,
       Attribute_Execution_Budget,
       Attribute_Execution_Server,
@@ -1667,7 +1667,7 @@ package Snames is
       Attribute_Relative_Deadline);
 
       subtype Internal_Attribute_Id is Attribute_Id range
-        Attribute_Budget_Action .. Attribute_Relative_Deadline;
+        Attribute_Budget_Handler .. Attribute_Relative_Deadline;
 
       type Attribute_Class_Array is array (Attribute_Id) of Boolean;
       --  Type used to build attribute classification flag arrays
@@ -1771,7 +1771,7 @@ package Snames is
       Pragma_External_Name_Casing,
       Pragma_Favor_Top_Level,
       Pragma_Float_Representation,
-      Pragma_Global_Start_Offset,
+      Pragma_Global_Start_Phase,
       Pragma_Implicit_Packing,
       Pragma_Initialize_Scalars,
       Pragma_Interrupt_State,

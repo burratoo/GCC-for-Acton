@@ -218,7 +218,7 @@ package Lib.Writ is
    --              specifying a possibly non-standard floating point format
    --              (IEEE Float).
    --
-   --         Gu   A valid Global_Start_Offset pragma applies to all the units
+   --         Gu   A valid Global_Start_Phase pragma applies to all the units
    --              in this file, where u is the unsigned integer of the
    --              corresponding policy name.
    --

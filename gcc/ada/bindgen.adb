@@ -1488,9 +1488,9 @@ package body Bindgen is
 
          --  Start with declaring the global start offset
 
-         WBI ("   Global_Start_Offset : Ada.Real_Time.Time_Span;");
-         WBI ("   pragma Export (Ada, Global_Start_Offset, " &
-               """_global_start_offset"");");
+         WBI ("   Global_Start_Phase : Ada.Real_Time.Time_Span;");
+         WBI ("   pragma Export (Ada, Global_Start_Phase, " &
+               """_global_start_phase"");");
          WBI ("");
 
          --  Proceed with subprogram definitions
@@ -1652,8 +1652,8 @@ package body Bindgen is
       WBI ("      Initialise_Acton;");
       WBI ("      ada_main'Elab_Body;");
 
-      Set_String ("      Global_Start_Offset := Ada.Real_Time.Milliseconds (");
-      Set_Int (Global_Start_Offset_Specified);
+      Set_String ("      Global_Start_Phase := Ada.Real_Time.Milliseconds (");
+      Set_Int (Global_Start_Phase_Specified);
       Set_String (");");
       Write_Statement_Buffer;
 

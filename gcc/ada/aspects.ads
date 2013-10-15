@@ -79,18 +79,18 @@ package Aspects is
       Aspect_Alignment,
       Aspect_Attach_Handler,
       Aspect_Bit_Order,
-      Aspect_Budget_Action,                 -- Acton
       Aspect_Budget_Handler,                -- Acton
+      Aspect_Budget_Response,               -- Acton
       Aspect_Component_Size,
       Aspect_Constant_Indexing,
       Aspect_Contract_Cases,                -- GNAT
       Aspect_Convention,
       Aspect_CPU,
-      Aspect_Cycle_Behaviour,              -- Acton
+      Aspect_Cycle_Behaviour,               -- Acton
       Aspect_Cycle_Period,                  -- Acton
       Aspect_Cycle_Phase,                   -- Acton
-      Aspect_Deadline_Action,               -- Acton
       Aspect_Deadline_Handler,              -- Acton
+      Aspect_Deadline_Response,             -- Acton
       Aspect_Default_Component_Value,
       Aspect_Default_Iterator,
       Aspect_Default_Value,
@@ -223,15 +223,15 @@ package Aspects is
      (Aspect_Abstract_State           => True,
       Aspect_Ada_2005                 => True,
       Aspect_Ada_2012                 => True,
-      Aspect_Budget_Action            => True,
       Aspect_Budget_Handler           => True,
+      Aspect_Budget_Response          => True,
       Aspect_Compiler_Unit            => True,
       Aspect_Contract_Cases           => True,
       Aspect_Cycle_Behaviour          => True,
       Aspect_Cycle_Period             => True,
       Aspect_Cycle_Phase              => True,
-      Aspect_Deadline_Action          => True,
       Aspect_Deadline_Handler         => True,
+      Aspect_Deadline_Response        => True,
       Aspect_Depends                  => True,
       Aspect_Dimension                => True,
       Aspect_Dimension_System         => True,
@@ -314,8 +314,8 @@ package Aspects is
       Aspect_Alignment               => Expression,
       Aspect_Attach_Handler          => Expression,
       Aspect_Bit_Order               => Expression,
-      Aspect_Budget_Action           => Expression,
       Aspect_Budget_Handler          => Expression,
+      Aspect_Budget_Response         => Expression,
       Aspect_Component_Size          => Expression,
       Aspect_Constant_Indexing       => Name,
       Aspect_Contract_Cases          => Expression,
@@ -324,8 +324,8 @@ package Aspects is
       Aspect_Cycle_Behaviour         => Expression,
       Aspect_Cycle_Period            => Expression,
       Aspect_Cycle_Phase             => Expression,
-      Aspect_Deadline_Action         => Expression,
       Aspect_Deadline_Handler        => Expression,
+      Aspect_Deadline_Response       => Expression,
       Aspect_Default_Component_Value => Expression,
       Aspect_Default_Iterator        => Name,
       Aspect_Default_Value           => Expression,
@@ -401,8 +401,8 @@ package Aspects is
       Aspect_Atomic_Components            => Name_Atomic_Components,
       Aspect_Attach_Handler               => Name_Attach_Handler,
       Aspect_Bit_Order                    => Name_Bit_Order,
-      Aspect_Budget_Action                => Name_Budget_Action,
       Aspect_Budget_Handler               => Name_Budget_Handler,
+      Aspect_Budget_Response              => Name_Budget_Response,
       Aspect_Compiler_Unit                => Name_Compiler_Unit,
       Aspect_Component_Size               => Name_Component_Size,
       Aspect_Constant_Indexing            => Name_Constant_Indexing,
@@ -412,8 +412,8 @@ package Aspects is
       Aspect_Cycle_Behaviour              => Name_Cycle_Behaviour,
       Aspect_Cycle_Period                 => Name_Cycle_Period,
       Aspect_Cycle_Phase                  => Name_Cycle_Phase,
-      Aspect_Deadline_Action              => Name_Deadline_Action,
       Aspect_Deadline_Handler             => Name_Deadline_Handler,
+      Aspect_Deadline_Response            => Name_Deadline_Response,
       Aspect_Default_Iterator             => Name_Default_Iterator,
       Aspect_Default_Value                => Name_Default_Value,
       Aspect_Default_Component_Value      => Name_Default_Component_Value,

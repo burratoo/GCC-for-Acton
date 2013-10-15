@@ -48,7 +48,7 @@ package body Bcheck is
    procedure Check_Consistent_Dispatching_Policy;
    procedure Check_Consistent_Dynamic_Elaboration_Checking;
    procedure Check_Consistent_Floating_Point_Format;
-   procedure Check_Consistent_Global_Start_Offset;
+   procedure Check_Consistent_Global_Start_Phase;
    procedure Check_Consistent_Interrupt_States;
    procedure Check_Consistent_Locking_Policy;
    procedure Check_Consistent_Normalize_Scalars;
@@ -100,7 +100,7 @@ package body Bcheck is
       Check_Consistent_Restriction_No_Default_Initialization;
       Check_Consistent_Interrupt_States;
       Check_Consistent_Dispatching_Policy;
-      Check_Consistent_Global_Start_Offset;
+      Check_Consistent_Global_Start_Phase;
    end Check_Configuration_Consistency;
 
    -----------------------
@@ -558,29 +558,29 @@ package body Bcheck is
    end Check_Consistent_Floating_Point_Format;
 
    ------------------------------------------
-   -- Check_Consistent_Global_Start_Offset --
+   -- Check_Consistent_Global_Start_Phase --
    ------------------------------------------
 
-   procedure Check_Consistent_Global_Start_Offset is
-      Offset : Int := No_Global_Start_Offset;
+   procedure Check_Consistent_Global_Start_Phase is
+      Offset : Int := No_Global_Start_Phase;
 
    begin
       for A in ALIs.First .. ALIs.Last loop
-         if ALIs.Table (A).Global_Start_Offset /= No_Global_Start_Offset
-           and Offset = No_Global_Start_Offset
+         if ALIs.Table (A).Global_Start_Phase /= No_Global_Start_Phase
+           and Offset = No_Global_Start_Phase
          then
-            Offset := ALIs.Table (A).Global_Start_Offset;
-         elsif ALIs.Table (A).Global_Start_Offset /= No_Global_Start_Offset
-           and ALIs.Table (A).Global_Start_Offset /= Offset
+            Offset := ALIs.Table (A).Global_Start_Phase;
+         elsif ALIs.Table (A).Global_Start_Phase /= No_Global_Start_Phase
+           and ALIs.Table (A).Global_Start_Phase /= Offset
          then
             Error_Msg_File_1 := ALIs.Table (A).Sfile;
             Error_Msg_File_2 := ALIs.Table (ALIs.First).Sfile;
 
             Consistency_Error_Msg
-               ("{ and { compiled with global start offsets");
+               ("{ and { compiled with global start phase");
          end if;
       end loop;
-   end Check_Consistent_Global_Start_Offset;
+   end Check_Consistent_Global_Start_Phase;
 
    ---------------------------------------
    -- Check_Consistent_Interrupt_States --

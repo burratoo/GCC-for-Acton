@@ -13187,9 +13187,9 @@ package body Exp_Ch9 is
            Parameter_Associations => New_List (
              Make_Identifier (Loc, Name_uExecution_Budget))));
 
-      --  Budget Action parameter
+      --  Budget Response parameter
 
-      Append_To (Args, Make_Identifier (Loc, Name_uBudget_Action));
+      Append_To (Args, Make_Identifier (Loc, Name_uBudget_Response));
 
       --  Budget Handler parameter
 
@@ -13205,9 +13205,9 @@ package body Exp_Ch9 is
            Parameter_Associations => New_List (
              Make_Identifier (Loc, Name_uRelative_Deadline))));
 
-      --  Deadline Action parameter
+      --  Deadline Response parameter
 
-      Append_To (Args, Make_Identifier (Loc, Name_uDeadline_Action));
+      Append_To (Args, Make_Identifier (Loc, Name_uDeadline_Response));
 
       --  Deadline Handler parameter
 
@@ -13366,24 +13366,26 @@ package body Exp_Ch9 is
           Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
           Expression          => Expr));
 
-      --  Add the _Budget_Action variable and set to No_Action unless there
-      --  is a Budget_Action aspect, in which case we take the value from the
+      --  Add the _Budget_Response variable and set to No_Response unless there
+      --  is a Budget_Response aspect, in which case we take the value from the
       --  aspect.
 
-      if Has_Rep_Item (Ttyp, Name_Budget_Action, Check_Parents => False) then
+      if Has_Rep_Item (Ttyp, Name_Budget_Response, Check_Parents => False) then
          Expr :=
            Expression
-             (Get_Rep_Item (Ttyp, Name_Budget_Action, Check_Parents => False));
+             (Get_Rep_Item
+               (Ttyp, Name_Budget_Response, Check_Parents => False));
       else
-         Expr := New_Reference_To (RTE (RE_No_Action), Loc);
+         Expr := New_Reference_To (RTE (RE_No_Response), Loc);
       end if;
 
       Append_To (Decls,
         Make_Object_Declaration (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uBudget_Action),
+            Make_Defining_Identifier (Loc, Name_uBudget_Response),
           Constant_Present    => True,
-          Object_Definition   => New_Reference_To (RTE (RE_Event_Action), Loc),
+          Object_Definition   => New_Reference_To (RTE (RE_Event_Response),
+                                                   Loc),
           Expression          => Expr));
 
       --  Add the _Budget_Handler variable and set to null unless there
@@ -13405,7 +13407,7 @@ package body Exp_Ch9 is
             Make_Defining_Identifier (Loc, Name_uBudget_Handler),
           Constant_Present    => True,
           Object_Definition   => New_Reference_To
-                                   (RTE (RE_Action_Handler), Loc),
+                                   (RTE (RE_Response_Handler), Loc),
           Expression          => Expr));
 
       --  Add the _Relative_Deadline variable and set to Time_Span_Last unless
@@ -13431,25 +13433,27 @@ package body Exp_Ch9 is
           Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
           Expression          => Expr));
 
-      --  Add the _Deadline_Action variable and set to No_Action unless there
-      --  is a Budget_Action aspect, in which case we take the value from the
+      --  Add the _Deadline_Response variable and set to No_Response unless there
+      --  is a Deadline_Action aspect, in which case we take the value from the
       --  aspect.
 
-      if Has_Rep_Item (Ttyp, Name_Deadline_Action, Check_Parents => False) then
+      if Has_Rep_Item
+           (Ttyp, Name_Deadline_Response, Check_Parents => False) then
          Expr :=
            Expression
              (Get_Rep_Item
-               (Ttyp, Name_Deadline_Action, Check_Parents => False));
+               (Ttyp, Name_Deadline_Response, Check_Parents => False));
       else
-         Expr := New_Reference_To (RTE (RE_No_Action), Loc);
+         Expr := New_Reference_To (RTE (RE_No_Response), Loc);
       end if;
 
       Append_To (Decls,
         Make_Object_Declaration (Loc,
           Defining_Identifier =>
-            Make_Defining_Identifier (Loc, Name_uDeadline_Action),
+            Make_Defining_Identifier (Loc, Name_uDeadline_Response),
           Constant_Present    => True,
-          Object_Definition   => New_Reference_To (RTE (RE_Event_Action), Loc),
+          Object_Definition   => New_Reference_To (RTE (RE_Event_Response),
+                                                   Loc),
           Expression          => Expr));
 
       --  Add the _Deadline_Handler variable and set to null unless there is a
@@ -13473,7 +13477,7 @@ package body Exp_Ch9 is
             Make_Defining_Identifier (Loc, Name_uDeadline_Handler),
           Constant_Present    => True,
           Object_Definition   => New_Reference_To
-                                   (RTE (RE_Action_Handler), Loc),
+                                   (RTE (RE_Response_Handler), Loc),
           Expression          => Expr));
 
       --  Add the _Scheduler_Agent variable and set to null unless there is a
