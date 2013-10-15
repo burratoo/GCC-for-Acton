@@ -133,6 +133,8 @@ package body Snames is
          return Attribute_Budget_Handler;
       elsif N = Name_CPU then
          return Attribute_CPU;
+      elsif N = Name_Cycle_Behaviour then
+         return Attribute_Cycle_Behaviour;
       elsif N = Name_Cycle_Period then
          return Attribute_Cycle_Period;
       elsif N = Name_Cycle_Phase then
@@ -149,8 +151,8 @@ package body Snames is
          return Attribute_Execution_Server;
       elsif N = Name_Interrupt_Priority then
          return Attribute_Interrupt_Priority;
-      elsif N = Name_Timing_Behaviour then
-         return Attribute_Timing_Behaviour;
+      elsif N = Name_Relative_Deadline then
+         return Attribute_Relative_Deadline;
       else
          return Attribute_Id'Val (N - First_Attribute_Name);
       end if;

@@ -168,6 +168,7 @@ package Snames is
    Name_uChain                         : constant Name_Id := N + $;
    Name_uController                    : constant Name_Id := N + $;
    Name_uCPU                           : constant Name_Id := N + $;
+   Name_uCycle_Behaviour               : constant Name_Id := N + $;
    Name_uCycle_Period                  : constant Name_Id := N + $;
    Name_uCycle_Phase                   : constant Name_Id := N + $;
    Name_uDeadline_Action               : constant Name_Id := N + $;
@@ -176,7 +177,6 @@ package Snames is
    Name_uEnsure                        : constant Name_Id := N + $;
    Name_uExcept                        : constant Name_Id := N + $;
    Name_uExecution_Deadline            : constant Name_Id := N + $;
-   Name_uExecution_Server              : constant Name_Id := N + $;
    Name_uEntry_Bodies                  : constant Name_Id := N + $;
    Name_uEntry_Id                      : constant Name_Id := N + $;
    Name_uExecution_Budget              : constant Name_Id := N + $;
@@ -195,6 +195,7 @@ package Snames is
    Name_uProcess_ATSD                  : constant Name_Id := N + $;
    Name_uRelative_Deadline             : constant Name_Id := N + $;
    Name_uResult                        : constant Name_Id := N + $;
+   Name_uScheduler_Agent               : constant Name_Id := N + $;
    Name_uSecondary_Stack               : constant Name_Id := N + $;
    Name_uService                       : constant Name_Id := N + $;
    Name_uSize                          : constant Name_Id := N + $;
@@ -205,7 +206,6 @@ package Snames is
    Name_uTask_Handler                  : constant Name_Id := N + $;
    Name_uTask_Info                     : constant Name_Id := N + $;
    Name_uTask_Name                     : constant Name_Id := N + $;
-   Name_uTiming_Behaviour              : constant Name_Id := N + $;
    Name_uTrace_Sp                      : constant Name_Id := N + $;
    Name_uType_Invariant                : constant Name_Id := N + $;
 
@@ -603,7 +603,13 @@ package Snames is
    Name_Pure_05                        : constant Name_Id := N + $; -- GNAT
    Name_Pure_12                        : constant Name_Id := N + $; -- GNAT
    Name_Pure_Function                  : constant Name_Id := N + $; -- GNAT
-   Name_Relative_Deadline              : constant Name_Id := N + $; -- Ada 05
+
+   --  Note: Relative_Deadline is not in this list because its name matches the
+   --  name of the corresponding attribute. However, it is included in the
+   --  definition of the type Pragma_Id, and the functions Get_Pragma_Id and
+   --  Is_Pragma_Id correctly recognize and process CPU. CPU is a standard Ada
+   --  2005 pragma.
+
    Name_Remote_Access_Type             : constant Name_Id := N + $; -- GNAT
    Name_Remote_Call_Interface          : constant Name_Id := N + $;
    Name_Remote_Types                   : constant Name_Id := N + $;
@@ -1048,6 +1054,7 @@ package Snames is
    Name_Budget_Action                  : constant Name_Id := N + $;
    Name_Budget_Handler                 : constant Name_Id := N + $;
    Name_CPU                            : constant Name_Id := N + $;
+   Name_Cycle_Behaviour                : constant Name_Id := N + $;
    Name_Cycle_Period                   : constant Name_Id := N + $;
    Name_Cycle_Phase                    : constant Name_Id := N + $;
    Name_Dispatching_Domain             : constant Name_Id := N + $;
@@ -1055,8 +1062,9 @@ package Snames is
    Name_Deadline_Handler               : constant Name_Id := N + $;
    Name_Execution_Budget               : constant Name_Id := N + $;
    Name_Execution_Server               : constant Name_Id := N + $;
+   Name_Execution_Server_Object        : constant Name_Id := N + $;
    Name_Interrupt_Priority             : constant Name_Id := N + $;
-   Name_Timing_Behaviour               : constant Name_Id := N + $;
+   Name_Relative_Deadline              : constant Name_Id := N + $;
    Last_Internal_Attribute_Name        : constant Name_Id := N + $;
 
    --  Names of recognized locking policy identifiers
@@ -1392,6 +1400,7 @@ package Snames is
    --  Other miscellaneous names used in front end
 
    Name_Unaligned_Valid                  : constant Name_Id := N + $;
+   Name_Initialise_Execution_Server      : constant Name_Id := N + $;
 
    --  Names used to implement iterators over predefined containers
 
@@ -1646,6 +1655,7 @@ package Snames is
       Attribute_Budget_Action,
       Attribute_Budget_Handler,
       Attribute_CPU,
+      Attribute_Cycle_Behaviour,
       Attribute_Cycle_Period,
       Attribute_Cycle_Phase,
       Attribute_Deadline_Action,
@@ -1654,10 +1664,10 @@ package Snames is
       Attribute_Execution_Budget,
       Attribute_Execution_Server,
       Attribute_Interrupt_Priority,
-      Attribute_Timing_Behaviour);
+      Attribute_Relative_Deadline);
 
       subtype Internal_Attribute_Id is Attribute_Id range
-        Attribute_Budget_Action .. Attribute_Timing_Behaviour;
+        Attribute_Budget_Action .. Attribute_Relative_Deadline;
 
       type Attribute_Class_Array is array (Attribute_Id) of Boolean;
       --  Type used to build attribute classification flag arrays
@@ -1898,7 +1908,6 @@ package Snames is
       Pragma_Pure_05,
       Pragma_Pure_12,
       Pragma_Pure_Function,
-      Pragma_Relative_Deadline,
       Pragma_Remote_Access_Type,
       Pragma_Remote_Call_Interface,
       Pragma_Remote_Types,
@@ -1944,6 +1953,7 @@ package Snames is
       Pragma_Interrupt_Priority,
       Pragma_Lock_Free,
       Pragma_Priority,
+      Pragma_Relative_Deadline,
       Pragma_Storage_Size,
       Pragma_Storage_Unit,
 

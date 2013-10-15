@@ -1359,6 +1359,7 @@ package body Sem_Ch13 is
                     Aspect_Budget_Handler       |
                     Aspect_Component_Size       |
                     Aspect_Constant_Indexing    |
+                    Aspect_Cycle_Behaviour      |
                     Aspect_Cycle_Period         |
                     Aspect_Cycle_Phase          |
                     Aspect_Deadline_Action      |
@@ -1381,7 +1382,6 @@ package body Sem_Ch13 is
                     Aspect_Storage_Pool         |
                     Aspect_Storage_Size         |
                     Aspect_Stream_Size          |
-                    Aspect_Timing_Behaviour     |
                     Aspect_Value_Size           |
                     Aspect_Variable_Indexing    |
                     Aspect_Write                =>
@@ -1413,6 +1413,20 @@ package body Sem_Ch13 is
 
                   if A_Id = Aspect_Address then
                      Set_Referenced (E);
+                  end if;
+
+                  --  Cycle_Period, Cycle_Phase and Execution_Budget can apply
+                  --  to object declarations, specifically objets that derive
+                  --  from Ada.Execution_Server.Execution_Server, and so do not
+                  --  need to be delayed as the object is already frozen.
+
+                  if (A_Id = Aspect_Cycle_Period
+                       or else A_Id = Aspect_Cycle_Phase
+                       or else A_Id = Aspect_Execution_Budget)
+                    and then Nkind (N) = N_Object_Declaration
+                  then
+                     Delay_Required := False;
+                     Record_Rep_Item (E, Aspect);
                   end if;
 
                --  Case 2: Aspects corresponding to pragmas
@@ -1596,15 +1610,16 @@ package body Sem_Ch13 is
                      Delay_Required := False;
                   end;
 
-               --  CPU, Interrupt_Priority, Priority
+               --  CPU, Interrupt_Priority, Priority, Relative_Deadline
 
-               --  These three aspects can be specified for a subprogram body,
+               --  These four aspects can be specified for a subprogram body,
                --  in which case we generate pragmas for them and insert them
                --  ahead of local declarations, rather than after the body.
 
                when Aspect_CPU                |
                     Aspect_Interrupt_Priority |
-                    Aspect_Priority           =>
+                    Aspect_Priority           |
+                    Aspect_Relative_Deadline  =>
 
                   if Nkind (N) = N_Subprogram_Body then
                      Make_Aitem_Pragma
@@ -1619,6 +1634,16 @@ package body Sem_Ch13 is
                          Name       => Ent,
                          Chars      => Chars (Id),
                          Expression => Relocate_Node (Expr));
+
+                     --  These aspects can apply to object declarations,
+                     --  specifically objets that derive from
+                     --  Ada.Execution_Server.Execution_Server, and so do not
+                     --  need to be delayed as the object is already frozen.
+
+                     if Nkind (N) = N_Object_Declaration then
+                        Delay_Required := False;
+                        Record_Rep_Item (E, Aspect);
+                     end if;
                   end if;
 
                --  Warnings
@@ -1728,44 +1753,6 @@ package body Sem_Ch13 is
                   Decorate_Delayed_Aspect_And_Pragma (Aspect, Aitem);
                   Insert_Delayed_Pragma (Aitem);
                   goto Continue;
-
-               --  Relative_Deadline
-
-               when Aspect_Relative_Deadline =>
-                  Make_Aitem_Pragma
-                    (Pragma_Argument_Associations => New_List (
-                       Make_Pragma_Argument_Association (Loc,
-                         Expression => Relocate_Node (Expr))),
-                      Pragma_Name                 => Name_Relative_Deadline);
-
-                  --  If the aspect applies to a task, the corresponding pragma
-                  --  must appear within its declarations, not after.
-
-                  if Nkind (N) = N_Task_Type_Declaration then
-                     declare
-                        Def : Node_Id;
-                        V   : List_Id;
-
-                     begin
-                        if No (Task_Definition (N)) then
-                           Set_Task_Definition (N,
-                             Make_Task_Definition (Loc,
-                                Visible_Declarations => New_List,
-                                End_Label => Empty));
-                        end if;
-
-                        Def := Task_Definition (N);
-                        V  := Visible_Declarations (Def);
-                        if not Is_Empty_List (V) then
-                           Insert_Before (First (V), Aitem);
-
-                        else
-                           Set_Visible_Declarations (Def, New_List (Aitem));
-                        end if;
-
-                        goto Continue;
-                     end;
-                  end if;
 
                --  Case 3 : Aspects that don't correspond to pragma/attribute
                --  definition clause.
@@ -2105,6 +2092,30 @@ package body Sem_Ch13 is
                         end if;
 
                         Record_Rep_Item (E, Aspect);
+                     end if;
+
+                     goto Continue;
+
+                  --  Execution_Server_Object aspect only applies to
+                  --  variables that are derived from Execution_Server types
+
+                  elsif A_Id = Aspect_Execution_Server_Object then
+                     if Ekind (E) = E_Variable
+                       and then Is_Tagged_Type (Etype (E))
+                       and then Is_Ancestor
+                                  (RTE (RE_Execution_Server), Etype (E))
+                     then
+                        if No (Expr)
+                          or else Is_True (Static_Boolean (Expr))
+                        then
+                           Record_Rep_Item (E, Aspect);
+                        end if;
+                     else
+                        Error_Msg_Name_1 := Nam;
+                        Error_Msg_N
+                          ("aspect % only applies to Execution_Server "
+                           & "derived objects",
+                           Aspect);
                      end if;
 
                      goto Continue;
@@ -3578,8 +3589,20 @@ package body Sem_Ch13 is
             --  specification.
 
             if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N ("CPU can only be defined for task", Nam);
+
+               --  CPU attribute can only be applied to task types
+               --  and variables that are derived from
+               --  Ada.Execution_Server.Execution_Server.
+
+               if not Is_Task_Type (U_Ent)
+                 and then not (Ekind (U_Ent) = E_Variable
+                   and then Is_Tagged_Type (Etype (U_Ent))
+                   and then Is_Ancestor
+                              (RTE (RE_Execution_Server), Etype (U_Ent)))
+               then
+                  Error_Msg_N
+                    ("CPU can only be defined for task "
+                     & "types and Execution_Server derived variables", Nam);
 
                elsif Duplicate_Clause then
                   null;
@@ -3598,6 +3621,17 @@ package body Sem_Ch13 is
                   if not Is_Static_Expression (Expr) then
                      Check_Restriction (Static_Priorities, Expr);
                   end if;
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "CPU", Nam);
+                  end if;
                end if;
 
             else
@@ -3605,6 +3639,45 @@ package body Sem_Ch13 is
                  ("attribute& cannot be set with definition clause", N);
             end if;
          end CPU;
+
+         ----------------------
+         -- Cycle_Behaviour --
+         ----------------------
+
+         when Attribute_Cycle_Behaviour => Cycle_Behaviour :
+         begin
+            --  Phase attribute definition clause not allowed except from
+            --  aspect specification.
+
+            if From_Aspect_Specification (N) then
+               if not Is_Task_Type (U_Ent) then
+                  Error_Msg_N
+                    ("Cycle_Behaviour can only be defined for task", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Behaviour));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Cycle_Behaviour;
 
          ------------------
          -- Cycle_Period --
@@ -3616,9 +3689,19 @@ package body Sem_Ch13 is
             --  from aspect specification.
 
             if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N ("Cycle_Period can only be defined for task",
-                               Nam);
+               --  Cycle_Period attribute can only be applied to task types
+               --  and variables that are derived from
+               --  Ada.Execution_Server.Execution_Server.
+
+               if not Is_Task_Type (U_Ent)
+                 and then not (Ekind (U_Ent) = E_Variable
+                   and then Is_Tagged_Type (Etype (U_Ent))
+                   and then Is_Ancestor
+                              (RTE (RE_Execution_Server), Etype (U_Ent)))
+               then
+                  Error_Msg_N
+                    ("Cycle_Period can only be defined for task "
+                     & "types and Execution_Server derived variables", Nam);
 
                elsif Duplicate_Clause then
                   null;
@@ -3636,6 +3719,18 @@ package body Sem_Ch13 is
 
                   if not Is_Static_Expression (Expr) then
                      Check_Restriction (Static_Priorities, Expr);
+                  end if;
+
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "Cycle_Phase", Nam);
                   end if;
                end if;
 
@@ -3655,9 +3750,20 @@ package body Sem_Ch13 is
             --  aspect specification.
 
             if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
+
+               --  Cycle_Phase attribute can only be applied to task types
+               --  and variables that are derived from
+               --  Ada.Execution_Server.Execution_Server.
+
+               if not Is_Task_Type (U_Ent)
+                 and then not (Ekind (U_Ent) = E_Variable
+                   and then Is_Tagged_Type (Etype (U_Ent))
+                   and then Is_Ancestor
+                              (RTE (RE_Execution_Server), Etype (U_Ent)))
+               then
                   Error_Msg_N
-                    ("Cycle_Phase can only be defined for task", Nam);
+                    ("Cycle_Phase can only be defined for task "
+                     & "types and Execution_Server derived variables", Nam);
 
                elsif Duplicate_Clause then
                   null;
@@ -3675,6 +3781,18 @@ package body Sem_Ch13 is
 
                   if not Is_Static_Expression (Expr) then
                      Check_Restriction (Static_Priorities, Expr);
+                  end if;
+
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "Cycle_Phase", Nam);
                   end if;
                end if;
 
@@ -3840,13 +3958,20 @@ package body Sem_Ch13 is
 
          when Attribute_Execution_Budget => Execution_Budget :
          begin
-            --  Budget_Action attribute definition clause not allowed except
+            --  Execution_Budget attribute definition clause not allowed except
             --  from aspect specification.
 
             if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
+
+               if not Is_Task_Type (U_Ent)
+                 and then not (Ekind (U_Ent) = E_Variable
+                   and then Is_Tagged_Type (Etype (U_Ent))
+                   and then Is_Ancestor
+                              (RTE (RE_Execution_Server), Etype (U_Ent)))
+               then
                   Error_Msg_N
-                    ("Execution_Budget can only be defined for task", Nam);
+                    ("Execution_Budget can only be defined for task "
+                     & "types and Execution_Server derived variables", Nam);
 
                elsif Duplicate_Clause then
                   null;
@@ -3864,6 +3989,18 @@ package body Sem_Ch13 is
 
                   if not Is_Static_Expression (Expr) then
                      Check_Restriction (Static_Priorities, Expr);
+                  end if;
+
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "Execution_Budget", Nam);
                   end if;
                end if;
 
@@ -3885,7 +4022,8 @@ package body Sem_Ch13 is
             if From_Aspect_Specification (N) then
                if not Is_Task_Type (U_Ent) then
                   Error_Msg_N
-                    ("Execution_Server can only be defined for task", Nam);
+                    ("aspect Execution_Server can only be defined for task "
+                     & "types", Nam);
 
                elsif Duplicate_Clause then
                   null;
@@ -3898,8 +4036,8 @@ package body Sem_Ch13 is
                   --  The visibility to the discriminants must be restored
 
                   Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr,
-                    RTE (RE_Execution_Server));
+                  Preanalyze_Spec_Expression
+                    (Expr, Class_Wide_Type (RTE (RE_Execution_Server)));
                   Uninstall_Discriminants_And_Pop_Scope (U_Ent);
 
                   if not Is_Static_Expression (Expr) then
@@ -4119,11 +4257,16 @@ package body Sem_Ch13 is
             if From_Aspect_Specification (N) then
                if not (Is_Protected_Type (U_Ent)
                         or else Is_Task_Type (U_Ent)
-                        or else Ekind (U_Ent) = E_Procedure)
+                        or else Ekind (U_Ent) = E_Procedure
+                        or else (Ekind (U_Ent) = E_Variable
+                           and then Is_Tagged_Type (Etype (U_Ent))
+                           and then Is_Ancestor
+                                      (RTE (RE_Execution_Server),
+                                       Etype (U_Ent))))
                then
                   Error_Msg_N
-                    ("Priority can only be defined for task and protected " &
-                     "object",
+                    ("Priority can only be defined for task, protected " &
+                     "object and Execution_Server derived variables",
                      Nam);
 
                elsif Duplicate_Clause then
@@ -4143,6 +4286,18 @@ package body Sem_Ch13 is
                   if not Is_Static_Expression (Expr) then
                      Check_Restriction (Static_Priorities, Expr);
                   end if;
+
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "Execution_Budget", Nam);
+                  end if;
                end if;
 
             else
@@ -4158,6 +4313,68 @@ package body Sem_Ch13 is
          when Attribute_Read =>
             Analyze_Stream_TSS_Definition (TSS_Stream_Read);
             Set_Has_Specified_Stream_Read (Ent);
+
+         -----------------------
+         -- Relative_Deadline --
+         -----------------------
+
+         when Attribute_Relative_Deadline => Relative_Deadline :
+         begin
+            --  Relative_Deadline attribute definition clause not allowed
+            --  except from aspect specification.
+
+            if From_Aspect_Specification (N) then
+
+               --  Execution_Budget attribute can only be applied to task types
+               --  and variables that are derived from
+               --  Ada.Execution_Server.Execution_Server.
+
+               if not Is_Task_Type (U_Ent)
+                 and then not (Ekind (U_Ent) = E_Variable
+                   and then Is_Tagged_Type (Etype (U_Ent))
+                   and then Is_Ancestor
+                              (RTE (RE_Execution_Server), Etype (U_Ent)))
+               then
+                  Error_Msg_N
+                    ("Relative_Deadline can only be defined for task "
+                     & "types and Execution_Server derived variables", Nam);
+
+               elsif Duplicate_Clause then
+                  null;
+
+               else
+                  --  The expression must be analyzed in the special manner
+                  --  described in "Handling of Default and Per-Object
+                  --  Expressions" in sem.ads.
+
+                  --  The visibility to the discriminants must be restored
+
+                  Push_Scope_And_Install_Discriminants (U_Ent);
+                  Preanalyze_Spec_Expression (Expr, RTE (RE_Time_Span));
+                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
+
+                  if not Is_Static_Expression (Expr) then
+                     Check_Restriction (Static_Priorities, Expr);
+                  end if;
+
+                  --  Check for missing Execution_Server_Object aspect
+
+                  if Is_Tagged_Type (Etype (U_Ent))
+                    and then not Has_Rep_Item (U_Ent,
+                      Name_Execution_Server_Object,
+                      Check_Parents => False)
+                  then
+                     Error_Msg_N
+                       ("missing Execution_Server_Object aspect for "
+                        & "Relative_Deadline", Nam);
+                  end if;
+               end if;
+
+            else
+               Error_Msg_N
+                 ("attribute& cannot be set with definition clause", N);
+            end if;
+         end Relative_Deadline;
 
          --------------------------
          -- Scalar_Storage_Order --
@@ -4643,45 +4860,6 @@ package body Sem_Ch13 is
                Set_RM_Size (U_Ent, Size);
             end if;
          end Value_Size;
-
-         ----------------------
-         -- Timing_Behaviour --
-         ----------------------
-
-         when Attribute_Timing_Behaviour => Timing_Behaviour :
-         begin
-            --  Phase attribute definition clause not allowed except from
-            --  aspect specification.
-
-            if From_Aspect_Specification (N) then
-               if not Is_Task_Type (U_Ent) then
-                  Error_Msg_N
-                    ("Timing_Behaviour can only be defined for task", Nam);
-
-               elsif Duplicate_Clause then
-                  null;
-
-               else
-                  --  The expression must be analyzed in the special manner
-                  --  described in "Handling of Default and Per-Object
-                  --  Expressions" in sem.ads.
-
-                  --  The visibility to the discriminants must be restored
-
-                  Push_Scope_And_Install_Discriminants (U_Ent);
-                  Preanalyze_Spec_Expression (Expr, RTE (RE_Behaviour));
-                  Uninstall_Discriminants_And_Pop_Scope (U_Ent);
-
-                  if not Is_Static_Expression (Expr) then
-                     Check_Restriction (Static_Priorities, Expr);
-                  end if;
-               end if;
-
-            else
-               Error_Msg_N
-                 ("attribute& cannot be set with definition clause", N);
-            end if;
-         end Timing_Behaviour;
 
          -----------------------
          -- Variable_Indexing --
@@ -7815,7 +7993,7 @@ package body Sem_Ch13 is
             T := RTE (RE_Time_Span);
 
          when Aspect_Execution_Server =>
-            T := RTE (RE_Execution_Server);
+            T := Class_Wide_Type (RTE (RE_Execution_Server));
 
          when Aspect_External_Tag =>
             T := Standard_String;
@@ -7853,7 +8031,7 @@ package body Sem_Ch13 is
          when Aspect_Storage_Pool =>
             T := Class_Wide_Type (RTE (RE_Root_Storage_Pool));
 
-         when Aspect_Timing_Behaviour =>
+         when Aspect_Cycle_Behaviour =>
             T := RTE (RE_Behaviour);
 
          when Aspect_Alignment      |

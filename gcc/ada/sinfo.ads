@@ -1175,10 +1175,6 @@ package Sinfo is
    --    declarations if the visibility at instantiation is different from the
    --    visibility at generic definition.
 
-   --  Has_Relative_Deadline_Pragma (Flag9-Sem)
-   --    A flag present in N_Subprogram_Body and N_Task_Definition nodes to
-   --    flag the presence of a pragma Relative_Deadline.
-
    --  Has_Self_Reference (Flag13-Sem)
    --    Present in N_Aggregate and N_Extension_Aggregate. Indicates that one
    --    of the expressions contains an access attribute reference to the
@@ -4763,7 +4759,6 @@ package Sinfo is
       --  Is_Task_Master (Flag5-Sem)
       --  Was_Originally_Stub (Flag13-Sem)
       --  Is_Action_Body (Flag12-Sem)
-      --  Has_Relative_Deadline_Pragma (Flag9-Sem)
       --  Has_Storage_Size_Pragma (Flag18-Sem)
       -------------------------
       -- Expression Function --
@@ -5240,7 +5235,6 @@ package Sinfo is
       --  Private_Declarations (List3) (set to No_List if no private part)
       --  End_Label (Node4)
       --  Has_Storage_Size_Pragma (Flag18-Sem)
-      --  Has_Relative_Deadline_Pragma (Flag9-Sem)
 
       --------------------
       -- 9.1  Task Item --
@@ -8964,9 +8958,6 @@ package Sinfo is
    function Has_Private_View
      (N : Node_Id) return Boolean;    -- Flag11
 
-   function Has_Relative_Deadline_Pragma
-     (N : Node_Id) return Boolean;    -- Flag9
-
    function Has_Self_Reference
      (N : Node_Id) return Boolean;    -- Flag13
 
@@ -9974,9 +9965,6 @@ package Sinfo is
 
    procedure Set_Has_Private_View
      (N : Node_Id; Val : Boolean := True);    -- Flag11
-
-   procedure Set_Has_Relative_Deadline_Pragma
-     (N : Node_Id; Val : Boolean := True);    -- Flag9
 
    procedure Set_Has_Self_Reference
      (N : Node_Id; Val : Boolean := True);    -- Flag13
@@ -12535,7 +12523,6 @@ package Sinfo is
    pragma Inline (Has_No_Elaboration_Code);
    pragma Inline (Has_Pragma_Suppress_All);
    pragma Inline (Has_Private_View);
-   pragma Inline (Has_Relative_Deadline_Pragma);
    pragma Inline (Has_Storage_Size_Pragma);
    pragma Inline (Has_Wide_Character);
    pragma Inline (Has_Wide_Wide_Character);
@@ -12868,7 +12855,6 @@ package Sinfo is
    pragma Inline (Set_Has_No_Elaboration_Code);
    pragma Inline (Set_Has_Pragma_Suppress_All);
    pragma Inline (Set_Has_Private_View);
-   pragma Inline (Set_Has_Relative_Deadline_Pragma);
    pragma Inline (Set_Has_Self_Reference);
    pragma Inline (Set_Has_Storage_Size_Pragma);
    pragma Inline (Set_Has_Wide_Character);

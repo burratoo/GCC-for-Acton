@@ -5467,13 +5467,11 @@ package body Sem_Ch3 is
                          (Subtype_Indication (Type_Definition (New_N))))));
       end if;
 
-      --  Copy Storage_Size and Relative_Deadline variables if task case
+      --  Copy Storage_Size variable if task case
 
       if Is_Task_Type (Parent_Type) then
          Set_Storage_Size_Variable (Derived_Type,
            Storage_Size_Variable (Parent_Type));
-         Set_Relative_Deadline_Variable (Derived_Type,
-           Relative_Deadline_Variable (Parent_Type));
       end if;
 
       if Present (Discriminant_Specifications (N)) then

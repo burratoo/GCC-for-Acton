@@ -15926,6 +15926,7 @@ package body Sem_Prag is
          when Pragma_Relative_Deadline => Relative_Deadline : declare
             P   : constant Node_Id := Parent (N);
             Arg : Node_Id;
+            Ent : Entity_Id;
 
          begin
             Ada_2005_Pragma;
@@ -15942,26 +15943,23 @@ package body Sem_Prag is
             --  Subprogram case
 
             if Nkind (P) = N_Subprogram_Body then
+               Ent := Defining_Unit_Name (Specification (P));
+
                Check_In_Main_Program;
 
             --  Only Task and subprogram cases allowed
 
-            elsif Nkind (P) /= N_Task_Definition then
+            elsif Nkind (P) = N_Task_Definition then
+               Ent := Defining_Identifier (Parent (P));
+            else
                Pragma_Misplaced;
             end if;
 
-            --  Check duplicate pragma before we set the corresponding flag
+            --  Check duplicate pragma before we chain the pragma in the Rep
+            --  Item chain of Ent.
 
-            if Has_Relative_Deadline_Pragma (P) then
-               Error_Pragma ("duplicate pragma% not allowed");
-            end if;
-
-            --  Set Has_Relative_Deadline_Pragma only for tasks. Note that
-            --  Relative_Deadline pragma node cannot be inserted in the Rep
-            --  Item chain of Ent since it is rewritten by the expander as a
-            --  procedure call statement that will break the chain.
-
-            Set_Has_Relative_Deadline_Pragma (P, True);
+            Check_Duplicate_Pragma (Ent);
+            Record_Rep_Item (Ent, N);
          end Relative_Deadline;
 
          ------------------------

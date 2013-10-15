@@ -144,6 +144,10 @@ package Rtsfind is
 
       Ada_Dispatching_EDF,
 
+      --  Children of Ada.Execution_Server
+
+      Ada_Execution_Server_Ops,
+
       --  Children of Ada.Interrupts
 
       Ada_Interrupts_Names,
@@ -427,9 +431,9 @@ package Rtsfind is
       Oak_Atomic_Actions,
       Oak_Indices,
       Oak_Memory,
+      Oak_Message,
       Oak_Oak_Time,
       Oak_Processor_Support_Package,
-      Oak_Protected_Objects,
 
       --  Children of Oak.Agent
 
@@ -474,6 +478,10 @@ package Rtsfind is
    subtype Ada_Dispatching_Child is RTU_Id
      range Ada_Dispatching_EDF .. Ada_Dispatching_EDF;
    --  Range of values for children of Ada.Dispatching
+
+   subtype Ada_Execution_Server_Child is RTU_Id
+     range Ada_Execution_Server_Ops .. Ada_Execution_Server_Ops;
+   --  Range of values for children of Ada.Execution_Server
 
    subtype Ada_Interrupts_Child is Ada_Child range
      Ada_Interrupts_Names .. Ada_Interrupts_Names;
@@ -634,6 +642,8 @@ package Rtsfind is
 
      RE_Set_Deadline,                    -- Ada.Dispatching.EDF
 
+     RE_Scheduler_Agent_Handler,         -- Ada.Execution_Server.Ops
+
      RE_Code_Loc,                        -- Ada.Exceptions
      RE_Current_Target_Exception,        -- Ada.Exceptions (JGNAT use only)
      RE_Exception_Id,                    -- Ada.Exceptions
@@ -655,7 +665,7 @@ package Rtsfind is
      RE_Save_Occurrence,                 -- Ada.Exceptions
      RE_Triggered_By_Abort,              -- Ada.Exceptions
 
-     RE_Execution_Server,                -- Ada.Exectuion_Server
+     RE_Execution_Server,                -- Ada.Execution_Server
 
      RE_Interrupt_ID,                    -- Ada.Interrupts
      RE_Is_Reserved,                     -- Ada.Interrupts
@@ -803,6 +813,7 @@ package Rtsfind is
      RE_Address,                         -- System
      RE_Any_Priority,                    -- System
      RE_Bit_Order,                       -- System
+     RE_Default_Priority,                -- System
      RE_High_Order_First,                -- System
      RE_Interrupt_Priority,              -- System
      RE_Lib_Stop,                        -- System
@@ -1863,6 +1874,8 @@ package Rtsfind is
      RE_Move_Activation_Chain,           -- System_Tasking_Stages
      RE_Terminated,                      -- System.Tasking.Stages
 
+     RE_Scheduler_Agent,                 -- Oak.Agent.Schedulers
+
      RE_Activation_Chain,                -- Oak.Agent.Tasks
      RE_Activation_Chain_Access,         -- Oak.Agent.Tasks
      RE_Initialise_Task_Agent,           -- Oak.Agent.Tasks
@@ -1882,12 +1895,12 @@ package Rtsfind is
      RE_Default_Stack_Size,              -- Oak.Memory.Call_Stack
      RE_Unspecified_Call_Stack_Size,     -- Oak.Memory.Call_Stack
 
+     RE_Protected_Function,              -- Oak.Message
+     RE_Protected_Procedure,             -- Oak.Message
+     RE_Protected_Entry,                 -- Oak.Message
+
      RE_Default_Interrupt_Priority, -- Oak.Processor_Support_Package.Interrupts
      RE_Oak_Interrupt_Id,           -- Oak.Processor_Support_Package.Interrupts
-
-     RE_Protected_Function,              -- Oak.Protected_Objects
-     RE_Protected_Procedure,             -- Oak.Protected_Objects
-     RE_Protected_Entry,                 -- Oak.Protected_Objects
 
      RE_To_Oak_Time,                     -- Oak.Oak_Time.Conversion
      RE_To_Oak_Time_Span,                -- Oak.Oak_Time.Conversion
@@ -1936,6 +1949,8 @@ package Rtsfind is
      RE_Normal                           => Ada_Cyclic_Tasks,
 
      RE_Set_Deadline                     => Ada_Dispatching_EDF,
+
+     RE_Scheduler_Agent_Handler          => Ada_Execution_Server_Ops,
 
      RE_Code_Loc                         => Ada_Exceptions,
      RE_Current_Target_Exception         => Ada_Exceptions, -- of JGNAT
@@ -2106,6 +2121,7 @@ package Rtsfind is
      RE_Address                          => System,
      RE_Any_Priority                     => System,
      RE_Bit_Order                        => System,
+     RE_Default_Priority                 => System,
      RE_High_Order_First                 => System,
      RE_Interrupt_Priority               => System,
      RE_Lib_Stop                         => System,
@@ -3210,6 +3226,8 @@ package Rtsfind is
      RE_Move_Activation_Chain            => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Scheduler_Agent                  => Oak_Agent_Schedulers,
+
      RE_Activation_Chain                 => Oak_Agent_Tasks,
      RE_Activation_Chain_Access          => Oak_Agent_Tasks,
      RE_Initialise_Task_Agent            => Oak_Agent_Tasks,
@@ -3229,14 +3247,14 @@ package Rtsfind is
      RE_Default_Stack_Size               => Oak_Memory_Call_Stack,
      RE_Unspecified_Call_Stack_Size      => Oak_Memory_Call_Stack,
 
+     RE_Protected_Function               => Oak_Message,
+     RE_Protected_Procedure              => Oak_Message,
+     RE_Protected_Entry                  => Oak_Message,
+
      RE_Default_Interrupt_Priority       =>
        Oak_Processor_Support_Package_Interrupts,
      RE_Oak_Interrupt_Id                 =>
        Oak_Processor_Support_Package_Interrupts,
-
-     RE_Protected_Function               => Oak_Protected_Objects,
-     RE_Protected_Procedure              => Oak_Protected_Objects,
-     RE_Protected_Entry                  => Oak_Protected_Objects,
 
      RE_To_Oak_Time                      => Oak_Oak_Time_Conversion,
      RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion,

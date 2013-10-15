@@ -355,6 +355,11 @@ package Exp_Ch9 is
    --  Given the entity of the record type created for a protected type, build
    --  a list of statements needed for proper initialization of the object.
 
+   function Make_Initialise_Execution_Server_Call
+     (Exec_Object : Entity_Id) return Node_Id;
+   --  Given the entity of the execution server variable, build the call to
+   --  Initialise_Execution_Server.
+
    function Next_Protected_Operation (N : Node_Id) return Node_Id;
    --  Given a protected operation node (a subprogram or entry body), find the
    --  following node in the declarations list.
