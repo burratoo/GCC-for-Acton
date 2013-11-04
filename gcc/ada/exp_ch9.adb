@@ -13433,9 +13433,9 @@ package body Exp_Ch9 is
           Object_Definition   => New_Reference_To (RTE (RE_Time_Span), Loc),
           Expression          => Expr));
 
-      --  Add the _Deadline_Response variable and set to No_Response unless there
-      --  is a Deadline_Action aspect, in which case we take the value from the
-      --  aspect.
+      --  Add the _Deadline_Response variable and set to No_Response unless
+      --  there is a Deadline_Action aspect, in which case we take the value
+      --  from the aspect.
 
       if Has_Rep_Item
            (Ttyp, Name_Deadline_Response, Check_Parents => False) then

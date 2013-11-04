@@ -384,10 +384,6 @@ package body Rtsfind is
             Name_Buffer (10) := '.';
          end if;
 
-         if U_Id in Oak_Agent_Tasks_Child then
-            Name_Buffer (16) := '.';
-         end if;
-
          if U_Id in Oak_Memory_Child then
             Name_Buffer (11) := '.';
          end if;
