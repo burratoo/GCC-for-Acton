@@ -437,12 +437,9 @@ package Rtsfind is
 
       --  Children of Oak.Agent
 
+      Oak_Agent_Protected_Objects,
       Oak_Agent_Schedulers,
       Oak_Agent_Tasks,
-
-      --  Children of Oak.Agent.Tasks
-
-      Oak_Agent_Tasks_Protected_Objects,
 
       --  Children of Oak.Memory
 
@@ -563,13 +560,8 @@ package Rtsfind is
    --  Range of values of children of Oak
 
    subtype Oak_Agent_Child is Oak_Child
-      range Oak_Agent_Schedulers .. Oak_Agent_Tasks_Protected_Objects;
+      range Oak_Agent_Protected_Objects .. Oak_Agent_Tasks;
    --  Range of values of children of Oak.Agent
-
-   subtype Oak_Agent_Tasks_Child is Oak_Child
-      range Oak_Agent_Tasks_Protected_Objects ..
-        Oak_Agent_Tasks_Protected_Objects;
-   --  Range of values of children of Oak.Agent.Tasks
 
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
@@ -3226,6 +3218,9 @@ package Rtsfind is
      RE_Move_Activation_Chain            => System_Tasking_Stages,
      RE_Terminated                       => System_Tasking_Stages,
 
+     RE_Initialise_Protected_Agent       => Oak_Agent_Protected_Objects,
+     RE_Protected_Agent                  => Oak_Agent_Protected_Objects,
+
      RE_Scheduler_Agent                  => Oak_Agent_Schedulers,
 
      RE_Activation_Chain                 => Oak_Agent_Tasks,
@@ -3233,9 +3228,6 @@ package Rtsfind is
      RE_Initialise_Task_Agent            => Oak_Agent_Tasks,
      RE_Task_Agent                       => Oak_Agent_Tasks,
      RE_Unspecified_Priority             => Oak_Agent_Tasks,
-
-     RE_Initialise_Protected_Agent       => Oak_Agent_Tasks_Protected_Objects,
-     RE_Protected_Agent                  => Oak_Agent_Tasks_Protected_Objects,
 
      RE_Atomic_Object                    => Oak_Atomic_Actions,
      RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
