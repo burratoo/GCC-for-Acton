@@ -528,20 +528,17 @@ package body Exp_Ch7 is
             pragma Assert (Present (Param));
 
             --  Generate:
-            --    Exit_Protected_Object (_object._object'Unchecked_Access));
+            --    Exit_Protected_Object (_object.protected_agent));
             Append_To (Stmts,
               Make_Procedure_Call_Statement (Loc,
                 Name                   =>
                   New_Reference_To (RTE (RE_Exit_Protected_Object), Loc),
                 Parameter_Associations => New_List (
-                  Make_Attribute_Reference (Loc,
-                    Attribute_Name => Name_Unchecked_Access,
-                    Prefix         =>
-                      Make_Selected_Component (Loc,
-                        Prefix        =>
-                          New_Reference_To (Defining_Identifier (Param), Loc),
-                        Selector_Name =>
-                          Make_Identifier (Loc, Name_uObject))))));
+                  Make_Selected_Component (Loc,
+                    Prefix        =>
+                      New_Reference_To (Defining_Identifier (Param), Loc),
+                    Selector_Name =>
+                      Make_Identifier (Loc, Name_uProtected_Agent)))));
          end;
 
       elsif Is_Action_Bod then

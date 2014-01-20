@@ -978,7 +978,7 @@ package body Exp_Ch9 is
                 Defining_Identifier => Chain,
                 Aliased_Present     => True,
                 Object_Definition   =>
-                  New_Reference_To (RTE (RE_Activation_Chain), Loc));
+                  New_Reference_To (RTE (RE_Task_List), Loc));
 
             Prepend_To (Decls, Decl);
 
@@ -3841,12 +3841,9 @@ package body Exp_Ch9 is
             Statements => New_List (Unprot_Call)));
 
       Object_Parm :=
-        Make_Attribute_Reference (Loc,
-          Attribute_Name => Name_Unchecked_Access,
-          Prefix         =>
-            Make_Selected_Component (Loc,
-              Prefix        => Make_Identifier (Loc, Name_uObject),
-              Selector_Name => Make_Identifier (Loc, Name_uObject)));
+        Make_Selected_Component (Loc,
+          Prefix        => Make_Identifier (Loc, Name_uObject),
+          Selector_Name => Make_Identifier (Loc, Name_uProtected_Agent));
 
       --  Build call to Enter_Protected_Object.
 
@@ -4167,12 +4164,9 @@ package body Exp_Ch9 is
       end if;
 
       Object_Parm :=
-        Make_Attribute_Reference (Loc,
-          Attribute_Name => Name_Unchecked_Access,
-          Prefix         =>
-            Make_Selected_Component (Loc,
-              Prefix        => Make_Identifier (Loc, Name_uObject),
-              Selector_Name => Make_Identifier (Loc, Name_uObject)));
+        Make_Selected_Component (Loc,
+          Prefix        => Make_Identifier (Loc, Name_uObject),
+          Selector_Name => Make_Identifier (Loc, Name_uProtected_Agent));
 
       --  Build call to Enter_Protected_Object
 
@@ -4493,9 +4487,7 @@ package body Exp_Ch9 is
            Make_Procedure_Call_Statement (Loc,
              Name => Name,
              Parameter_Associations =>
-               New_List (Make_Attribute_Reference (Loc,
-                 Prefix         => New_Occurrence_Of (Chain, Loc),
-                 Attribute_Name => Name_Unchecked_Access)));
+               New_List (New_Occurrence_Of (Chain, Loc)));
 
          if Nkind (N) = N_Package_Declaration then
             if Present (Corresponding_Body (N)) then
@@ -4591,7 +4583,7 @@ package body Exp_Ch9 is
               Defining_Identifier => Chain,
               Aliased_Present     => True,
               Object_Definition   =>
-                New_Reference_To (RTE (RE_Activation_Chain), Loc))),
+                New_Reference_To (RTE (RE_Task_List), Loc))),
 
           Handled_Statement_Sequence =>
             Make_Handled_Sequence_Of_Statements (Loc,
@@ -4609,9 +4601,7 @@ package body Exp_Ch9 is
                 Make_Procedure_Call_Statement (Loc,
                   Name => New_Reference_To (RTE (RE_Activate_Tasks), Loc),
                   Parameter_Associations => New_List (
-                    Make_Attribute_Reference (Loc,
-                      Prefix         => New_Reference_To (Chain, Loc),
-                      Attribute_Name => Name_Unchecked_Access))))),
+                    New_Reference_To (Chain, Loc))))),
 
           Has_Created_Identifier => True,
           Is_Task_Allocation_Block => True);
@@ -4646,9 +4636,7 @@ package body Exp_Ch9 is
         Make_Procedure_Call_Statement (Loc,
           Name => New_Reference_To (RTE (RE_Activate_Tasks), Loc),
           Parameter_Associations => New_List (
-            Make_Attribute_Reference (Loc,
-              Prefix         => New_Reference_To (Chain, Loc),
-              Attribute_Name => Name_Unchecked_Access))));
+            New_Reference_To (Chain, Loc))));
 
       Block :=
         Make_Block_Statement (Loc,
@@ -4661,7 +4649,7 @@ package body Exp_Ch9 is
               Defining_Identifier => Chain,
               Aliased_Present => True,
               Object_Definition   =>
-                New_Reference_To (RTE (RE_Activation_Chain), Loc))),
+                New_Reference_To (RTE (RE_Task_List), Loc))),
 
           Handled_Statement_Sequence =>
             Make_Handled_Sequence_Of_Statements (Loc, Init_Stmts),
@@ -4944,21 +4932,21 @@ package body Exp_Ch9 is
    --  The expression returned for a reference to a concurrent object has the
    --  form:
 
-   --    taskV!(name)._Task_Handler
+   --    taskV!(name)._Task_Agent
 
    --  for a task, and
 
-   --    objectV!(name)._Object
+   --    objectV!(name)._Protected_Agent
 
    --  for a protected object. For the case of an access to a concurrent
    --  object, there is an extra explicit dereference:
 
-   --    taskV!(name.all)._Task_Handler
-   --    objectV!(name.all)._Object
+   --    taskV!(name.all)._Task_Agent
+   --    objectV!(name.all)._Protected_Agent
 
    --  here taskV and objectV are the types for the associated records, which
-   --  contain the required _Task_Handler and _Object fields for tasks and
-   --  protected objects, respectively.
+   --  contain the required _Task_Agent and _Protected_Agent fields for tasks
+   --  and protected objects, respectively.
 
    --  For the case of a task type name, the expression is
 
@@ -5029,9 +5017,9 @@ package body Exp_Ch9 is
          Dtyp := Designated_Type (Ntyp);
 
          if Is_Protected_Type (Dtyp) then
-            Sel := Name_uObject;
+            Sel := Name_uProtected_Agent;
          else
-            Sel := Name_uTask_Handler;
+            Sel := Name_uTask_Agent;
          end if;
 
          return
@@ -5081,10 +5069,10 @@ package body Exp_Ch9 is
 
       else
          if Is_Protected_Type (Ntyp) then
-            Sel := Name_uObject;
+            Sel := Name_uProtected_Agent;
 
          elsif Is_Task_Type (Ntyp) then
-            Sel := Name_uTask_Handler;
+            Sel := Name_uTask_Agent;
 
          else
             raise Program_Error;
@@ -7825,11 +7813,11 @@ package body Exp_Ch9 is
    --     procedure _finalizer is
    --     begin
    --       poREB (_object);
-   --       Exit_Protected_Object (_object._object);
+   --       Exit_Protected_Object (_object._protected_agent);
    --     end _finalizer;
 
    --  begin
-   --     Enter_Protected_Object (_object._object, As => Procedure);
+   --     Enter_Protected_Object (_object._protected_agent, As => Procedure);
    --     pprocN (_object;...);
    --  at end
    --     _finalizer;
@@ -7845,11 +7833,11 @@ package body Exp_Ch9 is
    --  function pfuncP (_object : poV) return Return_Type is
    --     procedure _finalizer is
    --     begin
-   --        Exit_Protected_Object (_object._object);
+   --        Exit_Protected_Object (_object._protected_agent);
    --     end _clean;
 
    --  begin
-   --     Enter_Protected_Object (_object._object, As => Function);
+   --     Enter_Protected_Object (_object._protected_agent, As => Function);
    --     return pfuncN (_object);
 
    --  at end
@@ -7867,11 +7855,11 @@ package body Exp_Ch9 is
    --     procedure _finalizer is
    --     begin
    --       poREB (_object);
-   --       Exit_Protected_Object (_object._object);
+   --       Exit_Protected_Object (_object._protected_agent);
    --     end _finalizer;
 
    --  begin
-   --     Enter_Protected_Object (_object._object,
+   --     Enter_Protected_Object (_object._protected_agent,
    --                             As       => Entry,
    --                             Entry_Id => Entry_Id);
    --     entN (_object;...);
@@ -8250,7 +8238,7 @@ package body Exp_Ch9 is
       Body_Id      : Entity_Id;
       Body_Arr     : Node_Id;
       E_Count      : Int;
-      Object_Comp  : Node_Id;
+      Agent_Comp   : Node_Id;
 
       procedure Check_Inlining (Subp : Entity_Id);
       --  If the original operation has a pragma Inline, propagate the flag
@@ -8410,22 +8398,20 @@ package body Exp_Ch9 is
       --  object.
 
       if not Lock_Free_Active then
-         Object_Comp :=
+         Agent_Comp :=
            Make_Component_Declaration (Loc,
              Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uAgent_Handler),
+               Make_Defining_Identifier (Loc, Name_uProtected_Agent),
              Component_Definition =>
                Make_Component_Definition (Loc,
-                 Aliased_Present   => True,
-                 Access_Definition =>
-                   Make_Access_Definition (Loc,
-                     Subtype_Mark =>
-                       New_Reference_To (RTE (RE_Protected_Agent), Loc))));
+                 Aliased_Present   => False,
+                 Subtype_Indication =>
+                    New_Reference_To (RTE (RE_Protected_Id), Loc)));
 
-         --  Put the _Object component after the private component so that it
-         --  be finalized early as required by 9.4 (20)
+         --  Put the _Protected_Agent component after the private component so
+         --  that it be finalized early as required by 9.4 (20)
 
-         Append_To (Cdecls, Object_Comp);
+         Append_To (Cdecls, Agent_Comp);
       end if;
 
       --  Add components for entry families. For each entry family, create an
@@ -8538,44 +8524,6 @@ package body Exp_Ch9 is
 
             Next (Priv);
          end loop;
-      end if;
-
-      --  Except for the lock-free implementation, prepend the _Object field
-      --  with the right type to the component list. We need to compute the
-      --  number of entries, and in some cases the number of Attach_Handler
-      --  pragmas.
-
-      if not Lock_Free_Active then
-         declare
-            Protection_Subtype : Node_Id;
-            Entry_Count_Expr   : constant Node_Id :=
-                                   Build_Entry_Count_Expression
-                                     (Prot_Typ, Cdecls, Loc);
-
-         begin
-            Protection_Subtype :=
-              Make_Subtype_Indication (Loc,
-                Subtype_Mark =>
-                  New_Reference_To (RTE (RE_Protected_Agent), Loc),
-                Constraint   =>
-                  Make_Index_Or_Discriminant_Constraint (
-                    Sloc        => Loc,
-                    Constraints => New_List (Entry_Count_Expr)));
-
-            Object_Comp :=
-              Make_Component_Declaration (Loc,
-                Defining_Identifier =>
-                  Make_Defining_Identifier (Loc, Name_uObject),
-                Component_Definition =>
-                  Make_Component_Definition (Loc,
-                    Aliased_Present    => True,
-                    Subtype_Indication => Protection_Subtype));
-         end;
-
-         --  Put the _Object component after the private component so that it
-         --  be finalized early as required by 9.4 (20)
-
-         Append_To (Cdecls, Object_Comp);
       end if;
 
       Insert_After (Current_Node, Rec_Decl);
@@ -10757,7 +10705,7 @@ package body Exp_Ch9 is
    --  values of this task. The general form of this type declaration is
 
    --    type taskV (discriminants) is record
-   --      _OTCR               : Task_Agent;
+   --      _Task_Agent         : Oak.Agent.Task_Id;
    --      entry_family        : array (bounds) of Void;
    --      _Priority           : Integer         := priority_expression;
    --      _Size               : Storage_Count
@@ -10937,32 +10885,12 @@ package body Exp_Ch9 is
       Append_To (Cdecls,
         Make_Component_Declaration (Loc,
           Defining_Identifier  =>
-            Make_Defining_Identifier (Loc, Name_uTask_Handler),
+            Make_Defining_Identifier (Loc, Name_uTask_Agent),
           Component_Definition =>
             Make_Component_Definition (Loc,
-              Aliased_Present   => False,
-              Access_Definition =>
-                Make_Access_Definition (Loc,
-                  Subtype_Mark  =>
-                    Make_Attribute_Reference (Loc,
-                      Prefix         =>
-                        New_Reference_To (RTE (RE_Task_Agent), Loc),
-                      Attribute_Name => Name_Class)))));
-
-      --  Declare static OTCR (that is, created by the expander)
-      --  TODO: We should only do this for the Restricted run time. Otherwise
-      --  we should create the OTCR on the heap.
-
-      Append_To (Cdecls,
-        Make_Component_Declaration (Loc,
-          Defining_Identifier  =>
-            Make_Defining_Identifier (Loc, Name_uOTCR),
-
-          Component_Definition =>
-            Make_Component_Definition (Loc,
-              Aliased_Present     => True,
-              Subtype_Indication  =>
-                New_Reference_To (RTE (RE_Task_Agent), Loc))));
+              Aliased_Present    => False,
+              Subtype_Indication =>
+                New_Reference_To (RTE (RE_Task_Id), Loc))));
 
       --  Declare static stack (that is, created by the expander) if we are
       --  using the Restricted run time on a bare board configuration.
@@ -12336,10 +12264,10 @@ package body Exp_Ch9 is
          begin
             Set_Protection_Object (Spec_Id, Prot_Ent);
 
-            Prot_Typ := RE_Protected_Agent;
+            Prot_Typ := RE_Protected_Id;
 
             --  Generate:
-            --    conc_typR : protection_typ renames _object._object;
+            --    conc_typR : protection_typ renames _object._protected_agent;
 
             Decl :=
               Make_Object_Renaming_Declaration (Loc,
@@ -12349,7 +12277,8 @@ package body Exp_Ch9 is
                 Name =>
                   Make_Selected_Component (Loc,
                     Prefix        => New_Reference_To (Obj_Ent, Loc),
-                    Selector_Name => Make_Identifier (Loc, Name_uObject)));
+                  Selector_Name =>
+                    Make_Identifier (Loc, Name_uProtected_Agent)));
             Add (Decl);
          end;
       end if;
@@ -12774,23 +12703,6 @@ package body Exp_Ch9 is
          Next (Pdec);
       end loop;
 
-      --  First up the agent handler component of the protected object is
-      --  set to the protected object's protected agent.
-
-      Append_To (L,
-        Make_Assignment_Statement (Loc,
-          Name         =>
-            Make_Selected_Component (Loc,
-              Prefix        => Make_Identifier (Loc, Name_uInit),
-              Selector_Name => Make_Identifier (Loc, Name_uAgent_Handler)),
-            Expression =>
-              Make_Attribute_Reference (Loc,
-                Prefix          =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => Make_Identifier (Loc, Name_uInit),
-                    Selector_Name => Make_Identifier (Loc, Name_uObject)),
-                 Attribute_Name => Name_Unchecked_Access)));
-
       --  Build the parameter list for the call. Note that _Init is the name
       --  of the formal for the object to be initialized, which is the task
       --  value record itself.
@@ -12801,16 +12713,14 @@ package body Exp_Ch9 is
       --  object.
 
       if not Uses_Lock_Free (Defining_Identifier (Pdec)) then
-         --  Object parameter. This is the Agent that is used by Oak to control
-         --  the protected object.
+         --  Protected Agent parameter. This is the Agent that is used by Oak
+         --  to control the protected object.
 
          Append_To (Args,
-           Make_Attribute_Reference (Loc,
-             Prefix =>
-               Make_Selected_Component (Loc,
-                 Prefix        => Make_Identifier (Loc, Name_uInit),
-                 Selector_Name => Make_Identifier (Loc, Name_uObject)),
-             Attribute_Name => Name_Unchecked_Access));
+           Make_Selected_Component (Loc,
+             Prefix        => Make_Identifier (Loc, Name_uInit),
+             Selector_Name =>
+               Make_Identifier (Loc, Name_uProtected_Agent)));
 
          --  Name parameter. Since protected objects are are agents they have
          --  can have names attached to them.
@@ -12923,7 +12833,7 @@ package body Exp_Ch9 is
                 Prefix =>
                   New_Reference_To (Barrier_Service_Function
                     (Defining_Identifier (Pdec)), Loc),
-                Attribute_Name => Name_Unrestricted_Access));
+                Attribute_Name => Name_Address));
          else
             Append_To (Args,
               Make_Null (Loc));
@@ -12931,8 +12841,9 @@ package body Exp_Ch9 is
       end if;
 
       --  Object Record Parameter. The address of the protected object's record
-      --  to enable it to be referenced from the protected object's OTCR.
+      --  to enable it to be referenced from the protected object's agent.
       --  Currently used for calling an entry's barrier function.
+
       Append_To (Args,
         Make_Attribute_Reference (Loc,
           Prefix         => Make_Identifier (Loc, Name_uInit),
@@ -12941,7 +12852,7 @@ package body Exp_Ch9 is
       Append_To (L,
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
-            New_Reference_To (RTE (RE_Initialise_Protected_Agent), Loc),
+            New_Reference_To (RTE (RE_New_Protected_Agent), Loc),
           Parameter_Associations => Args));
 
       if Has_Attach_Handler (Ptyp) then
@@ -12975,7 +12886,7 @@ package body Exp_Ch9 is
                      Append_To (Table,
                        Make_Aggregate (Loc, Expressions => New_List (
                          Unchecked_Convert_To
-                          (RTE (RE_Oak_Interrupt_Id), Expr),
+                          (RTE (RE_External_Interrupt_Id), Expr),
                          Make_Attribute_Reference (Loc,
                            Prefix => Make_Selected_Component (Loc,
                               Make_Identifier (Loc, Name_uInit),
@@ -12993,15 +12904,13 @@ package body Exp_Ch9 is
             Append_To (Args, Make_Aggregate (Loc, Table));
 
             --  Append the Attach_Handlers call to the statements.
-            --  First, prepends the _object argument
+            --  First, prepends the _protected_agent argument
 
             Prepend_To (Args,
-              Make_Attribute_Reference (Loc,
-               Prefix =>
-                Make_Selected_Component (Loc,
-                  Prefix        => Make_Identifier (Loc, Name_uInit),
-                  Selector_Name => Make_Identifier (Loc, Name_uObject)),
-               Attribute_Name => Name_Unchecked_Access));
+              Make_Selected_Component (Loc,
+                Prefix        => Make_Identifier (Loc, Name_uInit),
+                Selector_Name =>
+                  Make_Identifier (Loc, Name_uProtected_Agent)));
 
             --  Then, insert call to Install_Handlers
 
@@ -13065,7 +12974,7 @@ package body Exp_Ch9 is
          Make_Selected_Component (Loc,
            Prefix        => Make_Identifier (Loc, Name_uInit),
            Selector_Name => Make_Identifier (
-                              Loc, Name_uTask_Handler)));
+                              Loc, Name_uTask_Agent)));
 
       --  If the stack has been preallocated by the expander then
       --  pass its address. Otherwise, pass a null address.
@@ -13229,9 +13138,12 @@ package body Exp_Ch9 is
       Append_To (Args,
         Make_Attribute_Reference (Loc,
           Prefix => Make_Identifier (Loc, New_External_Name (Tnam, 'E')),
-          Attribute_Name => Name_Unchecked_Access));
+          Attribute_Name => Name_Address));
 
-      Name := New_Reference_To (RTE (RE_Initialise_Task_Agent), Loc);
+      --  Note that this should be changed to a run-time call that sends an
+      --  Oak Message to the kernel to allocate and set up a new task.
+
+      Name := New_Reference_To (RTE (RE_New_Task_Agent), Loc);
 
       return
         Make_Procedure_Call_Statement (Loc,
@@ -13489,7 +13401,8 @@ package body Exp_Ch9 is
       then
          Expr :=
            Make_Function_Call (Loc,
-             Name => New_Occurrence_Of (RTE (RE_Scheduler_Agent_Handler), Loc),
+             Name => New_Occurrence_Of
+               (RTE (RE_Scheduler_Id_For_Server), Loc),
              Parameter_Associations =>
                New_List (
                  Expression
@@ -13497,7 +13410,7 @@ package body Exp_Ch9 is
                      (Ttyp, Name_Execution_Server, Check_Parents => False))));
 
       else
-         Expr := Make_Null (Loc);
+         Expr := New_Reference_To (RTE (RE_No_Agent), Loc);
       end if;
 
       Append_To (Decls,
@@ -13505,19 +13418,18 @@ package body Exp_Ch9 is
           Defining_Identifier =>
             Make_Defining_Identifier (Loc, Name_uScheduler_Agent),
           Constant_Present    => True,
-          Object_Definition   => Make_Access_Definition (Loc,
-            Subtype_Mark      => New_Reference_To
-                                   (RTE (RE_Scheduler_Agent), Loc)),
+          Object_Definition   => New_Reference_To
+                                   (RTE (RE_Scheduler_Id), Loc),
           Expression          => Expr));
 
       return Decls;
    end Make_Task_Init_Declarations;
 
-   -------------------------------------------
-   -- Make_Initialise_Execution_Server_Call --
-   -------------------------------------------
+   ------------------------------------
+   -- Make_New_Execution_Server_Call --
+   ------------------------------------
 
-   function Make_Initialise_Execution_Server_Call
+   function Make_New_Execution_Server_Call
      (Exec_Object : Entity_Id) return Node_Id
    is
       Loc    : constant Source_Ptr := Sloc (Exec_Object);
@@ -13620,10 +13532,10 @@ package body Exp_Ch9 is
            Name                  =>
              New_Reference_To
                (Find_Prim_Op
-                 (Etype (Exec_Object), Name_Initialise_Execution_Server),
+                 (Etype (Exec_Object), Name_Add_Execution_Server),
                 Loc),
            Parameter_Associations => Args);
-   end Make_Initialise_Execution_Server_Call;
+   end Make_New_Execution_Server_Call;
 
    ------------------------------
    -- Next_Protected_Operation --

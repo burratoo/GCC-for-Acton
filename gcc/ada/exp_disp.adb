@@ -2391,7 +2391,7 @@ package body Exp_Disp is
 
             --  Generate:
             --    Task_Entry_Call
-            --      (T._Agent_Handler,                --  Acceptor
+            --      (T._Task_Agent,          --  Acceptor
             --       Task_Entry_Index! (I),  --  E
             --       P,                      --  Uninterpreted_Data
             --       Asynchronous_Call,      --  Mode
@@ -2409,7 +2409,7 @@ package body Exp_Disp is
                     Make_Selected_Component (Loc,         -- T._Agent_Handler
                       Prefix        => Make_Identifier (Loc, Name_uT),
                       Selector_Name =>
-                        Make_Identifier (Loc, Name_uAgent_Handler)),
+                        Make_Identifier (Loc, Name_uTask_Agent)),
 
                     Make_Unchecked_Type_Conversion (Loc,  --  entry index
                       Subtype_Mark =>
@@ -2773,7 +2773,7 @@ package body Exp_Disp is
 
             --  Generate:
             --    Task_Entry_Call
-            --      (T._Agent_Handler,                --  Acceptor
+            --      (T._Task_Agent,          --  Acceptor
             --       Task_Entry_Index! (I),  --  E
             --       P,                      --  Uninterpreted_Data
             --       Conditional_Call,       --  Mode
@@ -2792,7 +2792,7 @@ package body Exp_Disp is
                     Make_Selected_Component (Loc,         -- T._Agent_Handler
                       Prefix        => Make_Identifier (Loc, Name_uT),
                       Selector_Name =>
-                        Make_Identifier (Loc, Name_uAgent_Handler)),
+                        Make_Identifier (Loc, Name_uTask_Agent)),
 
                     Make_Unchecked_Type_Conversion (Loc,  --  entry index
                       Subtype_Mark =>
@@ -3022,7 +3022,7 @@ package body Exp_Disp is
         and then Ekind (Corresponding_Concurrent_Type (Typ)) = E_Task_Type
       then
          --  Generate:
-         --    return To_Address (_T._Agent_Handler);
+         --    return To_Address (_T._Task_Agent);
 
          Ret :=
            Make_Simple_Return_Statement (Loc,
@@ -3034,7 +3034,7 @@ package body Exp_Disp is
                    Make_Selected_Component (Loc,
                      Prefix        => Make_Identifier (Loc, Name_uT),
                      Selector_Name =>
-                       Make_Identifier (Loc, Name_uAgent_Handler))));
+                       Make_Identifier (Loc, Name_uTask_Agent))));
 
       --  A null body is constructed for non-task types
 
@@ -3218,12 +3218,12 @@ package body Exp_Disp is
          --    if F then
          --       System.Tasking.Rendezvous.Requeue_Protected_To_Task_Entry
          --         (Protection_Entries_Access (P),
-         --          O._Agent_Handler,
+         --          O._Task_Agent,
          --          Task_Entry_Index (I),
          --          A);
          --    else
          --       System.Tasking.Rendezvous.Requeue_Task_Entry
-         --         (O._Agent_Handler,
+         --         (O._Task_Agent,
          --          Task_Entry_Index (I),
          --          A);
          --    end if;
@@ -3252,7 +3252,7 @@ package body Exp_Disp is
                    Make_Selected_Component (Loc,         -- O._Agent_Handler
                      Prefix        => Make_Identifier (Loc, Name_uO),
                      Selector_Name => Make_Identifier
-                       (Loc, Name_uAgent_Handler)),
+                       (Loc, Name_uTask_Agent)),
 
                    Make_Unchecked_Type_Conversion (Loc,  -- entry index
                      Subtype_Mark =>
@@ -3270,10 +3270,10 @@ package body Exp_Disp is
 
                  Parameter_Associations => New_List (
 
-                   Make_Selected_Component (Loc,         -- O._Agent_Handler
+                   Make_Selected_Component (Loc,         -- O._Task_Agent
                      Prefix        => Make_Identifier (Loc, Name_uO),
                      Selector_Name => Make_Identifier
-                       (Loc, Name_uAgent_Handler)),
+                       (Loc, Name_uTask_Agent)),
 
                    Make_Unchecked_Type_Conversion (Loc,  -- entry index
                      Subtype_Mark =>
@@ -3607,7 +3607,7 @@ package body Exp_Disp is
 
             --  Generate:
             --    Timed_Task_Entry_Call (
-            --      T._Agent_Handler,
+            --      T._Task_Agent,
             --      Task_Entry_Index! (I),
             --      P,
             --      D,
@@ -3625,10 +3625,10 @@ package body Exp_Disp is
                 Parameter_Associations =>
                   New_List (
 
-                    Make_Selected_Component (Loc,         --  T._Agent_Handler
+                    Make_Selected_Component (Loc,         --  T._Task_Agent
                       Prefix        => Make_Identifier (Loc, Name_uT),
                       Selector_Name =>
-                        Make_Identifier (Loc, Name_uAgent_Handler)),
+                        Make_Identifier (Loc, Name_uTask_Agent)),
 
                     Make_Unchecked_Type_Conversion (Loc,  --  entry index
                       Subtype_Mark =>
