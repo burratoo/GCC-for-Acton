@@ -12903,15 +12903,6 @@ package body Exp_Ch9 is
 
             Append_To (Args, Make_Aggregate (Loc, Table));
 
-            --  Append the Attach_Handlers call to the statements.
-            --  First, prepends the _protected_agent argument
-
-            Prepend_To (Args,
-              Make_Selected_Component (Loc,
-                Prefix        => Make_Identifier (Loc, Name_uInit),
-                Selector_Name =>
-                  Make_Identifier (Loc, Name_uProtected_Agent)));
-
             --  Then, insert call to Install_Handlers
 
             Append_To (L,

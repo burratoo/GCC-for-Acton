@@ -111,6 +111,7 @@ package Aspects is
       Aspect_Invariant,                     -- GNAT
       Aspect_Iterator_Element,
       Aspect_Link_Name,
+      Aspect_Linker_Section,                -- GANT
       Aspect_Machine_Radix,
       Aspect_No_End_Barrier,                -- Acton
       Aspect_No_Start_Barrier,              -- Acton
@@ -346,6 +347,7 @@ package Aspects is
       Aspect_Invariant               => Expression,
       Aspect_Iterator_Element        => Name,
       Aspect_Link_Name               => Expression,
+      Aspect_Linker_Section          => Expression,
       Aspect_Machine_Radix           => Expression,
       Aspect_No_End_Barrier          => Optional,
       Aspect_No_Start_Barrier        => Optional,
@@ -445,6 +447,7 @@ package Aspects is
       Aspect_Invariant                    => Name_Invariant,
       Aspect_Iterator_Element             => Name_Iterator_Element,
       Aspect_Link_Name                    => Name_Link_Name,
+      Aspect_Linker_Section               => Name_Linker_Section,
       Aspect_Lock_Free                    => Name_Lock_Free,
       Aspect_Machine_Radix                => Name_Machine_Radix,
       Aspect_No_End_Barrier               => Name_No_End_Barrier,

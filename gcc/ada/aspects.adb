@@ -385,6 +385,7 @@ package body Aspects is
     Aspect_Invariant                    => Aspect_Invariant,
     Aspect_Iterator_Element             => Aspect_Iterator_Element,
     Aspect_Link_Name                    => Aspect_Link_Name,
+    Aspect_Linker_Section               => Aspect_Linker_Section,
     Aspect_Lock_Free                    => Aspect_Lock_Free,
     Aspect_Machine_Radix                => Aspect_Machine_Radix,
     Aspect_No_End_Barrier               => Aspect_No_End_Barrier,

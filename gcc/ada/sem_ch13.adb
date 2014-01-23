@@ -1527,6 +1527,17 @@ package body Sem_Ch13 is
                      Ensure_Freeze_Node (Full_View (E));
                   end if;
 
+               --  Linker Section
+
+               when Aspect_Linker_Section =>
+                  Make_Aitem_Pragma
+                    (Pragma_Argument_Associations => New_List (
+                       Make_Pragma_Argument_Association (Loc,
+                         Expression => New_Occurrence_Of (E, Loc)),
+                       Make_Pragma_Argument_Association (Sloc (Expr),
+                         Expression => Relocate_Node (Expr))),
+                     Pragma_Name                  => Name_Linker_Section);
+
                --  Case 2b: Aspects corresponding to pragmas with two
                --  arguments, where the second argument is a local name
                --  referring to the entity, and the first argument is the
@@ -8011,6 +8022,9 @@ package body Sem_Ch13 is
             return;
 
          when Aspect_Link_Name =>
+            T := Standard_String;
+
+         when Aspect_Linker_Section =>
             T := Standard_String;
 
          when Aspect_Priority | Aspect_Interrupt_Priority =>
