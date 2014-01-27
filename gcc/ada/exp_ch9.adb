@@ -978,7 +978,9 @@ package body Exp_Ch9 is
                 Defining_Identifier => Chain,
                 Aliased_Present     => True,
                 Object_Definition   =>
-                  New_Reference_To (RTE (RE_Task_List), Loc));
+                  New_Reference_To (RTE (RE_Task_List), Loc),
+                Expression          =>
+                  New_Reference_To (RTE (RE_No_Agent), Loc));
 
             Prepend_To (Decls, Decl);
 
@@ -13410,7 +13412,7 @@ package body Exp_Ch9 is
             Make_Defining_Identifier (Loc, Name_uScheduler_Agent),
           Constant_Present    => True,
           Object_Definition   => New_Reference_To
-                                   (RTE (RE_Scheduler_Id), Loc),
+                                   (RTE (RE_Scheduler_Id_With_No), Loc),
           Expression          => Expr));
 
       return Decls;

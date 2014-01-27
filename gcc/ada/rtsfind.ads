@@ -1866,7 +1866,7 @@ package Rtsfind is
      RE_No_Agent,                        -- Oak.Agent
      RE_Oak_Agent_Id,                    -- Oak.Agent
      RE_Protected_Id,                    -- Oak.Agent
-     RE_Scheduler_Id,                    -- Oak.Agent
+     RE_Scheduler_Id_With_No,            -- Oak.Agent
      RE_Task_Id,                         -- Oak.Agent
      RE_Task_List,                       -- Oak.Agent
 
@@ -3218,7 +3218,7 @@ package Rtsfind is
      RE_No_Agent                         => Oak_Agent,
      RE_Oak_Agent_Id                     => Oak_Agent,
      RE_Protected_Id                     => Oak_Agent,
-     RE_Scheduler_Id                     => Oak_Agent,
+     RE_Scheduler_Id_With_No             => Oak_Agent,
      RE_Task_Id                          => Oak_Agent,
      RE_Task_List                        => Oak_Agent,
 
