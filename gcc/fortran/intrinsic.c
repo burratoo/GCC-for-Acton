@@ -1,6 +1,6 @@
 /* Build up a list of intrinsic subroutines and functions for the
    name-resolution stage.
-   Copyright (C) 2000-2013 Free Software Foundation, Inc.
+   Copyright (C) 2000-2014 Free Software Foundation, Inc.
    Contributed by Andy Vaught & Katherine Holcomb
 
 This file is part of GCC.
@@ -4395,6 +4395,13 @@ gfc_intrinsic_sub_interface (gfc_code *c, int error_flag)
     {
       c->resolved_sym = gfc_get_intrinsic_sub_symbol (isym->lib_name);
       c->resolved_sym->attr.elemental = isym->elemental;
+    }
+
+  if (gfc_do_concurrent_flag && !isym->pure)
+    {
+      gfc_error ("Subroutine call to intrinsic '%s' in DO CONCURRENT "
+		 "block at %L is not PURE", name, &c->loc);
+      return MATCH_ERROR;
     }
 
   if (gfc_pure (NULL) && !isym->pure)

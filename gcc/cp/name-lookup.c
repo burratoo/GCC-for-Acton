@@ -1,5 +1,5 @@
 /* Definitions for C++ name lookup routines.
-   Copyright (C) 2003-2013 Free Software Foundation, Inc.
+   Copyright (C) 2003-2014 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -24,6 +24,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "flags.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "print-tree.h"
+#include "attribs.h"
 #include "cp-tree.h"
 #include "name-lookup.h"
 #include "timevar.h"
@@ -392,6 +395,17 @@ pop_binding (tree id, tree decl)
     }
 }
 
+/* Remove the bindings for the decls of the current level and leave
+   the current scope.  */
+
+void
+pop_bindings_and_leave_scope (void)
+{
+  for (tree t = getdecls (); t; t = DECL_CHAIN (t))
+    pop_binding (DECL_NAME (t), t);
+  leave_scope ();
+}
+
 /* Strip non dependent using declarations.  */
 
 tree
@@ -597,7 +611,9 @@ add_decl_to_level (tree decl, cp_binding_level *b)
 	if ((VAR_P (decl)
 	     && (TREE_STATIC (decl) || DECL_EXTERNAL (decl)))
 	    || (TREE_CODE (decl) == FUNCTION_DECL
-		&& (!TREE_PUBLIC (decl) || DECL_DECLARED_INLINE_P (decl))))
+		&& (!TREE_PUBLIC (decl)
+		    || decl_anon_ns_mem_p (decl)
+		    || DECL_DECLARED_INLINE_P (decl))))
 	  vec_safe_push (b->static_decls, decl);
     }
 }
@@ -1488,7 +1504,8 @@ push_binding_level (cp_binding_level *scope)
     {
       scope->binding_depth = binding_depth;
       indent (binding_depth);
-      cp_binding_level_debug (scope, input_line, "push");
+      cp_binding_level_debug (scope, LOCATION_LINE (input_location),
+			      "push");
       binding_depth++;
     }
 }
@@ -1574,7 +1591,8 @@ leave_scope (void)
   if (ENABLE_SCOPE_CHECKING)
     {
       indent (--binding_depth);
-      cp_binding_level_debug (scope, input_line, "leave");
+      cp_binding_level_debug (scope, LOCATION_LINE (input_location),
+			      "leave");
     }
 
   /* Move one nesting level up.  */
@@ -1623,7 +1641,7 @@ resume_scope (cp_binding_level* b)
     {
       b->binding_depth = binding_depth;
       indent (binding_depth);
-      cp_binding_level_debug (b, input_line, "resume");
+      cp_binding_level_debug (b, LOCATION_LINE (input_location), "resume");
       binding_depth++;
     }
 }
@@ -2254,6 +2272,27 @@ pushdecl_with_scope (tree x, cp_binding_level *level, bool is_friend)
   return ret;
 }
 
+/* Helper function for push_overloaded_decl_1 and do_nonmember_using_decl.
+   Compares the parameter-type-lists of DECL1 and DECL2 and returns false
+   if they are different.  If the DECLs are template functions, the return
+   types and the template parameter lists are compared too (DR 565).  */
+
+static bool
+compparms_for_decl_and_using_decl (tree decl1, tree decl2)
+{
+  if (!compparms (TYPE_ARG_TYPES (TREE_TYPE (decl1)),
+		  TYPE_ARG_TYPES (TREE_TYPE (decl2))))
+    return false;
+
+  if (! DECL_FUNCTION_TEMPLATE_P (decl1)
+      || ! DECL_FUNCTION_TEMPLATE_P (decl2))
+    return true;
+
+  return (comp_template_parms (DECL_TEMPLATE_PARMS (decl1),
+			       DECL_TEMPLATE_PARMS (decl2))
+	  && same_type_p (TREE_TYPE (TREE_TYPE (decl1)),
+			  TREE_TYPE (TREE_TYPE (decl2))));
+}
 
 /* DECL is a FUNCTION_DECL for a non-member function, which may have
    other definitions already in place.  We get around this by making
@@ -2311,11 +2350,9 @@ push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
 
 	      if (TREE_CODE (tmp) == OVERLOAD && OVL_USED (tmp)
 		  && !(flags & PUSH_USING)
-		  && compparms (TYPE_ARG_TYPES (TREE_TYPE (fn)),
-				TYPE_ARG_TYPES (TREE_TYPE (decl)))
+		  && compparms_for_decl_and_using_decl (fn, decl)
 		  && ! decls_match (fn, decl))
-		error ("%q#D conflicts with previous using declaration %q#D",
-		       decl, fn);
+		diagnose_name_conflict (decl, fn);
 
 	      dup = duplicate_decls (decl, fn, is_friend);
 	      /* If DECL was a redeclaration of FN -- even an invalid
@@ -2547,10 +2584,9 @@ do_nonmember_using_decl (tree scope, tree name, tree oldval, tree oldtype,
 		  if (new_fn == old_fn)
 		    /* The function already exists in the current namespace.  */
 		    break;
-		  else if (OVL_USED (tmp1))
+		  else if (TREE_CODE (tmp1) == OVERLOAD && OVL_USED (tmp1))
 		    continue; /* this is a using decl */
-		  else if (compparms (TYPE_ARG_TYPES (TREE_TYPE (new_fn)),
-				      TYPE_ARG_TYPES (TREE_TYPE (old_fn))))
+		  else if (compparms_for_decl_and_using_decl (new_fn, old_fn))
 		    {
 		      gcc_assert (!DECL_ANTICIPATED (old_fn)
 				  || DECL_HIDDEN_FRIEND_P (old_fn));
@@ -2562,7 +2598,7 @@ do_nonmember_using_decl (tree scope, tree name, tree oldval, tree oldtype,
 			break;
 		      else
 			{
-			  error ("%qD is already declared in this scope", name);
+			  diagnose_name_conflict (new_fn, old_fn);
 			  break;
 			}
 		    }
@@ -3061,8 +3097,10 @@ push_class_level_binding_1 (tree name, tree x)
   if (name == error_mark_node)
     return false;
 
-  /* Check for invalid member names.  */
-  gcc_assert (TYPE_BEING_DEFINED (current_class_type));
+  /* Check for invalid member names.  But don't worry about a default
+     argument-scope lambda being pushed after the class is complete.  */
+  gcc_assert (TYPE_BEING_DEFINED (current_class_type)
+	      || LAMBDA_TYPE_P (TREE_TYPE (decl)));
   /* Check that we're pushing into the right binding level.  */
   gcc_assert (current_class_type == class_binding_level->this_entity);
 
@@ -3538,7 +3576,7 @@ handle_namespace_attrs (tree ns, tree attributes)
 
   for (d = attributes; d; d = TREE_CHAIN (d))
     {
-      tree name = TREE_PURPOSE (d);
+      tree name = get_attribute_name (d);
       tree args = TREE_VALUE (d);
 
       if (is_attribute_p ("visibility", name))
@@ -4841,7 +4879,7 @@ lookup_function_nonclass (tree name, vec<tree, va_gc> *args, bool block_p)
   return
     lookup_arg_dependent (name,
 			  lookup_name_real (name, 0, 1, block_p, 0, 0),
-			  args, false);
+			  args);
 }
 
 tree
@@ -5540,8 +5578,7 @@ arg_assoc (struct arg_lookup *k, tree n)
    are the functions found in normal lookup.  */
 
 static tree
-lookup_arg_dependent_1 (tree name, tree fns, vec<tree, va_gc> *args,
-			bool include_std)
+lookup_arg_dependent_1 (tree name, tree fns, vec<tree, va_gc> *args)
 {
   struct arg_lookup k;
 
@@ -5579,8 +5616,6 @@ lookup_arg_dependent_1 (tree name, tree fns, vec<tree, va_gc> *args,
   else
     k.fn_set = NULL;
 
-  if (include_std)
-    arg_assoc_namespace (&k, std_node);
   arg_assoc_args_vec (&k, args);
 
   fns = k.functions;
@@ -5605,13 +5640,12 @@ lookup_arg_dependent_1 (tree name, tree fns, vec<tree, va_gc> *args,
 /* Wrapper for lookup_arg_dependent_1.  */
 
 tree
-lookup_arg_dependent (tree name, tree fns, vec<tree, va_gc> *args,
-                      bool include_std)
+lookup_arg_dependent (tree name, tree fns, vec<tree, va_gc> *args)
 {
   tree ret;
   bool subtime;
   subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_arg_dependent_1 (name, fns, args, include_std);
+  ret = lookup_arg_dependent_1 (name, fns, args);
   timevar_cond_stop (TV_NAME_LOOKUP, subtime);
   return ret;
 }
@@ -5649,9 +5683,9 @@ static tree
 push_using_directive (tree used)
 {
   tree ret;
-  timevar_start (TV_NAME_LOOKUP);
+  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
   ret = push_using_directive_1 (used);
-  timevar_stop (TV_NAME_LOOKUP);
+  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
   return ret;
 }
 

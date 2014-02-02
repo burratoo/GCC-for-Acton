@@ -1,5 +1,5 @@
 /* Main parser.
-   Copyright (C) 2000-2013 Free Software Foundation, Inc.
+   Copyright (C) 2000-2014 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -1095,7 +1095,7 @@ new_level (gfc_code *q)
 {
   gfc_code *p;
 
-  p = q->block = gfc_get_code ();
+  p = q->block = gfc_get_code (EXEC_NOP);
 
   gfc_state_stack->head = gfc_state_stack->tail = p;
 
@@ -1111,7 +1111,7 @@ add_statement (void)
 {
   gfc_code *p;
 
-  p = gfc_get_code ();
+  p = XCNEW (gfc_code);
   *p = new_st;
 
   p->loc = gfc_current_locus;
@@ -2228,11 +2228,11 @@ endType:
 	  sym->attr.coarray_comp = 1;
 	}
      
-      if (c->ts.type == BT_DERIVED && c->ts.u.derived->attr.coarray_comp)
+      if (c->ts.type == BT_DERIVED && c->ts.u.derived->attr.coarray_comp
+	  && !c->attr.pointer)
 	{
 	  coarray = true;
-	  if (!pointer && !allocatable)
-	    sym->attr.coarray_comp = 1;
+	  sym->attr.coarray_comp = 1;
 	}
 
       /* Looking for lock_type components.  */
@@ -2626,6 +2626,33 @@ loop:
 	  break;
 
 	default:
+	  break;
+      }
+  else if (gfc_current_state () == COMP_BLOCK_DATA)
+    /* Fortran 2008, C1116.  */
+    switch (st)
+      {
+        case ST_DATA_DECL:
+	case ST_COMMON:
+	case ST_DATA:
+	case ST_TYPE:
+	case ST_END_BLOCK_DATA:
+	case ST_ATTR_DECL:
+	case ST_EQUIVALENCE:
+	case ST_PARAMETER:
+	case ST_IMPLICIT:
+	case ST_IMPLICIT_NONE:
+	case ST_DERIVED_DECL:
+	case ST_USE:
+	  break;
+
+	case ST_NONE:
+	  break;
+	  
+	default:
+	  gfc_error ("%s statement is not allowed inside of BLOCK DATA at %C",
+		     gfc_ascii_statement (st));
+	  reject_statement ();
 	  break;
       }
   
@@ -4270,11 +4297,11 @@ parse_block_data (void)
       s = gfc_get_gsymbol (gfc_new_block->name);
       if (s->defined
 	  || (s->type != GSYM_UNKNOWN && s->type != GSYM_BLOCK_DATA))
-       gfc_global_used(s, NULL);
+       gfc_global_used (s, &gfc_new_block->declared_at);
       else
        {
 	 s->type = GSYM_BLOCK_DATA;
-	 s->where = gfc_current_locus;
+	 s->where = gfc_new_block->declared_at;
 	 s->defined = 1;
        }
     }
@@ -4302,11 +4329,11 @@ parse_module (void)
 
   s = gfc_get_gsymbol (gfc_new_block->name);
   if (s->defined || (s->type != GSYM_UNKNOWN && s->type != GSYM_MODULE))
-    gfc_global_used(s, NULL);
+    gfc_global_used (s, &gfc_new_block->declared_at);
   else
     {
       s->type = GSYM_MODULE;
-      s->where = gfc_current_locus;
+      s->where = gfc_new_block->declared_at;
       s->defined = 1;
     }
 
@@ -4360,7 +4387,7 @@ add_global_procedure (bool sub)
 	  || (s->type != GSYM_UNKNOWN
 	      && s->type != (sub ? GSYM_SUBROUTINE : GSYM_FUNCTION)))
 	{
-	  gfc_global_used (s, NULL);
+	  gfc_global_used (s, &gfc_new_block->declared_at);
 	  /* Silence follow-up errors.  */
 	  gfc_new_block->binding_label = NULL;
 	}
@@ -4368,7 +4395,7 @@ add_global_procedure (bool sub)
 	{
 	  s->type = sub ? GSYM_SUBROUTINE : GSYM_FUNCTION;
 	  s->sym_name = gfc_new_block->name;
-	  s->where = gfc_current_locus;
+	  s->where = gfc_new_block->declared_at;
 	  s->defined = 1;
 	  s->ns = gfc_current_ns;
 	}
@@ -4385,7 +4412,7 @@ add_global_procedure (bool sub)
 	  || (s->type != GSYM_UNKNOWN
 	      && s->type != (sub ? GSYM_SUBROUTINE : GSYM_FUNCTION)))
 	{
-	  gfc_global_used (s, NULL);
+	  gfc_global_used (s, &gfc_new_block->declared_at);
 	  /* Silence follow-up errors.  */
 	  gfc_new_block->binding_label = NULL;
 	}
@@ -4394,7 +4421,7 @@ add_global_procedure (bool sub)
 	  s->type = sub ? GSYM_SUBROUTINE : GSYM_FUNCTION;
 	  s->sym_name = gfc_new_block->name;
 	  s->binding_label = gfc_new_block->binding_label;
-	  s->where = gfc_current_locus;
+	  s->where = gfc_new_block->declared_at;
 	  s->defined = 1;
 	  s->ns = gfc_current_ns;
 	}
@@ -4414,11 +4441,11 @@ add_global_program (void)
   s = gfc_get_gsymbol (gfc_new_block->name);
 
   if (s->defined || (s->type != GSYM_UNKNOWN && s->type != GSYM_PROGRAM))
-    gfc_global_used(s, NULL);
+    gfc_global_used (s, &gfc_new_block->declared_at);
   else
     {
       s->type = GSYM_PROGRAM;
-      s->where = gfc_current_locus;
+      s->where = gfc_new_block->declared_at;
       s->defined = 1;
       s->ns = gfc_current_ns;
     }

@@ -1,7 +1,7 @@
 /* Test file for mpfr_set_si and mpfr_set_ui.
 
-Copyright 1999, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 1999, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -245,6 +245,14 @@ main (int argc, char *argv[])
   if (mpfr_get_si (x, MPFR_RNDZ) != 49152)
     {
       printf ("Error in mpfr_set_ui, exp. 49152, got %ld, inex %d\n",
+              mpfr_get_si (x, MPFR_RNDZ), inex);
+      exit (1);
+    }
+  /* Also test the mpfr_set_ui function (instead of macro). */
+  inex = (mpfr_set_ui) (x, 33096, MPFR_RNDU);
+  if (mpfr_get_si (x, MPFR_RNDZ) != 49152)
+    {
+      printf ("Error in mpfr_set_ui function, exp. 49152, got %ld, inex %d\n",
               mpfr_get_si (x, MPFR_RNDZ), inex);
       exit (1);
     }

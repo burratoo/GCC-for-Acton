@@ -310,11 +310,11 @@ package body Exp_Ch7 is
       Defer_Abort : Boolean;
       Fin_Id      : out Entity_Id);
    --  N may denote an accept statement, block, entry body, package body,
-   --  package spec, protected body, subprogram body, and a task body. Create
+   --  package spec, protected body, subprogram body, or a task body. Create
    --  a procedure which contains finalization calls for all controlled objects
    --  declared in the declarative or statement region of N. The calls are
    --  built in reverse order relative to the original declarations. In the
-   --  case of a tack body, the routine delays the creation of the finalizer
+   --  case of a task body, the routine delays the creation of the finalizer
    --  until all statements have been moved to the task body procedure.
    --  Clean_Stmts may contain additional context-dependent code used to abort
    --  asynchronous calls or complete tasks (see Build_Cleanup_Statements).
@@ -367,6 +367,11 @@ package body Exp_Ch7 is
    function Enclosing_Function (E : Entity_Id) return Entity_Id;
    --  Given an arbitrary entity, traverse the scope chain looking for the
    --  first enclosing function. Return Empty if no function was found.
+
+   procedure Expand_Pragma_Initial_Condition (N : Node_Id);
+   --  Subsidiary to the expansion of package specs and bodies. Generate a
+   --  runtime check needed to verify the assumption introduced by pragma
+   --  Initial_Condition. N denotes the package spec or body.
 
    function Make_Call
      (Loc        : Source_Ptr;
@@ -427,7 +432,7 @@ package body Exp_Ch7 is
            Typ   => Typ,
            Stmts => Make_Deep_Array_Body (Initialize_Case, Typ)));
 
-      if not Is_Immutably_Limited_Type (Typ) then
+      if not Is_Limited_View (Typ) then
          Set_TSS (Typ,
            Make_Deep_Proc
              (Prim  => Adjust_Case,
@@ -506,7 +511,6 @@ package body Exp_Ch7 is
          declare
             Spec      : constant Node_Id := Parent (Corresponding_Spec (N));
             Conc_Typ  : Entity_Id;
-            Nam       : Node_Id;
             Param     : Node_Id;
             Param_Typ : Entity_Id;
 
@@ -527,81 +531,12 @@ package body Exp_Ch7 is
 
             pragma Assert (Present (Param));
 
-            --  If the associated protected object has entries, a protected
-            --  procedure has to service entry queues. In this case generate:
+            --  Historical note: In earlier versions of GNAT, there was code
+            --  at this point to generate stuff to service entry queues. It is
+            --  now abstracted in Build_Protected_Subprogram_Call_Cleanup.
 
-            --    Service_Entries (_object._object'Access);
-
-            if Nkind (Specification (N)) = N_Procedure_Specification
-              and then Has_Entries (Conc_Typ)
-            then
-               case Corresponding_Runtime_Package (Conc_Typ) is
-                  when System_Tasking_Protected_Objects_Entries =>
-                     Nam := New_Reference_To (RTE (RE_Service_Entries), Loc);
-
-                  when System_Tasking_Protected_Objects_Single_Entry =>
-                     Nam := New_Reference_To (RTE (RE_Service_Entry), Loc);
-
-                  when others =>
-                     raise Program_Error;
-               end case;
-
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   => Nam,
-                   Parameter_Associations => New_List (
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        => New_Reference_To (
-                             Defining_Identifier (Param), Loc),
-                           Selector_Name =>
-                             Make_Identifier (Loc, Name_uObject)),
-                       Attribute_Name => Name_Unchecked_Access))));
-
-            else
-               --  Generate:
-               --    Unlock (_object._object'Access);
-
-               case Corresponding_Runtime_Package (Conc_Typ) is
-                  when System_Tasking_Protected_Objects_Entries =>
-                     Nam := New_Reference_To (RTE (RE_Unlock_Entries), Loc);
-
-                  when System_Tasking_Protected_Objects_Single_Entry =>
-                     Nam := New_Reference_To (RTE (RE_Unlock_Entry), Loc);
-
-                  when System_Tasking_Protected_Objects =>
-                     Nam := New_Reference_To (RTE (RE_Unlock), Loc);
-
-                  when others =>
-                     raise Program_Error;
-               end case;
-
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   => Nam,
-                   Parameter_Associations => New_List (
-                     Make_Attribute_Reference (Loc,
-                       Prefix         =>
-                         Make_Selected_Component (Loc,
-                           Prefix        =>
-                             New_Reference_To
-                               (Defining_Identifier (Param), Loc),
-                           Selector_Name =>
-                             Make_Identifier (Loc, Name_uObject)),
-                       Attribute_Name => Name_Unchecked_Access))));
-            end if;
-
-            --  Generate:
-            --    Abort_Undefer;
-
-            if Abort_Allowed then
-               Append_To (Stmts,
-                 Make_Procedure_Call_Statement (Loc,
-                   Name                   =>
-                     New_Reference_To (RTE (RE_Abort_Undefer), Loc),
-                   Parameter_Associations => Empty_List));
-            end if;
+            Build_Protected_Subprogram_Call_Cleanup
+              (Specification (N), Conc_Typ, Loc, Stmts);
          end;
 
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated
@@ -932,7 +867,9 @@ package body Exp_Ch7 is
       --  Do not create finalization masters in SPARK mode because they result
       --  in unwanted expansion.
 
-      elsif SPARK_Mode then
+      --  More detail would be useful here ???
+
+      elsif GNATprove_Mode then
          return;
       end if;
 
@@ -2808,7 +2745,7 @@ package body Exp_Ch7 is
       --  Do not perform this expansion in SPARK mode because it is not
       --  necessary.
 
-      if SPARK_Mode then
+      if GNATprove_Mode then
          return;
       end if;
 
@@ -2970,7 +2907,7 @@ package body Exp_Ch7 is
       --  Do not perform this expansion in SPARK mode because we do not create
       --  finalizers in the first place.
 
-      if SPARK_Mode then
+      if GNATprove_Mode then
          return;
       end if;
 
@@ -3222,7 +3159,7 @@ package body Exp_Ch7 is
            Typ   => Typ,
            Stmts => Make_Deep_Record_Body (Initialize_Case, Typ)));
 
-      if not Is_Immutably_Limited_Type (Typ) then
+      if not Is_Limited_View (Typ) then
          Set_TSS (Typ,
            Make_Deep_Proc
              (Prim  => Adjust_Case,
@@ -3605,7 +3542,7 @@ package body Exp_Ch7 is
    --  This procedure is called each time a transient block has to be inserted
    --  that is to say for each call to a function with unconstrained or tagged
    --  result. It creates a new scope on the stack scope in order to enclose
-   --  all transient variables generated
+   --  all transient variables generated.
 
    procedure Establish_Transient_Scope (N : Node_Id; Sec_Stack : Boolean) is
       Loc       : constant Source_Ptr := Sloc (N);
@@ -3653,7 +3590,7 @@ package body Exp_Ch7 is
       --  this node and enclosed expression are not expanded, so do not apply
       --  any transformations here.
 
-      elsif SPARK_Mode
+      elsif GNATprove_Mode
         and then Nkind (Wrap_Node) = N_Pragma
         and then Get_Pragma_Id (Wrap_Node) = Pragma_Check
       then
@@ -3959,6 +3896,15 @@ package body Exp_Ch7 is
          end if;
 
          Build_Task_Activation_Call (N);
+
+         --  When the package is subject to pragma Initial_Condition, the
+         --  assertion expression must be verified at the end of the body
+         --  statements.
+
+         if Present (Get_Pragma (Spec_Ent, Pragma_Initial_Condition)) then
+            Expand_Pragma_Initial_Condition (N);
+         end if;
+
          Pop_Scope;
       end if;
 
@@ -4053,10 +3999,9 @@ package body Exp_Ch7 is
       if No_Body then
          Push_Scope (Id);
 
+         --  Generate RACW subprogram bodies
+
          if Has_RACW (Id) then
-
-            --  Generate RACW subprogram bodies
-
             Decls := Private_Declarations (Spec);
 
             if No (Decls) then
@@ -4072,11 +4017,19 @@ package body Exp_Ch7 is
             Analyze_List (Decls);
          end if;
 
+         --  Generate task activation call as last step of elaboration
+
          if Present (Activation_Chain_Entity (N)) then
-
-            --  Generate task activation call as last step of elaboration
-
             Build_Task_Activation_Call (N);
+         end if;
+
+         --  When the package is subject to pragma Initial_Condition and lacks
+         --  a body, the assertion expression must be verified at the end of
+         --  the visible declarations. Otherwise the check is performed at the
+         --  end of the body statements (see Expand_N_Package_Body).
+
+         if Present (Get_Pragma (Id, Pragma_Initial_Condition)) then
+            Expand_Pragma_Initial_Condition (N);
          end if;
 
          Pop_Scope;
@@ -4113,6 +4066,88 @@ package body Exp_Ch7 is
          Set_Finalizer (Id, Fin_Id);
       end if;
    end Expand_N_Package_Declaration;
+
+   -------------------------------------
+   -- Expand_Pragma_Initial_Condition --
+   -------------------------------------
+
+   procedure Expand_Pragma_Initial_Condition (N : Node_Id) is
+      Loc       : constant Source_Ptr := Sloc (N);
+      Check     : Node_Id;
+      Expr      : Node_Id;
+      Init_Cond : Node_Id;
+      List      : List_Id;
+      Pack_Id   : Entity_Id;
+
+   begin
+      if Nkind (N) = N_Package_Body then
+         Pack_Id := Corresponding_Spec (N);
+
+         if Present (Handled_Statement_Sequence (N)) then
+            List := Statements (Handled_Statement_Sequence (N));
+
+         --  The package body lacks statements, create an empty list
+
+         else
+            List := New_List;
+
+            Set_Handled_Statement_Sequence (N,
+              Make_Handled_Sequence_Of_Statements (Loc, Statements => List));
+         end if;
+
+      elsif Nkind (N) = N_Package_Declaration then
+         Pack_Id := Defining_Entity (N);
+
+         if Present (Visible_Declarations (Specification (N))) then
+            List := Visible_Declarations (Specification (N));
+
+         --  The package lacks visible declarations, create an empty list
+
+         else
+            List := New_List;
+
+            Set_Visible_Declarations (Specification (N), List);
+         end if;
+
+      --  This routine should not be used on anything other than packages
+
+      else
+         raise Program_Error;
+      end if;
+
+      Init_Cond := Get_Pragma (Pack_Id, Pragma_Initial_Condition);
+
+      --  The caller should check whether the package is subject to pragma
+      --  Initial_Condition.
+
+      pragma Assert (Present (Init_Cond));
+
+      Expr :=
+        Get_Pragma_Arg (First (Pragma_Argument_Associations (Init_Cond)));
+
+      --  The assertion expression was found to be illegal, do not generate the
+      --  runtime check as it will repeat the illegality.
+
+      if Error_Posted (Init_Cond) or else Error_Posted (Expr) then
+         return;
+      end if;
+
+      --  Generate:
+      --    pragma Check (Initial_Condition, <Expr>);
+
+      Check :=
+        Make_Pragma (Loc,
+          Chars                        => Name_Check,
+          Pragma_Argument_Associations => New_List (
+            Make_Pragma_Argument_Association (Loc,
+              Expression => Make_Identifier (Loc, Name_Initial_Condition)),
+
+            Make_Pragma_Argument_Association (Loc,
+              Expression => New_Copy_Tree (Expr))));
+
+      Append_To (List, Check);
+      Analyze (Check);
+   end Expand_Pragma_Initial_Condition;
 
    -----------------------------
    -- Find_Node_To_Be_Wrapped --
@@ -4377,33 +4412,45 @@ package body Exp_Ch7 is
          Last_Object  : Node_Id;
          Related_Node : Node_Id)
       is
-         function Requires_Hooking return Boolean;
-         --  Determine whether the context requires transient variable export
-         --  to the outer finalizer. This scenario arises when the context may
-         --  raise an exception.
+         Must_Hook : Boolean := False;
+         --  Flag denoting whether the context requires transient variable
+         --  export to the outer finalizer.
 
-         ----------------------
-         -- Requires_Hooking --
-         ----------------------
+         function Is_Subprogram_Call (N : Node_Id) return Traverse_Result;
+         --  Determine whether an arbitrary node denotes a subprogram call
 
-         function Requires_Hooking return Boolean is
+         ------------------------
+         -- Is_Subprogram_Call --
+         ------------------------
+
+         function Is_Subprogram_Call (N : Node_Id) return Traverse_Result is
          begin
-            --  The context is either a procedure or function call or an object
-            --  declaration initialized by a function call. Note that in the
-            --  latter case, a function call that returns on the secondary
-            --  stack is usually rewritten into something else. Its proper
-            --  detection requires examination of the original initialization
-            --  expression.
+            --  A regular procedure or function call
 
-            return Nkind (N) in N_Subprogram_Call
-              or else (Nkind (N) = N_Object_Declaration
-                         and then Nkind (Original_Node (Expression (N))) =
-                                    N_Function_Call);
-         end Requires_Hooking;
+            if Nkind (N) in N_Subprogram_Call then
+               Must_Hook := True;
+               return Abandon;
+
+            --  Detect a call to a function that returns on the secondary stack
+
+            elsif Nkind (N) = N_Object_Declaration
+              and then Nkind (Original_Node (Expression (N))) = N_Function_Call
+            then
+               Must_Hook := True;
+               return Abandon;
+
+            --  Keep searching
+
+            else
+               return OK;
+            end if;
+         end Is_Subprogram_Call;
+
+         procedure Detect_Subprogram_Call is
+           new Traverse_Proc (Is_Subprogram_Call);
 
          --  Local variables
 
-         Must_Hook : constant Boolean := Requires_Hooking;
          Built     : Boolean := False;
          Desig_Typ : Entity_Id;
          Fin_Block : Node_Id;
@@ -4422,6 +4469,12 @@ package body Exp_Ch7 is
       --  Start of processing for Process_Transient_Objects
 
       begin
+         --  Search the context for at least one subprogram call. If found, the
+         --  machinery exports all transient objects to the enclosing finalizer
+         --  due to the possibility of abnormal call termination.
+
+         Detect_Subprogram_Call (N);
+
          --  Examine all objects in the list First_Object .. Last_Object
 
          Stmt := First_Object;
@@ -5034,14 +5087,14 @@ package body Exp_Ch7 is
          Exceptions_OK : constant Boolean :=
                            not Restriction_Active (No_Exception_Propagation);
 
-         procedure Build_Indices;
-         --  Generate the indices used in the dimension loops
+         procedure Build_Indexes;
+         --  Generate the indexes used in the dimension loops
 
          -------------------
-         -- Build_Indices --
+         -- Build_Indexes --
          -------------------
 
-         procedure Build_Indices is
+         procedure Build_Indexes is
          begin
             --  Generate the following identifiers:
             --    Jnn  -  for initialization
@@ -5050,14 +5103,14 @@ package body Exp_Ch7 is
                Append_To (Index_List,
                  Make_Defining_Identifier (Loc, New_External_Name ('J', Dim)));
             end loop;
-         end Build_Indices;
+         end Build_Indexes;
 
       --  Start of processing for Build_Adjust_Or_Finalize_Statements
 
       begin
          Finalizer_Decls := New_List;
 
-         Build_Indices;
+         Build_Indexes;
          Build_Object_Declarations (Finalizer_Data, Finalizer_Decls, Loc);
 
          Comp_Ref :=
@@ -5212,8 +5265,8 @@ package body Exp_Ch7 is
          function Build_Finalization_Call return Node_Id;
          --  Generate a deep finalization call for an array element
 
-         procedure Build_Indices;
-         --  Generate the initialization and finalization indices used in the
+         procedure Build_Indexes;
+         --  Generate the initialization and finalization indexes used in the
          --  dimension loops.
 
          function Build_Initialization_Call return Node_Id;
@@ -5288,10 +5341,10 @@ package body Exp_Ch7 is
          end Build_Finalization_Call;
 
          -------------------
-         -- Build_Indices --
+         -- Build_Indexes --
          -------------------
 
-         procedure Build_Indices is
+         procedure Build_Indexes is
          begin
             --  Generate the following identifiers:
             --    Jnn  -  for initialization
@@ -5304,7 +5357,7 @@ package body Exp_Ch7 is
                Append_To (Final_List,
                  Make_Defining_Identifier (Loc, New_External_Name ('F', Dim)));
             end loop;
-         end Build_Indices;
+         end Build_Indexes;
 
          -------------------------------
          -- Build_Initialization_Call --
@@ -5331,7 +5384,7 @@ package body Exp_Ch7 is
          Counter_Id := Make_Temporary (Loc, 'C');
          Finalizer_Decls := New_List;
 
-         Build_Indices;
+         Build_Indexes;
          Build_Object_Declarations (Finalizer_Data, Finalizer_Decls, Loc);
 
          --  Generate the block which houses the finalization call, the index
@@ -7839,8 +7892,8 @@ package body Exp_Ch7 is
    -------------------------------
 
    procedure Wrap_Transient_Expression (N : Node_Id) is
-      Expr : constant Node_Id    := Relocate_Node (N);
       Loc  : constant Source_Ptr := Sloc (N);
+      Expr : Node_Id             := Relocate_Node (N);
       Temp : constant Entity_Id  := Make_Temporary (Loc, 'E', N);
       Typ  : constant Entity_Id  := Etype (N);
 
@@ -7851,13 +7904,30 @@ package body Exp_Ch7 is
       --    declare
       --       M : constant Mark_Id := SS_Mark;
       --       procedure Finalizer is ...  (See Build_Finalizer)
-
+      --
       --    begin
-      --       Temp := <Expr>;
+      --       Temp := <Expr>;                           --  general case
+      --       Temp := (if <Expr> then True else False); --  boolean case
       --
       --    at end
       --       Finalizer;
       --    end;
+
+      --  A special case is made for Boolean expressions so that the back-end
+      --  knows to generate a conditional branch instruction, if running with
+      --  -fpreserve-control-flow. This ensures that a control flow change
+      --  signalling the decision outcome occurs before the cleanup actions.
+
+      if Opt.Suppress_Control_Flow_Optimizations
+        and then Is_Boolean_Type (Typ)
+      then
+         Expr :=
+           Make_If_Expression (Loc,
+             Expressions => New_List (
+               Expr,
+               New_Occurrence_Of (Standard_True, Loc),
+               New_Occurrence_Of (Standard_False, Loc)));
+      end if;
 
       Insert_Actions (N, New_List (
         Make_Object_Declaration (Loc,

@@ -1,5 +1,5 @@
-Copyright 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -33,15 +33,24 @@ MPFR).
 
 1. Extract the files from the archive.
 
-2. It is strongly advised to apply the latest patches (if this has
-   not been done yet), e.g.
-     wget http://www.mpfr.org/mpfr-3.1.0/allpatches
+2. It is strongly advised to apply the latest patches if this has
+   not been done yet and if patches are available. You can check
+   on the release page:
+
+     http://www.mpfr.org/mpfr-3.1.2/
+
+   which may have additional information. The patches can be applied
+   with commands like:
+
+     wget http://www.mpfr.org/mpfr-3.1.2/allpatches
      patch -N -Z -p1 < allpatches
+
    or
-     curl http://www.mpfr.org/mpfr-3.1.0/allpatches | patch -N -Z -p1
+
+     curl http://www.mpfr.org/mpfr-3.1.2/allpatches | patch -N -Z -p1
 
    (Those instructions are for the GNU patch command, for example
-    /usr/bin/gpatch on Solaris.)
+   /usr/bin/gpatch on Solaris.)
 
 3. In the MPFR directory, to detect your system, type:
      ./configure
@@ -189,7 +198,11 @@ specific architecture.
 
 --disable-thread-safe   build MPFR without TLS. By default, TLS support
                         is detected automatically, and MPFR is built as
-                        thread safe if supported.
+                        thread safe if supported. However this detection
+                        is only a heuristic: TLS can be detected as
+                        supported while its support is incomplete or
+                        buggy (MPFR tests may fail). In such a case,
+                        this option is useful.
 
 --enable-gmp-internals  allows the MPFR build to use GMP's undocumented
                         functions (not from the public API). Note that
@@ -317,7 +330,7 @@ Several documents may help you to solve the problem:
   * the FAQ (either the FAQ.html file distributed with MPFR, or the
     on-line version <http://www.mpfr.org/faq.html>, which may be more
     up-to-date);
-  * the MPFR web page for this version <http://www.mpfr.org/mpfr-3.1.0/>,
+  * the MPFR web page for this version <http://www.mpfr.org/mpfr-3.1.2/>,
     which lists bugs found in this version and provides some patches.
 
 If the "configure" fails, please check that the C compiler and its
@@ -341,6 +354,24 @@ of math operations, such as GCC's -ffast-math or Sun CC's -fast.
 Otherwise conversions from/to double's may be incorrect on infinities,
 NaN's and signed zeros. Since native FP arithmetic is used in a few
 places only, such options would not make MPFR faster anyway.
+
+If some "make check" tests fail, you can try the --disable-thread-safe
+configure option (see the configure options above): it has been reported
+that some platforms have buggy TLS support. Before trying this option,
+you may want to check in the configure output whether MPFR was built
+with TLS support; if yes, you will have a line:
+  checking for TLS support... yes
+Alternatively "grep MPFR_USE_THREAD_SAFE config.log" will show that
+MPFR_USE_THREAD_SAFE is defined to 1. If it is "no" (or the variable
+is not defined), the --disable-thread-safe option would be useless.
+
+Some tests failure may be due to other compiler bugs, in particular
+in optimization code. You can try to build MPFR without compiler
+optimizations by giving -O0 (letter O, digit 0) in CFLAGS. If the
+MPFR tests no longer fail, this was probably due to a compiler bug,
+though we cannot exclude a bug in MPFR. You may want to contact us
+(see below), possibly after looking at:
+  http://www.loria.fr/~zimmerma/software/compilerbugs.html
 
 On some platforms, try with "gmake" (GNU make) instead of "make".
 Problems have been reported with the Tru64 make.
@@ -403,7 +434,7 @@ For instance, under Unix, where paths are separated by a colon:
     setenv LD_LIBRARY_PATH "$LIBRARY_PATH"
 
 If you can't solve your problem, you should contact us via the MPFR
-mailing-list <mpfr@loria.fr>, indicating the machine and operating system
+mailing-list <mpfr@inria.fr>, indicating the machine and operating system
 used (uname -a), the compiler and version used (gcc -v if you use gcc),
 the configure options used if any (including variables such as CC and
 CFLAGS), the version of GMP and MPFR used, and a description of the
@@ -546,7 +577,6 @@ a. Using MinGW
      Compiler Version 16.00.30319.01 for 80x86, Microsoft (R) C/C++ Optimizing
      Compiler Version 16.00.30319.01 for x64).
 
-
 b. Using Cygwin
 ===============
 
@@ -555,6 +585,10 @@ library depends on the Cygwin DLL and cannot therefore be used with
 Visual Studio as with MinGW. Indeed, the binaries compiled with Cygwin
 require a dynamic library (cygwin.dll) to work; there is a Cygwin option
 -mno-cygwin to build native code, but it may require some non-portable tricks.
+
+In case of failure, you may need to pass LDFLAGS='-shared-libgcc' at the
+end of the configure line due to a bug in GCC. Otherwise, if threading
+support is not needed, you can configure MPFR with --disable-thread-safe.
 
 c. Using Visual C++ 2008/2010
 =============================

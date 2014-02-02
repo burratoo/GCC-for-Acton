@@ -1,5 +1,5 @@
 /* RTL simplification functions for GNU compiler.
-   Copyright (C) 1987-2013 Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -24,6 +24,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "rtl.h"
 #include "tree.h"
+#include "varasm.h"
 #include "tm_p.h"
 #include "regs.h"
 #include "hard-reg-set.h"
@@ -298,13 +299,13 @@ delegitimize_mem_from_attrs (rtx x)
 					&mode, &unsignedp, &volatilep, false);
 	    if (bitsize != GET_MODE_BITSIZE (mode)
 		|| (bitpos % BITS_PER_UNIT)
-		|| (toffset && !host_integerp (toffset, 0)))
+		|| (toffset && !tree_fits_shwi_p (toffset)))
 	      decl = NULL;
 	    else
 	      {
 		offset += bitpos / BITS_PER_UNIT;
 		if (toffset)
-		  offset += TREE_INT_CST_LOW (toffset);
+		  offset += tree_to_shwi (toffset);
 	      }
 	    break;
 	  }
@@ -639,11 +640,16 @@ simplify_truncation (enum machine_mode mode, rtx op,
 				   XEXP (op, 0), origmode);
     }
 
-  /* Simplify (truncate:SI (op:DI (x:DI) (y:DI)))
-     to (op:SI (truncate:SI (x:DI)) (truncate:SI (x:DI))).  */
-  if (GET_CODE (op) == PLUS
-      || GET_CODE (op) == MINUS
-      || GET_CODE (op) == MULT)
+  /* If the machine can perform operations in the truncated mode, distribute
+     the truncation, i.e. simplify (truncate:QI (op:SI (x:SI) (y:SI))) into
+     (op:QI (truncate:QI (x:SI)) (truncate:QI (y:SI))).  */
+  if (1
+#ifdef WORD_REGISTER_OPERATIONS
+      && precision >= BITS_PER_WORD
+#endif
+      && (GET_CODE (op) == PLUS
+	  || GET_CODE (op) == MINUS
+	  || GET_CODE (op) == MULT))
     {
       rtx op0 = simplify_gen_unary (TRUNCATE, mode, XEXP (op, 0), op_mode);
       if (op0)
@@ -825,7 +831,8 @@ simplify_unary_operation_1 (enum rtx_code code, enum machine_mode mode, rtx op)
 
       /* Similarly, (not (neg X)) is (plus X -1).  */
       if (GET_CODE (op) == NEG)
-	return plus_constant (mode, XEXP (op, 0), -1);
+	return simplify_gen_binary (PLUS, mode, XEXP (op, 0),
+				    CONSTM1_RTX (mode));
 
       /* (not (xor X C)) for C constant is (xor X D) with D = ~C.  */
       if (GET_CODE (op) == XOR
@@ -932,7 +939,8 @@ simplify_unary_operation_1 (enum rtx_code code, enum machine_mode mode, rtx op)
 
       /* Similarly, (neg (not X)) is (plus X 1).  */
       if (GET_CODE (op) == NOT)
-	return plus_constant (mode, XEXP (op, 0), 1);
+	return simplify_gen_binary (PLUS, mode, XEXP (op, 0),
+				    CONST1_RTX (mode));
 
       /* (neg (minus X Y)) can become (minus Y X).  This transformation
 	 isn't safe for modes with signed zeros, since if X and Y are
@@ -1470,6 +1478,29 @@ simplify_unary_operation_1 (enum rtx_code code, enum machine_mode mode, rtx op)
 	    }
 	}
 
+      /* (zero_extend:M (subreg:N <X:O>)) is <X:O> (for M == O) or
+	 (zero_extend:M <X:O>), if X doesn't have any non-zero bits outside
+	 of mode N.  E.g.
+	 (zero_extend:SI (subreg:QI (and:SI (reg:SI) (const_int 63)) 0)) is
+	 (and:SI (reg:SI) (const_int 63)).  */
+      if (GET_CODE (op) == SUBREG
+	  && GET_MODE_PRECISION (GET_MODE (op))
+	     < GET_MODE_PRECISION (GET_MODE (SUBREG_REG (op)))
+	  && GET_MODE_PRECISION (GET_MODE (SUBREG_REG (op)))
+	     <= HOST_BITS_PER_WIDE_INT
+	  && GET_MODE_PRECISION (mode)
+	     >= GET_MODE_PRECISION (GET_MODE (SUBREG_REG (op)))
+	  && subreg_lowpart_p (op)
+	  && (nonzero_bits (SUBREG_REG (op), GET_MODE (SUBREG_REG (op)))
+	      & ~GET_MODE_MASK (GET_MODE (op))) == 0)
+	{
+	  if (GET_MODE_PRECISION (mode)
+	      == GET_MODE_PRECISION (GET_MODE (SUBREG_REG (op))))
+	    return SUBREG_REG (op);
+	  return simplify_gen_unary (ZERO_EXTEND, mode, SUBREG_REG (op),
+				     GET_MODE (SUBREG_REG (op)));
+	}
+
 #if defined(POINTERS_EXTEND_UNSIGNED) && !defined(HAVE_ptr_extend)
       /* As we do not know which address space the pointer is referring to,
 	 we can do this only if the target does not support different pointer
@@ -1616,7 +1647,7 @@ simplify_const_unary_operation (enum rtx_code code, enum machine_mode mode,
 	  break;
 
 	case NEG:
-	  val = - arg0;
+	  val = - (unsigned HOST_WIDE_INT) arg0;
 	  break;
 
 	case ABS:
@@ -1905,17 +1936,13 @@ simplify_const_unary_operation (enum rtx_code code, enum machine_mode mode,
 	   && SCALAR_FLOAT_MODE_P (mode)
 	   && SCALAR_FLOAT_MODE_P (GET_MODE (op)))
     {
-      REAL_VALUE_TYPE d, t;
+      REAL_VALUE_TYPE d;
       REAL_VALUE_FROM_CONST_DOUBLE (d, op);
 
       switch (code)
 	{
 	case SQRT:
-	  if (HONOR_SNANS (mode) && real_isnan (&d))
-	    return 0;
-	  real_sqrt (&t, mode, &d);
-	  d = t;
-	  break;
+	  return 0;
 	case ABS:
 	  d = real_value_abs (&d);
 	  break;
@@ -1995,14 +2022,13 @@ simplify_const_unary_operation (enum rtx_code code, enum machine_mode mode,
 	  /* Test against the signed lower bound.  */
 	  if (width > HOST_BITS_PER_WIDE_INT)
 	    {
-	      th = (unsigned HOST_WIDE_INT) (-1)
-		   << (width - HOST_BITS_PER_WIDE_INT - 1);
+	      th = HOST_WIDE_INT_M1U << (width - HOST_BITS_PER_WIDE_INT - 1);
 	      tl = 0;
 	    }
 	  else
 	    {
 	      th = -1;
-	      tl = (unsigned HOST_WIDE_INT) (-1) << (width - 1);
+	      tl = HOST_WIDE_INT_M1U << (width - 1);
 	    }
 	  real_from_integer (&t, VOIDmode, tl, th, 0);
 	  if (REAL_VALUES_LESS (x, t))
@@ -2067,8 +2093,7 @@ simplify_byte_swapping_operation (enum rtx_code code, enum machine_mode mode,
   rtx tem;
 
   /* (op (bswap x) C1)) -> (bswap (op x C2)) with C2 swapped.  */
-  if (GET_CODE (op0) == BSWAP
-      && (CONST_INT_P (op1) || CONST_DOUBLE_AS_INT_P (op1)))
+  if (GET_CODE (op0) == BSWAP && CONST_SCALAR_INT_P (op1))
     {
       tem = simplify_gen_binary (code, mode, XEXP (op0, 0),
 				 simplify_gen_unary (BSWAP, mode, op1, mode));
@@ -2797,12 +2822,13 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
 	  && CONST_INT_P (XEXP (op0, 1))
 	  && CONST_INT_P (op1)
 	  && (UINTVAL (XEXP (op0, 1)) & UINTVAL (op1)) != 0)
-	return simplify_gen_binary (IOR, mode,
-				    simplify_gen_binary
-					  (AND, mode, XEXP (op0, 0),
-					   GEN_INT (UINTVAL (XEXP (op0, 1))
-						    & ~UINTVAL (op1))),
-				    op1);
+	{
+	  rtx tmp = simplify_gen_binary (AND, mode, XEXP (op0, 0),
+					 gen_int_mode (UINTVAL (XEXP (op0, 1))
+						       & ~UINTVAL (op1),
+						       mode));
+	  return simplify_gen_binary (IOR, mode, tmp, op1);
+	}
 
       /* If OP0 is (ashiftrt (plus ...) C), it might actually be
          a (sign_extend (plus ...)).  Then check if OP1 is a CONST_INT and
@@ -2819,6 +2845,7 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
           HOST_WIDE_INT mask = INTVAL (trueop1) << count;
 
           if (mask >> count == INTVAL (trueop1)
+	      && trunc_int_for_mode (mask, mode) == mask
               && (mask & nonzero_bits (XEXP (op0, 0), mode)) == 0)
 	    return simplify_gen_binary (ASHIFTRT, mode,
 					plus_constant (mode, XEXP (op0, 0),
@@ -2931,7 +2958,7 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
 	      /* Try to simplify ~A&C | ~B&C.  */
 	      if (na_c != NULL_RTX)
 		return simplify_gen_binary (IOR, mode, na_c,
-					    GEN_INT (~bval & cval));
+					    gen_int_mode (~bval & cval, mode));
 	    }
 	  else
 	    {
@@ -2939,9 +2966,11 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
 	      if (na_c == const0_rtx)
 		{
 		  rtx a_nc_b = simplify_gen_binary (AND, mode, a,
-						    GEN_INT (~cval & bval));
+						    gen_int_mode (~cval & bval,
+								  mode));
 		  return simplify_gen_binary (IOR, mode, a_nc_b,
-					      GEN_INT (~bval & cval));
+					      gen_int_mode (~bval & cval,
+							    mode));
 		}
 	    }
 	}
@@ -3275,7 +3304,7 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
       if (CONST_INT_P (trueop1)
 	  && exact_log2 (UINTVAL (trueop1)) > 0)
 	return simplify_gen_binary (AND, mode, op0,
-				    GEN_INT (INTVAL (op1) - 1));
+				    gen_int_mode (INTVAL (op1) - 1, mode));
       break;
 
     case MOD:
@@ -4088,15 +4117,15 @@ simplify_const_binary_operation (enum rtx_code code, enum machine_mode mode,
       switch (code)
 	{
 	case PLUS:
-	  val = arg0s + arg1s;
+	  val = (unsigned HOST_WIDE_INT) arg0s + arg1s;
 	  break;
 
 	case MINUS:
-	  val = arg0s - arg1s;
+	  val = (unsigned HOST_WIDE_INT) arg0s - arg1s;
 	  break;
 
 	case MULT:
-	  val = arg0s * arg1s;
+	  val = (unsigned HOST_WIDE_INT) arg0s * arg1s;
 	  break;
 
 	case DIV:
@@ -4168,7 +4197,7 @@ simplify_const_binary_operation (enum rtx_code code, enum machine_mode mode,
 
 	  /* Sign-extend the result for arithmetic right shifts.  */
 	  if (code == ASHIFTRT && arg0s < 0 && arg1 > 0)
-	    val |= ((unsigned HOST_WIDE_INT) (-1)) << (width - arg1);
+	    val |= HOST_WIDE_INT_M1U << (width - arg1);
 	  break;
 
 	case ROTATERT:
@@ -4814,7 +4843,7 @@ simplify_relational_operation_1 (enum rtx_code code, enum machine_mode mode,
   /* (eq/ne (bswap x) C1) simplifies to (eq/ne x C2) with C2 swapped.  */
   if ((code == EQ || code == NE)
       && GET_CODE (op0) == BSWAP
-      && (CONST_INT_P (op1) || CONST_DOUBLE_AS_INT_P (op1)))
+      && CONST_SCALAR_INT_P (op1))
     return simplify_gen_relational (code, mode, cmp_mode, XEXP (op0, 0),
 				    simplify_gen_unary (BSWAP, cmp_mode,
 							op1, cmp_mode));

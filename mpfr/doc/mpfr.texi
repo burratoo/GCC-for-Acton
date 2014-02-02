@@ -2,8 +2,8 @@
 @c %**start of header
 @setfilename mpfr.info
 @documentencoding UTF-8
-@set VERSION 3.1.0
-@set UPDATED-MONTH October 2011
+@set VERSION 3.1.2
+@set UPDATED-MONTH March 2013
 @settitle GNU MPFR @value{VERSION}
 @synindex tp fn
 @iftex
@@ -19,7 +19,7 @@
 This manual documents how to install and use the Multiple Precision
 Floating-Point Reliable Library, version @value{VERSION}.
 
-Copyright 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+Copyright 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
 
 Permission is granted to copy, distribute and/or modify this document under
 the terms of the GNU Free Documentation License, Version 1.2 or any later
@@ -67,7 +67,7 @@ floating-point arithmetic, version @value{VERSION}.
 @subtitle @value{UPDATED-MONTH}
 
 @author The MPFR team
-@email{mpfr@@loria.fr}
+@email{mpfr@@inria.fr}
 
 @c Include the Distribution inside the titlepage so
 @c that headings are turned off.
@@ -383,7 +383,7 @@ On most platforms, a dynamic library will be produced too.
 
 This will make sure MPFR was built correctly.
 If you get error messages, please report this to the MPFR mailing-list
-@samp{mpfr@@loria.fr}.  (@xref{Reporting Bugs}, for
+@samp{mpfr@@inria.fr}.  (@xref{Reporting Bugs}, for
 information on what to include in useful bug reports.)
 
 @item
@@ -460,10 +460,10 @@ specific to MPFR). Problems are also mentioned in the FAQ
 
 @comment Warning! Do not split "MPFR ... @url{...}" across several lines
 @comment as this needs to be updated with update-version.
-Please report problems to the MPFR mailing-list @samp{mpfr@@loria.fr}.
+Please report problems to the MPFR mailing-list @samp{mpfr@@inria.fr}.
 @xref{Reporting Bugs}.
 Some bug fixes are available on the
-MPFR 3.1.0 web page @url{http://www.mpfr.org/mpfr-3.1.0/}.
+MPFR 3.1.2 web page @url{http://www.mpfr.org/mpfr-3.1.2/}.
 
 @section Getting the Latest Version of MPFR
 
@@ -478,12 +478,12 @@ The latest version of MPFR is available from
 @comment Warning! Do not split "MPFR ... @url{...}" across several lines
 @comment as this needs to be updated with update-version.
 If you think you have found a bug in the MPFR library, first have a look
-on the MPFR 3.1.0 web page @url{http://www.mpfr.org/mpfr-3.1.0/} and the
+on the MPFR 3.1.2 web page @url{http://www.mpfr.org/mpfr-3.1.2/} and the
 FAQ @url{http://www.mpfr.org/faq.html}:
 perhaps this bug is already known, in which case you may find there
 a workaround for it.
 You might also look in the archives of the MPFR mailing-list:
-@url{http://websympa.loria.fr/wwsympa/arc/mpfr}.
+@url{https://sympa.inria.fr/sympa/arc/mpfr}.
 Otherwise, please investigate and report it.
 We have made this library available to you, and it is not to ask too
 much from you, to ask you to report the bugs that you find.
@@ -509,7 +509,7 @@ If your bug report is good, we will do our best to help you to get a corrected
 version of the library; if the bug report is poor, we will not do anything
 about it (aside of chiding you to send better bug reports).
 
-Send your bug report to the MPFR mailing-list @samp{mpfr@@loria.fr}.
+Send your bug report to the MPFR mailing-list @samp{mpfr@@inria.fr}.
 
 If you think something in this manual is unclear, or downright incorrect, or if
 the language needs to be improved, please send a note to the same address.
@@ -582,7 +582,7 @@ a macro with the same name as some keywords (currently @code{do},
 @code{while} and @code{sizeof}).
 
 You can avoid the use of MPFR macros encapsulating functions by defining
-the @samp{MPFR_USE_NO_MACRO} macro before @file{mpfr.h} is included.  In
+the @code{MPFR_USE_NO_MACRO} macro before @file{mpfr.h} is included.  In
 general this should not be necessary, but this can be useful when debugging
 user code: with some macros, the compiler may emit spurious warnings with
 some warning options, and macros can prevent some prototype checking.
@@ -1182,7 +1182,9 @@ The @code{mpfr_set_decimal64} function is built only with the configure
 option @samp{--enable-decimal-float}, which also requires
 @samp{--with-gmp-build}, and when the compiler or
 system provides the @samp{_Decimal64} data type
-(recent versions of GCC support this data type).
+(recent versions of GCC support this data type);
+to use @code{mpfr_set_decimal64}, one should define the macro
+@code{MPFR_WANT_DECIMAL_FLOATS} before including @file{mpfr.h}.
 @c GCC 4.2.0 required to be configured with --enable-decimal-float
 @c but GCC 4.4.3 seems to have decimal support by default
 @code{mpfr_set_q} might fail if the numerator (or the
@@ -2687,6 +2689,12 @@ distribution and then rounded in the direction @var{rnd}.
 The third argument is a @code{gmp_randstate_t} structure, which should be
 created using the GMP @code{gmp_randinit} function (see the GMP manual).
 
+The combination of the ternary values is returned like with
+@code{mpfr_sin_cos}. If @var{rop2} is a null pointer, the second ternary
+value is assumed to be 0 (note that the encoding of the only ternary value
+is not the same as the usual encoding for functions that return only one
+result). Otherwise the ternary value of a random number is always non-zero.
+
 Note: the note for @code{mpfr_urandomb} holds too. In addition, the exponent
 range and the rounding mode might have a side effect on the next random state.
 @end deftypefun
@@ -3466,8 +3474,9 @@ special behavior was specified). The case of the underflow flag was more
 a lack of specification.
 
 @item @code{mpfr_urandom} and @code{mpfr_urandomb} changed in MPFR 3.1.
-Their behavior no longer depends on the platform (assuming this is also
-true for GMP's random generator).  As a consequence, the returned values
+Their behavior no longer depends on the platform (assuming this is also true
+for GMP's random generator, which is not the case between GMP 4.1 and 4.2 if
+@code{gmp_randinit_default} is used).  As a consequence, the returned values
 can be different between MPFR 3.1 and previous MPFR versions.
 Note: as the reproducibility of these functions was not specified
 before MPFR 3.1, the MPFR 3.1 behavior is @emph{not} regarded as
@@ -3561,7 +3570,7 @@ the continuous support of INRIA, and of the LORIA (Nancy, France) and LIP
 (Lyon, France) laboratories. In particular the main authors were or are
 members of the PolKA, Spaces, Cacao and Caramel
 project-teams at LORIA and of the
-Ar@'enaire project-team at LIP.
+Ar@'enaire and AriC project-teams at LIP.
 This project was started during the Fiable (reliable in French) action
 supported by INRIA, and continued during the AOC action.
 The development of MPFR was also supported by a grant
@@ -3569,6 +3578,8 @@ The development of MPFR was also supported by a grant
 from INRIA by an "associate engineer" grant (2003-2005),
 an "op@'eration de d@'eveloppement logiciel" grant (2007-2009),
 and the post-doctoral grant of Sylvain Chevillard in 2009-2010.
+The MPFR-MPC workshop in June 2012 was partly supported by the ERC
+grant ANTICS of Andreas Enge.
 
 @node References, GNU Free Documentation License, Contributors, Top
 @comment  node-name,  next,  previous,  up

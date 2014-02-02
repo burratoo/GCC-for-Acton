@@ -1,8 +1,8 @@
 /* Generic test file for functions with one or two arguments (the second being
    either mpfr_t or double).
 
-Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -121,7 +121,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #endif
 
 static void
-test_generic (mpfr_prec_t p0, mpfr_prec_t p1, unsigned int N)
+test_generic (mpfr_prec_t p0, mpfr_prec_t p1, unsigned int nmax)
 {
   mpfr_prec_t prec, xprec, yprec;
   mpfr_t x, y, z, t, w;
@@ -155,7 +155,7 @@ test_generic (mpfr_prec_t p0, mpfr_prec_t p1, unsigned int N)
       mpfr_set_prec (w, yprec);
 
       /* Note: in precision p1, we test 4 special cases. */
-      for (n = 0; n < (prec == p1 ? N + 4 : N); n++)
+      for (n = 0; n < (prec == p1 ? nmax + 4 : nmax); n++)
         {
           int infinite_input = 0;
 

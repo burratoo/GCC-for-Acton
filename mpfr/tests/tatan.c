@@ -1,7 +1,7 @@
 /* Test file for mpfr_atan.
 
-Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -571,7 +571,7 @@ atan2_pow_of_2 (void)
   mpfr_clear (g);
 }
 
-/* http://websympa.loria.fr/wwsympa/arc/mpfr/2011-05/msg00008.html
+/* https://sympa.inria.fr/sympa/arc/mpfr/2011-05/msg00008.html
  * Incorrect flags (in debug mode on a 32-bit machine, assertion failure).
  */
 static void
