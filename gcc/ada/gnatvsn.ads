@@ -93,7 +93,7 @@ package Gnatvsn is
      & Library_Version;
    --  Version string stored in e.g. ALI files
 
-   Current_Year : constant String := "2013";
+   Current_Year : constant String := "2014";
    --  Used in printing copyright messages
 
 end Gnatvsn;

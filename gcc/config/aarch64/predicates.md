@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 architecture.
-;; Copyright (C) 2009-2013 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2014 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -25,6 +25,11 @@
 		 (match_test "mode == VOIDmode
 			      && GET_MODE_CLASS (GET_MODE (op)) == MODE_CC"))))
 )
+
+(define_predicate "aarch64_simd_register"
+  (and (match_code "reg")
+       (ior (match_test "REGNO_REG_CLASS (REGNO (op)) == FP_LO_REGS")
+            (match_test "REGNO_REG_CLASS (REGNO (op)) == FP_REGS"))))
 
 (define_predicate "aarch64_reg_or_zero"
   (and (match_code "reg,subreg,const_int")
@@ -81,6 +86,10 @@
   (and (match_code "const_int")
        (match_test "(unsigned HOST_WIDE_INT) INTVAL (op) < 64")))
 
+(define_predicate "aarch64_shift_imm64_di"
+  (and (match_code "const_int")
+       (match_test "(unsigned HOST_WIDE_INT) INTVAL (op) <= 64")))
+
 (define_predicate "aarch64_reg_or_shift_imm_si"
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "aarch64_shift_imm_si")))
@@ -118,9 +127,8 @@
 (define_predicate "aarch64_valid_symref"
   (match_code "const, symbol_ref, label_ref")
 {
-  enum aarch64_symbol_type symbol_type;
-  return (aarch64_symbolic_constant_p (op, SYMBOL_CONTEXT_ADR, &symbol_type)
-	 && symbol_type != SYMBOL_FORCE_TO_MEM);
+  return (aarch64_classify_symbolic_expression (op, SYMBOL_CONTEXT_ADR)
+	  != SYMBOL_FORCE_TO_MEM);
 })
 
 (define_predicate "aarch64_tls_ie_symref"

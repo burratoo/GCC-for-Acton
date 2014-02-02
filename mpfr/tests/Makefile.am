@@ -1,4 +1,4 @@
-# Copyright 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+# Copyright 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
 # This Makefile.am is free software; the Free Software Foundation
 # gives unlimited permission to copy and/or distribute it,
 # with or without modifications, as long as this notice is preserved.
@@ -9,7 +9,7 @@
 # PARTICULAR PURPOSE.
 
 
-AUTOMAKE_OPTIONS = 1.6 gnu $(top_builddir)/ansi2knr
+AUTOMAKE_OPTIONS = 1.6 gnu
 
 # tversion is run
 #   * at the beginning so that the user gets a possible version error
@@ -40,6 +40,8 @@ check_PROGRAMS = tversion tinternals tinits tisqrt tsgn tcheck	\
      ttanh ttrunc tui_div tui_pow tui_sub turandom 	 \
       tvalist ty0 ty1 tyn tzeta tzeta_ui tversion
 
+AM_CPPFLAGS = -DSRCDIR='"$(srcdir)"'
+
 EXTRA_DIST = tgeneric.c tgeneric_ui.c mpf_compat.h inp_str.data tmul.dat
 
 LDADD = libfrtests.la $(MPFR_LIBM) $(top_builddir)/src/libmpfr.la
@@ -65,8 +67,24 @@ $(top_builddir)/src/libmpfr.la:
 TESTS = $(check_PROGRAMS)
 TESTS_ENVIRONMENT = MPFR_QUIET=1 $(VALGRIND)
 
-# Option to prevent libtool from generating wrapper scripts for the tests.
+# The -no-install option prevents libtool from generating wrapper scripts
+# for the tests.
 # This is useful to easily run the test scripts under valgrind or gdb.
 # See discussion http://thread.gmane.org/gmane.comp.lib.gnulib.bugs/28033
 # http://article.gmane.org/gmane.comp.lib.gnulib.bugs/28140 in particular.
-AM_LDFLAGS = -no-install
+#
+# The -L$(top_builddir)/src/.libs option is necessary for some platforms,
+# such as HP-UX, when --with-gmp or --with-gmp-lib is used and an old MPFR
+# library is already installed in the corresponding lib directory: its
+# purpose is to make sure that the local .libs comes first in the library
+# search path (otherwise the tests are linked against the old MPFR library
+# by the LINK command -- see the generated Makefile). See:
+#   https://sympa.inria.fr/sympa/arc/mpfr/2011-10/msg00042.html
+#   https://sympa.inria.fr/sympa/arc/mpfr/2011-10/msg00043.html
+#   https://sympa.inria.fr/sympa/arc/mpfr/2011-10/msg00044.html
+#   https://sympa.inria.fr/sympa/arc/mpfr/2011-10/msg00066.html
+#   https://sympa.inria.fr/sympa/arc/mpfr/2011-10/msg00065.html
+# and
+#   http://debbugs.gnu.org/cgi/bugreport.cgi?bug=9728
+#
+AM_LDFLAGS = -no-install -L$(top_builddir)/src/.libs

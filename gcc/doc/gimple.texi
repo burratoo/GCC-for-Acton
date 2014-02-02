@@ -1,4 +1,4 @@
-@c Copyright (C) 2008-2013 Free Software Foundation, Inc.
+@c Copyright (C) 2008-2014 Free Software Foundation, Inc.
 @c Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
@@ -709,6 +709,10 @@ operation.
 @deftypefn {GIMPLE function} bool gimple_debug_bind_p (gimple g)
 Return true if g is a @code{GIMPLE_DEBUG} that binds the value of an
 expression to a variable.
+@end deftypefn
+
+@deftypefn {GIMPLE function} bool is_gimple_omp (gimple g)
+Return true if g is any of the OpenMP codes.
 @end deftypefn
 
 @node Manipulating GIMPLE statements
@@ -1844,11 +1848,6 @@ Return a pointer to the data argument for @code{OMP_PARALLEL} @code{G}.
 
 @deftypefn {GIMPLE function} void gimple_omp_parallel_set_data_arg (gimple g, tree data_arg)
 Set @code{DATA_ARG} to be the data argument for @code{OMP_PARALLEL} @code{G}.
-@end deftypefn
-
-@deftypefn {GIMPLE function} bool is_gimple_omp (gimple stmt)
-Returns true when the gimple statement @code{STMT} is any of the OpenMP
-types.
 @end deftypefn
 
 

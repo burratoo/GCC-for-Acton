@@ -1,7 +1,7 @@
 /* Test file for mpfr_d_div
 
-Copyright 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -62,6 +62,8 @@ check_nans (void)
   MPFR_ASSERTN (__gmpfr_flags == 0);
   MPFR_ASSERTN (mpfr_zero_p (y));
   MPFR_ASSERTN (MPFR_IS_NEG (y));
+
+#if !defined(MPFR_ERRDIVZERO)
 
   /* 1.0 / 0 == +inf */
   mpfr_set_ui (x, 0, MPFR_RNDN);
@@ -138,6 +140,8 @@ check_nans (void)
   MPFR_ASSERTN (__gmpfr_flags == 0);
   MPFR_ASSERTN (mpfr_inf_p (y));
   MPFR_ASSERTN (MPFR_IS_POS (y));
+
+#endif
 
   mpfr_clear (x);
   mpfr_clear (y);

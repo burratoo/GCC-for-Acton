@@ -1,16 +1,18 @@
 /* { dg-do run } */
 /* { dg-options "-fcilkplus" } */
 
+#define NUMBER 100
 #if HAVE_IO
 #include <stdio.h>
 #endif
 
-int main(int argc, char **argv)
+int main(void)
 {
-  int ii,array[10], y = 0, y_int = 0, array2[10], y_int2=0, y2=0;
-  double x, yy, array3[10], array4[10];
+  int argc = 1;
+  int ii,array[NUMBER], y = 0, y_int = 0, array2[NUMBER], y_int2=0, y2=0;
+  double x, yy, array3[NUMBER], array4[NUMBER];
   int all_zero, all_nonzero, any_zero, any_nonzero;
-  for (ii = 0; ii < 10; ii++)
+  for (ii = 0; ii < NUMBER; ii++)
     {
       array[ii] = 0;
       array2[ii] = 5;
@@ -20,6 +22,7 @@ int main(int argc, char **argv)
 	array3[ii] = (double) ii + 0.00;
       array4[ii] = (double) (1.00000/ (double)(ii+1));
     }
+  __asm volatile ("" : "+r" (argc));
   y_int = __sec_reduce_any_nonzero (array3[:] + array[4]); 
   y_int2 = __sec_reduce_any_zero (array3[:] + array[4]); 
   y = __sec_reduce_all_nonzero ((array3[:] + array4[:]) * (argc-1)); 
@@ -27,7 +30,7 @@ int main(int argc, char **argv)
 
   any_zero = 0;
   any_nonzero = 0;
-  for (ii = 0; ii < 10; ii++)
+  for (ii = 0; ii < NUMBER; ii++)
     {
       if ((array3[ii] + array[4]) == 0)
 	any_zero = 1;
@@ -43,7 +46,7 @@ int main(int argc, char **argv)
 
   all_zero = 0;
   all_nonzero = 0;
-  for (ii = 0; ii < 10; ii++)
+  for (ii = 0; ii < NUMBER; ii++)
     {
       if (((array3[ii] + array4[ii]) * (argc-1)) == 0)
 	all_zero = 1;
@@ -58,11 +61,11 @@ int main(int argc, char **argv)
  
 
 #if HAVE_IO
-  for (ii = 0; ii < 10; ii++) {
+  for (ii = 0; ii < NUMBER; ii++) {
     printf("%5.3f ", array3[ii] +array4[ii]);
   }
   printf("\n");
-  for (ii = 0; ii < 10; ii++) {
+  for (ii = 0; ii < NUMBER; ii++) {
     printf("%5.3f ", (array3[ii] + array4[ii]) * (argc-1));
   }
   printf("\n");

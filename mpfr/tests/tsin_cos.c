@@ -1,7 +1,7 @@
 /* Test file for mpfr_sin_cos.
 
-Copyright 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -514,7 +514,7 @@ bug20091013 (void)
 
 /* Bug reported by Laurent Fousse for the 2.4 branch.
    No problem in the trunk.
-   http://websympa.loria.fr/wwsympa/arc/mpfr/2009-11/msg00044.html */
+   https://sympa.inria.fr/sympa/arc/mpfr/2009-11/msg00044.html */
 static void
 bug20091122 (void)
 {

@@ -1,6 +1,6 @@
 /* Subroutines for insn-output.c for Windows NT.
    Contributed by Douglas Rupp (drupp@cs.washington.edu)
-   Copyright (C) 1995-2013 Free Software Foundation, Inc.
+   Copyright (C) 1995-2014 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,6 +27,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "hard-reg-set.h"
 #include "output.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "varasm.h"
 #include "flags.h"
 #include "tm_p.h"
 #include "diagnostic-core.h"
@@ -35,6 +37,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "ggc.h"
 #include "target.h"
 #include "except.h"
+#include "pointer-set.h"
+#include "hash-table.h"
+#include "vec.h"
+#include "basic-block.h"
+#include "tree-ssa-alias.h"
+#include "internal-fn.h"
+#include "gimple-fold.h"
+#include "tree-eh.h"
+#include "gimple-expr.h"
+#include "is-a.h"
+#include "gimple.h"
 #include "lto-streamer.h"
 
 /* i386/PE specific attribute support.
@@ -109,6 +122,11 @@ i386_pe_determine_dllexport_p (tree decl)
   /* Don't export local clones of dllexports.  */
   if (!TREE_PUBLIC (decl))
     return false;
+
+  if (TREE_CODE (decl) == FUNCTION_DECL
+      && DECL_DECLARED_INLINE_P (decl)
+      && !flag_keep_inline_dllexport)
+    return false; 
 
   if (lookup_attribute ("dllexport", DECL_ATTRIBUTES (decl)))
     return true;
@@ -480,7 +498,7 @@ i386_pe_section_type_flags (tree decl, const char *name, int reloc)
     flags |= SECTION_LINKONCE;
 
   /* See if we already have an entry for this section.  */
-  slot = htab.find_slot ((unsigned int *)name, INSERT);
+  slot = htab.find_slot ((const unsigned int *)name, INSERT);
   if (!*slot)
     {
       *slot = (unsigned int *) xmalloc (sizeof (unsigned int));
@@ -547,8 +565,9 @@ i386_pe_asm_named_section (const char *name, unsigned int flags,
 	 sets 'discard' characteristic, rather than telling linker
 	 to warn of size or content mismatch, so do the same.  */ 
       bool discard = (flags & SECTION_CODE)
-		      || lookup_attribute ("selectany",
-					   DECL_ATTRIBUTES (decl));	 
+		      || (TREE_CODE (decl) != IDENTIFIER_NODE
+			  && lookup_attribute ("selectany",
+					       DECL_ATTRIBUTES (decl)));
       fprintf (asm_out_file, "\t.linkonce %s\n",
 	       (discard  ? "discard" : "same_size"));
     }
@@ -1173,10 +1192,10 @@ i386_pe_seh_unwind_emit (FILE *asm_out_file, rtx insn)
 
   for (note = REG_NOTES (insn); note ; note = XEXP (note, 1))
     {
-      pat = XEXP (note, 0);
       switch (REG_NOTE_KIND (note))
 	{
 	case REG_FRAME_RELATED_EXPR:
+	  pat = XEXP (note, 0);
 	  goto found;
 
 	case REG_CFA_DEF_CFA:
@@ -1190,6 +1209,7 @@ i386_pe_seh_unwind_emit (FILE *asm_out_file, rtx insn)
 	  gcc_unreachable ();
 
 	case REG_CFA_ADJUST_CFA:
+	  pat = XEXP (note, 0);
 	  if (pat == NULL)
 	    {
 	      pat = PATTERN (insn);
@@ -1201,6 +1221,7 @@ i386_pe_seh_unwind_emit (FILE *asm_out_file, rtx insn)
 	  break;
 
 	case REG_CFA_OFFSET:
+	  pat = XEXP (note, 0);
 	  if (pat == NULL)
 	    pat = single_set (insn);
 	  seh_cfa_offset (asm_out_file, seh, pat);

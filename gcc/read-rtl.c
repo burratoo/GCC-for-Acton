@@ -1,5 +1,5 @@
 /* RTL reader for GCC.
-   Copyright (C) 1987-2013 Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -803,7 +803,10 @@ validate_const_int (const char *string)
     valid = 0;
   for (; *cp; cp++)
     if (! ISDIGIT (*cp))
-      valid = 0;
+      {
+        valid = 0;
+	break;
+      }
   if (!valid)
     fatal_with_file_and_line ("invalid decimal constant \"%s\"\n", string);
 }
@@ -1128,6 +1131,7 @@ read_rtx_code (const char *code_name)
   /* If we end up with an insn expression then we free this space below.  */
   return_rtx = rtx_alloc (code);
   format_ptr = GET_RTX_FORMAT (code);
+  memset (return_rtx, 0, RTX_CODE_SIZE (code));
   PUT_CODE (return_rtx, code);
 
   if (iterator)
@@ -1151,6 +1155,8 @@ read_rtx_code (const char *code_name)
 	/* 0 means a field for internal use only.
 	   Don't expect it to be present in the input.  */
       case '0':
+	if (code == REG)
+	  ORIGINAL_REGNO (return_rtx) = REGNO (return_rtx);
 	break;
 
       case 'e':

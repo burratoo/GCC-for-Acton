@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,7 +33,6 @@ package body Ch9 is
    --  Local subprograms, used only in this chapter
 
    function P_Accept_Alternative                   return Node_Id;
-   function P_Action_Call_Alternative              return Node_Id;
    function P_Delay_Alternative                    return Node_Id;
    function P_Delay_Relative_Statement             return Node_Id;
    function P_Delay_Until_Statement                return Node_Id;
@@ -62,7 +61,7 @@ package body Ch9 is
    --      [is [new INTERFACE_LIST with] TASK_DEFINITION];
 
    --  TASK_BODY ::=
-   --    task body DEFINING_IDENTIFIER is
+   --    task body DEFINING_IDENTIFIER [ASPECT_SPECIFICATIONS] is
    --      DECLARATIVE_PART
    --    begin
    --      TASK_BODY_STATEMENTS
@@ -74,7 +73,8 @@ package body Ch9 is
    --      CYCLE_SEQUENCE_OF_STATEMENTS]
 
    --  TASK_BODY_STUB ::=
-   --    task body DEFINING_IDENTIFIER is separate;
+   --    task body DEFINING_IDENTIFIER is separate
+   --      [ASPECT_SPECIFICATIONS];
 
    --  This routine scans out a task declaration, task body, or task stub
 
@@ -84,9 +84,15 @@ package body Ch9 is
    --  Error recovery: cannot raise Error_Resync
 
    function P_Task return Node_Id is
-      Name_Node  : Node_Id;
-      Task_Node  : Node_Id;
-      Task_Sloc  : Source_Ptr;
+      Aspect_Sloc : Source_Ptr;
+      Name_Node   : Node_Id;
+      Task_Node   : Node_Id;
+      Task_Sloc   : Source_Ptr;
+
+      Dummy_Node : constant Node_Id := New_Node (N_Task_Body, Token_Ptr);
+      --  Placeholder node used to hold legal or prematurely declared aspect
+      --  specifications. Depending on the context, the aspect specifications
+      --  may be moved to a new node.
 
    begin
       Push_Scope_Stack;
@@ -106,6 +112,11 @@ package body Ch9 is
             Discard_Junk_List (P_Known_Discriminant_Part_Opt);
          end if;
 
+         if Aspect_Specifications_Present then
+            Aspect_Sloc := Token_Ptr;
+            P_Aspect_Specifications (Dummy_Node, Semicolon => False);
+         end if;
+
          TF_Is;
 
          --  Task stub
@@ -114,6 +125,14 @@ package body Ch9 is
             Scan; -- past SEPARATE
             Task_Node := New_Node (N_Task_Body_Stub, Task_Sloc);
             Set_Defining_Identifier (Task_Node, Name_Node);
+
+            if Has_Aspects (Dummy_Node) then
+               Error_Msg
+                 ("aspect specifications must come after SEPARATE",
+                  Aspect_Sloc);
+            end if;
+
+            P_Aspect_Specifications (Task_Node, Semicolon => False);
             TF_Semicolon;
             Pop_Scope_Stack; -- remove unused entry
 
@@ -124,6 +143,13 @@ package body Ch9 is
             Set_Defining_Identifier (Task_Node, Name_Node);
             Set_Task_Body_Statement_Sequence (Task_Node,
               New_Node (N_Task_Body_Statement_Sequence, Task_Sloc));
+
+            --  Move the aspect specifications to the body node
+
+            if Has_Aspects (Dummy_Node) then
+               Move_Aspects (From => Dummy_Node, To => Task_Node);
+            end if;
+
             Parse_Decls_Begin_End (Task_Node);
          end if;
 
@@ -248,7 +274,7 @@ package body Ch9 is
    --  regard the semicolon after end as part of the Task_Definition, and in
    --  the official syntax, it's part of the enclosing declaration. The reason
    --  for this deviation is that otherwise the end processing would have to
-   --  be special cased, which would be a nuisance!
+   --  be special cased, which would be a nuisance.
 
    --  Error recovery:  cannot raise Error_Resync
 
@@ -444,12 +470,15 @@ package body Ch9 is
    --    is [new INTERFACE_LIST with] PROTECTED_DEFINITION;
 
    --  PROTECTED_BODY ::=
-   --    protected body DEFINING_IDENTIFIER is
+   --    protected body DEFINING_IDENTIFIER
+   --      [ASPECT_SPECIFICATIONS]
+   --    is
    --      {PROTECTED_OPERATION_ITEM}
    --    end [protected_IDENTIFIER];
 
    --  PROTECTED_BODY_STUB ::=
-   --    protected body DEFINING_IDENTIFIER is separate;
+   --    protected body DEFINING_IDENTIFIER is separate
+   --      [ASPECT_SPECIFICATIONS];
 
    --  This routine scans out a protected declaration, protected body
    --  or a protected stub.
@@ -460,10 +489,16 @@ package body Ch9 is
    --  Error recovery: cannot raise Error_Resync
 
    function P_Protected return Node_Id is
+      Aspect_Sloc    : Source_Ptr;
       Name_Node      : Node_Id;
       Protected_Node : Node_Id;
       Protected_Sloc : Source_Ptr;
       Scan_State     : Saved_Scan_State;
+
+      Dummy_Node : constant Node_Id := New_Node (N_Protected_Body, Token_Ptr);
+      --  Placeholder node used to hold legal or prematurely declared aspect
+      --  specifications. Depending on the context, the aspect specifications
+      --  may be moved to a new node.
 
    begin
       Push_Scope_Stack;
@@ -482,14 +517,28 @@ package body Ch9 is
             Discard_Junk_List (P_Known_Discriminant_Part_Opt);
          end if;
 
+         if Aspect_Specifications_Present then
+            Aspect_Sloc := Token_Ptr;
+            P_Aspect_Specifications (Dummy_Node, Semicolon => False);
+         end if;
+
          TF_Is;
 
          --  Protected stub
 
          if Token = Tok_Separate then
             Scan; -- past SEPARATE
+
             Protected_Node := New_Node (N_Protected_Body_Stub, Protected_Sloc);
             Set_Defining_Identifier (Protected_Node, Name_Node);
+
+            if Has_Aspects (Dummy_Node) then
+               Error_Msg
+                 ("aspect specifications must come after SEPARATE",
+                  Aspect_Sloc);
+            end if;
+
+            P_Aspect_Specifications (Protected_Node, Semicolon => False);
             TF_Semicolon;
             Pop_Scope_Stack; -- remove unused entry
 
@@ -498,6 +547,8 @@ package body Ch9 is
          else
             Protected_Node := New_Node (N_Protected_Body, Protected_Sloc);
             Set_Defining_Identifier (Protected_Node, Name_Node);
+
+            Move_Aspects (From => Dummy_Node, To => Protected_Node);
             Set_Declarations (Protected_Node, P_Protected_Operation_Items);
             End_Statements (Protected_Node);
          end if;
@@ -877,8 +928,8 @@ package body Ch9 is
 
    --  ENTRY_DECLARATION ::=
    --    [OVERRIDING_INDICATOR]
-   --    entry DEFINING_IDENTIFIER [(DISCRETE_SUBTYPE_DEFINITION)]
-   --      PARAMETER_PROFILE;
+   --    entry DEFINING_IDENTIFIER
+   --      [(DISCRETE_SUBTYPE_DEFINITION)] PARAMETER_PROFILE
    --        [ASPECT_SPECIFICATIONS];
 
    --  The caller has checked that the initial token is ENTRY, NOT or
@@ -1061,7 +1112,7 @@ package body Ch9 is
 
             else
                Restore_Scan_State (Scan_State); -- to left paren
-               Scan; -- past left paren (again!)
+               Scan; -- past left paren (again)
                Set_Entry_Index (Accept_Node, P_Expression);
                T_Right_Paren;
                Set_Parameter_Specifications (Accept_Node, P_Parameter_Profile);
@@ -1305,7 +1356,7 @@ package body Ch9 is
       Scan; -- past DELAY
 
       --  The following check for delay until misused in Ada 83 doesn't catch
-      --  all cases, but it's good enough to catch most of them!
+      --  all cases, but it's good enough to catch most of them.
 
       if Token_Name = Name_Until then
          Check_95_Keyword (Tok_Until, Tok_Left_Paren);
@@ -1423,18 +1474,6 @@ package body Ch9 is
 
    --  TRIGGERING_STATEMENT ::= ENTRY_CALL_STATEMENT | DELAY_STATEMENT
 
-   --  ALTERNATIVE_ACTION_CALL ::=
-   --    select
-   --      ACTION_CALL_ALTERNATIVE
-   --    {else
-   --      ACTION_CALL_ALTERNATIVE}
-   --    [else
-   --      SEQUENCE_OF_STATEMENTS]
-   --    end select;
-
-   --  ACTION_CALL_ALTERNATIVE ::=
-   --    ACTION_CALL_STATEMENT [SEQUENCE_OF_STATEMENTS]
-
    --  The caller has checked that the initial token is SELECT
 
    --  Error recovery: can raise Error_Resync
@@ -1451,7 +1490,6 @@ package body Ch9 is
       Alt_List       : List_Id;
       Cond_Expr      : Node_Id;
       Delay_Stmnt    : Node_Id;
-      Scan_State     : Saved_Scan_State;
 
    begin
       Push_Scope_Stack;
@@ -1596,65 +1634,10 @@ package body Ch9 is
 
          End_Statements;
 
-      --  Here we have a selective accept, an asynchronous select or an
-      --  alternative action call (first token after SELECT is other than a
-      --  designator token).
+      --  Here we have a selective accept or an asynchronous select (first
+      --  token after SELECT is other than a designator token).
 
       else
-
-         --  If ACTION follows SELECT, we have an alternative action call
-
-         if Token = Tok_Action then
-            Scan; -- past ACTION
-            Alt_List := New_List;
-            Select_Node := New_Node (N_Alternative_Action_Select, Select_Sloc);
-            Set_Action_Call_Alternatives (Select_Node, Alt_List);
-
-            --  On top of the loop we are just past a an ACTION or ELSE token.
-
-            loop
-               if Token in Token_Class_Desig then
-                  Save_Scan_State (Scan_State);
-                  --  at first statement of alternative
-
-                  --  Look ahead to see if this is the last alternative
-
-                  Statement_List := P_Sequence_Of_Statements (SS_Eltm_Sreq);
-
-                  --  The last alternative may either be either an
-                  --  ACTION_CALL_ALTERNATIVE or SEQUENCE_OF_STATEMENTS.
-                  --  We can only resolve which one it is during semantic
-                  --  anaylsis. For now we assume it is a
-                  --  SEQUENCE_OF_STATEMENTS.
-
-                  if Token /= Tok_Else then
-                     Set_Else_Statements (Select_Node, Statement_List);
-                  else
-                     Restore_Scan_State (Scan_State);
-                     Append (P_Action_Call_Alternative, Alt_List);
-                  end if;
-
-                  exit when Token /= Tok_Else;
-
-                  Scan; -- past ELSE
-
-               else
-                  Error_Msg_SC
-                    ("in alternative call " &
-                       "statement, action call required here!");
-                  Scan; -- past junk ABORT
-                  Discard_Junk_List (P_Sequence_Of_Statements (SS_Sreq));
-                  End_Statements;
-                  return Error;
-               end if;
-
-            end loop;
-
-            End_Statements;
-
-            return Select_Node;
-         end if;
-
          --  If we have delay with no guard, could be asynchronous select
 
          if Token = Tok_Delay then
@@ -1967,83 +1950,6 @@ package body Ch9 is
       Set_Statements (Abortable_Part_Node, P_Sequence_Of_Statements (SS_Sreq));
       return Abortable_Part_Node;
    end P_Abortable_Part;
-
-   ------------------------------------
-   -- 9.7.5  Action Call Alternative --
-   ------------------------------------
-
-   --  ACTION_CALL_ALTERNATIVE ::=
-   --    ACTION_CALL_STATEMENT [SEQUENCE_OF_STATEMENTS]
-
-   --  Error_Recovery: Cannot raise Error_Resync
-
-   function P_Action_Call_Alternative return Node_Id is
-      Acall_Node : Node_Id;
-      Alt_Node   : Node_Id;
-
-   begin
-      Alt_Node := New_Node (N_Action_Call_Alternative, Token_Ptr);
-
-      --  Scan action call statement
-
-      begin
-         Acall_Node := P_Name;
-
-         --  ??  The following two clauses exactly parallel code in ch5
-         --      and should be combined sometime
-
-         if Nkind (Acall_Node) = N_Indexed_Component then
-            declare
-               Prefix_Node : constant Node_Id := Prefix (Acall_Node);
-               Exprs_Node  : constant List_Id := Expressions (Acall_Node);
-
-            begin
-               Change_Node (Acall_Node, N_Procedure_Call_Statement);
-               Set_Name (Acall_Node, Prefix_Node);
-               Set_Parameter_Associations (Acall_Node, Exprs_Node);
-            end;
-
-         elsif Nkind (Acall_Node) = N_Function_Call then
-            declare
-               Fname_Node  : constant Node_Id := Name (Acall_Node);
-               Params_List : constant List_Id :=
-                               Parameter_Associations (Acall_Node);
-
-            begin
-               Change_Node (Acall_Node, N_Procedure_Call_Statement);
-               Set_Name (Acall_Node, Fname_Node);
-               Set_Parameter_Associations (Acall_Node, Params_List);
-            end;
-
-         elsif Nkind (Acall_Node) = N_Identifier
-           or else Nkind (Acall_Node) = N_Selected_Component
-         then
-            --  Case of a call to a parameterless entry
-
-            declare
-               C_Node : constant Node_Id :=
-                      New_Node (N_Procedure_Call_Statement, Token_Ptr);
-            begin
-               Set_Name (C_Node, Acall_Node);
-               Set_Parameter_Associations (C_Node, No_List);
-               Acall_Node := C_Node;
-            end;
-         end if;
-
-         TF_Semicolon;
-
-      exception
-         when Error_Resync =>
-            Resync_Past_Semicolon;
-            return Error;
-      end;
-
-      Set_Action_Call_Statement (Alt_Node, Acall_Node);
-
-      Set_Statements
-        (Alt_Node, P_Sequence_Of_Statements (SS_Eltm));
-      return Alt_Node;
-   end P_Action_Call_Alternative;
 
    --------------------------
    -- 9.8  Abort Statement --

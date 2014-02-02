@@ -1,7 +1,7 @@
 /* Test file for mpfr_sqr.
 
-Copyright 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -122,8 +122,8 @@ check_special (void)
 }
 
 /* Test of a bug seen with GCC 4.5.2 and GMP 5.0.1 on m68k (m68000 target).
-     http://websympa.loria.fr/wwsympa/arc/mpfr/2011-05/msg00003.html
-     http://websympa.loria.fr/wwsympa/arc/mpfr/2011-05/msg00041.html
+     https://sympa.inria.fr/sympa/arc/mpfr/2011-05/msg00003.html
+     https://sympa.inria.fr/sympa/arc/mpfr/2011-05/msg00041.html
 */
 static void
 check_mpn_sqr (void)

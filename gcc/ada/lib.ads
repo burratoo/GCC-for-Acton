@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -265,38 +265,6 @@ package Lib is
    --  The first entry in the table, subscript Main_Unit, is for the main file.
    --  Each entry in this units table contains the following data.
 
-   --    Unit_File_Name
-   --      The name of the source file containing the unit. Set when the entry
-   --      is created by a call to Lib.Load, and then cannot be changed.
-
-   --    Source_Index
-   --      The index in the source file table of the corresponding source file.
-   --      Set when the entry is created by a call to Lib.Load and then cannot
-   --      be changed.
-
-   --    Munit_Index
-   --      The index of the unit within the file for multiple unit per file
-   --      mode. Set to zero in normal single unit per file mode.
-
-   --    Error_Location
-   --      This is copied from the Sloc field of the Enode argument passed
-   --      to Load_Unit. It refers to the enclosing construct which caused
-   --      this unit to be loaded, e.g. most typically the with clause that
-   --      referenced the unit, and is used for error handling in Par.Load.
-
-   --    Expected_Unit
-   --      This is the expected unit name for a file other than the main unit,
-   --      since these are cases where we load the unit using Lib.Load and we
-   --      know the unit that is expected. It must be the same as Unit_Name
-   --      if it is set (see test in Par.Load). Expected_Unit is set to
-   --      No_Name for the main unit.
-
-   --    Unit_Name
-   --      The name of the unit. Initialized to No_Name by Lib.Load, and then
-   --      set by the parser when the unit is parsed to the unit name actually
-   --      found in the file (which should, in the absence of errors) be the
-   --      same name as Expected_Unit.
-
    --    Cunit
    --      Pointer to the N_Compilation_Unit node. Initially set to Empty by
    --      Lib.Load, and then reset to the required node by the parser when
@@ -320,6 +288,19 @@ package Lib is
    --      checks specified (as the result of using the -gnatE compilation
    --      option or a pragma Elaboration_Checks (Dynamic).
 
+   --    Error_Location
+   --      This is copied from the Sloc field of the Enode argument passed
+   --      to Load_Unit. It refers to the enclosing construct which caused
+   --      this unit to be loaded, e.g. most typically the with clause that
+   --      referenced the unit, and is used for error handling in Par.Load.
+
+   --    Expected_Unit
+   --      This is the expected unit name for a file other than the main unit,
+   --      since these are cases where we load the unit using Lib.Load and we
+   --      know the unit that is expected. It must be the same as Unit_Name
+   --      if it is set (see test in Par.Load). Expected_Unit is set to
+   --      No_Name for the main unit.
+
    --    Fatal_Error
    --      A flag that is initialized to False, and gets set to True if a fatal
    --      error occurs during the processing of a unit. A fatal error is one
@@ -334,6 +315,10 @@ package Lib is
    --      This flag is set True for all units in the current file for which
    --      code is to be generated. This includes the unit explicitly compiled,
    --      together with its specification, and any subunits.
+
+   --    Has_Allocator
+   --      This flag is set if a subprogram unit has an allocator after the
+   --      BEGIN (it is used to set the AB flag in the M ALI line).
 
    --    Has_RACW
    --      A Boolean flag, initially set to False when a unit entry is created,
@@ -373,9 +358,9 @@ package Lib is
    --      also used for entries that do not correspond to possible main
    --      programs).
 
-   --    Has_Allocator
-   --      This flag is set if a subprogram unit has an allocator after the
-   --      BEGIN (it is used to set the AB flag in the M ALI line).
+   --    Munit_Index
+   --      The index of the unit within the file for multiple unit per file
+   --      mode. Set to zero in normal single unit per file mode.
 
    --    OA_Setting
    --      This is a character field containing L if Optimize_Alignment mode
@@ -387,6 +372,21 @@ package Lib is
    --      only access to this field is via the Increment_Serial_Number
    --      routine which increments the current value and returns it. This
    --      serial number is separate for each unit.
+
+   --    Source_Index
+   --      The index in the source file table of the corresponding source file.
+   --      Set when the entry is created by a call to Lib.Load and then cannot
+   --      be changed.
+
+   --    Unit_File_Name
+   --      The name of the source file containing the unit. Set when the entry
+   --      is created by a call to Lib.Load, and then cannot be changed.
+
+   --    Unit_Name
+   --      The name of the unit. Initialized to No_Name by Lib.Load, and then
+   --      set by the parser when the unit is parsed to the unit name actually
+   --      found in the file (which should, in the absence of errors) be the
+   --      same name as Expected_Unit.
 
    --    Version
    --      This field holds the version of the unit, which is computed as
@@ -532,6 +532,14 @@ package Lib is
    --  instantiations are included in the extended main unit for this call.
    --  If the main unit is itself a subunit, then the extended main code unit
    --  includes its parent unit, and the parent unit spec if it is separate.
+   --
+   --  This routine (and the following three routines) all return False if
+   --  Sloc (N) is No_Location or Standard_Location. In an earlier version,
+   --  they returned True for Standard_Location, but this was odd, and some
+   --  archeology indicated that this was done for the sole benefit of the
+   --  call in Restrict.Check_Restriction_No_Dependence, so we have moved
+   --  the special case check to that routine. This avoids some difficulties
+   --  with some other calls that malfunctioned with the odd return of True.
 
    function In_Extended_Main_Code_Unit (Loc : Source_Ptr) return Boolean;
    --  Same function as above, but argument is a source pointer rather
@@ -694,6 +702,42 @@ package Lib is
    --  of the printout. If Withs is True, we print out units with'ed by this
    --  unit (not counting limited withs).
 
+   ---------------------------------------------------------------
+   -- Special Handling for Restriction_Set (No_Dependence) Case --
+   ---------------------------------------------------------------
+
+   --  If we have a Restriction_Set attribute for No_Dependence => unit,
+   --  and the unit is not given in a No_Dependence restriction that we
+   --  can see, the attribute will return False.
+
+   --  We have to ensure in this case that the binder will reject any attempt
+   --  to set a No_Dependence restriction in some other unit in the partition.
+
+   --  If the unit is in the semantic closure, then of course it is properly
+   --  WITH'ed by someone, and the binder will do this job automatically as
+   --  part of its normal processing.
+
+   --  But if the unit is not in the semantic closure, we must make sure the
+   --  binder knows about it. The use of the Restriction_Set attribute giving
+   --  a result of False does not mean of itself that we have to include the
+   --  unit in the partition. So what we do is to generate a with (W) line in
+   --  the ali file (with no file name information), but no corresponding D
+   --  (dependency) line. This is recognized by the binder as meaning "Don't
+   --  let anyone specify No_Dependence for this unit, but you don't have to
+   --  include it if there is no real W line for the unit".
+
+   --  The following table keeps track of relevant units. It is used in the
+   --  Lib.Writ circuit for outputting With lines to output the special with
+   --  line with RA if the unit is not in the semantic closure.
+
+   package Restriction_Set_Dependences is new Table.Table (
+     Table_Component_Type => Unit_Name_Type,
+     Table_Index_Type     => Int,
+     Table_Low_Bound      => 0,
+     Table_Initial        => 10,
+     Table_Increment      => 100,
+     Table_Name           => "Restriction_Attribute_Dependences");
+
 private
    pragma Inline (Cunit);
    pragma Inline (Cunit_Entity);
@@ -750,6 +794,7 @@ private
       Loading           : Boolean;
       Has_Allocator     : Boolean;
       OA_Setting        : Character;
+      SPARK_Mode_Pragma : Node_Id;
    end record;
 
    --  The following representation clause ensures that the above record
@@ -768,21 +813,22 @@ private
       Ident_String      at 32 range 0 .. 31;
       Main_Priority     at 36 range 0 .. 31;
       Main_CPU          at 40 range 0 .. 31;
-      Main_Stack_Size   at 44 range 0 .. 31;
-      Serial_Number     at 48 range 0 .. 31;
-      Version           at 52 range 0 .. 31;
-      Error_Location    at 56 range 0 .. 31;
-      Fatal_Error       at 60 range 0 ..  7;
-      Generate_Code     at 61 range 0 ..  7;
-      Has_RACW          at 62 range 0 ..  7;
-      Dynamic_Elab      at 63 range 0 ..  7;
-      Is_Compiler_Unit  at 64 range 0 ..  7;
-      OA_Setting        at 65 range 0 ..  7;
-      Loading           at 66 range 0 ..  7;
-      Has_Allocator     at 67 range 0 ..  7;
+      Serial_Number     at 44 range 0 .. 31;
+      Version           at 48 range 0 .. 31;
+      Error_Location    at 52 range 0 .. 31;
+      Fatal_Error       at 56 range 0 ..  7;
+      Generate_Code     at 57 range 0 ..  7;
+      Has_RACW          at 58 range 0 ..  7;
+      Dynamic_Elab      at 59 range 0 ..  7;
+      Is_Compiler_Unit  at 60 range 0 ..  7;
+      OA_Setting        at 61 range 0 ..  7;
+      Loading           at 62 range 0 ..  7;
+      Has_Allocator     at 63 range 0 ..  7;
+      SPARK_Mode_Pragma at 64 range 0 .. 31;
+      Main_Stack_Size   at 68 range 0 .. 31;
    end record;
 
-   for Unit_Record'Size use 68 * 8;
+   for Unit_Record'Size use 72 * 8;
    --  This ensures that we did not leave out any fields
 
    package Units is new Table.Table (

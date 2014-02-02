@@ -1,5 +1,5 @@
 /* Perform simple optimizations to clean up the result of reload.
-   Copyright (C) 1987-2013 Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -213,7 +213,7 @@ reload_cse_regs_1 (void)
   cselib_init (CSELIB_RECORD_MEMORY);
   init_alias_analysis ();
 
-  FOR_EACH_BB (bb)
+  FOR_EACH_BB_FN (bb, cfun)
     FOR_BB_INSNS (bb, insn)
       {
 	if (INSN_P (insn))
@@ -1281,7 +1281,7 @@ reload_combine (void)
   label_live = XNEWVEC (HARD_REG_SET, n_labels);
   CLEAR_HARD_REG_SET (ever_live_at_start);
 
-  FOR_EACH_BB_REVERSE (bb)
+  FOR_EACH_BB_REVERSE_FN (bb, cfun)
     {
       insn = BB_HEAD (bb);
       if (LABEL_P (insn))
@@ -1726,9 +1726,26 @@ move2add_record_sym_value (rtx reg, rtx sym, rtx off)
 static bool
 move2add_valid_value_p (int regno, enum machine_mode mode)
 {
-  if (reg_set_luid[regno] <= move2add_last_label_luid
-      || !MODES_OK_FOR_MOVE2ADD (mode, reg_mode[regno]))
+  if (reg_set_luid[regno] <= move2add_last_label_luid)
     return false;
+
+  if (mode != reg_mode[regno])
+    {
+      if (!MODES_OK_FOR_MOVE2ADD (mode, reg_mode[regno]))
+	return false;
+      /* The value loaded into regno in reg_mode[regno] is also valid in
+	 mode after truncation only if (REG:mode regno) is the lowpart of
+	 (REG:reg_mode[regno] regno).  Now, for big endian, the starting
+	 regno of the lowpart might be different.  */
+      int s_off = subreg_lowpart_offset (mode, reg_mode[regno]);
+      s_off = subreg_regno_offset (regno, reg_mode[regno], s_off, mode);
+      if (s_off != 0)
+	/* We could in principle adjust regno, check reg_mode[regno] to be
+	   BLKmode, and return s_off to the caller (vs. -1 for failure),
+	   but we currently have no callers that could make use of this
+	   information.  */
+	return false;
+    }
 
   for (int i = hard_regno_nregs[regno][mode] - 1; i > 0; i--)
     if (reg_mode[regno + i] != BLKmode)
@@ -1749,7 +1766,7 @@ move2add_use_add2_insn (rtx reg, rtx sym, rtx off, rtx insn)
   rtx pat = PATTERN (insn);
   rtx src = SET_SRC (pat);
   int regno = REGNO (reg);
-  rtx new_src = gen_int_mode (INTVAL (off) - reg_offset[regno],
+  rtx new_src = gen_int_mode (UINTVAL (off) - reg_offset[regno],
 			      GET_MODE (reg));
   bool speed = optimize_bb_for_speed_p (BLOCK_FOR_INSN (insn));
   bool changed = false;
@@ -1849,7 +1866,7 @@ move2add_use_add3_insn (rtx reg, rtx sym, rtx off, rtx insn)
 	&& reg_symbol_ref[i] != NULL_RTX
 	&& rtx_equal_p (sym, reg_symbol_ref[i]))
       {
-	rtx new_src = gen_int_mode (INTVAL (off) - reg_offset[i],
+	rtx new_src = gen_int_mode (UINTVAL (off) - reg_offset[i],
 				    GET_MODE (reg));
 	/* (set (reg) (plus (reg) (const_int 0))) is not canonical;
 	   use (set (reg) (reg)) instead.
@@ -1884,7 +1901,7 @@ move2add_use_add3_insn (rtx reg, rtx sym, rtx off, rtx insn)
       tem = gen_rtx_REG (GET_MODE (reg), min_regno);
       if (i != min_regno)
 	{
-	  rtx new_src = gen_int_mode (INTVAL (off) - reg_offset[min_regno],
+	  rtx new_src = gen_int_mode (UINTVAL (off) - reg_offset[min_regno],
 				      GET_MODE (reg));
 	  tem = gen_rtx_PLUS (GET_MODE (reg), tem, new_src);
 	}
@@ -1993,7 +2010,7 @@ reload_cse_move2add (rtx first)
 		      && CONST_INT_P (XEXP (SET_SRC (set), 1)))
 		    {
 		      rtx src3 = XEXP (SET_SRC (set), 1);
-		      HOST_WIDE_INT added_offset = INTVAL (src3);
+		      unsigned HOST_WIDE_INT added_offset = UINTVAL (src3);
 		      HOST_WIDE_INT base_offset = reg_offset[REGNO (src)];
 		      HOST_WIDE_INT regno_offset = reg_offset[regno];
 		      rtx new_src =
@@ -2207,7 +2224,7 @@ move2add_note_store (rtx dst, const_rtx set, void *data)
     {
       rtx src = SET_SRC (set);
       rtx base_reg;
-      HOST_WIDE_INT offset;
+      unsigned HOST_WIDE_INT offset;
       int base_regno;
 
       switch (GET_CODE (src))
@@ -2218,7 +2235,7 @@ move2add_note_store (rtx dst, const_rtx set, void *data)
 	      base_reg = XEXP (src, 0);
 
 	      if (CONST_INT_P (XEXP (src, 1)))
-		offset = INTVAL (XEXP (src, 1));
+		offset = UINTVAL (XEXP (src, 1));
 	      else if (REG_P (XEXP (src, 1))
 		       && move2add_valid_value_p (REGNO (XEXP (src, 1)), mode))
 		{
@@ -2322,23 +2339,40 @@ rest_of_handle_postreload (void)
   return 0;
 }
 
-struct rtl_opt_pass pass_postreload_cse =
+namespace {
+
+const pass_data pass_data_postreload_cse =
 {
- {
-  RTL_PASS,
-  "postreload",                         /* name */
-  OPTGROUP_NONE,                        /* optinfo_flags */
-  gate_handle_postreload,               /* gate */
-  rest_of_handle_postreload,            /* execute */
-  NULL,                                 /* sub */
-  NULL,                                 /* next */
-  0,                                    /* static_pass_number */
-  TV_RELOAD_CSE_REGS,                   /* tv_id */
-  0,                                    /* properties_required */
-  0,                                    /* properties_provided */
-  0,                                    /* properties_destroyed */
-  0,                                    /* todo_flags_start */
-  TODO_df_finish | TODO_verify_rtl_sharing |
-  0                                     /* todo_flags_finish */
- }
+  RTL_PASS, /* type */
+  "postreload", /* name */
+  OPTGROUP_NONE, /* optinfo_flags */
+  true, /* has_gate */
+  true, /* has_execute */
+  TV_RELOAD_CSE_REGS, /* tv_id */
+  0, /* properties_required */
+  0, /* properties_provided */
+  0, /* properties_destroyed */
+  0, /* todo_flags_start */
+  ( TODO_df_finish | TODO_verify_rtl_sharing | 0 ), /* todo_flags_finish */
 };
+
+class pass_postreload_cse : public rtl_opt_pass
+{
+public:
+  pass_postreload_cse (gcc::context *ctxt)
+    : rtl_opt_pass (pass_data_postreload_cse, ctxt)
+  {}
+
+  /* opt_pass methods: */
+  bool gate () { return gate_handle_postreload (); }
+  unsigned int execute () { return rest_of_handle_postreload (); }
+
+}; // class pass_postreload_cse
+
+} // anon namespace
+
+rtl_opt_pass *
+make_pass_postreload_cse (gcc::context *ctxt)
+{
+  return new pass_postreload_cse (ctxt);
+}

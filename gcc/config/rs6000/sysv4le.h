@@ -1,6 +1,6 @@
 /* Target definitions for GCC for a little endian PowerPC
    running System V.4
-   Copyright (C) 1995-2013 Free Software Foundation, Inc.
+   Copyright (C) 1995-2014 Free Software Foundation, Inc.
    Contributed by Cygnus Support.
 
    This file is part of GCC.
@@ -34,3 +34,7 @@
 
 #undef	MULTILIB_DEFAULTS
 #define	MULTILIB_DEFAULTS { "mlittle", "mcall-sysv" }
+
+/* Little-endian PowerPC64 Linux uses the ELF v2 ABI by default.  */
+#define LINUX64_DEFAULT_ABI_ELFv2
+

@@ -1,7 +1,7 @@
 /* Miscellaneous support for test programs.
 
-Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
-Contributed by the Arenaire and Caramel projects, INRIA.
+Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
+Contributed by the AriC and Caramel projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -210,7 +210,8 @@ tests_end_mpfr (void)
   /* Define to test the use of MPFR_ERRDIVZERO */
   if (fetestexcept (FE_DIVBYZERO|FE_INVALID))
     {
-      printf ("A floating-point division by 0 occurred!\n");
+      printf ("A floating-point division by 0 or an invalid operation"
+              " occurred!\n");
 #ifdef MPFR_ERRDIVZERO
       /* This should never occur because the purpose of defining
          MPFR_ERRDIVZERO is to avoid all the FP divisions by 0. */
@@ -467,14 +468,16 @@ ld_trace (const char *name, long double ld)
 FILE *
 src_fopen (const char *filename, const char *mode)
 {
-  const char *srcdir = getenv ("srcdir");
+#ifndef SRCDIR
+  return fopen (filename, mode);
+#else
+  const char *srcdir = SRCDIR;
   char *buffer;
+  size_t buffsize;
   FILE *f;
 
-  if (srcdir == NULL)
-    return fopen (filename, mode);
-  buffer =
-    (char*) (*__gmp_allocate_func) (strlen (filename) + strlen (srcdir) + 2);
+  buffsize = strlen (filename) + strlen (srcdir) + 2;
+  buffer = (char *) (*__gmp_allocate_func) (buffsize);
   if (buffer == NULL)
     {
       printf ("src_fopen: failed to alloc memory)\n");
@@ -482,8 +485,9 @@ src_fopen (const char *filename, const char *mode)
     }
   sprintf (buffer, "%s/%s", srcdir, filename);
   f = fopen (buffer, mode);
-  (*__gmp_free_func) (buffer, strlen (filename) + strlen (srcdir) + 2);
+  (*__gmp_free_func) (buffer, buffsize);
   return f;
+#endif
 }
 
 void
