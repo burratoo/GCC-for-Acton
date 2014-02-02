@@ -1540,29 +1540,6 @@ package body Bindgen is
          end if;
       end if;
 
-      --  And now the OTCRs for the Scheduler Agents.
-
-      for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
-         declare
-            Policy_Str : String :=
-              Get_Name_String
-                (Scheduler_Agents.Table (J).Dispatching_Policy);
-         begin
-            Set_String ("   Scheduler_Agent_");
-            Set_Int (Int (J));
-            Set_String (" : aliased Acton.Scheduler_Agents.");
-            Set_String (Policy_Str);
-            Set_String (".");
-            Set_String (Policy_Str);
-            Set_String (" (");
-            Set_Int (Scheduler_Agents.Table (J).First_Priority);
-            Set_String (", ");
-            Set_Int (Scheduler_Agents.Table (J).Last_Priority);
-            Set_String (");");
-            Write_Statement_Buffer;
-         end;
-      end loop;
-
       WBI ("");
 
       Set_String ("   procedure ");
@@ -1650,7 +1627,7 @@ package body Bindgen is
       end if;
 
       WBI ("      Initialise_Acton;");
-      WBI ("      ada_main'Elab_Body;");
+      --  WBI ("      ada_main'Elab_Body;");
 
       Set_String ("      Global_Start_Phase := Ada.Real_Time.Milliseconds (");
       Set_Int (Global_Start_Phase_Specified);
@@ -1659,6 +1636,9 @@ package body Bindgen is
 
       if not No_Main_Subprogram then
          WBI ("      Initialise_Oak;");
+         WBI ("      declare");
+         WBI ("         Agent_Id : Oak.Agent.Scheduler_Id;");
+         WBI ("      begin");
 
          for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
             declare
@@ -1666,17 +1646,21 @@ package body Bindgen is
                  Get_Name_String
                    (Scheduler_Agents.Table (J).Dispatching_Policy);
             begin
-               Set_String ("      Acton.Scheduler_Agents.");
+               Set_String ("         Acton.Scheduler_Agents.");
                Set_String (Policy_Str);
-               Set_String (".Initialise_Scheduler_Agent (Scheduler_Agent_");
-               Set_Int (Int (J));
+               Set_String (".New_Scheduler_Agent (Agent_Id, ");
+               Set_Int (Scheduler_Agents.Table (J).First_Priority);
+               Set_String (", ");
+               Set_Int (Scheduler_Agents.Table (J).Last_Priority);
                Set_String (");");
                Write_Statement_Buffer;
             end;
          end loop;
 
+         WBI ("      end;");
+
          --  Initalise main task call
-         WBI ("      Oak.Agent.Tasks.Main_Task.Initialise_Main_Task");
+         WBI ("      Oak.Agent.Tasks.Main_Task.Setup_Main_Task");
 
          --  Set the stack size of the main task
          if ALIs.Table (ALIs.First).Main_Stack_Size = No_Main_Stack_Size then
@@ -2071,13 +2055,12 @@ package body Bindgen is
          end if;
       end if;
 
-      --  Generate "with Oak.Agent.Tasks", "with Oak.Agent.Tasks.Main_Tasks"
-      --  and "with Oak.Agent.Schedulers" so that we can reference Task_Agent
-      --  and Scheduler_Agent to create the main task and the scheduler agents
-      --  OTCR. This only happens when we bind the main program.
+      --  Generate "with Oak.Agent" and "with Oak.Agent.Tasks.Main_Tasks" so
+      --  we can reference Scheduler_Id and to create the main task. This only
+      --  happens when we bind the main program.
 
       if Bind_Main_Program then
-         WBI ("with Oak.Agent.Tasks;");
+         WBI ("with Oak.Agent;");
          WBI ("with Oak.Agent.Tasks.Main_Task;");
       end if;
 

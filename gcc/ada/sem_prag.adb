@@ -13757,9 +13757,12 @@ package body Sem_Prag is
             Check_Arg_Is_Library_Level_Local_Name (Arg1);
             Check_Arg_Is_Static_Expression (Arg2, Standard_String);
 
-            --  This pragma applies only to objects
+            --  This pragma applies to objects and types
 
-            if not Is_Object (Entity (Get_Pragma_Arg (Arg1))) then
+            if not Is_Object (Entity (Get_Pragma_Arg (Arg1)))
+              and then not Is_Type (Entity (Get_Pragma_Arg (Arg1)))
+              and then not Is_Subprogram (Entity (Get_Pragma_Arg (Arg1)))
+            then
                Error_Pragma_Arg ("pragma% applies only to objects", Arg1);
             end if;
 

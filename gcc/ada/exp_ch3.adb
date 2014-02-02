@@ -2981,26 +2981,6 @@ package body Exp_Ch3 is
 
          if Is_Task_Record_Type (Rec_Type) then
 
-            --  In the case of the restricted run time the OTCR has already
-            --  been preallocated.
-            --  TODO: We currently always preallocate the OTCR. In the future
-            --  it won't be preallocated if restricted run-time is being used.
-
-            Append_To (Stmts,
-              Make_Assignment_Statement (Loc,
-                Name       =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => Make_Identifier (Loc, Name_uInit),
-                    Selector_Name => Make_Identifier (Loc,
-                                                      Name_uTask_Handler)),
-                Expression =>
-                  Make_Attribute_Reference (Loc,
-                    Prefix         =>
-                      Make_Selected_Component (Loc,
-                        Prefix        => Make_Identifier (Loc, Name_uInit),
-                        Selector_Name => Make_Identifier (Loc, Name_uOTCR)),
-                    Attribute_Name => Name_Unchecked_Access)));
-
             Append_List_To (Decls, Make_Task_Init_Declarations (Rec_Type));
             Append_To (Stmts, Make_Task_Create_Call (Rec_Type));
 
@@ -5047,7 +5027,7 @@ package body Exp_Ch3 is
            (Def_Id, Name_Execution_Server_Object, Check_Parents => False)
          then
             Insert_After (N,
-              Node => Make_Initialise_Execution_Server_Call (Def_Id));
+              Node => Make_New_Execution_Server_Call (Def_Id));
          end if;
 
          --  For the default initialization case, if we have a private type
@@ -7962,7 +7942,7 @@ package body Exp_Ch3 is
              In_Present => True,
              Out_Present => True,
              Parameter_Type =>
-               New_Reference_To (RTE (RE_Activation_Chain), Loc)));
+               New_Reference_To (RTE (RE_Task_List), Loc)));
       end if;
 
       if Has_Task (Typ)

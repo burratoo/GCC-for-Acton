@@ -2391,12 +2391,8 @@ package body Exp_Attr is
               Make_Function_Call (Loc,
                 Name => Name,
                 Parameter_Associations => New_List (
-                  Make_Attribute_Reference (Loc,
-                    Prefix =>
-                      New_Reference_To
-                        (Find_Protection_Object (Current_Scope), Loc),
-                   Attribute_Name =>
-                     Name_Unchecked_Access),
+                  New_Reference_To
+                    (Find_Protection_Object (Current_Scope), Loc),
 
                   Entry_Index_Expression
                     (Loc, Entry_Id, Index, Scope (Entry_Id))));
