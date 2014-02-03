@@ -6731,10 +6731,6 @@ gnat_to_gnu (Node_Id gnat_node)
     /* Chapter 9: Tasks  */
     /*********************/
 
-    case N_Atomic_Type_Declaration:
-      gnu_result = alloc_stmt_list ();
-      break;
-
     case N_Protected_Type_Declaration:
       gnu_result = alloc_stmt_list ();
       break;
@@ -6756,7 +6752,6 @@ gnat_to_gnu (Node_Id gnat_node)
 
     case N_Subprogram_Body_Stub:
     case N_Package_Body_Stub:
-    case N_Atomic_Body_Stub:
     case N_Protected_Body_Stub:
     case N_Task_Body_Stub:
       /* Simply process whatever unit is being inserted.  */
@@ -8076,8 +8071,7 @@ process_decls (List_Id gnat_decls, List_Id gnat_decls2,
 	    /* Concurrent stubs stand for the corresponding subprogram bodies,
 	       which are deferred like other bodies.  */
 	    else if (Nkind (gnat_decl) == N_Task_Body_Stub
-		     || Nkind (gnat_decl) == N_Protected_Body_Stub
-		     || Nkind (gnat_decl) == N_Atomic_Body_Stub)
+		     || Nkind (gnat_decl) == N_Protected_Body_Stub)
 	      ;
 
 	    else
@@ -8096,8 +8090,7 @@ process_decls (List_Id gnat_decls, List_Id gnat_decls2,
 	    if (Nkind (gnat_decl) == N_Subprogram_Body
 		|| Nkind (gnat_decl) == N_Subprogram_Body_Stub
 		|| Nkind (gnat_decl) == N_Task_Body_Stub
-		|| Nkind (gnat_decl) == N_Protected_Body_Stub
-		|| Nkind (gnat_decl) == N_Atomic_Body_Stub)
+		|| Nkind (gnat_decl) == N_Protected_Body_Stub)
 	      add_stmt (gnat_to_gnu (gnat_decl));
 
 	    else if (Nkind (gnat_decl) == N_Package_Declaration

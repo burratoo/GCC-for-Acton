@@ -1337,12 +1337,9 @@ package body Sem_Elab is
                   end if;
 
                   --  A protected body has no elaboration code and contains
-                  --  only other bodies. Ditto for atomic bodies.
+                  --  only other bodies.
 
-                  if Nkind (P) = N_Protected_Body
-                       or else
-                     Nkind (P) = N_Atomic_Body
-                  then
+                  if Nkind (P) = N_Protected_Body then
                      return;
 
                   elsif Nkind (P) = N_Subprogram_Body
@@ -1352,8 +1349,6 @@ package body Sem_Elab is
                      Nkind (P) = N_Block_Statement
                        or else
                      Nkind (P) = N_Entry_Body
-                       or else
-                     Nkind (P) = N_Action_Body
                   then
                      if L = Declarations (P) then
                         exit;
@@ -3102,8 +3097,6 @@ package body Sem_Elab is
                     or else
                   Ekind (S1) = E_Protected_Type
                     or else
-                  Ekind (S1) = E_Atomic_Type
-                    or else
                   Ekind (S1) = E_Block)
       loop
          S1 := Scope (S1);
@@ -3117,8 +3110,6 @@ package body Sem_Elab is
         and then (Ekind (S2) = E_Package
                     or else
                   Ekind (S2) = E_Protected_Type
-                    or else
-                  Ekind (S2) = E_Atomic_Type
                     or else
                   Ekind (S2) = E_Block)
       loop

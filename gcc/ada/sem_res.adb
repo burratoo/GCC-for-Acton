@@ -612,8 +612,7 @@ package body Sem_Res is
          P := Parent (PN);
          while not Nkind_In (P, N_Component_Declaration,
                                 N_Subtype_Indication,
-                                N_Entry_Declaration,
-                                N_Action_Declaration)
+                                N_Entry_Declaration)
          loop
             D := P;
             P := Parent (P);
@@ -637,7 +636,6 @@ package body Sem_Res is
                       and then
                     Nkind (Parent (P)) = N_Index_Or_Discriminant_Constraint)
            or else Nkind (P) = N_Entry_Declaration
-           or else Nkind (P) = N_Action_Declaration
            or else Nkind (D) = N_Defining_Identifier
          then
             Error_Msg_N
@@ -1102,8 +1100,7 @@ package body Sem_Res is
         (Nkind (N) = N_Selected_Component
           and then (Ekind (Entity (Selector_Name (N))) = E_Function
                      or else
-                       (Ekind_In (Entity (Selector_Name (N)), E_Action,
-                                                              E_Entry,
+                       (Ekind_In (Entity (Selector_Name (N)), E_Entry,
                                                               E_Procedure)
                          and then Is_Overloaded (Selector_Name (N)))))
 
@@ -7015,17 +7012,10 @@ package body Sem_Res is
          Actuals := Parameter_Associations (N);
          First_Named := First_Named_Actual (N);
 
-         if Is_Atomic_Type (Scope (Nam)) then
-            Rewrite (N,
-              Make_Action_Call_Statement (Loc,
-                Name                   => Entry_Name,
-                Parameter_Associations => Actuals));
-         else
-            Rewrite (N,
-              Make_Entry_Call_Statement (Loc,
-                Name                   => Entry_Name,
-                Parameter_Associations => Actuals));
-         end if;
+         Rewrite (N,
+           Make_Entry_Call_Statement (Loc,
+             Name                   => Entry_Name,
+             Parameter_Associations => Actuals));
 
          Set_First_Named_Actual (N, First_Named);
          Set_Analyzed (N, True);

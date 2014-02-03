@@ -3830,8 +3830,7 @@ package body Exp_Attr is
          loop
             Subp := Parent (Subp);
             exit when Nkind (Subp) = N_Subprogram_Body
-              and then Chars (Defining_Entity (Subp)) /= Name_uPostconditions
-              and then Chars (Defining_Entity (Subp)) /= Name_uEnsure;
+              and then Chars (Defining_Entity (Subp)) /= Name_uPostconditions;
          end loop;
 
          --  Insert the initialized object declaration at the start of the

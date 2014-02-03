@@ -5943,7 +5943,6 @@ package Einfo is
    --    Mechanism                           (Uint8)
    --    First_Entity                        (Node17)
    --    Corresponding_Protected_Entry       (Node18)
-   --    Corresponding_Action                (Node19)
    --    Last_Entity                         (Node20)
    --    Scope_Depth_Value                   (Uint22)
    --    Barrier_Service_Function            (Node26)

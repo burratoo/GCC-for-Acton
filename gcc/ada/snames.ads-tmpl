@@ -1444,6 +1444,15 @@ package Snames is
    subtype Ada_2012_Reserved_Words is
      Name_Id range First_2012_Reserved_Word .. Last_2012_Reserved_Word;
 
+   --  Ada Acton reserved words
+
+   First_Acton_Reserved_Word             : constant Name_Id := N + $;
+   Name_Cycles                           : constant Name_Id := N + $;
+   Last_Acton_Reserved_Word              : constant Name_Id := N + $;
+
+   subtype Acton_Reserved_Words is
+     Name_Id range First_Acton_Reserved_Word .. Last_Acton_Reserved_Word;
+
    --  Mark last defined name for consistency check in Snames body
 
    Last_Predefined_Name                  : constant Name_Id := N + $;

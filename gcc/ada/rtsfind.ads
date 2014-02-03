@@ -120,7 +120,6 @@ package Rtsfind is
 
       --  Children of Ada
 
-      Ada_Atomic_Actions,
       Ada_Calendar,
       Ada_Cyclic_Tasks,
       Ada_Dispatching,
@@ -429,7 +428,6 @@ package Rtsfind is
       --  Children of Oak
 
       Oak_Agent,
-      Oak_Atomic_Actions,
       Oak_Indices,
       Oak_Memory,
       Oak_Message,
@@ -459,13 +457,12 @@ package Rtsfind is
 
       --  Children of Oakland
 
-      Oakland_Atomic_Actions,
       Oakland_Interrupts,
       Oakland_Protected_Objects,
       Oakland_Tasks);
 
    subtype Ada_Child is RTU_Id
-     range Ada_Atomic_Actions .. Ada_Wide_Wide_Text_IO_Modular_IO;
+     range Ada_Calendar .. Ada_Wide_Wide_Text_IO_Modular_IO;
    --  Range of values for children or grand-children of Ada
 
    subtype Ada_Calendar_Child is Ada_Child
@@ -577,7 +574,7 @@ package Rtsfind is
    --  Range of values of children of Oak.Processor_Support_Package
 
    subtype Oakland_Child is RTU_Id
-      range Oakland_Atomic_Actions .. Oakland_Tasks;
+      range Oakland_Interrupts .. Oakland_Tasks;
    --  Range of values of children of Oakland
 
    --------------------------
@@ -615,10 +612,6 @@ package Rtsfind is
    type RE_Id is (
 
      RE_Null,
-
-     RE_Active_Actions,                  -- Ada.Atomic_Actions
-     RE_All_Actions,                     -- Ada.Atomic_Actions
-     RE_Participating_Actions,           -- Ada.Atomic_Actions
 
      RO_CA_Time,                         -- Ada.Calendar
 
@@ -1898,9 +1891,6 @@ package Rtsfind is
 
      RE_New_Protected_Agent,             -- Oak.Agent.Protected_Objects
 
-     RE_Atomic_Object,                   -- Oak.Atomic_Actions
-     RE_Initialise_Atomic_Object,        -- Oak.Atomic_Actions
-
      RE_Action_Index,                    -- Oak.Indices
      RE_Protected_Entry_Index,           -- Oak.Indices
 
@@ -1917,10 +1907,6 @@ package Rtsfind is
 
      RE_To_Oak_Time,                     -- Oak.Oak_Time.Conversion
      RE_To_Oak_Time_Span,                -- Oak.Oak_Time.Conversion
-
-     RE_Action_End_Barrier,              -- Oakland.Atomic_Actions
-     RE_Enter_Action,                    -- Oakland.Atomic_Actions
-     RE_Exit_Action,                     -- Oakland.Atomic_Actions
 
      RE_Attach_Handlers,                 -- Oakland.Interrupts
 
@@ -1944,10 +1930,6 @@ package Rtsfind is
    RE_Unit_Table : constant array (RE_Id) of RTU_Id := (
 
      RE_Null                             => RTU_Null,
-
-     RE_Active_Actions                   => Ada_Atomic_Actions,
-     RE_All_Actions                      => Ada_Atomic_Actions,
-     RE_Participating_Actions            => Ada_Atomic_Actions,
 
      RO_CA_Time                          => Ada_Calendar,
 
@@ -3269,9 +3251,6 @@ package Rtsfind is
      RE_New_Task_Agent                   => Oak_Agent_Tasks,
      RE_Unspecified_Priority             => Oak_Agent_Tasks,
 
-     RE_Atomic_Object                    => Oak_Atomic_Actions,
-     RE_Initialise_Atomic_Object         => Oak_Atomic_Actions,
-
      RE_Action_Index                     => Oak_Indices,
      RE_Protected_Entry_Index            => Oak_Indices,
 
@@ -3290,10 +3269,6 @@ package Rtsfind is
 
      RE_To_Oak_Time                      => Oak_Oak_Time_Conversion,
      RE_To_Oak_Time_Span                 => Oak_Oak_Time_Conversion,
-
-     RE_Action_End_Barrier               => Oakland_Atomic_Actions,
-     RE_Enter_Action                     => Oakland_Atomic_Actions,
-     RE_Exit_Action                      => Oakland_Atomic_Actions,
 
      RE_Attach_Handlers                  => Oakland_Interrupts,
 

@@ -996,13 +996,6 @@ package body Sem_Ch4 is
          then
             Error_Msg_N ("entry name expected", Nam);
 
-         --  Check for tasking cases where only an action call will do
-
-         elsif not L
-           and then K = N_Action_Call_Statement
-         then
-            Error_Msg_N ("action name expected", Nam);
-
          --  Otherwise give general error message
 
          else
@@ -1070,8 +1063,7 @@ package body Sem_Ch4 is
          elsif Nkind (Nam) = N_Selected_Component then
             Nam_Ent := Entity (Selector_Name (Nam));
 
-            if not Ekind_In (Nam_Ent, E_Action,
-                                      E_Entry,
+            if not Ekind_In (Nam_Ent, E_Entry,
                                       E_Entry_Family,
                                       E_Function,
                                       E_Procedure)
@@ -6274,10 +6266,6 @@ package body Sem_Ch4 is
          when Type_Kind =>
             Error_Msg_N
               ("subtype name cannot be used as operand", Enode);
-
-         when E_Action =>
-            Error_Msg_N
-              ("action name cannot be used as operand", Enode);
 
          when Entry_Kind =>
             Error_Msg_N

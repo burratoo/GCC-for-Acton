@@ -260,9 +260,7 @@ package body Exp_Ch2 is
          loop
             P := Parent_P;
 
-            if Nkind (P) = N_Entry_Declaration
-              or else Nkind (P) = N_Action_Declaration
-            then
+            if Nkind (P) = N_Entry_Declaration then
                In_Entry := True;
             end if;
 
@@ -508,8 +506,7 @@ package body Exp_Ch2 is
          --  considered as an assignment?
 
          if Nkind_In (Parent (N), N_Procedure_Call_Statement,
-                                  N_Entry_Call_Statement,
-                                  N_Action_Call_Statement)
+                                  N_Entry_Call_Statement)
            or else (Nkind (Parent (N)) = N_Assignment_Statement
                       and then N = Name (Parent (N)))
          then
@@ -603,9 +600,8 @@ package body Exp_Ch2 is
 
    begin
       --  Check whether the subprogram of which this is a formal is
-      --  a protected or atomic operation. The initialization procedure for
-      --  the corresponding record type is not itself a protected or atomic
-      --  operation.
+      --  a protected operation. The initialization procedure for
+      --  the corresponding record type is not itself a protected operation.
 
       if Is_Protected_Type (Scope (Scop))
         and then not Is_Init_Proc (Scop)
@@ -613,14 +609,6 @@ package body Exp_Ch2 is
       then
          Set_Entity (N, Protected_Formal (E));
       end if;
-
-      if Is_Atomic_Type (Scope (Scop))
-        and then not Is_Init_Proc (Scop)
-        and then Present (Atomic_Formal (E))
-      then
-         Set_Entity (N, Atomic_Formal (E));
-      end if;
-
    end Expand_Formal;
 
    ----------------------------

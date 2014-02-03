@@ -267,7 +267,6 @@ GNAT_ADA_OBJS =	\
  ada/exp_ch7.o	\
  ada/exp_ch8.o	\
  ada/exp_ch9.o	\
- ada/exp_atom.o	\
  ada/exp_code.o	\
  ada/exp_dbug.o	\
  ada/exp_disp.o	\
@@ -403,7 +402,6 @@ GNAT_ADA_OBJS =	\
  ada/sem_ch7.o	\
  ada/sem_ch8.o	\
  ada/sem_ch9.o	\
- ada/sem_atom.o	\
  ada/sem_dim.o  \
  ada/sem_disp.o	\
  ada/sem_dist.o	\

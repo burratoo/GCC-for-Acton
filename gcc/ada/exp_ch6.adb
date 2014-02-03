@@ -32,7 +32,6 @@ with Errout;   use Errout;
 with Elists;   use Elists;
 with Exp_Aggr; use Exp_Aggr;
 with Exp_Atag; use Exp_Atag;
-with Exp_Atom; use Exp_Atom;
 with Exp_Ch2;  use Exp_Ch2;
 with Exp_Ch3;  use Exp_Ch3;
 with Exp_Ch7;  use Exp_Ch7;
@@ -2513,7 +2512,7 @@ package body Exp_Ch6 is
             end;
          end if;
 
-         if Ekind (Subp) = E_Entry or else Ekind (Subp) = E_Action then
+         if Ekind (Subp) = E_Entry then
             Parent_Subp := Empty;
          end if;
       end if;
@@ -3502,7 +3501,6 @@ package body Exp_Ch6 is
       --  attribute does not apply to entries.
 
       if Nkind (Call_Node) /= N_Entry_Call_Statement
-        and then Nkind (Call_Node) /= N_Action_Call_Statement
         and then No (Controlling_Argument (Call_Node))
         and then Present (Parent_Subp)
         and then not Is_Direct_Deep_Call (Subp)
@@ -6771,7 +6769,6 @@ package body Exp_Ch6 is
               E_Generic_Procedure |
               E_Entry             |
               E_Entry_Family      |
-              E_Action            |
               E_Return_Statement =>
             Expand_Non_Function_Return (N);
 
@@ -7089,16 +7086,6 @@ package body Exp_Ch6 is
          Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
       end if;
 
-      --  Create a set of discriminals for the next action subprogram body
-
-      if Is_List_Member (N)
-        and then Present (Parent (List_Containing (N)))
-        and then Nkind (Parent (List_Containing (N))) = N_Atomic_Body
-        and then Present (Next_Action (N))
-      then
-         Set_Discriminals (Parent (Base_Type (Scope (Spec_Id))));
-      end if;
-
       --  Returns_By_Ref flag is normally set when the subprogram is frozen but
       --  subprograms with no specs are not frozen.
 
@@ -7387,8 +7374,7 @@ package body Exp_Ch6 is
          return;
       end if;
 
-      pragma Assert (Is_Entry (Scope_Id)
-             or else Is_Action (Scope_Id));
+      pragma Assert (Is_Entry (Scope_Id));
 
       --  Look at the enclosing block to see whether the return is from an
       --  accept statement or an action body.
@@ -7420,30 +7406,6 @@ package body Exp_Ch6 is
 
          Lab_Node := Last (Statements
            (Handled_Statement_Sequence (Acc_Stat)));
-
-         Goto_Stat := Make_Goto_Statement (Loc,
-           Name => New_Occurrence_Of
-             (Entity (Identifier (Lab_Node)), Loc));
-
-         Set_Analyzed (Goto_Stat);
-
-         Rewrite (N, Goto_Stat);
-         Analyze (N);
-
-         --  If it is a return from an action body, it is expanded into a goto
-         --  to the end of the body.
-
-         --  (cf : Expand_N_Atomic_Body in exp_atom.adb)
-
-      elsif Is_Atomic_Type (Scope_Id) then
-
-         Act_Body := Parent (N);
-         while Nkind (Act_Body) /= N_Action_Body loop
-            Act_Body := Parent (Act_Body);
-         end loop;
-
-         Lab_Node := Last (Statements
-           (Handled_Statement_Sequence (Act_Body)));
 
          Goto_Stat := Make_Goto_Statement (Loc,
            Name => New_Occurrence_Of

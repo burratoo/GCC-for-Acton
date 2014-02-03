@@ -1568,18 +1568,6 @@ package body Par_SCO is
                Set_Statement_Entry;
                Traverse_Subprogram_Or_Task_Body (N);
 
-            --  Action body
-
-            when N_Action_Body =>
-               Set_Statement_Entry;
-               Traverse_Subprogram_Or_Task_Body (N);
-
-            --  Atomic body
-
-            when N_Atomic_Body =>
-               Set_Statement_Entry;
-               Traverse_Declarations_Or_Statements (Declarations (N));
-
             --  Entry body
 
             when N_Entry_Body =>

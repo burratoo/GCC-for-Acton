@@ -910,7 +910,9 @@ package body Atree is
 
    function Ekind (E : Entity_Id) return Entity_Kind is
    begin
-      pragma Assert (Nkind (E) in N_Entity);
+      if Nkind (E) not in N_Entity then
+         raise Program_Error;
+      end if;
       return N_To_E (Nodes.Table (E + 1).Nkind);
    end Ekind;
 

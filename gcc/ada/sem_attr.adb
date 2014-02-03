@@ -4489,18 +4489,14 @@ package body Sem_Attr is
 
          else
             while Present (CS) and then CS /= Standard_Standard loop
-               if Chars (CS) = Name_uPostconditions
-                 or else Chars (CS) = Name_uEnsure
-               then
+               if Chars (CS) = Name_uPostconditions then
                   exit;
                else
                   CS := Scope (CS);
                end if;
             end loop;
 
-            if Chars (CS) /= Name_uPostconditions
-              and then Chars (CS) /= Name_uEnsure
-            then
+            if Chars (CS) /= Name_uPostconditions then
                Error_Attr ("% attribute can only appear in postcondition" &
                  " or an action's ensure", P);
             end if;

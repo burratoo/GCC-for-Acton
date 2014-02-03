@@ -4150,11 +4150,6 @@ package body Sem_Util is
             return Defining_Entity (Specification (N));
 
          when
-           N_Action_Body                            |
-           N_Action_Declaration                     |
-           N_Atomic_Body                            |
-           N_Atomic_Body_Stub                       |
-           N_Atomic_Type_Declaration                |
            N_Component_Declaration                  |
            N_Defining_Program_Unit_Name             |
            N_Discriminant_Specification             |
@@ -4180,7 +4175,6 @@ package body Sem_Util is
            N_Protected_Body                         |
            N_Protected_Body_Stub                    |
            N_Protected_Type_Declaration             |
-           N_Single_Atomic_Declaration              |
            N_Single_Protected_Declaration           |
            N_Single_Task_Declaration                |
            N_Subtype_Declaration                    |
@@ -7187,8 +7181,6 @@ package body Sem_Util is
    function Has_Declarations (N : Node_Id) return Boolean is
    begin
       return Nkind_In (Nkind (N), N_Accept_Statement,
-                                  N_Action_Body,
-                                  N_Atomic_Body,
                                   N_Block_Statement,
                                   N_Compilation_Unit_Aux,
                                   N_Entry_Body,
@@ -11997,7 +11989,6 @@ package body Sem_Util is
 
          when N_Subprogram_Call      |
               N_Entry_Call_Statement |
-              N_Action_Call_Statement |
               N_Accept_Statement
          =>
             if Nkind (P) = N_Function_Call and then Ada_Version < Ada_2012 then
@@ -12787,7 +12778,6 @@ package body Sem_Util is
             --  set the corresponding links in the copy.
 
             if (Nkind (Old_Node) = N_Function_Call
-                 or else Nkind (Old_Node) = N_Action_Call_Statement
                  or else Nkind (Old_Node) = N_Entry_Call_Statement
                  or else
                    Nkind (Old_Node) = N_Procedure_Call_Statement)
@@ -14021,7 +14011,6 @@ package body Sem_Util is
                   while Present (Node_Par) loop
                      case Nkind (Node_Par) is
                         when N_Component_Declaration           |
-                             N_Action_Declaration              |
                              N_Entry_Declaration               |
                              N_Formal_Object_Declaration       |
                              N_Formal_Type_Declaration         |
@@ -14030,7 +14019,6 @@ package body Sem_Util is
                              N_Loop_Parameter_Specification    |
                              N_Object_Declaration              |
                              N_Protected_Type_Declaration      |
-                             N_Atomic_Type_Declaration         |
                              N_Private_Extension_Declaration   |
                              N_Private_Type_Declaration        |
                              N_Subtype_Declaration             |
@@ -14049,7 +14037,6 @@ package body Sem_Util is
                              N_Block_Statement                 |
                              N_Formal_Subprogram_Declaration   |
                              N_Abstract_Subprogram_Declaration |
-                             N_Action_Body                     |
                              N_Entry_Body                      |
                              N_Exception_Declaration           |
                              N_Formal_Package_Declaration      |
@@ -14057,7 +14044,6 @@ package body Sem_Util is
                              N_Package_Specification           |
                              N_Parameter_Specification         |
                              N_Single_Protected_Declaration    |
-                             N_Single_Atomic_Declaration       |
                              N_Subunit                         =>
 
                            return Scope_Depth

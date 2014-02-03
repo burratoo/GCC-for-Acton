@@ -1550,8 +1550,6 @@ package body Freeze is
 
                   if (Nkind_In (Bod, N_Subprogram_Body,
                                      N_Entry_Body,
-                                     N_Action_Body,
-                                     N_Atomic_Body,
                                      N_Package_Body,
                                      N_Protected_Body,
                                      N_Task_Body)
@@ -5692,8 +5690,6 @@ package body Freeze is
 
             when N_Block_Statement       |
                  N_Entry_Body            |
-                 N_Action_Body           |
-                 N_Atomic_Body           |
                  N_Package_Body          |
                  N_Package_Specification |
                  N_Protected_Body        |

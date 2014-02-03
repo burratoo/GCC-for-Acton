@@ -283,7 +283,7 @@ package Exp_Ch7 is
    --  Expand the necessary stuff into a scope to enable finalization of local
    --  objects and deallocation of transient data when exiting the scope. N is
    --  a "scope node" that is to say one of the following: N_Block_Statement,
-   --  N_Subprogram_Body, N_Task_Body, N_Entry_Body, N_Action_Body.
+   --  N_Subprogram_Body, N_Task_Body, N_Entry_Body.
 
    procedure Establish_Transient_Scope (N : Node_Id; Sec_Stack : Boolean);
    --  Push a new transient scope on the scope stack. N is the node responsible

@@ -511,9 +511,6 @@ package body Sem_Ch8 is
    --  Prefix is appropriate for record if it is of a record type, or an access
    --  to such.
 
-   function Is_Appropriate_For_Action_Prefix (T : Entity_Id) return Boolean;
-   --  True if it is of an atomic type or else an access to it.
-
    function Is_Appropriate_For_Entry_Prefix (T : Entity_Id) return Boolean;
    --  True if it is of a task type, a protected type or else an access to one
    --  of these types.
@@ -3909,8 +3906,7 @@ package body Sem_Ch8 is
             Pop_Scope;
 
             while not (Is_List_Member (Decl))
-              or else Nkind_In (Parent (Decl), N_Atomic_Definition,
-                                               N_Protected_Definition,
+              or else Nkind_In (Parent (Decl), N_Protected_Definition,
                                                N_Task_Definition)
             loop
                Decl := Parent (Decl);
@@ -6235,8 +6231,7 @@ package body Sem_Ch8 is
 
          --  Reference to type name in predicate/invariant expression
 
-         elsif (Is_Appropriate_For_Entry_Prefix (P_Type)
-                  or else Is_Appropriate_For_Action_Prefix (P_Type))
+         elsif Is_Appropriate_For_Entry_Prefix (P_Type)
            and then not In_Open_Scopes (P_Name)
            and then (not Is_Concurrent_Type (Etype (P_Name))
                       or else not In_Open_Scopes (Etype (P_Name)))
@@ -7231,24 +7226,9 @@ package body Sem_Ch8 is
       end loop;
    end Install_Use_Clauses;
 
-   --------------------------------------
-   -- Is_Appropriate_For_Action_Prefix --
-   --------------------------------------
-
-   function Is_Appropriate_For_Action_Prefix (T : Entity_Id) return Boolean is
-      P_Type : Entity_Id := T;
-
-   begin
-      if Is_Access_Type (P_Type) then
-         P_Type := Designated_Type (P_Type);
-      end if;
-
-      return Is_Atomic_Type (P_Type);
-   end Is_Appropriate_For_Action_Prefix;
-
-   -------------------------------------
+   ------------------------------------------
    -- Is_Appropriate_For_Concurrent_Prefix --
-   -------------------------------------
+   ------------------------------------------
 
    function Is_Appropriate_For_Entry_Prefix (T : Entity_Id) return Boolean is
       P_Type : Entity_Id := T;

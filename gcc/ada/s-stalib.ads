@@ -150,15 +150,6 @@ package System.Standard_Library is
    --  This is used only in the Ada 83 case, but it is not worth having a
    --  separate version of s-stalib.ads for use in Ada 83 mode.
 
-   Atomic_Error_Def : aliased Exception_Data :=
-     (Not_Handled_By_Others => False,
-      Lang                  => 'A',
-      Name_Length           => Atomic_Error_Name'Length,
-      Full_Name             => Atomic_Error_Name'Address,
-      HTable_Ptr            => null,
-      Import_Code           => 0,
-      Raise_Hook            => null);
-
    Constraint_Error_Def : aliased Exception_Data :=
      (Not_Handled_By_Others => False,
       Lang                  => 'A',
@@ -213,7 +204,6 @@ package System.Standard_Library is
       Foreign_Data          => Null_Address,
       Raise_Hook            => null);
 
-   pragma Export (C, Atomic_Error_Def,     "atomic_error");
    pragma Export (C, Constraint_Error_Def, "constraint_error");
    pragma Export (C, Numeric_Error_Def,    "numeric_error");
    pragma Export (C, Program_Error_Def,    "program_error");

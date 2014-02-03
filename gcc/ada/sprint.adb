@@ -996,37 +996,6 @@ package body Sprint is
 
             Sprint_Node (Subtype_Indication (Node));
 
-         when N_Action_Body =>
-            Write_Indent_Str_Sloc ("action ");
-            Write_Id (Defining_Identifier (Node));
-            Sprint_Node (Action_Body_Formal_Part (Node));
-            Write_Str_With_Col_Check (" is");
-            Sprint_Indented_List (Declarations (Node));
-            Write_Indent_Str ("begin");
-            Sprint_Node (Handled_Statement_Sequence (Node));
-            Write_Indent_Str ("end ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Char (';');
-
-         when N_Action_Body_Formal_Part =>
-            Write_Param_Specs (Node);
-
-         when N_Action_Call_Alternative =>
-            Sprint_Node_Sloc (Action_Call_Statement (Node));
-            Sprint_Node_List (Statements (Node));
-
-         when N_Action_Call_Statement =>
-            Write_Indent;
-            Sprint_Node_Sloc (Name (Node));
-            Sprint_Opt_Paren_Comma_List (Parameter_Associations (Node));
-            Write_Char (';');
-
-         when N_Action_Declaration =>
-            Write_Indent_Str_Sloc ("action ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Param_Specs (Node);
-            Write_Char (';');
-
          when N_Aggregate =>
             if Null_Record_Present (Node) then
                Write_Str_With_Col_Check_Sloc ("(null record)");
@@ -1092,30 +1061,6 @@ package body Sprint is
                Write_Char (']');
             end if;
 
-         when N_Alternative_Action_Select =>
-            Write_Indent_Str_Sloc ("select");
-
-            declare
-               Alt_Node : Node_Id;
-            begin
-               Alt_Node := First (Action_Call_Alternatives (Node));
-               loop
-                  Indent_Begin;
-                  Sprint_Node (Alt_Node);
-                  Indent_End;
-                  Next (Alt_Node);
-                  exit when No (Alt_Node);
-                  Write_Indent_Str ("else");
-               end loop;
-            end;
-
-            if Present (Else_Statements (Node)) then
-               Write_Indent_Str ("else");
-               Sprint_Indented_List (Else_Statements (Node));
-            end if;
-
-            Write_Indent_Str ("end select;");
-
          when N_And_Then =>
             Sprint_Left_Opnd (Node);
             Write_Str_Sloc (" and then ");
@@ -1156,42 +1101,6 @@ package body Sprint is
             Write_Id (Identifier (Node));
             Write_Str_With_Col_Check (" use at ");
             Sprint_Node (Expression (Node));
-            Write_Char (';');
-
-         when N_Atomic_Body =>
-            Write_Indent_Str_Sloc ("atomic body ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Str (" is");
-            Sprint_Indented_List (Declarations (Node));
-            Write_Indent_Str ("end ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Char (';');
-
-         when N_Atomic_Body_Stub =>
-            Write_Indent_Str_Sloc ("atomic body ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Str_With_Col_Check (" is separate;");
-
-         when N_Atomic_Definition =>
-            Set_Debug_Sloc;
-            Sprint_Indented_List (Visible_Declarations (Node));
-
-            if Present (Private_Declarations (Node)) then
-               Write_Indent_Str ("private");
-               Sprint_Indented_List (Private_Declarations (Node));
-            end if;
-
-            Write_Indent_Str ("end ");
-
-         when N_Atomic_Type_Declaration =>
-            Write_Indent_Str_Sloc ("atomic type ");
-            Sprint_Node (Defining_Identifier (Node));
-            Write_Discr_Specs (Node);
-
-            Write_Str (" is");
-
-            Sprint_Node (Atomic_Definition (Node));
-            Write_Id (Defining_Identifier (Node));
             Write_Char (';');
 
          when N_Attribute_Definition_Clause =>
@@ -3100,14 +3009,6 @@ package body Sprint is
             Sprint_Node (Low_Bound (Node));
             Write_Str (" .. ");
             Sprint_Node (High_Bound (Node));
-
-         when N_Single_Atomic_Declaration =>
-            Write_Indent_Str_Sloc ("atomic ");
-            Write_Id (Defining_Identifier (Node));
-            Write_Str (" is");
-            Sprint_Node (Protected_Definition (Node));
-            Write_Id (Defining_Identifier (Node));
-            Write_Char (';');
 
          when N_Single_Protected_Declaration =>
             Write_Indent_Str_Sloc ("protected ");

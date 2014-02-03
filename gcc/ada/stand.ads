@@ -82,7 +82,6 @@ package Stand is
 
       --  Exceptions declared in package Standard
 
-      S_Atomic_Error,
       S_Constraint_Error,
       S_Numeric_Error,
       S_Program_Error,
@@ -216,7 +215,7 @@ package Stand is
      Standard_Entity_Type range S_Boolean .. S_Duration;
 
    subtype S_Exceptions is
-     Standard_Entity_Type range S_Atomic_Error .. S_Tasking_Error;
+     Standard_Entity_Type range S_Constraint_Error .. S_Tasking_Error;
 
    subtype S_ASCII_Names is
      Standard_Entity_Type range S_NUL .. S_DEL;
@@ -262,7 +261,6 @@ package Stand is
    Standard_Natural             : Entity_Id renames SE (S_Natural);
    Standard_Positive            : Entity_Id renames SE (S_Positive);
 
-   Standard_Atomic_Error        : Entity_Id renames SE (S_Atomic_Error);
    Standard_Constraint_Error    : Entity_Id renames SE (S_Constraint_Error);
    Standard_Numeric_Error       : Entity_Id renames SE (S_Numeric_Error);
    Standard_Program_Error       : Entity_Id renames SE (S_Program_Error);

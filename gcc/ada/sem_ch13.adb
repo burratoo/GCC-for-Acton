@@ -1585,6 +1585,7 @@ package body Sem_Ch13 is
                     Aspect_Object_Size          |
                     Aspect_Output               |
                     Aspect_Read                 |
+                    Aspect_Relative_Deadline    |
                     Aspect_Scalar_Storage_Order |
                     Aspect_Size                 |
                     Aspect_Small                |
@@ -1644,7 +1645,8 @@ package body Sem_Ch13 is
 
                   if (A_Id = Aspect_Cycle_Period
                        or else A_Id = Aspect_Cycle_Phase
-                       or else A_Id = Aspect_Execution_Budget)
+                       or else A_Id = Aspect_Execution_Budget
+                       or else A_Id = Aspect_Relative_Deadline)
                     and then Nkind (N) = N_Object_Declaration
                   then
                      Delay_Required := False;
@@ -1744,17 +1746,6 @@ package body Sem_Ch13 is
                      Ensure_Freeze_Node (Full_View (E));
                   end if;
 
-               --  Linker Section
-
-               when Aspect_Linker_Section =>
-                  Make_Aitem_Pragma
-                    (Pragma_Argument_Associations => New_List (
-                       Make_Pragma_Argument_Association (Loc,
-                         Expression => New_Occurrence_Of (E, Loc)),
-                       Make_Pragma_Argument_Association (Sloc (Expr),
-                         Expression => Relocate_Node (Expr))),
-                     Pragma_Name                  => Name_Linker_Section);
-
                --  Case 2b: Aspects corresponding to pragmas with two
                --  arguments, where the second argument is a local name
                --  referring to the entity, and the first argument is the
@@ -1833,9 +1824,9 @@ package body Sem_Ch13 is
                         Pragma_Name                  => P_Name);
                   end;
 
-               --  CPU, Interrupt_Priority, Priority, Relative_Deadline
+               --  CPU, Interrupt_Priority, Priority
 
-               --  These four aspects can be specified for a subprogram spec
+               --  These three aspects can be specified for a subprogram spec
                --  or body, in which case we analyze the expression and export
                --  the value of the aspect.
 
@@ -1850,8 +1841,7 @@ package body Sem_Ch13 is
 
                when Aspect_CPU                |
                     Aspect_Interrupt_Priority |
-                    Aspect_Priority           |
-                    Aspect_Relative_Deadline  =>
+                    Aspect_Priority           =>
 
                   if Nkind_In (N, N_Subprogram_Body,
                                   N_Subprogram_Declaration)
@@ -1926,26 +1916,6 @@ package body Sem_Ch13 is
                               Expr);
                         end if;
                      end if;
-
-                     --  Load an arbitrary entity from System.Tasking.Stages
-                     --  or System.Tasking.Restricted.Stages (depending on
-                     --  the supported profile) to make sure that one of these
-                     --  packages is implicitly with'ed, since we need to have
-                     --  the tasking run time active for the pragma Priority to
-                     --  have any effect. Previously with with'ed the package
-                     --  System.Tasking, but this package does not trigger the
-                     --  required initialization of the run-time library.
-
-                     declare
-                        Discard : Entity_Id;
-                        pragma Warnings (Off, Discard);
-                     begin
-                        if Restricted_Profile then
-                           Discard := RTE (RE_Activate_Restricted_Tasks);
-                        else
-                           Discard := RTE (RE_Activate_Tasks);
-                        end if;
-                     end;
 
                      --  Handling for these Aspects in subprograms is complete
 
@@ -2336,44 +2306,6 @@ package body Sem_Ch13 is
                   goto Continue;
                end Refined_State;
 
-               --  Relative_Deadline
-
-               when Aspect_Relative_Deadline =>
-                  Make_Aitem_Pragma
-                    (Pragma_Argument_Associations => New_List (
-                       Make_Pragma_Argument_Association (Loc,
-                         Expression => Relocate_Node (Expr))),
-                      Pragma_Name                 => Name_Relative_Deadline);
-
-                  --  If the aspect applies to a task, the corresponding pragma
-                  --  must appear within its declarations, not after.
-
-                  if Nkind (N) = N_Task_Type_Declaration then
-                     declare
-                        Def : Node_Id;
-                        V   : List_Id;
-
-                     begin
-                        if No (Task_Definition (N)) then
-                           Set_Task_Definition (N,
-                             Make_Task_Definition (Loc,
-                                Visible_Declarations => New_List,
-                                End_Label => Empty));
-                        end if;
-
-                        Def := Task_Definition (N);
-                        V  := Visible_Declarations (Def);
-                        if not Is_Empty_List (V) then
-                           Insert_Before (First (V), Aitem);
-
-                        else
-                           Set_Visible_Declarations (Def, New_List (Aitem));
-                        end if;
-
-                        goto Continue;
-                     end;
-                  end if;
-
                --  Case 3 : Aspects that don't correspond to pragma/attribute
                --  definition clause.
 
@@ -2416,13 +2348,6 @@ package body Sem_Ch13 is
 
                when Aspect_Dimension_System =>
                   Analyze_Aspect_Dimension_System (N, Id, Expr);
-                  goto Continue;
-
-               when Aspect_No_End_Barrier          |
-                    Aspect_No_Start_Barrier        |
-                    Aspect_Participating_Actions   |
-                    Aspect_Restore_State           =>
-                  Analyze_Atomic_Aspects;
                   goto Continue;
 
                --  Case 4: Aspects requiring special handling

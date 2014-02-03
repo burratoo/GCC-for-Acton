@@ -246,35 +246,6 @@ package body Sem_Ch10 is
    --  makes the implementation must simpler than could be feared.
 
    ------------------------------
-   -- Analyze_Atomic_Body_Stub --
-   ------------------------------
-
-   procedure Analyze_Atomic_Body_Stub (N : Node_Id) is
-      --  This will belong in Chapter 10 in the future.
-      Nam : Entity_Id := Current_Entity_In_Scope (Defining_Identifier (N));
-
-   begin
-      Check_Stub_Level (N);
-
-      --  First occurrence of name may have been as an incomplete type
-
-      if Present (Nam) and then Ekind (Nam) = E_Incomplete_Type then
-         Nam := Full_View (Nam);
-      end if;
-
-      if No (Nam)
-        or else not Is_Atomic_Type (Etype (Nam))
-      then
-         Error_Msg_N ("missing specification for Atomic body", N);
-      else
-         Set_Scope (Defining_Entity (N), Current_Scope);
-         Set_Has_Completion (Etype (Nam));
-         Generate_Reference (Nam, Defining_Identifier (N), 'b');
-         Analyze_Proper_Body (N, Etype (Nam));
-      end if;
-   end Analyze_Atomic_Body_Stub;
-
-   ------------------------------
    -- Analyze_Compilation_Unit --
    ------------------------------
 
@@ -2933,8 +2904,7 @@ package body Sem_Ch10 is
       if Nkind_In (Kind, N_Package_Body,
                          N_Subprogram_Body,
                          N_Task_Body,
-                         N_Protected_Body,
-                         N_Atomic_Body)
+                         N_Protected_Body)
         and then Nkind_In (Parent (Par), N_Compilation_Unit, N_Subunit)
       then
          null;

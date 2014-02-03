@@ -2827,7 +2827,7 @@ package body Sem_Ch7 is
                and then not Is_Generic_Type (E))
 
            or else
-             (Ekind_In (E, E_Task_Type, E_Protected_Type, E_Atomic_Type)
+             (Ekind_In (E, E_Task_Type, E_Protected_Type)
                and then not Has_Completion (E))
 
            or else

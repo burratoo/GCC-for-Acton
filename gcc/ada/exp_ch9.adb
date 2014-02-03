@@ -4999,10 +4999,7 @@ package body Exp_Ch9 is
    begin
       --  Parameter _O or _object
 
-      if Is_Atomic_Type (Conc_Typ) then
-         return First_Formal (Action_Body_Subprogram (Spec_Id));
-
-      elsif Is_Protected_Type (Conc_Typ) then
+      if Is_Protected_Type (Conc_Typ) then
          return First_Formal (Protected_Body_Subprogram (Spec_Id));
 
       --  Parameter _task
@@ -8424,6 +8421,8 @@ package body Exp_Ch9 is
       Comp_Id      : Entity_Id;
       Sub          : Node_Id;
       Current_Node : Node_Id := N;
+      Bdef         : Entity_Id := Empty; -- avoid uninit warning
+      Edef         : Entity_Id := Empty; -- avoid uninit warning
       Body_Id      : Entity_Id;
       Body_Arr     : Node_Id;
       E_Count      : Int;
@@ -8433,10 +8432,6 @@ package body Exp_Ch9 is
       --  If the original operation has a pragma Inline, propagate the flag
       --  to the internal body, for possible inlining later on. The source
       --  operation is invisible to the back-end and is never actually called.
-
-      procedure Expand_Entry_Declaration (Comp : Entity_Id);
-      --  Create the subprograms for the barrier and for the body, and append
-      --  then to Entry_Bodies_Array.
 
       function Static_Component_Size (Comp : Entity_Id) return Boolean;
       --  When compiling under the Ravenscar profile, private components must
@@ -8501,68 +8496,6 @@ package body Exp_Ch9 is
             return True;
          end if;
       end Static_Component_Size;
-
-      ------------------------------
-      -- Expand_Entry_Declaration --
-      ------------------------------
-
-      procedure Expand_Entry_Declaration (Comp : Entity_Id) is
-         Bdef : Entity_Id;
-         Edef : Entity_Id;
-
-      begin
-         E_Count := E_Count + 1;
-         Comp_Id := Defining_Identifier (Comp);
-
-         Edef :=
-           Make_Defining_Identifier (Loc,
-             Chars => Build_Selected_Name (Prot_Typ, Comp_Id, 'E'));
-         Sub :=
-           Make_Subprogram_Declaration (Loc,
-             Specification =>
-               Build_Protected_Entry_Specification (Loc, Edef, Comp_Id));
-
-         Insert_After (Current_Node, Sub);
-         Analyze (Sub);
-
-         --  Build wrapper procedure for pre/postconditions
-
-         Build_PPC_Wrapper (Comp_Id, N);
-
-         Set_Protected_Body_Subprogram
-           (Defining_Identifier (Comp),
-            Defining_Unit_Name (Specification (Sub)));
-
-         Current_Node := Sub;
-
-         Bdef :=
-           Make_Defining_Identifier (Loc,
-             Chars => Build_Selected_Name (Prot_Typ, Comp_Id, 'B'));
-         Sub :=
-           Make_Subprogram_Declaration (Loc,
-             Specification =>
-               Build_Barrier_Function_Specification (Loc, Bdef));
-
-         Insert_After (Current_Node, Sub);
-         Analyze (Sub);
-         Set_Protected_Body_Subprogram (Bdef, Bdef);
-         Set_Barrier_Function (Comp_Id, Bdef);
-         Set_Scope (Bdef, Scope (Comp_Id));
-         Current_Node := Sub;
-
-         --  Collect pointers to the protected subprogram and the barrier
-         --  of the current entry, for insertion into Entry_Bodies_Array.
-
-         Append_To (Expressions (Entries_Aggr),
-           Make_Aggregate (Loc,
-             Expressions => New_List (
-               Make_Attribute_Reference (Loc,
-                 Prefix         => New_Reference_To (Bdef, Loc),
-                 Attribute_Name => Name_Unrestricted_Access),
-               Make_Attribute_Reference (Loc,
-                 Prefix         => New_Reference_To (Edef, Loc),
-                 Attribute_Name => Name_Unrestricted_Access))));
-      end Expand_Entry_Declaration;
 
       ----------------------
       -- Register_Handler --
@@ -8860,6 +8793,7 @@ package body Exp_Ch9 is
             end if;
 
          elsif Nkind (Comp) = N_Entry_Declaration then
+            Comp_Id := Defining_Identifier (Comp);
 
             Sub :=
               Make_Subprogram_Declaration (Loc,
@@ -12460,7 +12394,6 @@ package body Exp_Ch9 is
       Family   : Boolean := False)
    is
       Is_Protected : constant Boolean := Is_Protected_Type (Conc_Typ);
-      Is_Atomic    : constant Boolean := Is_Atomic_Type (Conc_Typ);
       Decl         : Node_Id;
       Def          : Node_Id;
       Insert_Node  : Node_Id := Empty;
@@ -12545,31 +12478,6 @@ package body Exp_Ch9 is
          end;
       end if;
 
-      --  Step 3: Create the Atomic object.
-
-      if Is_Atomic then
-         declare
-            Atomic_Ent : constant Entity_Id := Make_Temporary (Loc, 'R');
-
-         begin
-            Set_Atomic_Object (Spec_Id, Atomic_Ent);
-
-            --  Generate:
-            --    conc_typR : atomic_typ renames _object._object;
-
-            Decl :=
-              Make_Object_Renaming_Declaration (Loc,
-                Defining_Identifier => Atomic_Ent,
-                Subtype_Mark =>
-                  New_Reference_To (RTE (RE_Atomic_Object), Loc),
-                Name =>
-                  Make_Selected_Component (Loc,
-                    Prefix        => New_Reference_To (Obj_Ent, Loc),
-                    Selector_Name => Make_Identifier (Loc, Name_uObject)));
-            Add (Decl);
-         end;
-      end if;
-
       --  Step 3: Add discriminant renamings (if any)
 
       if Has_Discriminants (Conc_Typ) then
@@ -12606,12 +12514,8 @@ package body Exp_Ch9 is
 
       --  Step 4: Add private component renamings (if any)
 
-      if Is_Protected or else Is_Atomic then
-         if Is_Protected then
-            Def := Protected_Definition (Parent (Conc_Typ));
-         else
-            Def := Atomic_Definition (Parent (Conc_Typ));
-         end if;
+      if Is_Protected then
+         Def := Protected_Definition (Parent (Conc_Typ));
 
          if Present (Private_Declarations (Def)) then
             declare
@@ -13089,7 +12993,7 @@ package body Exp_Ch9 is
          else
             Append_To (Args,
               Make_Null (Loc));
-         end;
+         end if;
       end if;
 
       --  Object Record Parameter. The address of the protected object's record
@@ -14016,8 +13920,7 @@ package body Exp_Ch9 is
       D_Minal : Entity_Id;
 
    begin
-      pragma Assert (Nkind_In (Dec, N_Protected_Type_Declaration,
-        N_Atomic_Type_Declaration));
+      pragma Assert (Nkind (Dec) = N_Protected_Type_Declaration);
       Pdef := Defining_Identifier (Dec);
 
       if Has_Discriminants (Pdef) then

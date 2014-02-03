@@ -298,8 +298,7 @@ package body Ch10 is
 
          --  Allow atomic, task and protected for nice error recovery purposes
 
-         exit when Token = Tok_Atomic_Action
-           or else Token = Tok_Task
+         exit when Token = Tok_Task
            or else Token = Tok_Protected;
 
          if Token = Tok_With then
@@ -451,32 +450,8 @@ package body Ch10 is
             Set_Unit (Comp_Unit_Node, Unit_Node);
          end if;
 
-      --  Otherwise we have ATOMIC, TASK or PROTECTED. These are not really an
+      --  Otherwise we have TASK or PROTECTED. These are not really an
       --  acceptable tokens, but we accept it to improve error recovery.
-
-      elsif Token = Tok_Atomic_Action then
-         Scan; -- Past ATOMIC_ACTION
-
-         if Token = Tok_Type then
-            Error_Msg_SP
-              ("atomic type cannot be used as compilation unit");
-         else
-            Error_Msg_SP
-              ("atomic declaration cannot be used as compilation unit");
-         end if;
-
-         --  If in check syntax mode, accept the task anyway. This is done
-         --  particularly to improve the behavior of GNATCHOP in this case.
-
-         if Operating_Mode = Check_Syntax then
-            Set_Unit (Comp_Unit_Node, P_Atomic);
-
-         --  If not in syntax only mode, treat this as horrible error
-
-         else
-            Cunit_Error_Flag := True;
-            return Error;
-         end if;
 
       elsif Token = Tok_Task then
          Scan; -- Past TASK
@@ -566,13 +541,10 @@ package body Ch10 is
 
          if Nkind_In (Unit_Node, N_Task_Body,
                                  N_Protected_Body,
-                                 N_Atomic_Body,
                                  N_Task_Type_Declaration,
                                  N_Protected_Type_Declaration,
-                                 N_Atomic_Type_Declaration,
                                  N_Single_Task_Declaration,
-                                 N_Single_Protected_Declaration,
-                                 N_Single_Atomic_Declaration)
+                                 N_Single_Protected_Declaration)
          then
             Name_Node := Defining_Identifier (Unit_Node);
 
@@ -1053,12 +1025,6 @@ package body Ch10 is
 
    --  Parsed by P_Protected (9.4)
 
-   ------------------------------
-   -- 10.1.3  Atomic Body Stub --
-   ------------------------------
-
-   --  Parsed by P_Atomic (9.4)
-
    ---------------------
    -- 10.1.3  Subunit --
    ---------------------
@@ -1111,16 +1077,6 @@ package body Ch10 is
 
          if Token = Tok_Body then
             Body_Node := P_Task;
-         else
-            Error_Msg_AP ("BODY expected");
-            return Error;
-         end if;
-
-      elsif Token = Tok_Atomic_Action then
-         Scan; -- past ATOMIC_ACTION
-
-         if Token = Tok_Body then
-            Body_Node := P_Atomic;
          else
             Error_Msg_AP ("BODY expected");
             return Error;

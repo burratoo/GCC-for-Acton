@@ -359,8 +359,7 @@ package body Repinfo is
          if List_Representation_Info_Mechanisms
            and then (Is_Subprogram (Ent)
                       or else Ekind (Ent) = E_Entry
-                      or else Ekind (Ent) = E_Entry_Family
-                      or else Ekind (Ent) = E_Action)
+                      or else Ekind (Ent) = E_Entry_Family)
          then
             Need_Blank_Line := True;
             List_Mechanisms (Ent);
@@ -390,8 +389,7 @@ package body Repinfo is
 
                elsif Ekind_In (E, E_Entry,
                                   E_Entry_Family,
-                                  E_Subprogram_Type,
-                                  E_Action)
+                                  E_Subprogram_Type)
                then
                   if List_Representation_Info_Mechanisms then
                      List_Mechanisms (E);
@@ -445,9 +443,7 @@ package body Repinfo is
                                   E_Subprogram_Body,
                                   E_Package_Body,
                                   E_Task_Body,
-                                  E_Protected_Body,
-                                  E_Atomic_Body,
-                                  E_Atomic_Type)
+                                  E_Protected_Body)
                then
                   List_Entities (E, Bytes_Big_Endian);
 
@@ -700,9 +696,6 @@ package body Repinfo is
          when E_Entry | E_Entry_Family =>
             Write_Str ("entry ");
 
-         when E_Action =>
-            Write_Str ("action ");
-
          when others =>
             raise Program_Error;
       end case;
@@ -724,8 +717,6 @@ package body Repinfo is
             Write_Line ("Ada_Pass_By_Reference");
          when Convention_Intrinsic             =>
             Write_Line ("Intrinsic");
-         when Convention_Action                =>
-            Write_Line ("Action");
          when Convention_Entry                 =>
             Write_Line ("Entry");
          when Convention_Ghost                 =>

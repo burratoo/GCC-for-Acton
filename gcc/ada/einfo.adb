@@ -96,7 +96,6 @@ package body Einfo is
    --    Handler_Records                 List10
    --    Normalized_Position_Max         Uint10
 
-   --    Action_Body_Subprogram          Node11
    --    Component_Bit_Offset            Uint11
    --    Full_View                       Node11
    --    Entry_Component                 Node11
@@ -165,7 +164,6 @@ package body Einfo is
    --    Renamed_Object                  Node18
 
    --    Body_Entity                     Node19
-   --    Corresponding_Action            Node19
    --    Corresponding_Discriminant      Node19
    --    Default_Aspect_Component_Value  Node19
    --    Default_Aspect_Value            Node19
@@ -203,7 +201,6 @@ package body Einfo is
    --    Scope_Depth_Value               Uint22
    --    Shared_Var_Procs_Instance       Node22
 
-   --    Atomic_Object                   Node23
    --    CR_Discriminant                 Node23
    --    Entry_Cancel_Parameter          Node23
    --    Enum_Pos_To_Rep                 Node23

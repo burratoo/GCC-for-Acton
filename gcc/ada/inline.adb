@@ -330,7 +330,6 @@ package body Inline is
       if Is_Abstract_Subprogram (E)
         or else Is_Nested (E)
         or else Convention (E) = Convention_Protected
-        or else Convention (E) = Convention_Action
       then
          return;
       end if;
@@ -948,9 +947,6 @@ package body Inline is
          if Ekind (Scop) = E_Entry then
             Scop := Protected_Body_Subprogram (Scop);
 
-         elsif Ekind (Scop) = E_Action then
-            Scop := Action_Body_Subprogram (Scop);
-
          elsif Is_Subprogram (Scop)
            and then Is_Protected_Type (Scope (Scop))
            and then Present (Protected_Body_Subprogram (Scop))
@@ -1163,7 +1159,6 @@ package body Inline is
             return True;
 
          elsif Ekind (Scop) = E_Task_Type
-           or else Ekind (Scop) = E_Action
            or else Ekind (Scop) = E_Entry
            or else Ekind (Scop) = E_Entry_Family then
             return True;

@@ -171,8 +171,6 @@ package Scans is
       Tok_Loop,            -- LOOP         Eterm, Sterm, After_SM, Labeled_Stmt
       Tok_While,           -- WHILE        Eterm, Sterm, After_SM, Labeled_Stmt
 
-      Tok_Action,          -- ACTION       Eterm, Sterm, Declk, Deckn, After_SM
-      Tok_Atomic_Action,   -- ATOMIC       Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Entry,           -- ENTRY        Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Protected,       -- PROTECTED    Eterm, Sterm, Declk, Deckn, After_SM
       Tok_Task,            -- TASK         Eterm, Sterm, Declk, Deckn, After_SM
@@ -321,11 +319,11 @@ package Scans is
    --  Tokens which can begin a compilation unit
 
    subtype Token_Class_Declk is
-     Token_Type range Tok_Action .. Tok_Procedure;
+     Token_Type range Tok_Entry .. Tok_Procedure;
    --  Keywords which start a declaration
 
    subtype Token_Class_Deckn is
-     Token_Type range Tok_Action .. Tok_Use;
+     Token_Type range Tok_Entry .. Tok_Use;
    --  Keywords which start a declaration but can't start a compilation unit
 
    subtype Token_Class_After_SM is
