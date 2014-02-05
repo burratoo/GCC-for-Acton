@@ -2149,7 +2149,7 @@ package body Exp_Ch9 is
    -- Build_PPC_Wrapper --
    -----------------------
 
-   procedure Build_PPC_Wrapper          (E : Entity_Id; Decl : Node_Id) is
+   procedure Build_PPC_Wrapper (E : Entity_Id; Decl : Node_Id) is
       Loc        : constant Source_Ptr := Sloc (E);
       Synch_Type : constant Entity_Id := Scope (E);
 
@@ -3820,24 +3820,29 @@ package body Exp_Ch9 is
    -- Build_Protected_Entry_Body --
    --------------------------------
 
+   --  While based on Build_Protected_Subprogram_Body, this function does not
+   --  check whether the entry is exception free because an entry can never
+   --  be exception free as their is the possibility that an exception could
+   --  be raise while checking an entry barrier. ??? Need to see if it could
+   --  be determine whether the barriers can raise an exception or not.
+
    function Build_Protected_Entry_Body
      (N         : Node_Id;
       Pid       : Entity_Id;
       N_Op_Spec : Node_Id) return Node_Id
    is
-      Loc           : constant Source_Ptr := Sloc (N);
-      P_Op_Spec     : Node_Id;
-      Uactuals      : List_Id;
-      Pformal       : Node_Id;
-      Unprot_Call   : Node_Id;
-      Sub_Body      : Node_Id;
-      Sub_Type      : Node_Id;
-      Lock_Stmt     : Node_Id;
-      Stmts         : List_Id;
-      Object_Parm   : Node_Id;
-      Exc_Safe      : Boolean;
-      Decls         : List_Id := Empty_List;
-      B_Except_Flag : Node_Id := Empty;    -- init to aviod gcc 3 warning
+      Loc         : constant Source_Ptr := Sloc (N);
+      P_Op_Spec   : Node_Id;
+      Uactuals    : List_Id;
+      Pformal     : Node_Id;
+      Unprot_Call : Node_Id;
+      Sub_Body    : Node_Id;
+      Sub_Type    : Node_Id;
+      Lock_Stmt   : Node_Id;
+      Stmts       : List_Id;
+      Object_Parm : Node_Id;
+      Exc_Safe    : Boolean;
+      Decls       : List_Id := Empty_List;
 
    begin
       P_Op_Spec :=
@@ -3879,15 +3884,13 @@ package body Exp_Ch9 is
 
       --  Build call to Enter_Protected_Object.
 
-      Lock_Stmt :=
+      Stmts := New_List (
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
             New_Reference_To (RTE (RE_Enter_Protected_Object), Loc),
           Parameter_Associations =>  New_List (Object_Parm,
             New_Reference_To (RTE (RE_Protected_Entry), Loc),
-            Make_Identifier (Loc, Name_uEntry_Id)));
-
-      Stmts := New_List (Lock_Stmt);
+            Make_Identifier (Loc, Name_uEntry_Id))));
 
       Append (Unprot_Call, Stmts);
 
@@ -4036,12 +4039,12 @@ package body Exp_Ch9 is
       Prot_Typ : Entity_Id;
       Mode     : Subprogram_Protection_Mode) return Node_Id
    is
-      Loc         : constant Source_Ptr := Sloc (N);
-      Decl        : Node_Id;
-      Def_Id      : Entity_Id;
-      New_Id      : Entity_Id;
-      New_Plist   : List_Id;
-      New_Spec    : Node_Id;
+      Loc       : constant Source_Ptr := Sloc (N);
+      Decl      : Node_Id;
+      Def_Id    : Entity_Id;
+      New_Id    : Entity_Id;
+      New_Plist : List_Id;
+      New_Spec  : Node_Id;
 
       Append_Chr : constant array (Subprogram_Protection_Mode) of Character :=
                      (Dispatching_Mode => ' ',
@@ -4052,9 +4055,9 @@ package body Exp_Ch9 is
       if Ekind (Defining_Unit_Name (Specification (N))) =
            E_Subprogram_Body
       then
-         Decl        := Unit_Declaration_Node (Corresponding_Spec (N));
+         Decl := Unit_Declaration_Node (Corresponding_Spec (N));
       else
-         Decl        := N;
+         Decl := N;
       end if;
 
       Def_Id := Defining_Unit_Name (Specification (Decl));
@@ -4111,23 +4114,21 @@ package body Exp_Ch9 is
       Pid       : Entity_Id;
       N_Op_Spec : Node_Id) return Node_Id
    is
-      Loc           : constant Source_Ptr := Sloc (N);
-      Op_Spec       : Node_Id;
-      P_Op_Spec     : Node_Id;
-      Uactuals      : List_Id;
-      Pformal       : Node_Id;
-      Unprot_Call   : Node_Id;
-      Sub_Body      : Node_Id;
-      Sub_Type      : Node_Id;
-      Lock_Stmt     : Node_Id;
-      R             : Node_Id;
-      Return_Stmt   : Node_Id := Empty;    -- init to avoid gcc 3 warning
-      Pre_Stmts     : List_Id := No_List;  -- init to avoid gcc 3 warning
-      Stmts         : List_Id;
-      Object_Parm   : Node_Id;
-      Exc_Safe      : Boolean;
-      Decls         : List_Id := Empty_List;
-      B_Except_Flag : Node_Id := Empty;    -- init to aviod gcc 3 warning
+      Loc         : constant Source_Ptr := Sloc (N);
+      Op_Spec     : Node_Id;
+      P_Op_Spec   : Node_Id;
+      Uactuals    : List_Id;
+      Pformal     : Node_Id;
+      Unprot_Call : Node_Id;
+      Sub_Body    : Node_Id;
+      Sub_Type    : Node_Id;
+      R           : Node_Id;
+      Return_Stmt : Node_Id := Empty;    -- init to avoid gcc 3 warning
+      Pre_Stmts   : List_Id := No_List;  -- init to avoid gcc 3 warning
+      Stmts       : List_Id;
+      Object_Parm : Node_Id;
+      Exc_Safe    : Boolean;
+      Decls       : List_Id := Empty_List;
 
    begin
       Op_Spec := Specification (N);
@@ -4208,13 +4209,11 @@ package body Exp_Ch9 is
          Sub_Type := New_Reference_To (RTE (RE_Protected_Procedure), Loc);
       end if;
 
-      Lock_Stmt :=
+      Stmts := New_List (
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
             New_Reference_To (RTE (RE_Enter_Protected_Object), Loc),
-          Parameter_Associations =>  New_List (Object_Parm, Sub_Type));
-
-      Stmts := New_List (Lock_Stmt);
+          Parameter_Associations =>  New_List (Object_Parm, Sub_Type)));
 
       --  Build call to Exit_Protected_Object when the subprogram is exception
       --  free.
@@ -4223,19 +4222,18 @@ package body Exp_Ch9 is
          Append (Unprot_Call, Stmts);
       else
          if Nkind (Op_Spec) = N_Function_Specification then
-            Pre_Stmts     := Stmts;
-            Stmts         := Empty_List;
+            Pre_Stmts := Stmts;
+            Stmts     := Empty_List;
          else
             Append (Unprot_Call, Stmts);
          end if;
 
-         Append (
+         Append_To (Stmts,
            Make_Procedure_Call_Statement (Loc,
              Name                   =>
                New_Reference_To (RTE (RE_Exit_Protected_Object), Loc),
              Parameter_Associations =>
-               New_List (New_Copy_Tree (Object_Parm))),
-           Stmts);
+               New_List (New_Copy_Tree (Object_Parm))));
 
          if Nkind (Op_Spec) = N_Function_Specification then
             Append (Return_Stmt, Stmts);
@@ -4280,6 +4278,7 @@ package body Exp_Ch9 is
       Sub     : constant Entity_Id  := Entity (Name);
       New_Sub : Node_Id;
       Params  : List_Id;
+
    begin
       if External then
          New_Sub := New_Occurrence_Of (External_Subprogram (Sub), Loc);
@@ -4329,93 +4328,7 @@ package body Exp_Ch9 is
       then
          Add_Shared_Var_Lock_Procs (N);
       end if;
-
    end Build_Protected_Subprogram_Call;
-
-   ---------------------------------------------
-   -- Build_Protected_Subprogram_Call_Cleanup --
-   ---------------------------------------------
-
-   procedure Build_Protected_Subprogram_Call_Cleanup
-     (Op_Spec   : Node_Id;
-      Conc_Typ  : Node_Id;
-      Loc       : Source_Ptr;
-      Stmts     : List_Id)
-   is
-      Nam       : Node_Id;
-
-   begin
-      --  If the associated protected object has entries, a protected
-      --  procedure has to service entry queues. In this case generate:
-
-      --    Service_Entries (_object._object'Access);
-
-      if Nkind (Op_Spec) = N_Procedure_Specification
-        and then Has_Entries (Conc_Typ)
-      then
-         case Corresponding_Runtime_Package (Conc_Typ) is
-            when System_Tasking_Protected_Objects_Entries =>
-               Nam := New_Reference_To (RTE (RE_Service_Entries), Loc);
-
-            when System_Tasking_Protected_Objects_Single_Entry =>
-               Nam := New_Reference_To (RTE (RE_Service_Entry), Loc);
-
-            when others =>
-               raise Program_Error;
-         end case;
-
-         Append_To (Stmts,
-           Make_Procedure_Call_Statement (Loc,
-             Name                   => Nam,
-             Parameter_Associations => New_List (
-               Make_Attribute_Reference (Loc,
-                 Prefix         =>
-                   Make_Selected_Component (Loc,
-                     Prefix        => Make_Identifier (Loc, Name_uObject),
-                     Selector_Name => Make_Identifier (Loc, Name_uObject)),
-                 Attribute_Name => Name_Unchecked_Access))));
-
-      else
-         --  Generate:
-         --    Unlock (_object._object'Access);
-
-         case Corresponding_Runtime_Package (Conc_Typ) is
-            when System_Tasking_Protected_Objects_Entries =>
-               Nam := New_Reference_To (RTE (RE_Unlock_Entries), Loc);
-
-            when System_Tasking_Protected_Objects_Single_Entry =>
-               Nam := New_Reference_To (RTE (RE_Unlock_Entry), Loc);
-
-            when System_Tasking_Protected_Objects =>
-               Nam := New_Reference_To (RTE (RE_Unlock), Loc);
-
-            when others =>
-               raise Program_Error;
-         end case;
-
-         Append_To (Stmts,
-           Make_Procedure_Call_Statement (Loc,
-             Name                   => Nam,
-             Parameter_Associations => New_List (
-               Make_Attribute_Reference (Loc,
-                 Prefix         =>
-                   Make_Selected_Component (Loc,
-                     Prefix        => Make_Identifier (Loc, Name_uObject),
-                     Selector_Name => Make_Identifier (Loc, Name_uObject)),
-                 Attribute_Name => Name_Unchecked_Access))));
-      end if;
-
-      --  Generate:
-      --    Abort_Undefer;
-
-      if Abort_Allowed then
-         Append_To (Stmts,
-           Make_Procedure_Call_Statement (Loc,
-             Name                   =>
-               New_Reference_To (RTE (RE_Abort_Undefer), Loc),
-             Parameter_Associations => Empty_List));
-      end if;
-   end Build_Protected_Subprogram_Call_Cleanup;
 
    -------------------------
    -- Build_Selected_Name --

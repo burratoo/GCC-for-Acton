@@ -112,16 +112,6 @@ package Exp_Ch9 is
    --  External is False if the call is to another protected subprogram within
    --  the same object.
 
-   procedure Build_Protected_Subprogram_Call_Cleanup
-     (Op_Spec   : Node_Id;
-      Conc_Typ  : Node_Id;
-      Loc       : Source_Ptr;
-      Stmts     : List_Id);
-   --  Append to Stmts the cleanups after a call to a protected subprogram
-   --  whose specification is Op_Spec. Conc_Typ is the concurrent type and Loc
-   --  the sloc for appended statements. The cleanup will either unlock the
-   --  protected object or serve pending entries.
-
    procedure Build_Task_Activation_Call (N : Node_Id);
    --  This procedure is called for constructs that can be task activators,
    --  i.e. task bodies, subprogram bodies, package bodies and blocks. If the
