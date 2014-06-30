@@ -3247,7 +3247,7 @@ package body Exp_Ch9 is
                              Ekind (Corresponding_Spec (N)) = E_Procedure;
             --  Indicates if N is a protected procedure body
 
-            Block_Decls   : List_Id;
+            Block_Decls   : List_Id := Empty_List;
             Try_Write     : Entity_Id;
             Desired_Comp  : Entity_Id;
             Decl          : Node_Id;
@@ -5801,7 +5801,7 @@ package body Exp_Ch9 is
          then
             return;
 
-         --  Check for case of _object.all.field (note that the explicit
+         --  Check for case of _object.field (note that the explicit
          --  dereference gets inserted by analyze/expand of _object.field)
 
          elsif Present (Renamed_Object (Entity (Cond)))
@@ -5809,8 +5809,7 @@ package body Exp_Ch9 is
              Nkind (Renamed_Object (Entity (Cond))) = N_Selected_Component
            and then
              Chars
-               (Prefix
-                 (Prefix (Renamed_Object (Entity (Cond))))) = Name_uObject
+               (Prefix (Renamed_Object (Entity (Cond)))) = Name_uObject
          then
             return;
          end if;
@@ -7821,30 +7820,6 @@ package body Exp_Ch9 is
             Set_Entry_Component (Formal, Component);
             Set_Entry_Formal (Component, Formal);
             Ftype := Etype (Formal);
-
-            --  Declare new access type and then append
-
-            Ctype := Make_Temporary (Loc, 'A');
-
-            Decl :=
-              Make_Full_Type_Declaration (Loc,
-                Defining_Identifier => Ctype,
-                Type_Definition     =>
-                  Make_Access_To_Object_Definition (Loc,
-                    All_Present        => True,
-                    Constant_Present   => Ekind (Formal) = E_In_Parameter,
-                    Subtype_Indication => New_Reference_To (Ftype, Loc)));
-
-            Insert_After (Last_Decl, Decl);
-            Last_Decl := Decl;
-
-            Append_To (Components,
-              Make_Component_Declaration (Loc,
-                Defining_Identifier => Component,
-                Component_Definition =>
-                  Make_Component_Definition (Loc,
-                    Aliased_Present    => False,
-                    Subtype_Indication => New_Reference_To (Ctype, Loc))));
 
             Next_Formal_With_Extras (Formal);
          end loop;
@@ -12904,8 +12879,8 @@ package body Exp_Ch9 is
                     (Defining_Identifier (Pdec)), Loc),
                 Attribute_Name => Name_Address));
          else
-            Append_To (Args,
-              Make_Null (Loc));
+            Append_To (Args, New_Reference_To (RTE (RE_Null_Address), Loc));
+
          end if;
       end if;
 
