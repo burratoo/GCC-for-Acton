@@ -512,6 +512,7 @@ proc check_profiling_available { test_what } {
 	if {    [istarget aarch64*-*-elf]
 	     || [istarget am3*-*-linux*]
 	     || [istarget arm*-*-eabi*]
+	     || [istarget arm*-*-acton*]
 	     || [istarget arm*-*-elf]
 	     || [istarget arm*-*-symbianelf*]
 	     || [istarget avr-*-*]

@@ -1069,6 +1069,19 @@ arm*-*-eabi* | arm*-*-symbianelf* | arm*-*-rtems*)
 	esac
 	tm_file="${tm_file} arm/aout.h vxworks-dummy.h arm/arm.h"
 	;;
+arm*-*-acton*)
+	case ${target} in
+	arm*eb-*-acton*)
+	  tm_defines="${tm_defines} TARGET_BIG_ENDIAN_DEFAULT=1"
+	esac
+	default_use_cxa_atexit=yes
+	tm_file="dbxelf.h elfos.h arm/elf.h arm/bpabi.h"
+	tmake_file="${tmake_file} arm/t-arm arm/t-arm-elf"
+	#tm_file="$tm_file newlib-stdint.h"
+	tmake_file="${tmake_file} arm/t-bpabi"
+	use_gcc_stdint=wrap
+	tm_file="${tm_file} acton.h arm/acton.h arm/aout.h arm/arm.h"
+	;;
 avr-*-acton*)
 	tm_file="elfos.h avr/elf.h avr/avr.h dbxelf.h avr/avr-stdint.h acton.h"
 	tmake_file="avr/t-avr avr/t-multilib"
