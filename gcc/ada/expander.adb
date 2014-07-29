@@ -202,7 +202,7 @@ package body Expander is
                      Expand_N_Entry_Call_Statement (N);
 
                   when N_Entry_Declaration =>
-                     null; --  Expand_N_Entry_Declaration (N);
+                     null; -- Expand_N_Entry_Declaration (N);
 
                   when N_Exception_Declaration =>
                      Expand_N_Exception_Declaration (N);

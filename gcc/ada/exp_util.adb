@@ -2589,7 +2589,7 @@ package body Exp_Util is
 
       Comp := First_Component (Typ);
       while Present (Comp) loop
-         if Chars (Comp) = Name_uObject then
+         if Chars (Comp) = Name_uProtected_Agent then
             return Base_Type (Etype (Comp));
          end if;
 

@@ -27,6 +27,14 @@
 
 #undef	LINK_START_DEFAULT_SPEC
 
+/* Acton does not require any startup file */
+
+#undef  STARTFILE_SPEC
+#define STARTFILE_SPEC ""
+
+#undef  LINK_SPEC
+#define LINK_SPEC "%{!T*:-Tacton.ld}"
+
 /* Suppress the generation of -lgcc and -lc flags cause we're awesome. */
 #undef  LINK_GCC_C_SEQUENCE_SPEC 
 #define LINK_GCC_C_SEQUENCE_SPEC "%G"
