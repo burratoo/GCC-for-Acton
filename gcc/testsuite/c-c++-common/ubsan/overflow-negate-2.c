@@ -1,6 +1,5 @@
 /* { dg-do run } */
-/* { dg-options "-fsanitize=signed-integer-overflow -Wno-unused-variable" } */
-/* { dg-skip-if "" { *-*-* } { "-flto" } { "" } } */
+/* { dg-options "-fsanitize=signed-integer-overflow -Wno-unused-variable -fno-sanitize-recover" } */
 
 #define SCHAR_MIN (-__SCHAR_MAX__ - 1)
 #define SHRT_MIN (-__SHRT_MAX__ - 1)
@@ -13,7 +12,7 @@
 int
 main (void)
 {
-  volatile char c = -SCHAR_MIN;
+  volatile signed char c = -SCHAR_MIN;
   CHECK (c, -128);
 
   volatile short s = -SHRT_MIN;
@@ -34,6 +33,5 @@ main (void)
   volatile long long lli = LLONG_MIN;
   lli = -(unsigned long long) lli;
   CHECK (lli, -0x8000000000000000L);
-
   return 0;
 }

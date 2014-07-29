@@ -67,7 +67,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       _S_token_or,
       _S_token_closure0,
       _S_token_closure1,
-      _S_token_ungreedy,
       _S_token_line_begin,
       _S_token_line_end,
       _S_token_word_bound, // neg if _M_value[0] == 'n'
@@ -188,7 +187,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   };
 
   /**
-   * @brief struct _Scanner. Scans an input range for regex tokens.
+   * @brief Scans an input range for regex tokens.
    *
    * The %_Scanner class interprets the regular expression pattern in
    * the input range passed to its constructor as a sequence of parse

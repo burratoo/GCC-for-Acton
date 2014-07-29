@@ -55,7 +55,7 @@ void ipa_print_order (FILE*, const char *, struct cgraph_node**, int);
 int ipa_reduced_postorder (struct cgraph_node **, bool, bool,
 			  bool (*ignore_edge) (struct cgraph_edge *));
 void ipa_free_postorder_info (void);
-vec<cgraph_node_ptr> ipa_get_nodes_in_cycle (struct cgraph_node *);
+vec<cgraph_node *> ipa_get_nodes_in_cycle (struct cgraph_node *);
 bool ipa_edge_within_scc (struct cgraph_edge *);
 int ipa_reverse_postorder (struct cgraph_node **);
 tree get_base_var (tree);
@@ -76,17 +76,25 @@ vec <cgraph_node *>
 possible_polymorphic_call_targets (tree, HOST_WIDE_INT,
 				   ipa_polymorphic_call_context,
 				   bool *final = NULL,
-				   void **cache_token = NULL);
+				   void **cache_token = NULL,
+				   int *nonconstruction_targets = NULL);
 odr_type get_odr_type (tree, bool insert = false);
 void dump_possible_polymorphic_call_targets (FILE *, tree, HOST_WIDE_INT,
 					     const ipa_polymorphic_call_context &);
 bool possible_polymorphic_call_target_p (tree, HOST_WIDE_INT,
 				         const ipa_polymorphic_call_context &,
-					 struct cgraph_node *n);
-tree method_class_type (tree);
+					 struct cgraph_node *);
+tree method_class_type (const_tree);
 tree get_polymorphic_call_info (tree, tree, tree *,
 				HOST_WIDE_INT *,
-				ipa_polymorphic_call_context *);
+				ipa_polymorphic_call_context *,
+				gimple call = NULL);
+bool get_polymorphic_call_info_from_invariant (ipa_polymorphic_call_context *,
+					       tree, tree, HOST_WIDE_INT);
+bool decl_maybe_in_construction_p (tree, tree, gimple, tree);
+tree vtable_pointer_value_to_binfo (const_tree);
+bool vtable_pointer_value_to_vtable (const_tree, tree *, unsigned HOST_WIDE_INT *);
+bool contains_polymorphic_type_p (const_tree);
 
 /* Return vector containing possible targets of polymorphic call E.
    If FINALP is non-NULL, store true if the list is complette. 
@@ -101,7 +109,8 @@ tree get_polymorphic_call_info (tree, tree, tree *,
 inline vec <cgraph_node *>
 possible_polymorphic_call_targets (struct cgraph_edge *e,
 				   bool *final = NULL,
-				   void **cache_token = NULL)
+				   void **cache_token = NULL,
+				   int *nonconstruction_targets = NULL)
 {
   gcc_checking_assert (e->indirect_info->polymorphic);
   ipa_polymorphic_call_context context = {e->indirect_info->offset,
@@ -111,13 +120,15 @@ possible_polymorphic_call_targets (struct cgraph_edge *e,
   return possible_polymorphic_call_targets (e->indirect_info->otr_type,
 					    e->indirect_info->otr_token,
 					    context,
-					    final, cache_token);
+					    final, cache_token,
+					    nonconstruction_targets);
 }
 
 /* Same as above but taking OBJ_TYPE_REF as an parameter.  */
 
 inline vec <cgraph_node *>
-possible_polymorphic_call_targets (tree call,
+possible_polymorphic_call_targets (tree ref,
+				   gimple call,
 				   bool *final = NULL,
 				   void **cache_token = NULL)
 {
@@ -126,11 +137,11 @@ possible_polymorphic_call_targets (tree call,
   ipa_polymorphic_call_context context;
 
   get_polymorphic_call_info (current_function_decl,
-			     call,
-			     &otr_type, &otr_token, &context);
-  return possible_polymorphic_call_targets (obj_type_ref_class (call),
+			     ref,
+			     &otr_type, &otr_token, &context, call);
+  return possible_polymorphic_call_targets (obj_type_ref_class (ref),
 					    tree_to_uhwi
-					      (OBJ_TYPE_REF_TOKEN (call)),
+					      (OBJ_TYPE_REF_TOKEN (ref)),
 					    context,
 					    final, cache_token);
 }

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -228,10 +228,10 @@ package body Exp_Util is
 
          if Present (Msg_Node) then
             Error_Msg_N
-              ("?N?info: atomic synchronization set for &", Msg_Node);
+              ("info: atomic synchronization set for &?N?", Msg_Node);
          else
             Error_Msg_N
-              ("?N?info: atomic synchronization set", N);
+              ("info: atomic synchronization set?N?", N);
          end if;
       end if;
    end Activate_Atomic_Synchronization;
@@ -718,7 +718,7 @@ package body Exp_Util is
 
          --  a) Storage pool
 
-         Actuals := New_List (New_Reference_To (Pool_Id, Loc));
+         Actuals := New_List (New_Occurrence_Of (Pool_Id, Loc));
 
          if Is_Allocate then
 
@@ -741,7 +741,7 @@ package body Exp_Util is
 
             if Needs_Finalization (Desig_Typ) then
                Fin_Mas_Id  := Finalization_Master (Ptr_Typ);
-               Fin_Mas_Act := New_Reference_To (Fin_Mas_Id, Loc);
+               Fin_Mas_Act := New_Occurrence_Of (Fin_Mas_Id, Loc);
 
                --  Handle the case where the master is actually a pointer to a
                --  master. This case arises in build-in-place functions.
@@ -769,7 +769,7 @@ package body Exp_Util is
 
                Append_To (Actuals,
                  Make_Attribute_Reference (Loc,
-                   Prefix         => New_Reference_To (Fin_Addr_Id, Loc),
+                   Prefix         => New_Occurrence_Of (Fin_Addr_Id, Loc),
                    Attribute_Name => Name_Unrestricted_Access));
             else
                Append_To (Actuals, Make_Null (Loc));
@@ -780,11 +780,11 @@ package body Exp_Util is
          --  f) Storage_Size
          --  g) Alignment
 
-         Append_To (Actuals, New_Reference_To (Addr_Id, Loc));
-         Append_To (Actuals, New_Reference_To (Size_Id, Loc));
+         Append_To (Actuals, New_Occurrence_Of (Addr_Id, Loc));
+         Append_To (Actuals, New_Occurrence_Of (Size_Id, Loc));
 
          if Is_Allocate or else not Is_Class_Wide_Type (Desig_Typ) then
-            Append_To (Actuals, New_Reference_To (Alig_Id, Loc));
+            Append_To (Actuals, New_Occurrence_Of (Alig_Id, Loc));
 
          --  For deallocation of class wide types we obtain the value of
          --  alignment from the Type Specific Record of the deallocated object.
@@ -831,7 +831,7 @@ package body Exp_Util is
                  and then Is_Type (Entity (Temp))
                then
                   Flag_Expr :=
-                    New_Reference_To
+                    New_Occurrence_Of
                       (Boolean_Literals
                          (Needs_Finalization (Entity (Temp))), Loc);
 
@@ -875,21 +875,21 @@ package body Exp_Util is
                   Flag_Expr :=
                     Make_Function_Call (Loc,
                       Name                   =>
-                        New_Reference_To (RTE (RE_Needs_Finalization), Loc),
+                        New_Occurrence_Of (RTE (RE_Needs_Finalization), Loc),
                       Parameter_Associations => New_List (Param));
 
                --  Processing for generic actuals
 
                elsif Is_Generic_Actual_Type (Desig_Typ) then
                   Flag_Expr :=
-                    New_Reference_To (Boolean_Literals
+                    New_Occurrence_Of (Boolean_Literals
                       (Needs_Finalization (Base_Type (Desig_Typ))), Loc);
 
                --  The object does not require any specialized checks, it is
                --  known to be controlled.
 
                else
-                  Flag_Expr := New_Reference_To (Standard_True, Loc);
+                  Flag_Expr := New_Occurrence_Of (Standard_True, Loc);
                end if;
 
                --  Create the temporary which represents the finalization state
@@ -902,23 +902,23 @@ package body Exp_Util is
                    Defining_Identifier => Flag_Id,
                    Constant_Present    => True,
                    Object_Definition   =>
-                     New_Reference_To (Standard_Boolean, Loc),
+                     New_Occurrence_Of (Standard_Boolean, Loc),
                     Expression          => Flag_Expr));
 
-               Append_To (Actuals, New_Reference_To (Flag_Id, Loc));
+               Append_To (Actuals, New_Occurrence_Of (Flag_Id, Loc));
             end;
 
          --  The object is not controlled
 
          else
-            Append_To (Actuals, New_Reference_To (Standard_False, Loc));
+            Append_To (Actuals, New_Occurrence_Of (Standard_False, Loc));
          end if;
 
          --  i) On_Subpool
 
          if Is_Allocate then
             Append_To (Actuals,
-              New_Reference_To (Boolean_Literals (Present (Subpool)), Loc));
+              New_Occurrence_Of (Boolean_Literals (Present (Subpool)), Loc));
          end if;
 
          --  Step 2: Build a wrapper Allocate / Deallocate which internally
@@ -950,7 +950,7 @@ package body Exp_Util is
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Make_Temporary (Loc, 'P'),
                      Parameter_Type =>
-                       New_Reference_To (RTE (RE_Root_Storage_Pool), Loc)),
+                       New_Occurrence_Of (RTE (RE_Root_Storage_Pool), Loc)),
 
                   --  A : [out] Address
 
@@ -958,21 +958,21 @@ package body Exp_Util is
                      Defining_Identifier => Addr_Id,
                      Out_Present         => Is_Allocate,
                      Parameter_Type      =>
-                       New_Reference_To (RTE (RE_Address), Loc)),
+                       New_Occurrence_Of (RTE (RE_Address), Loc)),
 
                   --  S : Storage_Count
 
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Size_Id,
                      Parameter_Type      =>
-                       New_Reference_To (RTE (RE_Storage_Count), Loc)),
+                       New_Occurrence_Of (RTE (RE_Storage_Count), Loc)),
 
                   --  L : Storage_Count
 
                    Make_Parameter_Specification (Loc,
                      Defining_Identifier => Alig_Id,
                      Parameter_Type      =>
-                       New_Reference_To (RTE (RE_Storage_Count), Loc)))),
+                       New_Occurrence_Of (RTE (RE_Storage_Count), Loc)))),
 
              Declarations => No_List,
 
@@ -980,7 +980,7 @@ package body Exp_Util is
                Make_Handled_Sequence_Of_Statements (Loc,
                  Statements => New_List (
                    Make_Procedure_Call_Statement (Loc,
-                     Name => New_Reference_To (Proc_To_Call, Loc),
+                     Name => New_Occurrence_Of (Proc_To_Call, Loc),
                      Parameter_Associations => Actuals)))));
 
          --  The newly generated Allocate / Deallocate becomes the default
@@ -1009,7 +1009,7 @@ package body Exp_Util is
       else
          return
            Make_Procedure_Call_Statement (Loc,
-             Name => New_Reference_To (RTE (RE), Loc));
+             Name => New_Occurrence_Of (RTE (RE), Loc));
       end if;
    end Build_Runtime_Call;
 
@@ -2074,19 +2074,15 @@ package body Exp_Util is
       --  may be constants that depend on the bounds of a string literal, both
       --  standard string types and more generally arrays of characters.
 
-      --  In GNATprove mode, we also need the more precise subtype to be set
+      --  In GNATprove mode, these extra subtypes are not needed
 
-      if not (Expander_Active or GNATprove_Mode)
-        and then (No (Etype (Exp)) or else not Is_String_Type (Etype (Exp)))
-      then
+      if GNATprove_Mode then
          return;
       end if;
 
-      --  In GNATprove mode, Unc_Type might not be complete when analyzing
-      --  a generic unit. As generic units are not analyzed directly in
-      --  GNATprove, return here rather than failing later.
-
-      if GNATprove_Mode and then No (Underlying_Type (Unc_Type)) then
+      if not Expander_Active
+        and then (No (Etype (Exp)) or else not Is_String_Type (Etype (Exp)))
+      then
          return;
       end if;
 
@@ -2097,11 +2093,11 @@ package body Exp_Util is
          begin
             Rewrite (Subtype_Indic,
               Make_Subtype_Indication (Loc,
-                Subtype_Mark => New_Reference_To (Unc_Type, Loc),
+                Subtype_Mark => New_Occurrence_Of (Unc_Type, Loc),
                 Constraint =>
                   Make_Index_Or_Discriminant_Constraint (Loc,
                     Constraints => New_List
-                      (New_Reference_To (Slice_Type, Loc)))));
+                      (New_Occurrence_Of (Slice_Type, Loc)))));
 
             --  This subtype indication may be used later for constraint checks
             --  we better make sure that if a variable was used as a bound of
@@ -2113,7 +2109,7 @@ package body Exp_Util is
       elsif Ekind (Exp_Typ) = E_String_Literal_Subtype then
          Rewrite (Subtype_Indic,
            Make_Subtype_Indication (Loc,
-             Subtype_Mark => New_Reference_To (Unc_Type, Loc),
+             Subtype_Mark => New_Occurrence_Of (Unc_Type, Loc),
              Constraint =>
                Make_Index_Or_Discriminant_Constraint (Loc,
                  Constraints => New_List (
@@ -2169,7 +2165,7 @@ package body Exp_Util is
             Insert_Action (N,
               Make_Subtype_Declaration (Loc,
                 Defining_Identifier => T,
-                Subtype_Indication  => New_Reference_To (Exp_Typ, Loc)));
+                Subtype_Indication  => New_Occurrence_Of (Exp_Typ, Loc)));
 
             --  This type is marked as an itype even though it has an explicit
             --  declaration since otherwise Is_Generic_Actual_Type can get
@@ -2180,7 +2176,7 @@ package body Exp_Util is
             Set_Associated_Node_For_Itype (T, Exp);
          end if;
 
-         Rewrite (Subtype_Indic, New_Reference_To (T, Loc));
+         Rewrite (Subtype_Indic, New_Occurrence_Of (T, Loc));
 
       --  Nothing needs to be done for private types with unknown discriminants
       --  if the underlying type is not an unconstrained composite type or it
@@ -2601,6 +2597,145 @@ package body Exp_Util is
 
       raise Program_Error;
    end Find_Protection_Type;
+
+   -----------------------
+   -- Find_Hook_Context --
+   -----------------------
+
+   function Find_Hook_Context (N : Node_Id) return Node_Id is
+      Par : Node_Id;
+      Top : Node_Id;
+
+      Wrapped_Node : Node_Id;
+      --  Note: if we are in a transient scope, we want to reuse it as
+      --  the context for actions insertion, if possible. But if N is itself
+      --  part of the stored actions for the current transient scope,
+      --  then we need to insert at the appropriate (inner) location in
+      --  the not as an action on Node_To_Be_Wrapped.
+
+      In_Cond_Expr : constant Boolean := Within_Case_Or_If_Expression (N);
+
+   begin
+      --  When the node is inside a case/if expression, the lifetime of any
+      --  temporary controlled object is extended. Find a suitable insertion
+      --  node by locating the topmost case or if expressions.
+
+      if In_Cond_Expr then
+         Par := N;
+         Top := N;
+         while Present (Par) loop
+            if Nkind_In (Original_Node (Par), N_Case_Expression,
+                                              N_If_Expression)
+            then
+               Top := Par;
+
+            --  Prevent the search from going too far
+
+            elsif Is_Body_Or_Package_Declaration (Par) then
+               exit;
+            end if;
+
+            Par := Parent (Par);
+         end loop;
+
+         --  The topmost case or if expression is now recovered, but it may
+         --  still not be the correct place to add generated code. Climb to
+         --  find a parent that is part of a declarative or statement list,
+         --  and is not a list of actuals in a call.
+
+         Par := Top;
+         while Present (Par) loop
+            if Is_List_Member (Par)
+              and then not Nkind_In (Par, N_Component_Association,
+                                          N_Discriminant_Association,
+                                          N_Parameter_Association,
+                                          N_Pragma_Argument_Association)
+              and then not Nkind_In
+                             (Parent (Par), N_Function_Call,
+                                            N_Procedure_Call_Statement,
+                                            N_Entry_Call_Statement)
+
+            then
+               return Par;
+
+            --  Prevent the search from going too far
+
+            elsif Is_Body_Or_Package_Declaration (Par) then
+               exit;
+            end if;
+
+            Par := Parent (Par);
+         end loop;
+
+         return Par;
+
+      else
+         Par := N;
+         while Present (Par) loop
+
+            --  Keep climbing past various operators
+
+            if Nkind (Parent (Par)) in N_Op
+              or else Nkind_In (Parent (Par), N_And_Then, N_Or_Else)
+            then
+               Par := Parent (Par);
+            else
+               exit;
+            end if;
+         end loop;
+
+         Top := Par;
+
+         --  The node may be located in a pragma in which case return the
+         --  pragma itself:
+
+         --    pragma Precondition (... and then Ctrl_Func_Call ...);
+
+         --  Similar case occurs when the node is related to an object
+         --  declaration or assignment:
+
+         --    Obj [: Some_Typ] := ... and then Ctrl_Func_Call ...;
+
+         --  Another case to consider is when the node is part of a return
+         --  statement:
+
+         --    return ... and then Ctrl_Func_Call ...;
+
+         --  Another case is when the node acts as a formal in a procedure
+         --  call statement:
+
+         --    Proc (... and then Ctrl_Func_Call ...);
+
+         if Scope_Is_Transient then
+            Wrapped_Node := Node_To_Be_Wrapped;
+         else
+            Wrapped_Node := Empty;
+         end if;
+
+         while Present (Par) loop
+            if Par = Wrapped_Node
+              or else Nkind_In (Par, N_Assignment_Statement,
+                                     N_Object_Declaration,
+                                     N_Pragma,
+                                     N_Procedure_Call_Statement,
+                                     N_Simple_Return_Statement)
+            then
+               return Par;
+
+            --  Prevent the search from going too far
+
+            elsif Is_Body_Or_Package_Declaration (Par) then
+               exit;
+            end if;
+
+            Par := Parent (Par);
+         end loop;
+
+         --  Return the topmost short circuit operator
+
+         return Top;
+      end if;
+   end Find_Hook_Context;
 
    ----------------------
    -- Force_Evaluation --
@@ -3950,6 +4085,43 @@ package body Exp_Util is
       end if;
    end Insert_Actions_After;
 
+   ------------------------
+   -- Insert_Declaration --
+   ------------------------
+
+   procedure Insert_Declaration (N : Node_Id; Decl : Node_Id) is
+      P : Node_Id;
+
+   begin
+      pragma Assert (Nkind (N) in N_Subexpr);
+
+      --  Climb until we find a procedure or a package
+
+      P := N;
+      loop
+         pragma Assert (Present (Parent (P)));
+         P := Parent (P);
+
+         if Is_List_Member (P) then
+            exit when Nkind_In (Parent (P), N_Package_Specification,
+                                            N_Subprogram_Body);
+
+            --  Special handling for handled sequence of statements, we must
+            --  insert in the statements not the exception handlers!
+
+            if Nkind (Parent (P)) = N_Handled_Sequence_Of_Statements then
+               P := First (Statements (Parent (P)));
+               exit;
+            end if;
+         end if;
+      end loop;
+
+      --  Now do the insertion
+
+      Insert_Before (P, Decl);
+      Analyze (Decl);
+   end Insert_Declaration;
+
    ---------------------------------
    -- Insert_Library_Level_Action --
    ---------------------------------
@@ -4042,7 +4214,8 @@ package body Exp_Util is
      (Obj_Id : Entity_Id) return Boolean
    is
       function Is_Controlled_Function_Call (N : Node_Id) return Boolean;
-      --  Determine if particular node denotes a controlled function call
+      --  Determine if particular node denotes a controlled function call. The
+      --  call may have been heavily expanded.
 
       function Is_Displace_Call (N : Node_Id) return Boolean;
       --  Determine whether a particular node is a call to Ada.Tags.Displace.
@@ -4061,12 +4234,22 @@ package body Exp_Util is
       begin
          if Nkind (Expr) = N_Function_Call then
             Expr := Name (Expr);
-         end if;
 
-         --  The function call may appear in object.operation format
+         --  When a function call appears in Object.Operation format, the
+         --  original representation has two possible forms depending on the
+         --  availability of actual parameters:
 
-         if Nkind (Expr) = N_Selected_Component then
-            Expr := Selector_Name (Expr);
+         --    Obj.Func_Call           N_Selected_Component
+         --    Obj.Func_Call (Param)   N_Indexed_Component
+
+         else
+            if Nkind (Expr) = N_Indexed_Component then
+               Expr := Prefix (Expr);
+            end if;
+
+            if Nkind (Expr) = N_Selected_Component then
+               Expr := Selector_Name (Expr);
+            end if;
          end if;
 
          return
@@ -4444,57 +4627,57 @@ package body Exp_Util is
             Typ := Designated_Type (Typ);
          end if;
 
-         --  Look for aspect Default_Iterator
+         --  Look for aspect Default_Iterator. It may be part of a type
+         --  declaration for a container, or inherited from a base type
+         --  or parent type.
 
-         if Has_Aspects (Parent (Typ)) then
-            Aspect := Find_Value_Of_Aspect (Typ, Aspect_Default_Iterator);
+         Aspect := Find_Value_Of_Aspect (Typ, Aspect_Default_Iterator);
 
-            if Present (Aspect) then
-               Iter := Entity (Aspect);
+         if Present (Aspect) then
+            Iter := Entity (Aspect);
 
-               --  Examine the statements following the container object and
-               --  look for a call to the default iterate routine where the
-               --  first parameter is the transient. Such a call appears as:
+            --  Examine the statements following the container object and
+            --  look for a call to the default iterate routine where the
+            --  first parameter is the transient. Such a call appears as:
 
-               --     It : Access_To_CW_Iterator :=
-               --            Iterate (Tran_Id.all, ...)'reference;
+            --     It : Access_To_CW_Iterator :=
+            --            Iterate (Tran_Id.all, ...)'reference;
 
-               Stmt := First_Stmt;
-               while Present (Stmt) loop
+            Stmt := First_Stmt;
+            while Present (Stmt) loop
 
-                  --  Detect an object declaration which is initialized by a
-                  --  secondary stack function call.
+               --  Detect an object declaration which is initialized by a
+               --  secondary stack function call.
 
-                  if Nkind (Stmt) = N_Object_Declaration
-                    and then Present (Expression (Stmt))
-                    and then Nkind (Expression (Stmt)) = N_Reference
-                    and then Nkind (Prefix (Expression (Stmt))) =
-                               N_Function_Call
+               if Nkind (Stmt) = N_Object_Declaration
+                 and then Present (Expression (Stmt))
+                 and then Nkind (Expression (Stmt)) = N_Reference
+                 and then Nkind (Prefix (Expression (Stmt))) =
+                            N_Function_Call
+               then
+                  Call := Prefix (Expression (Stmt));
+
+                  --  The call must invoke the default iterate routine of
+                  --  the container and the transient object must appear as
+                  --  the first actual parameter. Skip any calls whose names
+                  --  are not entities.
+
+                  if Is_Entity_Name (Name (Call))
+                    and then Entity (Name (Call)) = Iter
+                    and then Present (Parameter_Associations (Call))
                   then
-                     Call := Prefix (Expression (Stmt));
+                     Param := First (Parameter_Associations (Call));
 
-                     --  The call must invoke the default iterate routine of
-                     --  the container and the transient object must appear as
-                     --  the first actual parameter. Skip any calls whose names
-                     --  are not entities.
-
-                     if Is_Entity_Name (Name (Call))
-                       and then Entity (Name (Call)) = Iter
-                       and then Present (Parameter_Associations (Call))
+                     if Nkind (Param) = N_Explicit_Dereference
+                       and then Entity (Prefix (Param)) = Trans_Id
                      then
-                        Param := First (Parameter_Associations (Call));
-
-                        if Nkind (Param) = N_Explicit_Dereference
-                          and then Entity (Prefix (Param)) = Trans_Id
-                        then
-                           return True;
-                        end if;
+                        return True;
                      end if;
                   end if;
+               end if;
 
-                  Next (Stmt);
-               end loop;
-            end if;
+               Next (Stmt);
+            end loop;
          end if;
 
          return False;
@@ -4610,6 +4793,79 @@ package body Exp_Util is
           and then Nkind (Prefix (Expr)) = N_Function_Call
           and then not Is_Build_In_Place_Function_Call (Prefix (Expr));
    end Is_Non_BIP_Func_Call;
+
+   ------------------------------------
+   -- Is_Object_Access_BIP_Func_Call --
+   ------------------------------------
+
+   function Is_Object_Access_BIP_Func_Call
+      (Expr   : Node_Id;
+       Obj_Id : Entity_Id) return Boolean
+   is
+      Access_Nam : Name_Id := No_Name;
+      Actual     : Node_Id;
+      Call       : Node_Id;
+      Formal     : Node_Id;
+      Param      : Node_Id;
+
+   begin
+      --  Build-in-place calls usually appear in 'reference format. Note that
+      --  the accessibility check machinery may add an extra 'reference due to
+      --  side effect removal.
+
+      Call := Expr;
+      while Nkind (Call) = N_Reference loop
+         Call := Prefix (Call);
+      end loop;
+
+      if Nkind_In (Call, N_Qualified_Expression,
+                         N_Unchecked_Type_Conversion)
+      then
+         Call := Expression (Call);
+      end if;
+
+      if Is_Build_In_Place_Function_Call (Call) then
+
+         --  Examine all parameter associations of the function call
+
+         Param := First (Parameter_Associations (Call));
+         while Present (Param) loop
+            if Nkind (Param) = N_Parameter_Association
+              and then Nkind (Selector_Name (Param)) = N_Identifier
+            then
+               Formal := Selector_Name (Param);
+               Actual := Explicit_Actual_Parameter (Param);
+
+               --  Construct the name of formal BIPaccess. It is much easier to
+               --  extract the name of the function using an arbitrary formal's
+               --  scope rather than the Name field of Call.
+
+               if Access_Nam = No_Name and then Present (Entity (Formal)) then
+                  Access_Nam :=
+                    New_External_Name
+                      (Chars (Scope (Entity (Formal))),
+                       BIP_Formal_Suffix (BIP_Object_Access));
+               end if;
+
+               --  A match for BIPaccess => Obj_Id'Unrestricted_Access has been
+               --  found.
+
+               if Chars (Formal) = Access_Nam
+                 and then Nkind (Actual) = N_Attribute_Reference
+                 and then Attribute_Name (Actual) = Name_Unrestricted_Access
+                 and then Nkind (Prefix (Actual)) = N_Identifier
+                 and then Entity (Prefix (Actual)) = Obj_Id
+               then
+                  return True;
+               end if;
+            end if;
+
+            Next (Param);
+         end loop;
+      end if;
+
+      return False;
+   end Is_Object_Access_BIP_Func_Call;
 
    ----------------------------------
    -- Is_Possibly_Unaligned_Object --
@@ -5000,7 +5256,11 @@ package body Exp_Util is
    --------------------------------------
 
    function Is_Secondary_Stack_BIP_Func_Call (Expr : Node_Id) return Boolean is
-      Call : Node_Id := Expr;
+      Alloc_Nam : Name_Id := No_Name;
+      Actual    : Node_Id;
+      Call      : Node_Id := Expr;
+      Formal    : Node_Id;
+      Param     : Node_Id;
 
    begin
       --  Build-in-place calls usually appear in 'reference format. Note that
@@ -5018,49 +5278,40 @@ package body Exp_Util is
       end if;
 
       if Is_Build_In_Place_Function_Call (Call) then
-         declare
-            Access_Nam : Name_Id := No_Name;
-            Actual     : Node_Id;
-            Param      : Node_Id;
-            Formal     : Node_Id;
 
-         begin
-            --  Examine all parameter associations of the function call
+         --  Examine all parameter associations of the function call
 
-            Param := First (Parameter_Associations (Call));
-            while Present (Param) loop
-               if Nkind (Param) = N_Parameter_Association
-                 and then Nkind (Selector_Name (Param)) = N_Identifier
-               then
-                  Formal := Selector_Name (Param);
-                  Actual := Explicit_Actual_Parameter (Param);
+         Param := First (Parameter_Associations (Call));
+         while Present (Param) loop
+            if Nkind (Param) = N_Parameter_Association
+              and then Nkind (Selector_Name (Param)) = N_Identifier
+            then
+               Formal := Selector_Name (Param);
+               Actual := Explicit_Actual_Parameter (Param);
 
-                  --  Construct the name of formal BIPalloc. It is much easier
-                  --  to extract the name of the function using an arbitrary
-                  --  formal's scope rather than the Name field of Call.
+               --  Construct the name of formal BIPalloc. It is much easier to
+               --  extract the name of the function using an arbitrary formal's
+               --  scope rather than the Name field of Call.
 
-                  if Access_Nam = No_Name
-                    and then Present (Entity (Formal))
-                  then
-                     Access_Nam :=
-                       New_External_Name
-                         (Chars (Scope (Entity (Formal))),
-                          BIP_Formal_Suffix (BIP_Alloc_Form));
-                  end if;
-
-                  --  A match for BIPalloc => 2 has been found
-
-                  if Chars (Formal) = Access_Nam
-                    and then Nkind (Actual) = N_Integer_Literal
-                    and then Intval (Actual) = Uint_2
-                  then
-                     return True;
-                  end if;
+               if Alloc_Nam = No_Name and then Present (Entity (Formal)) then
+                  Alloc_Nam :=
+                    New_External_Name
+                      (Chars (Scope (Entity (Formal))),
+                       BIP_Formal_Suffix (BIP_Alloc_Form));
                end if;
 
-               Next (Param);
-            end loop;
-         end;
+               --  A match for BIPalloc => 2 has been found
+
+               if Chars (Formal) = Alloc_Nam
+                 and then Nkind (Actual) = N_Integer_Literal
+                 and then Intval (Actual) = Uint_2
+               then
+                  return True;
+               end if;
+            end if;
+
+            Next (Param);
+         end loop;
       end if;
 
       return False;
@@ -5091,10 +5342,10 @@ package body Exp_Util is
    begin
       return (not Is_Tagged_Type (T) and then Is_Derived_Type (T))
                or else
-             (Is_Private_Type (T) and then Present (Full_View (T))
-               and then not Is_Tagged_Type (Full_View (T))
-               and then Is_Derived_Type (Full_View (T))
-               and then Etype (Full_View (T)) /= T);
+                 (Is_Private_Type (T) and then Present (Full_View (T))
+                   and then not Is_Tagged_Type (Full_View (T))
+                   and then Is_Derived_Type (Full_View (T))
+                   and then Etype (Full_View (T)) /= T);
    end Is_Untagged_Derivation;
 
    ---------------------------
@@ -5103,17 +5354,33 @@ package body Exp_Util is
 
    function Is_Volatile_Reference (N : Node_Id) return Boolean is
    begin
-      if Nkind (N) in N_Has_Etype
-        and then Present (Etype (N))
-        and then Treat_As_Volatile (Etype (N))
-      then
+      --  Only source references are to be treated as volatile, internally
+      --  generated stuff cannot have volatile external effects.
+
+      if not Comes_From_Source (N) then
+         return False;
+
+      --  Never true for reference to a type
+
+      elsif Is_Entity_Name (N) and then Is_Type (Entity (N)) then
+         return False;
+
+      --  True if object reference with volatile type
+
+      elsif Is_Volatile_Object (N) then
          return True;
+
+      --  True if reference to volatile entity
 
       elsif Is_Entity_Name (N) then
          return Treat_As_Volatile (Entity (N));
 
+      --  True for slice of volatile array
+
       elsif Nkind (N) = N_Slice then
          return Is_Volatile_Reference (Prefix (N));
+
+      --  True if volatile component
 
       elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
          if (Is_Entity_Name (Prefix (N))
@@ -5125,6 +5392,8 @@ package body Exp_Util is
          else
             return Is_Volatile_Reference (Prefix (N));
          end if;
+
+      --  Otherwise false
 
       else
          return False;
@@ -5495,7 +5764,7 @@ package body Exp_Util is
                  Attribute_Name => Name_Size),
              Right_Opnd =>
                Make_Attribute_Reference (Loc,
-                 Prefix => New_Reference_To (Constr_Root, Loc),
+                 Prefix => New_Occurrence_Of (Constr_Root, Loc),
                  Attribute_Name => Name_Object_Size));
       else
          --  subtype rg__xx is
@@ -5515,7 +5784,7 @@ package body Exp_Util is
           Defining_Identifier => Range_Type,
           Subtype_Indication =>
             Make_Subtype_Indication (Loc,
-              Subtype_Mark => New_Reference_To (RTE (RE_Storage_Offset), Loc),
+              Subtype_Mark => New_Occurrence_Of (RTE (RE_Storage_Offset), Loc),
               Constraint => Make_Range_Constraint (Loc,
                 Range_Expression =>
                   Make_Range (Loc,
@@ -5534,11 +5803,11 @@ package body Exp_Util is
           Defining_Identifier => Str_Type,
           Subtype_Indication =>
             Make_Subtype_Indication (Loc,
-              Subtype_Mark => New_Reference_To (RTE (RE_Storage_Array), Loc),
+              Subtype_Mark => New_Occurrence_Of (RTE (RE_Storage_Array), Loc),
               Constraint =>
                 Make_Index_Or_Discriminant_Constraint (Loc,
                   Constraints =>
-                    New_List (New_Reference_To (Range_Type, Loc))))));
+                    New_List (New_Occurrence_Of (Range_Type, Loc))))));
 
       --  type Equiv_T is record
       --    [ _parent : Tnn; ]
@@ -5565,7 +5834,7 @@ package body Exp_Util is
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present    => False,
-                 Subtype_Indication => New_Reference_To (Constr_Root, Loc))));
+                 Subtype_Indication => New_Occurrence_Of (Constr_Root, Loc))));
       end if;
 
       Append_To (Comp_List,
@@ -5574,7 +5843,7 @@ package body Exp_Util is
           Component_Definition =>
             Make_Component_Definition (Loc,
               Aliased_Present    => False,
-              Subtype_Indication => New_Reference_To (Str_Type, Loc))));
+              Subtype_Indication => New_Occurrence_Of (Str_Type, Loc))));
 
       Append_To (List_Def,
         Make_Full_Type_Declaration (Loc,
@@ -5752,6 +6021,13 @@ package body Exp_Util is
          return Make_Null_Statement (Loc);
       end if;
 
+      --  Do not generate a check within an internal subprogram (stream
+      --  functions and the like, including including predicate functions).
+
+      if Within_Internal_Subprogram then
+         return Make_Null_Statement (Loc);
+      end if;
+
       --  Compute proper name to use, we need to get this right so that the
       --  right set of check policies apply to the Check pragma we are making.
 
@@ -5838,7 +6114,7 @@ package body Exp_Util is
 
          Set_Full_View (Priv_Subtyp, Full_Subtyp);
 
-         return New_Reference_To (Priv_Subtyp, Loc);
+         return New_Occurrence_Of (Priv_Subtyp, Loc);
 
       elsif Is_Array_Type (Unc_Typ) then
          for J in 1 .. Number_Dimensions (Unc_Typ) loop
@@ -5903,7 +6179,7 @@ package body Exp_Util is
             Append_To (List_Constr,
               Make_Selected_Component (Loc,
                 Prefix        => Duplicate_Subexpr_No_Checks (E),
-                Selector_Name => New_Reference_To (D, Loc)));
+                Selector_Name => New_Occurrence_Of (D, Loc)));
 
             Next_Discriminant (D);
          end loop;
@@ -5911,11 +6187,73 @@ package body Exp_Util is
 
       return
         Make_Subtype_Indication (Loc,
-          Subtype_Mark => New_Reference_To (Unc_Typ, Loc),
+          Subtype_Mark => New_Occurrence_Of (Unc_Typ, Loc),
           Constraint   =>
             Make_Index_Or_Discriminant_Constraint (Loc,
               Constraints => List_Constr));
    end Make_Subtype_From_Expr;
+
+   ----------------------------
+   -- Matching_Standard_Type --
+   ----------------------------
+
+   function Matching_Standard_Type (Typ : Entity_Id) return Entity_Id is
+      pragma Assert (Is_Scalar_Type (Typ));
+      Siz : constant Uint := Esize (Typ);
+
+   begin
+      --  Floating-point cases
+
+      if Is_Floating_Point_Type (Typ) then
+         if Siz <= Esize (Standard_Short_Float) then
+            return Standard_Short_Float;
+         elsif Siz <= Esize (Standard_Float) then
+            return Standard_Float;
+         elsif Siz <= Esize (Standard_Long_Float) then
+            return Standard_Long_Float;
+         elsif Siz <= Esize (Standard_Long_Long_Float) then
+            return Standard_Long_Long_Float;
+         else
+            raise Program_Error;
+         end if;
+
+      --  Integer cases (includes fixed-point types)
+
+      --  Unsigned integer cases (includes normal enumeration types)
+
+      elsif Is_Unsigned_Type (Typ) then
+         if Siz <= Esize (Standard_Short_Short_Unsigned) then
+            return Standard_Short_Short_Unsigned;
+         elsif Siz <= Esize (Standard_Short_Unsigned) then
+            return Standard_Short_Unsigned;
+         elsif Siz <= Esize (Standard_Unsigned) then
+            return Standard_Unsigned;
+         elsif Siz <= Esize (Standard_Long_Unsigned) then
+            return Standard_Long_Unsigned;
+         elsif Siz <= Esize (Standard_Long_Long_Unsigned) then
+            return Standard_Long_Long_Unsigned;
+         else
+            raise Program_Error;
+         end if;
+
+      --  Signed integer cases
+
+      else
+         if Siz <= Esize (Standard_Short_Short_Integer) then
+            return Standard_Short_Short_Integer;
+         elsif Siz <= Esize (Standard_Short_Integer) then
+            return Standard_Short_Integer;
+         elsif Siz <= Esize (Standard_Integer) then
+            return Standard_Integer;
+         elsif Siz <= Esize (Standard_Long_Integer) then
+            return Standard_Long_Integer;
+         elsif Siz <= Esize (Standard_Long_Long_Integer) then
+            return Standard_Long_Long_Integer;
+         else
+            raise Program_Error;
+         end if;
+      end if;
+   end Matching_Standard_Type;
 
    -----------------------------
    -- May_Generate_Large_Temp --
@@ -5934,8 +6272,10 @@ package body Exp_Util is
       elsif Esize (Typ) /= 0 and then Esize (Typ) <= 256 then
          return False;
 
-      elsif Is_Array_Type (Typ) and then Present (Packed_Array_Type (Typ)) then
-         return May_Generate_Large_Temp (Packed_Array_Type (Typ));
+      elsif Is_Array_Type (Typ)
+        and then Present (Packed_Array_Impl_Type (Typ))
+      then
+         return May_Generate_Large_Temp (Packed_Array_Impl_Type (Typ));
 
       --  We could do more here to find other small types ???
 
@@ -6002,11 +6342,10 @@ package body Exp_Util is
       if Restriction_Active (No_Finalization) then
          return False;
 
-      --  C, C++, CIL and Java types are not considered controlled. It is
-      --  assumed that the non-Ada side will handle their clean up.
+      --  C++, CIL and Java types are not considered controlled. It is assumed
+      --  that the non-Ada side will handle their clean up.
 
-      elsif Convention (T) = Convention_C
-        or else Convention (T) = Convention_CIL
+      elsif Convention (T) = Convention_CIL
         or else Convention (T) = Convention_CPP
         or else Convention (T) = Convention_Java
       then
@@ -6066,7 +6405,7 @@ package body Exp_Util is
         or else Is_Access_Type (Typ)
         or else
           (Is_Bit_Packed_Array (Typ)
-            and then Is_Modular_Integer_Type (Packed_Array_Type (Typ)))
+            and then Is_Modular_Integer_Type (Packed_Array_Impl_Type (Typ)))
       then
          return False;
 
@@ -6281,9 +6620,12 @@ package body Exp_Util is
       function Are_Wrapped (L : List_Id) return Boolean;
       --  Determine whether list L contains only one statement which is a block
 
-      function Wrap_Statements_In_Block (L : List_Id) return Node_Id;
+      function Wrap_Statements_In_Block
+        (L    : List_Id;
+         Scop : Entity_Id := Current_Scope) return Node_Id;
       --  Given a list of statements L, wrap it in a block statement and return
-      --  the generated node.
+      --  the generated node. Scop is either the current scope or the scope of
+      --  the context (if applicable).
 
       -----------------
       -- Are_Wrapped --
@@ -6302,14 +6644,45 @@ package body Exp_Util is
       -- Wrap_Statements_In_Block --
       ------------------------------
 
-      function Wrap_Statements_In_Block (L : List_Id) return Node_Id is
+      function Wrap_Statements_In_Block
+        (L    : List_Id;
+         Scop : Entity_Id := Current_Scope) return Node_Id
+      is
+         Block_Id  : Entity_Id;
+         Block_Nod : Node_Id;
+         Iter_Loop : Entity_Id;
+
       begin
-         return
+         Block_Nod :=
            Make_Block_Statement (Loc,
-             Declarations => No_List,
+             Declarations               => No_List,
              Handled_Statement_Sequence =>
                Make_Handled_Sequence_Of_Statements (Loc,
                  Statements => L));
+
+         --  Create a label for the block in case the block needs to manage the
+         --  secondary stack. A label allows for flag Uses_Sec_Stack to be set.
+
+         Add_Block_Identifier (Block_Nod, Block_Id);
+
+         --  When wrapping the statements of an iterator loop, check whether
+         --  the loop requires secondary stack management and if so, propagate
+         --  the appropriate flags to the block. This ensures that the cursor
+         --  is properly cleaned up at each iteration of the loop.
+
+         Iter_Loop := Find_Enclosing_Iterator_Loop (Scop);
+
+         if Present (Iter_Loop) then
+            Set_Uses_Sec_Stack (Block_Id, Uses_Sec_Stack (Iter_Loop));
+
+            --  Secondary stack reclamation is suppressed when the associated
+            --  iterator loop contains a return statement which uses the stack.
+
+            Set_Sec_Stack_Needed_For_Return
+              (Block_Id, Sec_Stack_Needed_For_Return (Iter_Loop));
+         end if;
+
+         return Block_Nod;
       end Wrap_Statements_In_Block;
 
       --  Local variables
@@ -6373,9 +6746,18 @@ package body Exp_Util is
               and then not Are_Wrapped (Statements (N))
               and then Requires_Cleanup_Actions (Statements (N), False, False)
             then
-               Block := Wrap_Statements_In_Block (Statements (N));
-               Set_Statements (N, New_List (Block));
+               if Nkind (N) = N_Loop_Statement
+                 and then Present (Identifier (N))
+               then
+                  Block :=
+                    Wrap_Statements_In_Block
+                      (L    => Statements (N),
+                       Scop => Entity (Identifier (N)));
+               else
+                  Block := Wrap_Statements_In_Block (Statements (N));
+               end if;
 
+               Set_Statements (N, New_List (Block));
                Analyze (Block);
             end if;
 
@@ -6383,6 +6765,32 @@ package body Exp_Util is
             null;
       end case;
    end Process_Statements_For_Controlled_Objects;
+
+   ------------------
+   -- Power_Of_Two --
+   ------------------
+
+   function Power_Of_Two (N : Node_Id) return Nat is
+      Typ : constant Entity_Id := Etype (N);
+      pragma Assert (Is_Integer_Type (Typ));
+      Siz : constant Nat := UI_To_Int (Esize (Typ));
+      Val : Uint;
+
+   begin
+      if not Compile_Time_Known_Value (N) then
+         return 0;
+
+      else
+         Val := Expr_Value (N);
+         for J in 1 .. Siz - 1 loop
+            if Val = Uint_2 ** J then
+               return J;
+            end if;
+         end loop;
+
+         return 0;
+      end if;
+   end Power_Of_Two;
 
    ----------------------
    -- Remove_Init_Call --
@@ -6503,441 +6911,15 @@ package body Exp_Util is
       Ref_Type     : Entity_Id;
       Res          : Node_Id;
 
-      function Side_Effect_Free (N : Node_Id) return Boolean;
-      --  Determines if the tree N represents an expression that is known not
-      --  to have side effects, and for which no processing is required.
-
-      function Side_Effect_Free (L : List_Id) return Boolean;
-      --  Determines if all elements of the list L are side effect free
-
-      function Safe_Prefixed_Reference (N : Node_Id) return Boolean;
-      --  The argument N is a construct where the Prefix is dereferenced if it
-      --  is an access type and the result is a variable. The call returns True
-      --  if the construct is side effect free (not considering side effects in
-      --  other than the prefix which are to be tested by the caller).
-
-      function Within_In_Parameter (N : Node_Id) return Boolean;
-      --  Determines if N is a subcomponent of a composite in-parameter. If so,
-      --  N is not side-effect free when the actual is global and modifiable
-      --  indirectly from within a subprogram, because it may be passed by
-      --  reference. The front-end must be conservative here and assume that
-      --  this may happen with any array or record type. On the other hand, we
-      --  cannot create temporaries for all expressions for which this
-      --  condition is true, for various reasons that might require clearing up
-      --  ??? For example, discriminant references that appear out of place, or
-      --  spurious type errors with class-wide expressions. As a result, we
-      --  limit the transformation to loop bounds, which is so far the only
-      --  case that requires it.
-
-      -----------------------------
-      -- Safe_Prefixed_Reference --
-      -----------------------------
-
-      function Safe_Prefixed_Reference (N : Node_Id) return Boolean is
-      begin
-         --  If prefix is not side effect free, definitely not safe
-
-         if not Side_Effect_Free (Prefix (N)) then
-            return False;
-
-         --  If the prefix is of an access type that is not access-to-constant,
-         --  then this construct is a variable reference, which means it is to
-         --  be considered to have side effects if Variable_Ref is set True.
-
-         elsif Is_Access_Type (Etype (Prefix (N)))
-           and then not Is_Access_Constant (Etype (Prefix (N)))
-           and then Variable_Ref
-         then
-            --  Exception is a prefix that is the result of a previous removal
-            --  of side-effects.
-
-            return Is_Entity_Name (Prefix (N))
-              and then not Comes_From_Source (Prefix (N))
-              and then Ekind (Entity (Prefix (N))) = E_Constant
-              and then Is_Internal_Name (Chars (Entity (Prefix (N))));
-
-         --  If the prefix is an explicit dereference then this construct is a
-         --  variable reference, which means it is to be considered to have
-         --  side effects if Variable_Ref is True.
-
-         --  We do NOT exclude dereferences of access-to-constant types because
-         --  we handle them as constant view of variables.
-
-         elsif Nkind (Prefix (N)) = N_Explicit_Dereference
-           and then Variable_Ref
-         then
-            return False;
-
-         --  Note: The following test is the simplest way of solving a complex
-         --  problem uncovered by the following test (Side effect on loop bound
-         --  that is a subcomponent of a global variable:
-
-         --    with Text_Io; use Text_Io;
-         --    procedure Tloop is
-         --      type X is
-         --        record
-         --          V : Natural := 4;
-         --          S : String (1..5) := (others => 'a');
-         --        end record;
-         --      X1 : X;
-
-         --      procedure Modi;
-
-         --      generic
-         --        with procedure Action;
-         --      procedure Loop_G (Arg : X; Msg : String)
-
-         --      procedure Loop_G (Arg : X; Msg : String) is
-         --      begin
-         --        Put_Line ("begin loop_g " & Msg & " will loop till: "
-         --                  & Natural'Image (Arg.V));
-         --        for Index in 1 .. Arg.V loop
-         --          Text_Io.Put_Line
-         --            (Natural'Image (Index) & " " & Arg.S (Index));
-         --          if Index > 2 then
-         --            Modi;
-         --          end if;
-         --        end loop;
-         --        Put_Line ("end loop_g " & Msg);
-         --      end;
-
-         --      procedure Loop1 is new Loop_G (Modi);
-         --      procedure Modi is
-         --      begin
-         --        X1.V := 1;
-         --        Loop1 (X1, "from modi");
-         --      end;
-         --
-         --    begin
-         --      Loop1 (X1, "initial");
-         --    end;
-
-         --  The output of the above program should be:
-
-         --    begin loop_g initial will loop till:  4
-         --     1 a
-         --     2 a
-         --     3 a
-         --    begin loop_g from modi will loop till:  1
-         --     1 a
-         --    end loop_g from modi
-         --     4 a
-         --    begin loop_g from modi will loop till:  1
-         --     1 a
-         --    end loop_g from modi
-         --    end loop_g initial
-
-         --  If a loop bound is a subcomponent of a global variable, a
-         --  modification of that variable within the loop may incorrectly
-         --  affect the execution of the loop.
-
-         elsif Nkind (Parent (Parent (N))) = N_Loop_Parameter_Specification
-           and then Within_In_Parameter (Prefix (N))
-           and then Variable_Ref
-         then
-            return False;
-
-         --  All other cases are side effect free
-
-         else
-            return True;
-         end if;
-      end Safe_Prefixed_Reference;
-
-      ----------------------
-      -- Side_Effect_Free --
-      ----------------------
-
-      function Side_Effect_Free (N : Node_Id) return Boolean is
-      begin
-         --  Note on checks that could raise Constraint_Error. Strictly, if we
-         --  take advantage of 11.6, these checks do not count as side effects.
-         --  However, we would prefer to consider that they are side effects,
-         --  since the backend CSE does not work very well on expressions which
-         --  can raise Constraint_Error. On the other hand if we don't consider
-         --  them to be side effect free, then we get some awkward expansions
-         --  in -gnato mode, resulting in code insertions at a point where we
-         --  do not have a clear model for performing the insertions.
-
-         --  Special handling for entity names
-
-         if Is_Entity_Name (N) then
-
-            --  Variables are considered to be a side effect if Variable_Ref
-            --  is set or if we have a volatile reference and Name_Req is off.
-            --  If Name_Req is True then we can't help returning a name which
-            --  effectively allows multiple references in any case.
-
-            if Is_Variable (N, Use_Original_Node => False) then
-               return not Variable_Ref
-                 and then (not Is_Volatile_Reference (N) or else Name_Req);
-
-            --  Any other entity (e.g. a subtype name) is definitely side
-            --  effect free.
-
-            else
-               return True;
-            end if;
-
-         --  A value known at compile time is always side effect free
-
-         elsif Compile_Time_Known_Value (N) then
-            return True;
-
-         --  A variable renaming is not side-effect free, because the renaming
-         --  will function like a macro in the front-end in some cases, and an
-         --  assignment can modify the component designated by N, so we need to
-         --  create a temporary for it.
-
-         --  The guard testing for Entity being present is needed at least in
-         --  the case of rewritten predicate expressions, and may well also be
-         --  appropriate elsewhere. Obviously we can't go testing the entity
-         --  field if it does not exist, so it's reasonable to say that this is
-         --  not the renaming case if it does not exist.
-
-         elsif Is_Entity_Name (Original_Node (N))
-           and then Present (Entity (Original_Node (N)))
-           and then Is_Renaming_Of_Object (Entity (Original_Node (N)))
-           and then Ekind (Entity (Original_Node (N))) /= E_Constant
-         then
-            declare
-               RO : constant Node_Id :=
-                      Renamed_Object (Entity (Original_Node (N)));
-
-            begin
-               --  If the renamed object is an indexed component, or an
-               --  explicit dereference, then the designated object could
-               --  be modified by an assignment.
-
-               if Nkind_In (RO, N_Indexed_Component,
-                                N_Explicit_Dereference)
-               then
-                  return False;
-
-               --  A selected component must have a safe prefix
-
-               elsif Nkind (RO) = N_Selected_Component then
-                  return Safe_Prefixed_Reference (RO);
-
-               --  In all other cases, designated object cannot be changed so
-               --  we are side effect free.
-
-               else
-                  return True;
-               end if;
-            end;
-
-         --  Remove_Side_Effects generates an object renaming declaration to
-         --  capture the expression of a class-wide expression. In VM targets
-         --  the frontend performs no expansion for dispatching calls to
-         --  class- wide types since they are handled by the VM. Hence, we must
-         --  locate here if this node corresponds to a previous invocation of
-         --  Remove_Side_Effects to avoid a never ending loop in the frontend.
-
-         elsif VM_Target /= No_VM
-            and then not Comes_From_Source (N)
-            and then Nkind (Parent (N)) = N_Object_Renaming_Declaration
-            and then Is_Class_Wide_Type (Etype (N))
-         then
-            return True;
-         end if;
-
-         --  For other than entity names and compile time known values,
-         --  check the node kind for special processing.
-
-         case Nkind (N) is
-
-            --  An attribute reference is side effect free if its expressions
-            --  are side effect free and its prefix is side effect free or
-            --  is an entity reference.
-
-            --  Is this right? what about x'first where x is a variable???
-
-            when N_Attribute_Reference =>
-               return Side_Effect_Free (Expressions (N))
-                 and then Attribute_Name (N) /= Name_Input
-                 and then (Is_Entity_Name (Prefix (N))
-                            or else Side_Effect_Free (Prefix (N)));
-
-            --  A binary operator is side effect free if and both operands are
-            --  side effect free. For this purpose binary operators include
-            --  membership tests and short circuit forms.
-
-            when N_Binary_Op | N_Membership_Test | N_Short_Circuit =>
-               return Side_Effect_Free (Left_Opnd  (N))
-                        and then
-                      Side_Effect_Free (Right_Opnd (N));
-
-            --  An explicit dereference is side effect free only if it is
-            --  a side effect free prefixed reference.
-
-            when N_Explicit_Dereference =>
-               return Safe_Prefixed_Reference (N);
-
-            --  An expression with action is side effect free if its expression
-            --  is side effect free and it has no actions.
-
-            when N_Expression_With_Actions =>
-               return Is_Empty_List (Actions (N))
-                        and then
-                      Side_Effect_Free (Expression (N));
-
-            --  A call to _rep_to_pos is side effect free, since we generate
-            --  this pure function call ourselves. Moreover it is critically
-            --  important to make this exception, since otherwise we can have
-            --  discriminants in array components which don't look side effect
-            --  free in the case of an array whose index type is an enumeration
-            --  type with an enumeration rep clause.
-
-            --  All other function calls are not side effect free
-
-            when N_Function_Call =>
-               return Nkind (Name (N)) = N_Identifier
-                 and then Is_TSS (Name (N), TSS_Rep_To_Pos)
-                 and then
-                   Side_Effect_Free (First (Parameter_Associations (N)));
-
-            --  An indexed component is side effect free if it is a side
-            --  effect free prefixed reference and all the indexing
-            --  expressions are side effect free.
-
-            when N_Indexed_Component =>
-               return Side_Effect_Free (Expressions (N))
-                 and then Safe_Prefixed_Reference (N);
-
-            --  A type qualification is side effect free if the expression
-            --  is side effect free.
-
-            when N_Qualified_Expression =>
-               return Side_Effect_Free (Expression (N));
-
-            --  A selected component is side effect free only if it is a side
-            --  effect free prefixed reference. If it designates a component
-            --  with a rep. clause it must be treated has having a potential
-            --  side effect, because it may be modified through a renaming, and
-            --  a subsequent use of the renaming as a macro will yield the
-            --  wrong value. This complex interaction between renaming and
-            --  removing side effects is a reminder that the latter has become
-            --  a headache to maintain, and that it should be removed in favor
-            --  of the gcc mechanism to capture values ???
-
-            when N_Selected_Component =>
-               if Nkind (Parent (N)) = N_Explicit_Dereference
-                 and then Has_Non_Standard_Rep (Designated_Type (Etype (N)))
-               then
-                  return False;
-               else
-                  return Safe_Prefixed_Reference (N);
-               end if;
-
-            --  A range is side effect free if the bounds are side effect free
-
-            when N_Range =>
-               return Side_Effect_Free (Low_Bound (N))
-                 and then Side_Effect_Free (High_Bound (N));
-
-            --  A slice is side effect free if it is a side effect free
-            --  prefixed reference and the bounds are side effect free.
-
-            when N_Slice =>
-               return Side_Effect_Free (Discrete_Range (N))
-                 and then Safe_Prefixed_Reference (N);
-
-            --  A type conversion is side effect free if the expression to be
-            --  converted is side effect free.
-
-            when N_Type_Conversion =>
-               return Side_Effect_Free (Expression (N));
-
-            --  A unary operator is side effect free if the operand
-            --  is side effect free.
-
-            when N_Unary_Op =>
-               return Side_Effect_Free (Right_Opnd (N));
-
-            --  An unchecked type conversion is side effect free only if it
-            --  is safe and its argument is side effect free.
-
-            when N_Unchecked_Type_Conversion =>
-               return Safe_Unchecked_Type_Conversion (N)
-                 and then Side_Effect_Free (Expression (N));
-
-            --  An unchecked expression is side effect free if its expression
-            --  is side effect free.
-
-            when N_Unchecked_Expression =>
-               return Side_Effect_Free (Expression (N));
-
-            --  A literal is side effect free
-
-            when N_Character_Literal    |
-                 N_Integer_Literal      |
-                 N_Real_Literal         |
-                 N_String_Literal       =>
-               return True;
-
-            --  We consider that anything else has side effects. This is a bit
-            --  crude, but we are pretty close for most common cases, and we
-            --  are certainly correct (i.e. we never return True when the
-            --  answer should be False).
-
-            when others =>
-               return False;
-         end case;
-      end Side_Effect_Free;
-
-      --  A list is side effect free if all elements of the list are side
-      --  effect free.
-
-      function Side_Effect_Free (L : List_Id) return Boolean is
-         N : Node_Id;
-
-      begin
-         if L = No_List or else L = Error_List then
-            return True;
-
-         else
-            N := First (L);
-            while Present (N) loop
-               if not Side_Effect_Free (N) then
-                  return False;
-               else
-                  Next (N);
-               end if;
-            end loop;
-
-            return True;
-         end if;
-      end Side_Effect_Free;
-
-      -------------------------
-      -- Within_In_Parameter --
-      -------------------------
-
-      function Within_In_Parameter (N : Node_Id) return Boolean is
-      begin
-         if not Comes_From_Source (N) then
-            return False;
-
-         elsif Is_Entity_Name (N) then
-            return Ekind (Entity (N)) = E_In_Parameter;
-
-         elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
-            return Within_In_Parameter (Prefix (N));
-
-         else
-            return False;
-         end if;
-      end Within_In_Parameter;
-
-   --  Start of processing for Remove_Side_Effects
-
    begin
       --  Handle cases in which there is nothing to do. In GNATprove mode,
       --  removal of side effects is useful for the light expansion of
-      --  renamings.
+      --  renamings. This removal should only occur when not inside a
+      --  generic and not doing a pre-analysis.
 
-      if not (Expander_Active or (Full_Analysis and GNATprove_Mode)) then
+      if not Expander_Active
+        and (Inside_A_Generic or not Full_Analysis or not GNATprove_Mode)
+      then
          return;
       end if;
 
@@ -6946,14 +6928,12 @@ package body Exp_Util is
       --  (this happens because routines Duplicate_Subexpr_XX implicitly invoke
       --  Remove_Side_Effects).
 
-      if No (Exp_Type)
-        or else Ekind (Exp_Type) = E_Access_Attribute_Type
-      then
+      if No (Exp_Type) or else Ekind (Exp_Type) = E_Access_Attribute_Type then
          return;
 
       --  No action needed for side-effect free expressions
 
-      elsif Side_Effect_Free (Exp) then
+      elsif Side_Effect_Free (Exp, Name_Req, Variable_Ref) then
          return;
       end if;
 
@@ -6965,21 +6945,32 @@ package body Exp_Util is
       Scope_Suppress.Suppress := (others => True);
 
       --  If it is a scalar type and we need to capture the value, just make
-      --  a copy. Likewise for a function call, an attribute reference, an
-      --  allocator, or an operator. And if we have a volatile reference and
-      --  Name_Req is not set (see comments above for Side_Effect_Free).
+      --  a copy. Likewise for a function call, an attribute reference, a
+      --  conditional expression, an allocator, or an operator. And if we have
+      --  a volatile reference and Name_Req is not set (see comments for
+      --  Side_Effect_Free).
 
       if Is_Elementary_Type (Exp_Type)
+
+        --  Note: this test is rather mysterious??? Why can't we just test ONLY
+        --  Is_Elementary_Type and be done with it. If we try that approach, we
+        --  get some failures (infinite recursions) from the Duplicate_Subexpr
+        --  call at the end of Checks.Apply_Predicate_Check. To be
+        --  investigated ???
+
         and then (Variable_Ref
-                   or else Nkind_In (Exp, N_Function_Call,
-                                          N_Attribute_Reference,
-                                          N_Allocator)
+                   or else Nkind_In (Exp, N_Attribute_Reference,
+                                          N_Allocator,
+                                          N_Case_Expression,
+                                          N_If_Expression,
+                                          N_Function_Call)
                    or else Nkind (Exp) in N_Op
-                   or else (not Name_Req and then Is_Volatile_Reference (Exp)))
+                   or else (not Name_Req
+                             and then Is_Volatile_Reference (Exp)))
       then
          Def_Id := Make_Temporary (Loc, 'R', Exp);
          Set_Etype (Def_Id, Exp_Type);
-         Res := New_Reference_To (Def_Id, Loc);
+         Res := New_Occurrence_Of (Def_Id, Loc);
 
          --  If the expression is a packed reference, it must be reanalyzed and
          --  expanded, depending on context. This is the case for actuals where
@@ -6996,7 +6987,7 @@ package body Exp_Util is
          E :=
            Make_Object_Declaration (Loc,
              Defining_Identifier => Def_Id,
-             Object_Definition   => New_Reference_To (Exp_Type, Loc),
+             Object_Definition   => New_Occurrence_Of (Exp_Type, Loc),
              Constant_Present    => True,
              Expression          => Relocate_Node (Exp));
 
@@ -7004,18 +6995,21 @@ package body Exp_Util is
          Insert_Action (Exp, E);
 
       --  If the expression has the form v.all then we can just capture the
-      --  pointer, and then do an explicit dereference on the result.
+      --  pointer, and then do an explicit dereference on the result, but
+      --  this is not right if this is a volatile reference.
 
-      elsif Nkind (Exp) = N_Explicit_Dereference then
+      elsif Nkind (Exp) = N_Explicit_Dereference
+        and then not Is_Volatile_Reference (Exp)
+      then
          Def_Id := Make_Temporary (Loc, 'R', Exp);
          Res :=
-           Make_Explicit_Dereference (Loc, New_Reference_To (Def_Id, Loc));
+           Make_Explicit_Dereference (Loc, New_Occurrence_Of (Def_Id, Loc));
 
          Insert_Action (Exp,
            Make_Object_Declaration (Loc,
              Defining_Identifier => Def_Id,
              Object_Definition   =>
-               New_Reference_To (Etype (Prefix (Exp)), Loc),
+               New_Occurrence_Of (Etype (Prefix (Exp)), Loc),
              Constant_Present    => True,
              Expression          => Relocate_Node (Prefix (Exp))));
 
@@ -7050,23 +7044,23 @@ package body Exp_Util is
             --  a controlled temporary.
 
             Def_Id := Make_Temporary (Loc, 'R', Exp);
-            Res := New_Reference_To (Def_Id, Loc);
+            Res := New_Occurrence_Of (Def_Id, Loc);
 
             Insert_Action (Exp,
               Make_Object_Renaming_Declaration (Loc,
                 Defining_Identifier => Def_Id,
-                Subtype_Mark        => New_Reference_To (Exp_Type, Loc),
+                Subtype_Mark        => New_Occurrence_Of (Exp_Type, Loc),
                 Name                => Relocate_Node (Exp)));
 
          else
             Def_Id := Make_Temporary (Loc, 'R', Exp);
             Set_Etype (Def_Id, Exp_Type);
-            Res := New_Reference_To (Def_Id, Loc);
+            Res := New_Occurrence_Of (Def_Id, Loc);
 
             E :=
               Make_Object_Declaration (Loc,
                 Defining_Identifier => Def_Id,
-                Object_Definition   => New_Reference_To (Exp_Type, Loc),
+                Object_Definition   => New_Occurrence_Of (Exp_Type, Loc),
                 Constant_Present    => not Is_Variable (Exp),
                 Expression          => Relocate_Node (Exp));
 
@@ -7078,17 +7072,21 @@ package body Exp_Util is
       --  This is needed for correctness in the case of a volatile object of
       --  a non-volatile type because the Make_Reference call of the "default"
       --  approach would generate an illegal access value (an access value
-      --  cannot designate such an object - see Analyze_Reference). We skip
-      --  using this scheme if we have an object of a volatile type and we do
-      --  not have Name_Req set true (see comments above for Side_Effect_Free).
-
-      --  In Ada 2012 a qualified expression is an object, but for purposes of
-      --  removing side effects it still need to be transformed into a separate
-      --  declaration, particularly if the expression is an aggregate.
+      --  cannot designate such an object - see Analyze_Reference).
 
       elsif Is_Object_Reference (Exp)
         and then Nkind (Exp) /= N_Function_Call
+
+        --  In Ada 2012 a qualified expression is an object, but for purposes
+        --  of removing side effects it still need to be transformed into a
+        --  separate declaration, particularly in the case of an aggregate.
+
         and then Nkind (Exp) /= N_Qualified_Expression
+
+        --  We skip using this scheme if we have an object of a volatile
+        --  type and we do not have Name_Req set true (see comments for
+        --  Side_Effect_Free).
+
         and then (Name_Req or else not Treat_As_Volatile (Exp_Type))
       then
          Def_Id := Make_Temporary (Loc, 'R', Exp);
@@ -7111,16 +7109,16 @@ package body Exp_Util is
               Make_Object_Renaming_Declaration (Loc,
                 Defining_Identifier => Def_Id,
                 Subtype_Mark        =>
-                  New_Reference_To (Base_Type (Etype (Prefix (Exp))), Loc),
+                  New_Occurrence_Of (Base_Type (Etype (Prefix (Exp))), Loc),
                 Name                => Relocate_Node (Prefix (Exp))));
 
          else
-            Res := New_Reference_To (Def_Id, Loc);
+            Res := New_Occurrence_Of (Def_Id, Loc);
 
             Insert_Action (Exp,
               Make_Object_Renaming_Declaration (Loc,
                 Defining_Identifier => Def_Id,
-                Subtype_Mark        => New_Reference_To (Exp_Type, Loc),
+                Subtype_Mark        => New_Occurrence_Of (Exp_Type, Loc),
                 Name                => Relocate_Node (Exp)));
          end if;
 
@@ -7193,7 +7191,7 @@ package body Exp_Util is
          --  and "copies" the returned object.
 
          if GNATprove_Mode then
-            Res := New_Reference_To (Def_Id, Loc);
+            Res := New_Occurrence_Of (Def_Id, Loc);
             Ref_Type := Exp_Type;
 
          --  Regular expansion utilizing an access type and 'reference
@@ -7201,7 +7199,7 @@ package body Exp_Util is
          else
             Res :=
               Make_Explicit_Dereference (Loc,
-                Prefix => New_Reference_To (Def_Id, Loc));
+                Prefix => New_Occurrence_Of (Def_Id, Loc));
 
             --  Generate:
             --    type Ann is access all <Exp_Type>;
@@ -7215,7 +7213,7 @@ package body Exp_Util is
                   Make_Access_To_Object_Definition (Loc,
                     All_Present        => True,
                     Subtype_Indication =>
-                      New_Reference_To (Exp_Type, Loc)));
+                      New_Occurrence_Of (Exp_Type, Loc)));
 
             Insert_Action (Exp, Ptr_Typ_Decl);
          end if;
@@ -7223,6 +7221,7 @@ package body Exp_Util is
          E := Exp;
          if Nkind (E) = N_Explicit_Dereference then
             New_Exp := Relocate_Node (Prefix (E));
+
          else
             E := Relocate_Node (E);
 
@@ -7263,7 +7262,7 @@ package body Exp_Util is
          Insert_Action (Exp,
            Make_Object_Declaration (Loc,
              Defining_Identifier => Def_Id,
-             Object_Definition   => New_Reference_To (Ref_Type, Loc),
+             Object_Definition   => New_Occurrence_Of (Ref_Type, Loc),
              Constant_Present    => True,
              Expression          => New_Exp));
       end if;
@@ -7292,7 +7291,7 @@ package body Exp_Util is
    begin
       return Is_Scalar_Type (UT)
         or else (Is_Bit_Packed_Array (UT)
-                  and then Is_Scalar_Type (Packed_Array_Type (UT)));
+                  and then Is_Scalar_Type (Packed_Array_Impl_Type (UT)));
    end Represented_As_Scalar;
 
    ------------------------------
@@ -7442,7 +7441,7 @@ package body Exp_Util is
             elsif Is_Access_Type (Obj_Typ)
               and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
               and then Nkind (Status_Flag_Or_Transient_Decl (Obj_Id)) =
-                                                      N_Object_Declaration
+                                N_Object_Declaration
               and then Is_Finalizable_Transient
                          (Status_Flag_Or_Transient_Decl (Obj_Id), Decl)
             then
@@ -7454,7 +7453,7 @@ package body Exp_Util is
             elsif Is_Access_Type (Obj_Typ)
               and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
               and then Nkind (Status_Flag_Or_Transient_Decl (Obj_Id)) =
-                                                      N_Defining_Identifier
+                                                        N_Defining_Identifier
               and then Present (Expr)
               and then Nkind (Expr) = N_Null
             then
@@ -7722,8 +7721,8 @@ package body Exp_Util is
       --  Conversions to and from packed array types are always ignored and
       --  hence are safe.
 
-      elsif Is_Packed_Array_Type (Otyp)
-        or else Is_Packed_Array_Type (Ityp)
+      elsif Is_Packed_Array_Impl_Type (Otyp)
+        or else Is_Packed_Array_Impl_Type (Ityp)
       then
          return True;
       end if;
@@ -7950,6 +7949,466 @@ package body Exp_Util is
          end;
       end if;
    end Set_Renamed_Subprogram;
+
+   ----------------------
+   -- Side_Effect_Free --
+   ----------------------
+
+   function Side_Effect_Free
+     (N            : Node_Id;
+      Name_Req     : Boolean := False;
+      Variable_Ref : Boolean := False) return Boolean
+   is
+      Typ : constant Entity_Id := Etype (N);
+      --  Result type of the expression
+
+      function Safe_Prefixed_Reference (N : Node_Id) return Boolean;
+      --  The argument N is a construct where the Prefix is dereferenced if it
+      --  is an access type and the result is a variable. The call returns True
+      --  if the construct is side effect free (not considering side effects in
+      --  other than the prefix which are to be tested by the caller).
+
+      function Within_In_Parameter (N : Node_Id) return Boolean;
+      --  Determines if N is a subcomponent of a composite in-parameter. If so,
+      --  N is not side-effect free when the actual is global and modifiable
+      --  indirectly from within a subprogram, because it may be passed by
+      --  reference. The front-end must be conservative here and assume that
+      --  this may happen with any array or record type. On the other hand, we
+      --  cannot create temporaries for all expressions for which this
+      --  condition is true, for various reasons that might require clearing up
+      --  ??? For example, discriminant references that appear out of place, or
+      --  spurious type errors with class-wide expressions. As a result, we
+      --  limit the transformation to loop bounds, which is so far the only
+      --  case that requires it.
+
+      -----------------------------
+      -- Safe_Prefixed_Reference --
+      -----------------------------
+
+      function Safe_Prefixed_Reference (N : Node_Id) return Boolean is
+      begin
+         --  If prefix is not side effect free, definitely not safe
+
+         if not Side_Effect_Free (Prefix (N), Name_Req, Variable_Ref) then
+            return False;
+
+         --  If the prefix is of an access type that is not access-to-constant,
+         --  then this construct is a variable reference, which means it is to
+         --  be considered to have side effects if Variable_Ref is set True.
+
+         elsif Is_Access_Type (Etype (Prefix (N)))
+           and then not Is_Access_Constant (Etype (Prefix (N)))
+           and then Variable_Ref
+         then
+            --  Exception is a prefix that is the result of a previous removal
+            --  of side-effects.
+
+            return Is_Entity_Name (Prefix (N))
+              and then not Comes_From_Source (Prefix (N))
+              and then Ekind (Entity (Prefix (N))) = E_Constant
+              and then Is_Internal_Name (Chars (Entity (Prefix (N))));
+
+         --  If the prefix is an explicit dereference then this construct is a
+         --  variable reference, which means it is to be considered to have
+         --  side effects if Variable_Ref is True.
+
+         --  We do NOT exclude dereferences of access-to-constant types because
+         --  we handle them as constant view of variables.
+
+         elsif Nkind (Prefix (N)) = N_Explicit_Dereference
+           and then Variable_Ref
+         then
+            return False;
+
+         --  Note: The following test is the simplest way of solving a complex
+         --  problem uncovered by the following test (Side effect on loop bound
+         --  that is a subcomponent of a global variable:
+
+         --    with Text_Io; use Text_Io;
+         --    procedure Tloop is
+         --      type X is
+         --        record
+         --          V : Natural := 4;
+         --          S : String (1..5) := (others => 'a');
+         --        end record;
+         --      X1 : X;
+
+         --      procedure Modi;
+
+         --      generic
+         --        with procedure Action;
+         --      procedure Loop_G (Arg : X; Msg : String)
+
+         --      procedure Loop_G (Arg : X; Msg : String) is
+         --      begin
+         --        Put_Line ("begin loop_g " & Msg & " will loop till: "
+         --                  & Natural'Image (Arg.V));
+         --        for Index in 1 .. Arg.V loop
+         --          Text_Io.Put_Line
+         --            (Natural'Image (Index) & " " & Arg.S (Index));
+         --          if Index > 2 then
+         --            Modi;
+         --          end if;
+         --        end loop;
+         --        Put_Line ("end loop_g " & Msg);
+         --      end;
+
+         --      procedure Loop1 is new Loop_G (Modi);
+         --      procedure Modi is
+         --      begin
+         --        X1.V := 1;
+         --        Loop1 (X1, "from modi");
+         --      end;
+         --
+         --    begin
+         --      Loop1 (X1, "initial");
+         --    end;
+
+         --  The output of the above program should be:
+
+         --    begin loop_g initial will loop till:  4
+         --     1 a
+         --     2 a
+         --     3 a
+         --    begin loop_g from modi will loop till:  1
+         --     1 a
+         --    end loop_g from modi
+         --     4 a
+         --    begin loop_g from modi will loop till:  1
+         --     1 a
+         --    end loop_g from modi
+         --    end loop_g initial
+
+         --  If a loop bound is a subcomponent of a global variable, a
+         --  modification of that variable within the loop may incorrectly
+         --  affect the execution of the loop.
+
+         elsif Nkind (Parent (Parent (N))) = N_Loop_Parameter_Specification
+           and then Within_In_Parameter (Prefix (N))
+           and then Variable_Ref
+         then
+            return False;
+
+         --  All other cases are side effect free
+
+         else
+            return True;
+         end if;
+      end Safe_Prefixed_Reference;
+
+      -------------------------
+      -- Within_In_Parameter --
+      -------------------------
+
+      function Within_In_Parameter (N : Node_Id) return Boolean is
+      begin
+         if not Comes_From_Source (N) then
+            return False;
+
+         elsif Is_Entity_Name (N) then
+            return Ekind (Entity (N)) = E_In_Parameter;
+
+         elsif Nkind_In (N, N_Indexed_Component, N_Selected_Component) then
+            return Within_In_Parameter (Prefix (N));
+
+         else
+            return False;
+         end if;
+      end Within_In_Parameter;
+
+   --  Start of processing for Side_Effect_Free
+
+   begin
+      --  If volatile reference, always consider it to have side effects
+
+      if Is_Volatile_Reference (N) then
+         return False;
+      end if;
+
+      --  Note on checks that could raise Constraint_Error. Strictly, if we
+      --  take advantage of 11.6, these checks do not count as side effects.
+      --  However, we would prefer to consider that they are side effects,
+      --  since the backend CSE does not work very well on expressions which
+      --  can raise Constraint_Error. On the other hand if we don't consider
+      --  them to be side effect free, then we get some awkward expansions
+      --  in -gnato mode, resulting in code insertions at a point where we
+      --  do not have a clear model for performing the insertions.
+
+      --  Special handling for entity names
+
+      if Is_Entity_Name (N) then
+
+         --  A type reference is always side effect free
+
+         if Is_Type (Entity (N)) then
+            return True;
+
+         --  Variables are considered to be a side effect if Variable_Ref
+         --  is set or if we have a volatile reference and Name_Req is off.
+         --  If Name_Req is True then we can't help returning a name which
+         --  effectively allows multiple references in any case.
+
+         elsif Is_Variable (N, Use_Original_Node => False) then
+            return not Variable_Ref
+              and then (not Is_Volatile_Reference (N) or else Name_Req);
+
+         --  Any other entity (e.g. a subtype name) is definitely side
+         --  effect free.
+
+         else
+            return True;
+         end if;
+
+      --  A value known at compile time is always side effect free
+
+      elsif Compile_Time_Known_Value (N) then
+         return True;
+
+      --  A variable renaming is not side-effect free, because the renaming
+      --  will function like a macro in the front-end in some cases, and an
+      --  assignment can modify the component designated by N, so we need to
+      --  create a temporary for it.
+
+      --  The guard testing for Entity being present is needed at least in
+      --  the case of rewritten predicate expressions, and may well also be
+      --  appropriate elsewhere. Obviously we can't go testing the entity
+      --  field if it does not exist, so it's reasonable to say that this is
+      --  not the renaming case if it does not exist.
+
+      elsif Is_Entity_Name (Original_Node (N))
+        and then Present (Entity (Original_Node (N)))
+        and then Is_Renaming_Of_Object (Entity (Original_Node (N)))
+        and then Ekind (Entity (Original_Node (N))) /= E_Constant
+      then
+         declare
+            RO : constant Node_Id :=
+                   Renamed_Object (Entity (Original_Node (N)));
+
+         begin
+            --  If the renamed object is an indexed component, or an
+            --  explicit dereference, then the designated object could
+            --  be modified by an assignment.
+
+            if Nkind_In (RO, N_Indexed_Component,
+                             N_Explicit_Dereference)
+            then
+               return False;
+
+            --  A selected component must have a safe prefix
+
+            elsif Nkind (RO) = N_Selected_Component then
+               return Safe_Prefixed_Reference (RO);
+
+            --  In all other cases, designated object cannot be changed so
+            --  we are side effect free.
+
+            else
+               return True;
+            end if;
+         end;
+
+      --  Remove_Side_Effects generates an object renaming declaration to
+      --  capture the expression of a class-wide expression. In VM targets
+      --  the frontend performs no expansion for dispatching calls to
+      --  class- wide types since they are handled by the VM. Hence, we must
+      --  locate here if this node corresponds to a previous invocation of
+      --  Remove_Side_Effects to avoid a never ending loop in the frontend.
+
+      elsif VM_Target /= No_VM
+         and then not Comes_From_Source (N)
+         and then Nkind (Parent (N)) = N_Object_Renaming_Declaration
+         and then Is_Class_Wide_Type (Typ)
+      then
+         return True;
+      end if;
+
+      --  For other than entity names and compile time known values,
+      --  check the node kind for special processing.
+
+      case Nkind (N) is
+
+         --  An attribute reference is side effect free if its expressions
+         --  are side effect free and its prefix is side effect free or
+         --  is an entity reference.
+
+         --  Is this right? what about x'first where x is a variable???
+
+         when N_Attribute_Reference =>
+            return Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref)
+              and then Attribute_Name (N) /= Name_Input
+              and then (Is_Entity_Name (Prefix (N))
+                         or else Side_Effect_Free
+                                   (Prefix (N), Name_Req, Variable_Ref));
+
+         --  A binary operator is side effect free if and both operands are
+         --  side effect free. For this purpose binary operators include
+         --  membership tests and short circuit forms.
+
+         when N_Binary_Op | N_Membership_Test | N_Short_Circuit =>
+            return Side_Effect_Free (Left_Opnd  (N), Name_Req, Variable_Ref)
+                     and then
+                   Side_Effect_Free (Right_Opnd (N), Name_Req, Variable_Ref);
+
+         --  An explicit dereference is side effect free only if it is
+         --  a side effect free prefixed reference.
+
+         when N_Explicit_Dereference =>
+            return Safe_Prefixed_Reference (N);
+
+         --  An expression with action is side effect free if its expression
+         --  is side effect free and it has no actions.
+
+         when N_Expression_With_Actions =>
+            return Is_Empty_List (Actions (N))
+              and then
+                Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
+
+         --  A call to _rep_to_pos is side effect free, since we generate
+         --  this pure function call ourselves. Moreover it is critically
+         --  important to make this exception, since otherwise we can have
+         --  discriminants in array components which don't look side effect
+         --  free in the case of an array whose index type is an enumeration
+         --  type with an enumeration rep clause.
+
+         --  All other function calls are not side effect free
+
+         when N_Function_Call =>
+            return Nkind (Name (N)) = N_Identifier
+              and then Is_TSS (Name (N), TSS_Rep_To_Pos)
+              and then
+                Side_Effect_Free
+                  (First (Parameter_Associations (N)), Name_Req, Variable_Ref);
+
+         --  An IF expression is side effect free if it's of a scalar type, and
+         --  all its components are all side effect free (conditions and then
+         --  actions and else actions). We restrict to scalar types, since it
+         --  is annoying to deal with things like (if A then B else C)'First
+         --  where the type involved is a string type.
+
+         when N_If_Expression =>
+            return Is_Scalar_Type (Typ)
+              and then
+                Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref);
+
+         --  An indexed component is side effect free if it is a side
+         --  effect free prefixed reference and all the indexing
+         --  expressions are side effect free.
+
+         when N_Indexed_Component =>
+            return Side_Effect_Free (Expressions (N), Name_Req, Variable_Ref)
+              and then Safe_Prefixed_Reference (N);
+
+         --  A type qualification is side effect free if the expression
+         --  is side effect free.
+
+         when N_Qualified_Expression =>
+            return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
+
+         --  A selected component is side effect free only if it is a side
+         --  effect free prefixed reference. If it designates a component
+         --  with a rep. clause it must be treated has having a potential
+         --  side effect, because it may be modified through a renaming, and
+         --  a subsequent use of the renaming as a macro will yield the
+         --  wrong value. This complex interaction between renaming and
+         --  removing side effects is a reminder that the latter has become
+         --  a headache to maintain, and that it should be removed in favor
+         --  of the gcc mechanism to capture values ???
+
+         when N_Selected_Component =>
+            if Nkind (Parent (N)) = N_Explicit_Dereference
+              and then Has_Non_Standard_Rep (Designated_Type (Typ))
+            then
+               return False;
+            else
+               return Safe_Prefixed_Reference (N);
+            end if;
+
+         --  A range is side effect free if the bounds are side effect free
+
+         when N_Range =>
+            return Side_Effect_Free (Low_Bound (N),  Name_Req, Variable_Ref)
+                      and then
+                   Side_Effect_Free (High_Bound (N), Name_Req, Variable_Ref);
+
+         --  A slice is side effect free if it is a side effect free
+         --  prefixed reference and the bounds are side effect free.
+
+         when N_Slice =>
+            return Side_Effect_Free
+                     (Discrete_Range (N), Name_Req, Variable_Ref)
+              and then Safe_Prefixed_Reference (N);
+
+         --  A type conversion is side effect free if the expression to be
+         --  converted is side effect free.
+
+         when N_Type_Conversion =>
+            return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
+
+         --  A unary operator is side effect free if the operand
+         --  is side effect free.
+
+         when N_Unary_Op =>
+            return Side_Effect_Free (Right_Opnd (N), Name_Req, Variable_Ref);
+
+         --  An unchecked type conversion is side effect free only if it
+         --  is safe and its argument is side effect free.
+
+         when N_Unchecked_Type_Conversion =>
+            return Safe_Unchecked_Type_Conversion (N)
+              and then
+                Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
+
+         --  An unchecked expression is side effect free if its expression
+         --  is side effect free.
+
+         when N_Unchecked_Expression =>
+            return Side_Effect_Free (Expression (N), Name_Req, Variable_Ref);
+
+         --  A literal is side effect free
+
+         when N_Character_Literal    |
+              N_Integer_Literal      |
+              N_Real_Literal         |
+              N_String_Literal       =>
+            return True;
+
+         --  We consider that anything else has side effects. This is a bit
+         --  crude, but we are pretty close for most common cases, and we
+         --  are certainly correct (i.e. we never return True when the
+         --  answer should be False).
+
+         when others =>
+            return False;
+      end case;
+   end Side_Effect_Free;
+
+   --  A list is side effect free if all elements of the list are side
+   --  effect free.
+
+   function Side_Effect_Free
+     (L            : List_Id;
+      Name_Req     : Boolean := False;
+      Variable_Ref : Boolean := False) return Boolean
+   is
+      N : Node_Id;
+
+   begin
+      if L = No_List or else L = Error_List then
+         return True;
+
+      else
+         N := First (L);
+         while Present (N) loop
+            if not Side_Effect_Free (N, Name_Req, Variable_Ref) then
+               return False;
+            else
+               Next (N);
+            end if;
+         end loop;
+
+         return True;
+      end if;
+   end Side_Effect_Free;
 
    ----------------------------------
    -- Silly_Boolean_Array_Not_Test --
@@ -8212,6 +8671,24 @@ package body Exp_Util is
 
       return False;
    end Within_Case_Or_If_Expression;
+
+   --------------------------------
+   -- Within_Internal_Subprogram --
+   --------------------------------
+
+   function Within_Internal_Subprogram return Boolean is
+      S : Entity_Id;
+
+   begin
+      S := Current_Scope;
+      while Present (S) and then not Is_Subprogram (S) loop
+         S := Scope (S);
+      end loop;
+
+      return Present (S)
+        and then Get_TSS_Name (S) /= TSS_Null
+        and then not Is_Predicate_Function (S);
+   end Within_Internal_Subprogram;
 
    ----------------------------
    -- Wrap_Cleanup_Procedure --

@@ -52,6 +52,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 #include "df.h"
 #include "opts.h"
+#include "builtins.h"
 
 /* Return nonzero if there is a bypass for the output of 
    OUT_INSN and the fp store IN_INSN.  */
@@ -517,12 +518,6 @@ pa_option_override (void)
       write_symbols = NO_DEBUG;
     }
 
-#ifdef AUTO_INC_DEC
-  /* FIXME: Disable auto increment and decrement processing until reload
-     is completed.  See PR middle-end 56791.  */
-  flag_auto_inc_dec = reload_completed;
-#endif
-
   /* We only support the "big PIC" model now.  And we always generate PIC
      code when in 64bit mode.  */
   if (flag_pic == 1 || TARGET_64BIT)
@@ -674,7 +669,7 @@ pa_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
 static struct machine_function *
 pa_init_machine_status (void)
 {
-  return ggc_alloc_cleared_machine_function ();
+  return ggc_cleared_alloc<machine_function> ();
 }
 
 /* If FROM is a probable pointer register, mark TO as a probable
@@ -916,9 +911,12 @@ static rtx
 legitimize_tls_address (rtx addr)
 {
   rtx ret, insn, tmp, t1, t2, tp;
-  enum tls_model model = SYMBOL_REF_TLS_MODEL (addr);
 
-  switch (model) 
+  /* Currently, we can't handle anything but a SYMBOL_REF.  */
+  if (GET_CODE (addr) != SYMBOL_REF)
+    return addr;
+
+  switch (SYMBOL_REF_TLS_MODEL (addr)) 
     {
       case TLS_MODEL_GLOBAL_DYNAMIC:
 	tmp = gen_reg_rtx (Pmode);
@@ -1039,7 +1037,7 @@ hppa_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
       && !REG_POINTER (XEXP (x, 1)))
     return gen_rtx_PLUS (Pmode, XEXP (x, 1), XEXP (x, 0));
 
-  if (PA_SYMBOL_REF_TLS_P (x))
+  if (tls_referenced_p (x))
     return legitimize_tls_address (x);
   else if (flag_pic)
     return legitimize_pic_address (x, mode, gen_reg_rtx (Pmode));
@@ -1544,31 +1542,12 @@ force_mode (enum machine_mode mode, rtx orig)
   return gen_rtx_REG (mode, REGNO (orig));
 }
 
-/* Return 1 if *X is a thread-local symbol.  */
-
-static int
-pa_tls_symbol_ref_1 (rtx *x, void *data ATTRIBUTE_UNUSED)
-{
-  return PA_SYMBOL_REF_TLS_P (*x);
-}
-
-/* Return 1 if X contains a thread-local symbol.  */
-
-bool
-pa_tls_referenced_p (rtx x)
-{
-  if (!TARGET_HAVE_TLS)
-    return false;
-
-  return for_each_rtx (&x, &pa_tls_symbol_ref_1, 0);
-}
-
 /* Implement TARGET_CANNOT_FORCE_CONST_MEM.  */
 
 static bool
 pa_cannot_force_const_mem (enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 {
-  return pa_tls_referenced_p (x);
+  return tls_referenced_p (x);
 }
 
 /* Emit insns to move operands[1] into operands[0].
@@ -1920,9 +1899,10 @@ pa_emit_move_sequence (rtx *operands, enum machine_mode mode, rtx scratch_reg)
      not consider them legitimate constants.  Loop optimizations can
      call the emit_move_xxx with one as a source.  */
   if ((GET_CODE (operand1) != HIGH && immediate_operand (operand1, mode))
-      || function_label_operand (operand1, VOIDmode)
       || (GET_CODE (operand1) == HIGH
-	  && symbolic_operand (XEXP (operand1, 0), mode)))
+	  && symbolic_operand (XEXP (operand1, 0), mode))
+      || function_label_operand (operand1, VOIDmode)
+      || tls_referenced_p (operand1))
     {
       int ishighonly = 0;
 
@@ -2082,7 +2062,7 @@ pa_emit_move_sequence (rtx *operands, enum machine_mode mode, rtx scratch_reg)
 	    }
 	  return 1;
 	}
-      else if (pa_tls_referenced_p (operand1))
+      else if (tls_referenced_p (operand1))
 	{
 	  rtx tmp = operand1;
 	  rtx addend = NULL;
@@ -2629,14 +2609,14 @@ pa_output_move_double (rtx *operands)
   if (optype0 == REGOP)
     latehalf[0] = gen_rtx_REG (SImode, REGNO (operands[0]) + 1);
   else if (optype0 == OFFSOP)
-    latehalf[0] = adjust_address (operands[0], SImode, 4);
+    latehalf[0] = adjust_address_nv (operands[0], SImode, 4);
   else
     latehalf[0] = operands[0];
 
   if (optype1 == REGOP)
     latehalf[1] = gen_rtx_REG (SImode, REGNO (operands[1]) + 1);
   else if (optype1 == OFFSOP)
-    latehalf[1] = adjust_address (operands[1], SImode, 4);
+    latehalf[1] = adjust_address_nv (operands[1], SImode, 4);
   else if (optype1 == CNSTOP)
     split_double (operands[1], &operands[1], &latehalf[1]);
   else
@@ -4189,12 +4169,16 @@ pa_output_function_epilogue (FILE *file, HOST_WIDE_INT size ATTRIBUTE_UNUSED)
 
   if (TARGET_SOM && TARGET_GAS)
     {
-      /* We done with this subspace except possibly for some additional
+      /* We are done with this subspace except possibly for some additional
 	 debug information.  Forget that we are in this subspace to ensure
 	 that the next function is output in its own subspace.  */
       in_section = NULL;
       cfun->machine->in_nsubspa = 2;
     }
+
+  /* Thunks do their own accounting.  */
+  if (cfun->is_thunk)
+    return;
 
   if (INSN_ADDRESSES_SET_P ())
     {
@@ -5581,7 +5565,7 @@ pa_get_deferred_plabel (rtx symbol)
       tree id;
 
       if (deferred_plabels == 0)
-	deferred_plabels =  ggc_alloc_deferred_plabel ();
+	deferred_plabels =  ggc_alloc<deferred_plabel> ();
       else
         deferred_plabels = GGC_RESIZEVEC (struct deferred_plabel,
                                           deferred_plabels,
@@ -8261,8 +8245,7 @@ pa_asm_output_mi_thunk (FILE *file, tree thunk_fndecl, HOST_WIDE_INT delta,
   xoperands[1] = XEXP (DECL_RTL (thunk_fndecl), 0);
   xoperands[2] = GEN_INT (delta);
 
-  ASM_OUTPUT_LABEL (file, XSTR (xoperands[1], 0));
-  fprintf (file, "\t.PROC\n\t.CALLINFO FRAME=0,NO_CALLS\n\t.ENTRY\n");
+  final_start_function (emit_barrier (), file, 1);
 
   /* Output the thunk.  We know that the function is in the same
      translation unit (i.e., the same space) as the thunk, and that
@@ -8468,16 +8451,7 @@ pa_asm_output_mi_thunk (FILE *file, tree thunk_fndecl, HOST_WIDE_INT delta,
 	}
     }
 
-  fprintf (file, "\t.EXIT\n\t.PROCEND\n");
-
-  if (TARGET_SOM && TARGET_GAS)
-    {
-      /* We done with this subspace except possibly for some additional
-	 debug information.  Forget that we are in this subspace to ensure
-	 that the next function is output in its own subspace.  */
-      in_section = NULL;
-      cfun->machine->in_nsubspa = 2;
-    }
+  final_end_function ();
 
   if (TARGET_SOM && flag_pic && TREE_PUBLIC (function))
     {
@@ -10269,10 +10243,10 @@ pa_function_section (tree decl, enum node_frequency freq,
   /* Force nested functions into the same section as the containing
      function.  */
   if (decl
-      && DECL_SECTION_NAME (decl) == NULL_TREE
+      && DECL_SECTION_NAME (decl) == NULL
       && DECL_CONTEXT (decl) != NULL_TREE
       && TREE_CODE (DECL_CONTEXT (decl)) == FUNCTION_DECL
-      && DECL_SECTION_NAME (DECL_CONTEXT (decl)) == NULL_TREE)
+      && DECL_SECTION_NAME (DECL_CONTEXT (decl)) == NULL)
     return function_section (DECL_CONTEXT (decl));
 
   /* Otherwise, use the default function section.  */
@@ -10300,7 +10274,7 @@ pa_legitimate_constant_p (enum machine_mode mode, rtx x)
   /* TLS_MODEL_GLOBAL_DYNAMIC and TLS_MODEL_LOCAL_DYNAMIC are not
      legitimate constants.  The other variants can't be handled by
      the move patterns after reload starts.  */
-  if (PA_SYMBOL_REF_TLS_P (x))
+  if (tls_referenced_p (x))
     return false;
 
   if (TARGET_64BIT && GET_CODE (x) == CONST_DOUBLE)

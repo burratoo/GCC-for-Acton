@@ -51,6 +51,8 @@ extern rtx find_addr_reg (rtx);
 extern rtx gen_easy_altivec_constant (rtx);
 extern const char *output_vec_const_move (rtx *);
 extern const char *rs6000_output_move_128bit (rtx *);
+extern bool rs6000_move_128bit_ok_p (rtx []);
+extern bool rs6000_split_128bit_ok_p (rtx []);
 extern void rs6000_expand_vector_init (rtx, rtx);
 extern void paired_expand_vector_init (rtx, rtx);
 extern void rs6000_expand_vector_set (rtx, rtx, int);
@@ -58,6 +60,9 @@ extern void rs6000_expand_vector_extract (rtx, rtx, int);
 extern bool altivec_expand_vec_perm_const (rtx op[4]);
 extern void altivec_expand_vec_perm_le (rtx op[4]);
 extern bool rs6000_expand_vec_perm_const (rtx op[4]);
+extern void altivec_expand_lvx_be (rtx, rtx, enum machine_mode, unsigned);
+extern void altivec_expand_stvx_be (rtx, rtx, enum machine_mode, unsigned);
+extern void altivec_expand_stvex_be (rtx, rtx, enum machine_mode, unsigned);
 extern void rs6000_expand_extract_even (rtx, rtx, rtx);
 extern void rs6000_expand_interleave (rtx, rtx, rtx, bool);
 extern void build_mask64_2_operands (rtx, rtx *);
@@ -109,7 +114,7 @@ extern void rs6000_emit_cbranch (enum machine_mode, rtx[]);
 extern char * output_cbranch (rtx, const char *, int, rtx);
 extern char * output_e500_flip_gt_bit (rtx, rtx);
 extern const char * output_probe_stack_range (rtx, rtx);
-extern rtx rs6000_emit_set_const (rtx, enum machine_mode, rtx, int);
+extern bool rs6000_emit_set_const (rtx, rtx);
 extern int rs6000_emit_cmove (rtx, rtx, rtx, rtx);
 extern int rs6000_emit_vector_cond_expr (rtx, rtx, rtx, rtx, rtx, rtx);
 extern void rs6000_emit_minmax (rtx, enum rtx_code, rtx, rtx);
@@ -150,6 +155,7 @@ extern void rs6000_split_logical (rtx [], enum rtx_code, bool, bool, bool, rtx);
 
 #ifdef TREE_CODE
 extern unsigned int rs6000_data_alignment (tree, unsigned int, enum data_align);
+extern bool rs6000_special_adjust_field_align_p (tree, unsigned int);
 extern unsigned int rs6000_special_round_type_align (tree, unsigned int,
 						     unsigned int);
 extern unsigned int darwin_rs6000_special_round_type_align (tree, unsigned int,
@@ -158,7 +164,9 @@ extern tree altivec_resolve_overloaded_builtin (location_t, tree, void *);
 extern rtx rs6000_libcall_value (enum machine_mode);
 extern rtx rs6000_va_arg (tree, tree);
 extern int function_ok_for_sibcall (tree);
-extern int rs6000_reg_parm_stack_space (tree);
+extern int rs6000_reg_parm_stack_space (tree, bool);
+extern void rs6000_xcoff_declare_function_name (FILE *, const char *, tree);
+extern void rs6000_xcoff_declare_object_name (FILE *, const char *, tree);
 extern void rs6000_elf_declare_function_name (FILE *, const char *, tree);
 extern bool rs6000_elf_in_small_data_p (const_tree);
 #ifdef ARGS_SIZE_RTX

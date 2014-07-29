@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1998-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -477,8 +477,8 @@ package body Lib.Xref is
             elsif (K = N_Selected_Component or else K = N_Indexed_Component)
               and then Prefix (P) = N
             then
-               --  Check for access type. First a kludge, In some cases this is
-               --  called too early (see comments in Sem_Ch8.Find_Direct_Name),
+               --  Check for access type. First a special test, In some cases
+               --  this is called too early (see comments in Find_Direct_Name),
                --  at a point where the tree is not fully typed yet. In that
                --  case we may lack an Etype for N, and we can't check the
                --  Etype. For now, we always return False in such a case,
@@ -640,6 +640,11 @@ package body Lib.Xref is
       --  For the same reason we accept an implicit reference generated for
       --  a default in an instance.
 
+      --  We also set the referenced flag in a generic package that is not in
+      --  then main source unit, when the variable is of a formal private type,
+      --  to warn in the instance if the corresponding type is not a fully
+      --  initialized type.
+
       if not In_Extended_Main_Source_Unit (N) then
          if Typ = 'e'
            or else Typ = 'I'
@@ -657,6 +662,20 @@ package body Lib.Xref is
                and then (Typ = 'm' or else Typ = 'r' or else Typ = 's'))
          then
             null;
+
+         elsif In_Instance_Body
+           and then In_Extended_Main_Code_Unit (N)
+           and then Is_Generic_Type (Etype (E))
+         then
+            Set_Referenced (E);
+            return;
+
+         elsif Inside_A_Generic
+           and then Is_Generic_Type (Etype (E))
+         then
+            Set_Referenced (E);
+            return;
+
          else
             return;
          end if;
@@ -868,7 +887,7 @@ package body Lib.Xref is
 
             else
                Error_Msg_NE -- CODEFIX
-                 ("?pragma Unreferenced given for&!", N, E);
+                 ("??pragma Unreferenced given for&!", N, E);
             end if;
          end if;
 
@@ -1029,8 +1048,10 @@ package body Lib.Xref is
             Ref := Sloc (Nod);
             Def := Sloc (Ent);
 
-            Ref_Scope := SPARK_Specific.Enclosing_Subprogram_Or_Package (Nod);
-            Ent_Scope := SPARK_Specific.Enclosing_Subprogram_Or_Package (Ent);
+            Ref_Scope :=
+              SPARK_Specific.Enclosing_Subprogram_Or_Library_Package (Nod);
+            Ent_Scope :=
+              SPARK_Specific.Enclosing_Subprogram_Or_Library_Package (Ent);
 
             --  Since we are reaching through renamings in SPARK mode, we may
             --  end up with standard constants. Ignore those.
@@ -1069,7 +1090,7 @@ package body Lib.Xref is
             end if;
 
             Add_Entry
-              ((Ent      => Ent,
+              ((Ent       => Ent,
                 Loc       => Ref,
                 Typ       => Actual_Typ,
                 Eun       => Get_Source_Unit (Def),
@@ -1088,15 +1109,29 @@ package body Lib.Xref is
               and then Present (First_Private_Entity (E))
               and then In_Extended_Main_Source_Unit (N)
             then
-               Add_Entry
-                 ((Ent       => Ent,
-                   Loc       => Sloc (First_Private_Entity (E)),
-                   Typ       => 'E',
-                   Eun       => Get_Source_Unit (Def),
-                   Lun       => Get_Source_Unit (Ref),
-                   Ref_Scope => Empty,
-                   Ent_Scope => Empty),
-                  Ent_Scope_File => No_Unit);
+               --  Handle case in which the full-view and partial-view of the
+               --  first private entity are swapped
+
+               declare
+                  First_Private : Entity_Id := First_Private_Entity (E);
+
+               begin
+                  if Is_Private_Type (First_Private)
+                    and then Present (Full_View (First_Private))
+                  then
+                     First_Private := Full_View (First_Private);
+                  end if;
+
+                  Add_Entry
+                    ((Ent       => Ent,
+                      Loc       => Sloc (First_Private),
+                      Typ       => 'E',
+                      Eun       => Get_Source_Unit (Def),
+                      Lun       => Get_Source_Unit (Ref),
+                      Ref_Scope => Empty,
+                      Ent_Scope => Empty),
+                     Ent_Scope_File => No_Unit);
+               end;
             end if;
          end if;
       end if;
@@ -1598,11 +1633,11 @@ package body Lib.Xref is
               and then Sloc (E) > No_Location
             then
                Add_Entry
-                 ((Ent => E,
-                   Loc => No_Location,
-                   Typ => Character'First,
-                   Eun => Get_Source_Unit (Original_Location (Sloc (E))),
-                   Lun => No_Unit,
+                 ((Ent       => E,
+                   Loc       => No_Location,
+                   Typ       => Character'First,
+                   Eun       => Get_Source_Unit (Original_Location (Sloc (E))),
+                   Lun       => No_Unit,
                    Ref_Scope => Empty,
                    Ent_Scope => Empty),
                   Ent_Scope_File => No_Unit);
@@ -1686,11 +1721,11 @@ package body Lib.Xref is
 
                      if Present (Prim) then
                         Add_Entry
-                          ((Ent => Prim,
-                            Loc => No_Location,
-                            Typ => Character'First,
-                            Eun => Get_Source_Unit (Sloc (Prim)),
-                            Lun => No_Unit,
+                          ((Ent       => Prim,
+                            Loc       => No_Location,
+                            Typ       => Character'First,
+                            Eun       => Get_Source_Unit (Sloc (Prim)),
+                            Lun       => No_Unit,
                             Ref_Scope => Empty,
                             Ent_Scope => Empty),
                            Ent_Scope_File => No_Unit);

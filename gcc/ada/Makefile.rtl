@@ -428,6 +428,7 @@ GNATRTL_NONTASKING_OBJS= \
   g-rannum$(objext) \
   g-regexp$(objext) \
   g-regpat$(objext) \
+  g-rewdat$(objext) \
   g-sechas$(objext) \
   g-sehamd$(objext) \
   g-sehash$(objext) \
@@ -509,7 +510,6 @@ GNATRTL_NONTASKING_OBJS= \
   s-conca9$(objext) \
   s-crc32$(objext)  \
   s-crtl$(objext)   \
-  s-crtrun$(objext) \
   s-diflio$(objext) \
   s-dim$(objext)    \
   s-diinio$(objext) \
@@ -518,6 +518,7 @@ GNATRTL_NONTASKING_OBJS= \
   s-direio$(objext) \
   s-dmotpr$(objext) \
   s-dsaser$(objext) \
+  s-elaall$(objext) \
   s-excdeb$(objext) \
   s-except$(objext) \
   s-exctab$(objext) \
@@ -535,6 +536,7 @@ GNATRTL_NONTASKING_OBJS= \
   s-fatllf$(objext) \
   s-fatsfl$(objext) \
   s-ficobl$(objext) \
+  s-filatt$(objext) \
   s-fileio$(objext) \
   s-filofl$(objext) \
   s-finmas$(objext) \

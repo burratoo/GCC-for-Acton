@@ -97,11 +97,10 @@ var_map_base_init (var_map map)
 {
   int x, num_part;
   tree var;
-  hash_table <tree_int_map_hasher> tree_to_index;
   struct tree_int_map *m, *mapstorage;
 
   num_part = num_var_partitions (map);
-  tree_to_index.create (num_part);
+  hash_table<tree_int_map_hasher> tree_to_index (num_part);
   /* We can have at most num_part entries in the hash tables, so it's
      enough to allocate so many map elements once, saving some malloc
      calls.  */
@@ -149,7 +148,6 @@ var_map_base_init (var_map map)
   map->num_basevars = m - mapstorage;
 
   free (mapstorage);
-  tree_to_index. dispose ();
 }
 
 
@@ -435,7 +433,8 @@ mark_all_vars_used_1 (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
     {
       /* When a global var becomes used for the first time also walk its
          initializer (non global ones don't have any).  */
-      if (set_is_used (t) && is_global_var (t))
+      if (set_is_used (t) && is_global_var (t)
+	  && DECL_CONTEXT (t) == current_function_decl)
 	mark_all_vars_used (&DECL_INITIAL (t));
     }
   /* remove_unused_scope_block_p requires information about labels

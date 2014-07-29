@@ -1,12 +1,12 @@
 ------------------------------------------------------------------------------
 --                                                                          --
 --                         GNAT COMPILER COMPONENTS                         --
---                                                                          --
+--                                                                         --
 --                             V M S _ D A T A                              --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1996-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1996-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1570,7 +1570,20 @@ package VMS_Data is
 
    S_GCC_DistX   : aliased constant S := "/NODISTRIBUTION_STUBS "          &
                                             "!-gnatzr,!-gnatzc";
-   --  NODOC (see /DISTRIBUTION_STUBS)
+   --  NODISTRIBUTION_STUBS (see /DISTRIBUTION_STUBS)
+
+   S_GCC_ElabI   : aliased constant S := "/ELABORATION_INFO_MESSAGES "     &
+                                            "-gnatel";
+   --  ELABORATION_INFO_MESSAGES
+   --
+   --  Causes the compiler to output INFO messages that show where implicit
+   --  Elaborate and Elaborate_All pragmas are added when using the static
+   --  elaboration model. Used to diagnose binder circularities when this
+   --  elaboration model is used.
+
+   S_GCC_NoElabI : aliased constant S := "/NOELABORATION_INFO_MESSAGES "     &
+                                            "-gnateL";
+   --  Turns off elaboration info messages (see ELABORATION_INFO_MESSAGES)
 
    S_GCC_Error   : aliased constant S := "/ERROR_LIMIT=#"                  &
                                             "-gnatm#";
@@ -3257,7 +3270,12 @@ package VMS_Data is
                                             "UNCHECKED_CONVERSIONS "       &
                                                "-gnatwz "                  &
                                             "NOUNCHECKED_CONVERSIONS "     &
-                                               "-gnatwZ";
+                                               "-gnatwZ "                  &
+                                            "SIZE_ALIGNMENT "              &
+                                               "-gnatw.z "                 &
+                                            "NOSIZE_ALIGNMENT "            &
+                                               "-gnatw.Z";
+
    --        /NOWARNINGS
    --
    --   Suppress the output of all warning messages from the GNAT front end.
@@ -3287,6 +3305,7 @@ package VMS_Data is
    --                               MISSING_PARENS
    --                               OVERLAPPING_ACTUALS
    --                               REVERSE_BIT_ORDER
+   --                               SIZE_ALIGNMENT
    --                               SUSPICIOUS_CONTRACT
    --                               SUSPICIOUS_MODULUS
    --                               UNCHECKED_CONVERSIONS
@@ -3345,7 +3364,7 @@ package VMS_Data is
    --                             qualifier with a value other than NONE (in
    --                             other words, this option is effective only
    --                             if optimization is turned on).
-
+   --
    --   ERRORS                    Warning messages are to be treated as errors.
    --                             The warning string still appears, but the
    --                             warning messages are counted as errors, and
@@ -3389,7 +3408,7 @@ package VMS_Data is
    --                           access to an atomic variable requires the
    --                           generation of atomic synchronization code.
    --
-   --   AVOID_GAPS              Activate warnings for gaps in records.
+   --   AVOIDGAPS               Activate warnings for gaps in records.
    --   (-gnatw.h)              This outputs a warning if a representation
    --                           clause for a record leaves unallocated bits.
    --
@@ -3408,6 +3427,10 @@ package VMS_Data is
    --   (-gnatwc)               in tests where the expression is known to
    --                           be True or False at compile time.
    --
+   --   CONSTANT_VARIABLES      Activate warnings on constant variables.
+   --   (-gnatwk)               A warning is output for a variable which could
+   --                           have been declared as a constant.
+   --
    --   DELETED_CODE            Activate warning for conditional deleted code.
    --   (-gnatwt)               This option generates warnings for tracking of
    --                           code in conditionals (IF and CASE statements)
@@ -3415,10 +3438,6 @@ package VMS_Data is
    --                           be executed, and which is removed by the
    --                           front end. This may be useful for detecting
    --                           deactivated code in certified applications.
-   --
-   --   CONSTANT_VARIABLES      Activate warnings on constant variables.
-   --   (-gnatwk)               A warning is output for a variable which could
-   --                           have been declared as a constant.
    --
    --   ELABORATION             Activate warnings on missing pragma Elaborate
    --   (-gnatwl)               and Elaborate_All statements.
@@ -3432,15 +3451,6 @@ package VMS_Data is
    --                           for a non-overloadable entity, and declares
    --                           an entity with the same name as some other
    --                           entity that is directly or use-visible.
-   --
-   --   IMPORT_EXPORT_PRAGMAS   Activate warnings on import-export pragmas.
-   --   (-gnatwx)               This generates a warning on an Export or Import
-   --                           pragma when the compiler detects a possible
-   --                           conflict between the Ada and foreign language
-   --                           calling sequences. For example, the use of
-   --                           default parameters in a convention C procedure
-   --                           is dubious because the C compiler cannot supply
-   --                           the proper default, so a warning is issued.
    --
    --   IMPLEMENTATION          Activate warnings for a with of an internal
    --   (-gnatwi)               GNAT implementation unit, defined as any unit
@@ -3460,6 +3470,15 @@ package VMS_Data is
    --                           warnings of this type are generated, access
    --                           checks occur only at points where the source
    --                           program contains an explicit use of .all.
+   --
+   --   IMPORT_EXPORT_PRAGMAS   Activate warnings on import-export pragmas.
+   --   (-gnatwx)               This generates a warning on an Export or Import
+   --                           pragma when the compiler detects a possible
+   --                           conflict between the Ada and foreign language
+   --                           calling sequences. For example, the use of
+   --                           default parameters in a convention C procedure
+   --                           is dubious because the C compiler cannot supply
+   --                           the proper default, so a warning is issued.
    --
    --   INEFFECTIVE_INLINE      Activate warnings on ineffective Inlines.
    --   (-gnatwp)               Activates warnings for failure of front end
@@ -3575,6 +3594,12 @@ package VMS_Data is
    --   (-gnatw.v)              Generates information messages that show the
    --                           effect of specifying reverse bit order for
    --                           a record on individual components.
+   --
+   --   SIZE_ALIGNMENT          Activates warnings for record types for which
+   --   (-gnatw.z)              explicit size and alignment values are given,
+   --                           where the size value is not a multiple of the
+   --                           alignment value, resulting in an object size
+   --                           larger than the specified size.
    --
    --   STANDARD_REDEFINITION   Activate warnings on standard redefinition.
    --   (-gnatw.k)              Generates a warning message if a declaration
@@ -3822,6 +3847,7 @@ package VMS_Data is
                      S_GCC_DisAtom 'Access,
                      S_GCC_Dist    'Access,
                      S_GCC_DistX   'Access,
+                     S_GCC_ElabI   'Access,
                      S_GCC_Error   'Access,
                      S_GCC_ErrorX  'Access,
                      S_GCC_Expand  'Access,
@@ -3857,6 +3883,7 @@ package VMS_Data is
                      S_GCC_Mess    'Access,
                      S_GCC_Nesting 'Access,
                      S_GCC_Noadc   'Access,
+                     S_GCC_NoElabI 'Access,
                      S_GCC_Noload  'Access,
                      S_GCC_Nostinc 'Access,
                      S_GCC_Nostlib 'Access,
@@ -4010,6 +4037,18 @@ package VMS_Data is
    --   Do not generate pragmas for subprograms declared in the sources
    --  listed in a specified file
 
+   S_Elim_Processes : aliased constant S := "/PROCESSES=#"                 &
+                                            "-j#";
+
+   --        /NOPROCESSES (D)
+   --        /PROCESSES=NNN
+   --
+   --   Use NNN processes to carry out the tree creations (internal
+   --   representations of the argument sources). On a multiprocessor machine
+   --   this speeds up processing of big sets of argument sources. If NNN is 0,
+   --   then the maximum number of parallel tree creations is the number of
+   --   core processors on the platform.
+
    S_Elim_Project : aliased constant S := "/PROJECT_FILE=<"                &
                                              "-P>";
    --        /PROJECT_FILE=filename
@@ -4037,14 +4076,14 @@ package VMS_Data is
    --   text file.
 
    S_Elim_Log     : aliased constant S := "/LOG "                          &
-                                          "-l";
+                                          "-log";
    --        /NOLOG (D)
    --        /LOG
    --
    --   Duplicate all the output sent to Stderr into a default log file.
 
    S_Elim_Logfile : aliased constant S := "/LOGFILE=@"                     &
-                                          "-l@";
+                                          "-log@";
 
    --      /LOGFILE=logfilename
    --
@@ -4108,29 +4147,30 @@ package VMS_Data is
    --        QUIET         Some warning messages are suppressed
 
    Elim_Switches : aliased constant Switches :=
-                     (S_Elim_Add     'Access,
-                      S_Elim_All     'Access,
-                      S_Elim_Bind    'Access,
-                      S_Elim_Comp    'Access,
-                      S_Elim_Config  'Access,
-                      S_Elim_Current 'Access,
-                      S_Elim_Ext     'Access,
-                      S_Elim_Files   'Access,
-                      S_Elim_Follow  'Access,
-                      S_Elim_GNATMAKE'Access,
-                      S_Elim_Log     'Access,
-                      S_Elim_Logfile 'Access,
-                      S_Elim_Main    'Access,
-                      S_Elim_Mess    'Access,
-                      S_Elim_Nodisp  'Access,
-                      S_Elim_Out     'Access,
-                      S_Elim_Project 'Access,
-                      S_Elim_Quiet   'Access,
-                      S_Elim_Search  'Access,
-                      S_Elim_Subdirs 'Access,
-                      S_Elim_Time    'Access,
-                      S_Elim_Verb    'Access,
-                      S_Elim_Warn    'Access);
+                     (S_Elim_Add      'Access,
+                      S_Elim_All      'Access,
+                      S_Elim_Bind     'Access,
+                      S_Elim_Comp     'Access,
+                      S_Elim_Config   'Access,
+                      S_Elim_Current  'Access,
+                      S_Elim_Ext      'Access,
+                      S_Elim_Files    'Access,
+                      S_Elim_Follow   'Access,
+                      S_Elim_GNATMAKE 'Access,
+                      S_Elim_Log      'Access,
+                      S_Elim_Logfile  'Access,
+                      S_Elim_Main     'Access,
+                      S_Elim_Mess     'Access,
+                      S_Elim_Nodisp   'Access,
+                      S_Elim_Out      'Access,
+                      S_Elim_Processes'Access,
+                      S_Elim_Project  'Access,
+                      S_Elim_Quiet    'Access,
+                      S_Elim_Search   'Access,
+                      S_Elim_Subdirs  'Access,
+                      S_Elim_Time     'Access,
+                      S_Elim_Verb     'Access,
+                      S_Elim_Warn     'Access);
 
    ----------------------------
    -- Switches for GNAT FIND --
@@ -5637,30 +5677,30 @@ package VMS_Data is
    --
    --   All combinations of line metrics options are allowed.
 
-   S_Metric_Complexity : aliased constant S := "/COMPLEXITY_METRICS="      &
-                                               "ALL "                      &
-                                               "--complexity-all "         &
-                                              "NONE "                      &
-                                              "--no-complexity-all "       &
-                                              "CYCLOMATIC "                &
-                                              "--complexity-cyclomatic "   &
-                                              "NOCYCLOMATIC "              &
-                                              "--no-complexity-cyclomatic "&
-                                              "ESSENTIAL "                 &
-                                              "--complexity-essential "    &
-                                              "NOESSENTIAL "               &
-                                              "--no-complexity-essential " &
-                                              "LOOP_NESTING "              &
-                                              "--loop-nesting "            &
-                                              "NOLOOP_NESTING "            &
-                                              "--no-loop-nesting "         &
-                                              "AVERAGE_COMPLEXITY "        &
-                                              "--complexity-average "      &
-                                              "NOAVERAGE_COMPLEXITY "      &
-                                              "--no-complexity-average "   &
-                                              "EXTRA_EXIT_POINTS "         &
-                                              "--extra-exit-points "       &
-                                              "NOEXTRA_EXIT_POINTS "       &
+   S_Metric_Complexity : aliased constant S := "/COMPLEXITY_METRICS="       &
+                                               "ALL "                       &
+                                               "--complexity-all "          &
+                                              "NONE "                       &
+                                              "--no-complexity-all "        &
+                                              "CYCLOMATIC "                 &
+                                              "--complexity-cyclomatic "    &
+                                              "NOCYCLOMATIC "               &
+                                              "--no-complexity-cyclomatic " &
+                                              "ESSENTIAL "                  &
+                                              "--complexity-essential "     &
+                                              "NOESSENTIAL "                &
+                                              "--no-complexity-essential "  &
+                                              "LOOP_NESTING "               &
+                                              "--loop-nesting "             &
+                                              "NOLOOP_NESTING "             &
+                                              "--no-loop-nesting "          &
+                                              "AVERAGE_COMPLEXITY "         &
+                                              "--complexity-average "       &
+                                              "NOAVERAGE_COMPLEXITY "       &
+                                              "--no-complexity-average "    &
+                                              "EXTRA_EXIT_POINTS "          &
+                                              "--extra-exit-points "        &
+                                              "NOEXTRA_EXIT_POINTS "        &
                                               "--no-extra-exit-points";
    --      /COMPLEXITY_METRICS=(option, option ...)
 
@@ -5785,6 +5825,18 @@ package VMS_Data is
    --   at the main project file will be parsed before the invocation of the
    --   binder.
 
+   S_Metric_Processes : aliased constant S := "/PROCESSES=#"                 &
+                                            "-j#";
+
+   --        /NOPROCESSES (D)
+   --        /PROCESSES=NNN
+   --
+   --   Use NNN processes to carry out the tree creations (internal
+   --   representations of the argument sources). On a multiprocessor machine
+   --   this speeds up processing of big sets of argument sources. If NNN is 0,
+   --   then the maximum number of parallel tree creations is the number of
+   --   core processors on the platform.
+
    S_Metric_Quiet    : aliased constant S := "/QUIET "                     &
                                              "-q";
    --        /NOQUIET (D)
@@ -5825,6 +5877,13 @@ package VMS_Data is
                                                 "-nolocal ";
    --  NODOC  (see /COMPLEXITY_METRICS /NO_LOCAL_DETAILS /NO_EXITS_AS_GOTOS)
 
+   S_Metric_Time    : aliased constant S := "/TIME "                        &
+                                            "-t";
+   --        /NOTIME (D)
+   --        /TIME
+   --
+   --   Print out execution time
+
    S_Metric_Verbose  : aliased constant S := "/VERBOSE "                   &
                                              "-v";
    --        /NOVERBOSE (D)
@@ -5858,11 +5917,13 @@ package VMS_Data is
                         S_Metric_No_Local         'Access,
                         S_Metric_No_Static_Loop   'Access,
                         S_Metric_Project          'Access,
+                        S_Metric_Processes        'Access,
                         S_Metric_Quiet            'Access,
                         S_Metric_Suffix           'Access,
                         S_Metric_Subdirs          'Access,
                         S_Metric_Syntax           'Access,
                         S_Metric_Suppress         'Access,
+                        S_Metric_Time             'Access,
                         S_Metric_Verbose          'Access,
                         S_Metric_XMLout           'Access);
 
@@ -6629,6 +6690,18 @@ package VMS_Data is
    --      LOWER_CASE
    --      UPPER_CASE
 
+   S_Pretty_Processes : aliased constant S := "/PROCESSES=#"                 &
+                                            "-j#";
+
+   --        /NOPROCESSES (D)
+   --        /PROCESSES=NNN
+   --
+   --   Use NNN processes to carry out the tree creations (internal
+   --   representations of the argument sources). On a multiprocessor machine
+   --   this speeds up processing of big sets of argument sources. If NNN is 0,
+   --   then the maximum number of parallel tree creations is the number of
+   --   core processors on the platform.
+
    S_Pretty_Project   : aliased constant S := "/PROJECT_FILE=<"            &
                                                 "-P>";
    --        /PROJECT_FILE=filename
@@ -6680,6 +6753,13 @@ package VMS_Data is
    --   The actual directories (object, exec, library, ...) are subdirectories
    --   of the directory specified in the project file. If the subdirectory
    --   does not exist, it is created automatically.
+
+   S_Pretty_Time    : aliased constant S := "/TIME "                        &
+                                            "-t";
+   --        /NOTIME (D)
+   --        /TIME
+   --
+   --   Print out execution time
 
    S_Pretty_Types     : aliased constant S := "/TYPE_CASING="              &
                                               "AS_DECLARED "               &
@@ -6758,6 +6838,7 @@ package VMS_Data is
                         S_Pretty_Pragma           'Access,
                         S_Pretty_Replace          'Access,
                         S_Pretty_Replace_No_Backup'Access,
+                        S_Pretty_Processes        'Access,
                         S_Pretty_Project          'Access,
                         S_Pretty_RTS              'Access,
                         S_Pretty_Search           'Access,
@@ -6769,6 +6850,7 @@ package VMS_Data is
                         S_Pretty_Stnm_On_Nw_Line  'Access,
                         S_Pretty_Specific         'Access,
                         S_Pretty_Standard         'Access,
+                        S_Pretty_Time             'Access,
                         S_Pretty_Types            'Access,
                         S_Pretty_Verbose          'Access,
                         S_Pretty_Warnings         'Access);
@@ -7085,6 +7167,40 @@ package VMS_Data is
    --
    --   Look for source, library or object files in the default directory.
 
+   S_Stub_Encoding : aliased constant S := "/RESULT_ENCODING="             &
+                                            "BRACKETS "                    &
+                                               "-Wb "                      &
+                                            "HEX "                         &
+                                               "-Wh "                      &
+                                            "UPPER "                       &
+                                               "-Wu "                      &
+                                            "SHIFT_JIS "                   &
+                                               "-Ws "                      &
+                                            "EUC "                         &
+                                               "-We "                      &
+                                            "UTF8 "                        &
+                                               "-W8";
+   --        /RESULT_ENCODING[=encoding-type]
+   --
+   --   Specify the wide character encoding method used when writing the
+   --   generated body in the result file. 'encoding-type' is one of the
+   --   following:
+   --
+   --      BRACKETS (D)      Brackets encoding.
+   --
+   --      HEX               Hex ESC encoding.
+   --
+   --      UPPER             Upper half encoding.
+   --
+   --      SHIFT_JIS         Shift-JIS encoding.
+   --
+   --      EUC               EUC Encoding.
+   --
+   --      UTF8              UTF-8 encoding.
+   --
+   --   See 'HELP GNAT COMPILE /WIDE_CHARACTER_ENCODING' for an explanation
+   --   about the different character encoding methods.
+
    S_Stub_Ext     : aliased constant S := "/EXTERNAL_REFERENCE=" & '"'     &
                                             "-X" & '"';
    --        /EXTERNAL_REFERENCE="name=val"
@@ -7279,6 +7395,7 @@ package VMS_Data is
                      (S_Stub_Add        'Access,
                       S_Stub_Config     'Access,
                       S_Stub_Current    'Access,
+                      S_Stub_Encoding   'Access,
                       S_Stub_Ext        'Access,
                       S_Stub_Follow     'Access,
                       S_Stub_Full       'Access,

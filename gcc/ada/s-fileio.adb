@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,10 +33,10 @@ with Ada.Finalization;  use Ada.Finalization;
 with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with Interfaces.C;
-with Interfaces.C.Strings; use Interfaces.C.Strings;
 with Interfaces.C_Streams; use Interfaces.C_Streams;
 
-with System.CRTL.Runtime;
+with System.CRTL;
+
 with System.Case_Util;    use System.Case_Util;
 with System.OS_Lib;
 with System.Soft_Links;
@@ -130,15 +130,9 @@ package body System.File_IO is
    --  the access method from the Access_Method field of the FCB.
 
    function Errno_Message
-     (Errno : Integer := OS_Lib.Errno) return String;
-   function Errno_Message
-     (Name : String;
+     (Name  : String;
       Errno : Integer := OS_Lib.Errno) return String;
-   --  Return a message suitable for "raise ... with Errno_Message (...)".
-   --  Errno defaults to the current errno, but should be passed explicitly if
-   --  there is significant code in between the call that sets errno and the
-   --  call to Errno_Message, in case that code also sets errno. The version
-   --  with Name includes that file name in the message.
+   --  Return Errno_Message for Errno, with file name prepended
 
    procedure Raise_Device_Error
      (File  : AFCB_Ptr;
@@ -241,7 +235,7 @@ package body System.File_IO is
       Close_Status : int := 0;
       Dup_Strm     : Boolean := False;
       File         : AFCB_Ptr renames File_Ptr.all;
-      Errno        : Integer;
+      Errno        : Integer := 0;
 
    begin
       --  Take a task lock, to protect the global data value Open_Files
@@ -351,7 +345,7 @@ package body System.File_IO is
          --  we did the open, and we want to unlink the right file.
 
          if unlink (Filename'Address) = -1 then
-            raise Use_Error with Errno_Message;
+            raise Use_Error with OS_Lib.Errno_Message;
          end if;
       end;
    end Delete;
@@ -383,23 +377,12 @@ package body System.File_IO is
    -- Errno_Message --
    -------------------
 
-   function Errno_Message (Errno : Integer := OS_Lib.Errno) return String is
-      Message : constant chars_ptr := CRTL.Runtime.strerror (Errno);
-
-   begin
-      if Message = Null_Ptr then
-         return "errno =" & Errno'Img;
-      else
-         return Value (Message);
-      end if;
-   end Errno_Message;
-
    function Errno_Message
      (Name  : String;
       Errno : Integer := OS_Lib.Errno) return String
    is
    begin
-      return Name & ": " & String'(Errno_Message (Errno));
+      return Name & ": " & OS_Lib.Errno_Message (Err => Errno);
    end Errno_Message;
 
    --------------
@@ -781,7 +764,7 @@ package body System.File_IO is
                   while Index < Form'Last loop
                      Index := Index + 1;
 
-                     --  Loop through the RMS Keys and dispatch.
+                     --  Loop through the RMS Keys and dispatch
 
                      for Key in RMS_Keys loop
                         declare
@@ -976,7 +959,7 @@ package body System.File_IO is
       Formstr : aliased String (1 .. Form'Length + 1);
       --  Form string with ASCII.NUL appended, folded to lower case
 
-      Is_Text_File : Boolean;
+      Text_Encoding : Content_Encoding;
 
       Tempfile : constant Boolean := (Name'Length = 0);
       --  Indicates temporary file case
@@ -1060,11 +1043,37 @@ package body System.File_IO is
       --  if the Form says Text_Translation=No, we use binary mode, so new-line
       --  will be just LF, even on Windows.
 
-      Is_Text_File := Text;
+      if Text then
+         Text_Encoding := Default_Text;
+      else
+         Text_Encoding := None;
+      end if;
 
-      if Is_Text_File then
-         Is_Text_File :=
-           Form_Boolean (Formstr, "text_translation", Default => True);
+      if Text_Encoding in Text_Content_Encoding then
+         declare
+            V1, V2 : Natural;
+
+         begin
+            Form_Parameter (Formstr, "text_translation", V1, V2);
+
+            if V1 = 0 then
+               null;
+            elsif Formstr (V1 .. V2) = "no" then
+               Text_Encoding := None;
+            elsif Formstr (V1 .. V2) = "text"
+              or else Formstr (V1 .. V2) = "yes"
+            then
+               Text_Encoding := Interfaces.C_Streams.Text;
+            elsif Formstr (V1 .. V2) = "wtext" then
+               Text_Encoding := Wtext;
+            elsif Formstr (V1 .. V2) = "u8text" then
+               Text_Encoding := U8text;
+            elsif Formstr (V1 .. V2) = "u16text" then
+               Text_Encoding := U16text;
+            else
+               raise Use_Error with "invalid Form";
+            end if;
+         end;
       end if;
 
       --  Acquire settings of target specific form parameters on VMS. Only
@@ -1218,7 +1227,9 @@ package body System.File_IO is
          --  Open specified file if we did not find an existing stream
 
          if Stream = NULL_Stream then
-            Fopen_Mode (Mode, Is_Text_File, Creat, Amethod, Fopstr);
+            Fopen_Mode
+              (Mode, Text_Encoding in Text_Content_Encoding,
+               Creat, Amethod, Fopstr);
 
             --  A special case, if we are opening (OPEN case) a file and the
             --  mode returned by Fopen_Mode is not "r" or "r+", then we first
@@ -1292,7 +1303,7 @@ package body System.File_IO is
 
       File_Ptr.Is_Regular_File   := (is_regular_file (fileno (Stream)) /= 0);
       File_Ptr.Is_System_File    := False;
-      File_Ptr.Is_Text_File      := Is_Text_File;
+      File_Ptr.Text_Encoding     := Text_Encoding;
       File_Ptr.Shared_Status     := Shared;
       File_Ptr.Access_Method     := Amethod;
       File_Ptr.Stream            := Stream;
@@ -1321,7 +1332,7 @@ package body System.File_IO is
          clearerr (File.Stream);
       end if;
 
-      raise Device_Error with Errno_Message (Errno);
+      raise Device_Error with OS_Lib.Errno_Message (Err => Errno);
    end Raise_Device_Error;
 
    --------------
@@ -1416,7 +1427,8 @@ package body System.File_IO is
 
       else
          Fopen_Mode
-           (Mode, File.Is_Text_File, False, File.Access_Method, Fopstr);
+           (Mode, File.Text_Encoding in Text_Content_Encoding,
+            False, File.Access_Method, Fopstr);
 
          Form_VMS_RMS_Keys (File.Form.all, VMS_Formstr);
 

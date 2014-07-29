@@ -38,17 +38,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "libfuncs.h"
 #include "cfgloop.h"
 #include "ira-int.h"
-#include "lra-int.h"
 #include "builtins.h"
 #include "gcse.h"
 #include "bb-reorder.h"
 #include "lower-subreg.h"
+#include "recog.h"
 
 #if SWITCHABLE_TARGET
 struct target_globals default_target_globals = {
   &default_target_flag_state,
   &default_target_regs,
   &default_target_rtl,
+  &default_target_recog,
   &default_target_hard_regs,
   &default_target_reload,
   &default_target_expmed,
@@ -57,7 +58,6 @@ struct target_globals default_target_globals = {
   &default_target_cfgloop,
   &default_target_ira,
   &default_target_ira_int,
-  &default_target_lra_int,
   &default_target_builtins,
   &default_target_gcse,
   &default_target_bb_reorder,
@@ -79,29 +79,21 @@ save_target_globals (void)
     struct target_lower_subreg lower_subreg;
   } *p;
   p = (struct target_globals_extra *)
-      ggc_internal_cleared_alloc_stat (sizeof (struct target_globals_extra)
-				       PASS_MEM_STAT);
+      ggc_internal_cleared_alloc (sizeof (struct target_globals_extra));
   g = (struct target_globals *) p;
   g->flag_state = &p->flag_state;
-  g->regs = ggc_internal_cleared_alloc_stat (sizeof (struct target_regs)
-					     PASS_MEM_STAT);
-  g->rtl = ggc_alloc_cleared_target_rtl ();
+  g->regs = ggc_internal_cleared_alloc (sizeof (struct target_regs));
+  g->rtl = ggc_cleared_alloc<target_rtl> ();
+  g->recog = ggc_internal_cleared_alloc (sizeof (struct target_recog));
   g->hard_regs
-    = ggc_internal_cleared_alloc_stat (sizeof (struct target_hard_regs)
-				       PASS_MEM_STAT);
-  g->reload = ggc_internal_cleared_alloc_stat (sizeof (struct target_reload)
-					       PASS_MEM_STAT);
-  g->expmed =  ggc_internal_cleared_alloc_stat (sizeof (struct target_expmed)
-						PASS_MEM_STAT);
+    = ggc_internal_cleared_alloc (sizeof (struct target_hard_regs));
+  g->reload = ggc_internal_cleared_alloc (sizeof (struct target_reload));
+  g->expmed =  ggc_internal_cleared_alloc (sizeof (struct target_expmed));
   g->optabs = &p->optabs;
-  g->libfuncs = ggc_alloc_cleared_target_libfuncs ();
+  g->libfuncs = ggc_cleared_alloc<target_libfuncs> ();
   g->cfgloop = &p->cfgloop;
-  g->ira = ggc_internal_cleared_alloc_stat (sizeof (struct target_ira)
-					    PASS_MEM_STAT);
-  g->ira_int = ggc_internal_cleared_alloc_stat (sizeof (struct target_ira_int)
-						PASS_MEM_STAT);
-  g->lra_int = ggc_internal_cleared_alloc_stat (sizeof (struct target_lra_int)
-						PASS_MEM_STAT);
+  g->ira = ggc_internal_cleared_alloc (sizeof (struct target_ira));
+  g->ira_int = ggc_internal_cleared_alloc (sizeof (struct target_ira_int));
   g->builtins = &p->builtins;
   g->gcse = &p->gcse;
   g->bb_reorder = &p->bb_reorder;

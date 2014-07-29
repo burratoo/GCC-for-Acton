@@ -42,8 +42,8 @@
 )
 
 (define_insn "*movhi_virt"
-  [(set (match_operand:HI 0 "nonimmediate_operand" "=vYS,v,Wfr")
-	(match_operand:HI 1 "general_operand" "viYS,Wfr,v"))]
+  [(set (match_operand:HI 0 "nonimmediate_operand" "=vS,  Y,   v,   Wfr")
+	(match_operand:HI 1 "general_operand"      "viYS, viS, Wfr, v"))]
   "rl78_virt_insns_ok ()"
   "v.movw %0, %1"
   [(set_attr "valloc" "op1")]
@@ -405,3 +405,12 @@
    ]
   "rl78_setup_peep_movhi (operands);"
   )
+
+(define_insn "*negandhi3_virt"
+  [(set (match_operand:HI                 0 "register_operand" "=v")
+	(and:HI (neg:HI (match_operand:HI 1 "register_operand"  "0"))
+ 		(match_operand:HI         2 "immediate_operand" "n")))
+   ]
+  "rl78_virt_insns_ok ()"
+  "v.nand\t%0, %1, %2"
+)

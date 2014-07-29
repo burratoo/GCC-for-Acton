@@ -36,6 +36,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "dumpfile.h"
 #include "value-prof.h"
 #include "predict.h"
+#include "wide-int-print.h"
+#include "internal-fn.h"
 
 #include <new>                           // For placement-new.
 
@@ -499,6 +501,7 @@ dump_omp_clause (pretty_printer *buffer, tree clause, int spc, int flags)
 	  pp_string (buffer, "alloc");
 	  break;
 	case OMP_CLAUSE_MAP_TO:
+	case OMP_CLAUSE_MAP_TO_PSET:
 	  pp_string (buffer, "to");
 	  break;
 	case OMP_CLAUSE_MAP_FROM:
@@ -519,6 +522,9 @@ dump_omp_clause (pretty_printer *buffer, tree clause, int spc, int flags)
 	  if (OMP_CLAUSE_CODE (clause) == OMP_CLAUSE_MAP
 	      && OMP_CLAUSE_MAP_KIND (clause) == OMP_CLAUSE_MAP_POINTER)
 	    pp_string (buffer, " [pointer assign, bias: ");
+	  else if (OMP_CLAUSE_CODE (clause) == OMP_CLAUSE_MAP
+		   && OMP_CLAUSE_MAP_KIND (clause) == OMP_CLAUSE_MAP_TO_PSET)
+	    pp_string (buffer, " [pointer set, len: ");
 	  else
 	    pp_string (buffer, " [len: ");
 	  dump_generic_node (buffer, OMP_CLAUSE_SIZE (clause),
@@ -1238,9 +1244,22 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 	  pp_wide_integer (buffer, TREE_INT_CST_LOW (node));
 	  pp_string (buffer, "B"); /* pseudo-unit */
 	}
+      else if (tree_fits_shwi_p (node))
+	pp_wide_integer (buffer, tree_to_shwi (node));
+      else if (tree_fits_uhwi_p (node))
+	pp_unsigned_wide_integer (buffer, tree_to_uhwi (node));
       else
-	pp_double_int (buffer, tree_to_double_int (node),
-		       TYPE_UNSIGNED (TREE_TYPE (node)));
+	{
+	  wide_int val = node;
+
+	  if (wi::neg_p (val, TYPE_SIGN (TREE_TYPE (node))))
+	    {
+	      pp_minus (buffer);
+	      val = -val;
+	    }
+	  print_hex (val, pp_buffer (buffer)->digit_buffer);
+	  pp_string (buffer, pp_buffer (buffer)->digit_buffer);
+	}
       if (TREE_OVERFLOW (node))
 	pp_string (buffer, "(OVF)");
       break;
@@ -1390,6 +1409,7 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
     case FIELD_DECL:
     case DEBUG_EXPR_DECL:
     case NAMESPACE_DECL:
+    case NAMELIST_DECL:
       dump_decl_name (buffer, node, flags);
       break;
 
@@ -1488,7 +1508,7 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 	tree field, val;
 	bool is_struct_init = false;
 	bool is_array_init = false;
-	double_int curidx = double_int_zero;
+	widest_int curidx;
 	pp_left_brace (buffer);
 	if (TREE_CLOBBER_P (node))
 	  pp_string (buffer, "CLOBBER");
@@ -1503,7 +1523,7 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 	  {
 	    tree minv = TYPE_MIN_VALUE (TYPE_DOMAIN (TREE_TYPE (node)));
 	    is_array_init = true;
-	    curidx = tree_to_double_int (minv);
+	    curidx = wi::to_widest (minv);
 	  }
 	FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (node), ix, field, val)
 	  {
@@ -1517,7 +1537,7 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 		  }
 		else if (is_array_init
 			 && (TREE_CODE (field) != INTEGER_CST
-			     || tree_to_double_int (field) != curidx))
+			     || curidx != wi::to_widest (field)))
 		  {
 		    pp_left_bracket (buffer);
 		    if (TREE_CODE (field) == RANGE_EXPR)
@@ -1528,17 +1548,17 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 			dump_generic_node (buffer, TREE_OPERAND (field, 1), spc,
 					   flags, false);
 			if (TREE_CODE (TREE_OPERAND (field, 1)) == INTEGER_CST)
-			  curidx = tree_to_double_int (TREE_OPERAND (field, 1));
+			  curidx = wi::to_widest (TREE_OPERAND (field, 1));
 		      }
 		    else
 		      dump_generic_node (buffer, field, spc, flags, false);
 		    if (TREE_CODE (field) == INTEGER_CST)
-		      curidx = tree_to_double_int (field);
+		      curidx = wi::to_widest (field);
 		    pp_string (buffer, "]=");
 		  }
 	      }
             if (is_array_init)
-	      curidx += double_int_one;
+	      curidx += 1;
 	    if (val && TREE_CODE (val) == ADDR_EXPR)
 	      if (TREE_CODE (TREE_OPERAND (val, 0)) == FUNCTION_DECL)
 		val = TREE_OPERAND (val, 0);
@@ -1734,7 +1754,10 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
       break;
 
     case CALL_EXPR:
-      print_call_name (buffer, CALL_EXPR_FN (node), flags);
+      if (CALL_EXPR_FN (node) != NULL_TREE)
+	print_call_name (buffer, CALL_EXPR_FN (node), flags);
+      else
+	pp_string (buffer, internal_fn_name (CALL_EXPR_IFN (node)));
 
       /* Print parameters.  */
       pp_space (buffer);
@@ -2104,13 +2127,21 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 
     case ANNOTATE_EXPR:
       pp_string (buffer, "ANNOTATE_EXPR <");
+      dump_generic_node (buffer, TREE_OPERAND (node, 0), spc, flags, false);
       switch ((enum annot_expr_kind) TREE_INT_CST_LOW (TREE_OPERAND (node, 1)))
 	{
 	case annot_expr_ivdep_kind:
-	  pp_string (buffer, "ivdep, ");
+	  pp_string (buffer, ", ivdep");
 	  break;
+	case annot_expr_no_vector_kind:
+	  pp_string (buffer, ", no-vector");
+	  break;
+	case annot_expr_vector_kind:
+	  pp_string (buffer, ", vector");
+	  break;
+	default:
+	  gcc_unreachable ();
 	}
-      dump_generic_node (buffer, TREE_OPERAND (node, 0), spc, flags, false);
       pp_greater (buffer);
       break;
 
@@ -2685,6 +2716,14 @@ void
 print_declaration (pretty_printer *buffer, tree t, int spc, int flags)
 {
   INDENT (spc);
+
+  if (TREE_CODE(t) == NAMELIST_DECL)
+    {
+      pp_string(buffer, "namelist ");
+      dump_decl_name (buffer, t, flags);
+      pp_semicolon (buffer);
+      return;
+    }
 
   if (TREE_CODE (t) == TYPE_DECL)
     pp_string (buffer, "typedef ");
@@ -3356,6 +3395,25 @@ percent_K_format (text_info *text)
   gcc_assert (pp_ti_abstract_origin (text) != NULL);
   block = TREE_BLOCK (t);
   *pp_ti_abstract_origin (text) = NULL;
+
+  if (in_lto_p)
+    {
+      /* ???  LTO drops all BLOCK_ABSTRACT_ORIGINs apart from those
+         representing the outermost block of an inlined function.
+	 So walk the BLOCK tree until we hit such a scope.  */
+      while (block
+	     && TREE_CODE (block) == BLOCK)
+	{
+	  if (inlined_function_outer_scope_p (block))
+	    {
+	      *pp_ti_abstract_origin (text) = block;
+	      break;
+	    }
+	  block = BLOCK_SUPERCONTEXT (block);
+	}
+      return;
+    }
+
   while (block
 	 && TREE_CODE (block) == BLOCK
 	 && BLOCK_ABSTRACT_ORIGIN (block))
@@ -3398,7 +3456,7 @@ void
 dump_function_header (FILE *dump_file, tree fdecl, int flags)
 {
   const char *dname, *aname;
-  struct cgraph_node *node = cgraph_get_node (fdecl);
+  struct cgraph_node *node = cgraph_node::get (fdecl);
   struct function *fun = DECL_STRUCT_FUNCTION (fdecl);
 
   dname = lang_hooks.decl_printable_name (fdecl, 2);
@@ -3415,6 +3473,7 @@ dump_function_header (FILE *dump_file, tree fdecl, int flags)
     fprintf (dump_file, ", decl_uid=%d", DECL_UID (fdecl));
   if (node)
     {
+      fprintf (dump_file, ", cgraph_uid=%d", node->uid);
       fprintf (dump_file, ", symbol_order=%d)%s\n\n", node->order,
                node->frequency == NODE_FREQUENCY_HOT
                ? " (hot)"

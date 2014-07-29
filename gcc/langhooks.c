@@ -515,6 +515,13 @@ lhd_omp_assignment (tree clause ATTRIBUTE_UNUSED, tree dst, tree src)
   return build2 (MODIFY_EXPR, TREE_TYPE (dst), dst, src);
 }
 
+/* Finalize clause C.  */
+
+void
+lhd_omp_finish_clause (tree, gimple_seq *)
+{
+}
+
 /* Register language specific type size variables as potentially OpenMP
    firstprivate variables.  */
 
@@ -524,13 +531,15 @@ lhd_omp_firstprivatize_type_sizes (struct gimplify_omp_ctx *c ATTRIBUTE_UNUSED,
 {
 }
 
-/* Return true if TYPE is an OpenMP mappable type.  By default return true
-   if type is complete.  */
+/* Return true if TYPE is an OpenMP mappable type.  */
 
 bool
 lhd_omp_mappable_type (tree type)
 {
-  return COMPLETE_TYPE_P (type);
+  /* Mappable type has to be complete.  */
+  if (type == error_mark_node || !COMPLETE_TYPE_P (type))
+    return false;
+  return true;
 }
 
 /* Common function for add_builtin_function and
@@ -675,4 +684,13 @@ lhd_end_section (void)
       switch_to_section (saved_section);
       saved_section = NULL;
     }
+}
+
+/* Default implementation of enum_underlying_base_type using type_for_size.  */
+
+tree
+lhd_enum_underlying_base_type (const_tree enum_type)
+{
+  return lang_hooks.types.type_for_size (TYPE_PRECISION (enum_type),
+					 TYPE_UNSIGNED (enum_type));
 }

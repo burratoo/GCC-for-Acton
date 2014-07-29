@@ -11,7 +11,7 @@
 #include "avx512f-mask-type.h"
 
 static void
-CALC (long long *src1, long long *mask, long long *dst)
+CALC (long long *mask, long long *src1, long long *dst)
 {
   int i;
 
@@ -21,7 +21,7 @@ CALC (long long *src1, long long *mask, long long *dst)
     }
 }
 
-static void
+void
 TEST (void)
 {
   UNION_TYPE (AVX512F_LEN, i_q) res1, res2, res3, src1, src2;

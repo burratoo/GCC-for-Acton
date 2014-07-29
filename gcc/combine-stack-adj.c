@@ -567,7 +567,6 @@ combine_stack_adjustments_for_block (basic_block bb)
 	      && try_apply_stack_adjustment (insn, reflist, 0,
 					     -last_sp_adjust))
 	    {
-	      rtx note;
 	      if (last2_sp_set)
 		maybe_move_args_size_note (last2_sp_set, last_sp_set, false);
 	      else
@@ -577,11 +576,6 @@ combine_stack_adjustments_for_block (basic_block bb)
 	      reflist = NULL;
 	      last_sp_set = NULL_RTX;
 	      last_sp_adjust = 0;
-	      /* We no longer adjust stack size.  Whoever adjusted it earlier
-		 hopefully got the note right.  */
-	      note = find_reg_note (insn, REG_ARGS_SIZE, NULL_RTX);
-	      if (note)
-		remove_note (insn, note);
 	      continue;
 	    }
 	}
@@ -625,21 +619,6 @@ combine_stack_adjustments_for_block (basic_block bb)
     free_csa_reflist (reflist);
 }
 
-
-static bool
-gate_handle_stack_adjustments (void)
-{
-  /* This is kind of a heuristic.  We need to run combine_stack_adjustments
-     even for machines with possibly nonzero TARGET_RETURN_POPS_ARGS
-     and ACCUMULATE_OUTGOING_ARGS.  We expect that only ports having
-     push instructions will have popping returns.  */
-#ifndef PUSH_ROUNDING
-  if (ACCUMULATE_OUTGOING_ARGS)
-    return false;
-#endif
-  return flag_combine_stack_adjustments;
-}
-
 static unsigned int
 rest_of_handle_stack_adjustments (void)
 {
@@ -656,14 +635,12 @@ const pass_data pass_data_stack_adjustments =
   RTL_PASS, /* type */
   "csa", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_COMBINE_STACK_ADJUST, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_stack_adjustments : public rtl_opt_pass
@@ -674,10 +651,27 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_stack_adjustments (); }
-  unsigned int execute () { return rest_of_handle_stack_adjustments (); }
+  virtual bool gate (function *);
+  virtual unsigned int execute (function *)
+    {
+      return rest_of_handle_stack_adjustments ();
+    }
 
 }; // class pass_stack_adjustments
+
+bool
+pass_stack_adjustments::gate (function *)
+{
+  /* This is kind of a heuristic.  We need to run combine_stack_adjustments
+     even for machines with possibly nonzero TARGET_RETURN_POPS_ARGS
+     and ACCUMULATE_OUTGOING_ARGS.  We expect that only ports having
+     push instructions will have popping returns.  */
+#ifndef PUSH_ROUNDING
+  if (ACCUMULATE_OUTGOING_ARGS)
+    return false;
+#endif
+  return flag_combine_stack_adjustments;
+}
 
 } // anon namespace
 

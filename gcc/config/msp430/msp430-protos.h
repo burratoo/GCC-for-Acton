@@ -41,7 +41,8 @@ void	msp430_output_labelref (FILE *, const char *);
 void	msp430_register_pragmas (void);
 rtx	msp430_return_addr_rtx (int);
 void	msp430_split_movsi (rtx *);
-rtx	msp430_subreg (enum machine_mode, rtx, enum machine_mode, int);
 void    msp430_start_function (FILE *, const char *, tree);
+rtx	msp430_subreg (enum machine_mode, rtx, enum machine_mode, int);
+bool    msp430_use_f5_series_hwmult (void);
 
 #endif /* GCC_MSP430_PROTOS_H */

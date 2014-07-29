@@ -9,6 +9,7 @@
 #define SIZE (AVX512F_LEN / 32)
 #include "avx512f-mask-type.h"
 
+static void
 CALC (float *r, float *s1, float *s2)
 {
   int i;
@@ -18,7 +19,7 @@ CALC (float *r, float *s1, float *s2)
     }
 }
 
-void static
+void
 TEST (void)
 {
   int i, sign;
@@ -46,10 +47,10 @@ TEST (void)
     abort ();
 
   MASK_MERGE () (res_ref, mask, SIZE);
-  if (UNION_CHECK (AVX512F_LEN,) (res2, res_ref))
+  if (UNION_FP_CHECK (AVX512F_LEN,) (res2, res_ref))
     abort ();
 
   MASK_ZERO () (res_ref, mask, SIZE);
-  if (UNION_CHECK (AVX512F_LEN,) (res3, res_ref))
+  if (UNION_FP_CHECK (AVX512F_LEN,) (res3, res_ref))
     abort ();
 }

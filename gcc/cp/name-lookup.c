@@ -105,7 +105,7 @@ binding_entry_make (tree name, tree type)
       free_binding_entry = entry->chain;
     }
   else
-    entry = ggc_alloc_binding_entry_s ();
+    entry = ggc_alloc<binding_entry_s> ();
 
   entry->name = name;
   entry->type = type;
@@ -147,7 +147,7 @@ binding_table_construct (binding_table table, size_t chain_count)
 {
   table->chain_count = chain_count;
   table->entry_count = 0;
-  table->chain = ggc_alloc_cleared_vec_binding_entry (table->chain_count);
+  table->chain = ggc_cleared_vec_alloc<binding_entry> (table->chain_count);
 }
 
 /* Make TABLE's entries ready for reuse.  */
@@ -181,7 +181,7 @@ binding_table_free (binding_table table)
 static inline binding_table
 binding_table_new (size_t chain_count)
 {
-  binding_table table = ggc_alloc_binding_table_s ();
+  binding_table table = ggc_alloc<binding_table_s> ();
   table->chain = NULL;
   binding_table_construct (table, chain_count);
   return table;
@@ -299,7 +299,7 @@ cxx_binding_make (tree value, tree type)
       free_bindings = binding->previous;
     }
   else
-    binding = ggc_alloc_cxx_binding ();
+    binding = ggc_alloc<cxx_binding> ();
 
   cxx_binding_init (binding, value, type);
 
@@ -406,7 +406,8 @@ pop_bindings_and_leave_scope (void)
   leave_scope ();
 }
 
-/* Strip non dependent using declarations.  */
+/* Strip non dependent using declarations. If DECL is dependent,
+   surreptitiously create a typename_type and return it.  */
 
 tree
 strip_using_decl (tree decl)
@@ -416,6 +417,23 @@ strip_using_decl (tree decl)
 
   while (TREE_CODE (decl) == USING_DECL && !DECL_DEPENDENT_P (decl))
     decl = USING_DECL_DECLS (decl);
+
+  if (TREE_CODE (decl) == USING_DECL && DECL_DEPENDENT_P (decl)
+      && USING_DECL_TYPENAME_P (decl))
+    {
+      /* We have found a type introduced by a using
+	 declaration at class scope that refers to a dependent
+	 type.
+	     
+	 using typename :: [opt] nested-name-specifier unqualified-id ;
+      */
+      decl = make_typename_type (TREE_TYPE (decl),
+				 DECL_NAME (decl),
+				 typename_type, tf_error);
+      if (decl != error_mark_node)
+	decl = TYPE_NAME (decl);
+    }
+
   return decl;
 }
 
@@ -757,7 +775,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 		      = htab_create_ggc (20, cxx_int_tree_map_hash,
 					 cxx_int_tree_map_eq, NULL);
 
-		  h = ggc_alloc_cxx_int_tree_map ();
+		  h = ggc_alloc<cxx_int_tree_map> ();
 		  h->uid = DECL_UID (x);
 		  h->to = t;
 		  loc = htab_find_slot_with_hash
@@ -927,7 +945,6 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 	    set_underlying_type (x);
 
 	  if (type != error_mark_node
-	      && TYPE_NAME (type)
 	      && TYPE_IDENTIFIER (type))
 	    set_identifier_type_value (DECL_NAME (x), x);
 
@@ -957,7 +974,8 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 	      && (DECL_EXTERNAL (decl) || TREE_PUBLIC (decl))
 	      /* If different sort of thing, we already gave an error.  */
 	      && TREE_CODE (decl) == TREE_CODE (x)
-	      && !same_type_p (TREE_TYPE (x), TREE_TYPE (decl)))
+	      && !comptypes (TREE_TYPE (x), TREE_TYPE (decl),
+			     COMPARE_REDECLARATION))
 	    {
 	      if (permerror (input_location, "type mismatch with previous "
 			     "external decl of %q#D", x))
@@ -1527,7 +1545,7 @@ begin_scope (scope_kind kind, tree entity)
       free_binding_level = scope->level_chain;
     }
   else
-    scope = ggc_alloc_cleared_cp_binding_level ();
+    scope = ggc_cleared_alloc<cp_binding_level> ();
 
   scope->this_entity = entity;
   scope->more_cleanups_ok = true;
@@ -1612,10 +1630,14 @@ leave_scope (void)
       free_binding_level = scope;
     }
 
-  /* Find the innermost enclosing class scope, and reset
-     CLASS_BINDING_LEVEL appropriately.  */
   if (scope->kind == sk_class)
     {
+      /* Reset DEFINING_CLASS_P to allow for reuse of a
+	 class-defining scope in a non-defining context.  */
+      scope->defining_class_p = 0;
+
+      /* Find the innermost enclosing class scope, and reset
+	 CLASS_BINDING_LEVEL appropriately.  */
       class_binding_level = NULL;
       for (scope = current_binding_level; scope; scope = scope->level_chain)
 	if (scope->kind == sk_class)
@@ -2465,7 +2487,7 @@ validate_nonmember_using_decl (tree decl, tree scope, tree name)
        member-declaration.  */
   if (TYPE_P (scope))
     {
-      error ("%qT is not a namespace", scope);
+      error ("%qT is not a namespace or unscoped enum", scope);
       return NULL_TREE;
     }
   else if (scope == error_mark_node)
@@ -3097,6 +3119,13 @@ push_class_level_binding_1 (tree name, tree x)
   if (name == error_mark_node)
     return false;
 
+  /* Can happen for an erroneous declaration (c++/60384).  */
+  if (!identifier_p (name))
+    {
+      gcc_assert (errorcount || sorrycount);
+      return false;
+    }
+
   /* Check for invalid member names.  But don't worry about a default
      argument-scope lambda being pushed after the class is complete.  */
   gcc_assert (TYPE_BEING_DEFINED (current_class_type)
@@ -3304,7 +3333,7 @@ do_class_using_decl (tree scope, tree name)
     }
   /* Using T::T declares inheriting ctors, even if T is a typedef.  */
   if (MAYBE_CLASS_TYPE_P (scope)
-      && ((TYPE_NAME (scope) && name == TYPE_IDENTIFIER (scope))
+      && (name == TYPE_IDENTIFIER (scope)
 	  || constructor_name_p (name, scope)))
     {
       maybe_warn_cpp0x (CPP0X_INHERITING_CTORS);
@@ -3990,13 +4019,14 @@ do_using_directive (tree name_space)
 void
 parse_using_directive (tree name_space, tree attribs)
 {
-  tree a;
-
   do_using_directive (name_space);
 
-  for (a = attribs; a; a = TREE_CHAIN (a))
+  if (attribs == error_mark_node)
+    return;
+
+  for (tree a = attribs; a; a = TREE_CHAIN (a))
     {
-      tree name = TREE_PURPOSE (a);
+      tree name = get_attribute_name (a);
       if (is_attribute_p ("strong", name))
 	{
 	  if (!toplevel_bindings_p ())
@@ -6045,7 +6075,7 @@ push_to_top_level (void)
   bool need_pop;
 
   bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  s = ggc_alloc_cleared_saved_scope ();
+  s = ggc_cleared_alloc<saved_scope> ();
 
   b = scope_chain ? current_binding_level : 0;
 

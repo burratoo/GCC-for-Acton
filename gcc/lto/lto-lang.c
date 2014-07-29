@@ -146,9 +146,12 @@ enum lto_builtin_type
 #define DEF_FUNCTION_TYPE_3(NAME, RETURN, ARG1, ARG2, ARG3) NAME,
 #define DEF_FUNCTION_TYPE_4(NAME, RETURN, ARG1, ARG2, ARG3, ARG4) NAME,
 #define DEF_FUNCTION_TYPE_5(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5) NAME,
-#define DEF_FUNCTION_TYPE_6(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6) NAME,
-#define DEF_FUNCTION_TYPE_7(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7) NAME,
-#define DEF_FUNCTION_TYPE_8(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ARG8) NAME,
+#define DEF_FUNCTION_TYPE_6(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, \
+			    ARG6) NAME,
+#define DEF_FUNCTION_TYPE_7(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, \
+			    ARG6, ARG7) NAME,
+#define DEF_FUNCTION_TYPE_8(NAME, RETURN, ARG1, ARG2, ARG3, ARG4, ARG5, \
+			    ARG6, ARG7, ARG8) NAME,
 #define DEF_FUNCTION_TYPE_VAR_0(NAME, RETURN) NAME,
 #define DEF_FUNCTION_TYPE_VAR_1(NAME, RETURN, ARG1) NAME,
 #define DEF_FUNCTION_TYPE_VAR_2(NAME, RETURN, ARG1, ARG2) NAME,
@@ -192,6 +195,7 @@ static GTY(()) tree signed_size_type_node;
 /* Flags needed to process builtins.def.  */
 int flag_isoc94;
 int flag_isoc99;
+int flag_isoc11;
 
 /* Attribute handlers.  */
 
@@ -323,8 +327,7 @@ static bool
 get_nonnull_operand (tree arg_num_expr, unsigned HOST_WIDE_INT *valp)
 {
   /* Verify the arg number is a constant.  */
-  if (TREE_CODE (arg_num_expr) != INTEGER_CST
-      || TREE_INT_CST_HIGH (arg_num_expr) != 0)
+  if (!tree_fits_uhwi_p (arg_num_expr))
     return false;
 
   *valp = TREE_INT_CST_LOW (arg_num_expr);
@@ -663,12 +666,15 @@ lto_define_builtins (tree va_list_ref_type_node ATTRIBUTE_UNUSED,
 #include "builtin-types.def"
 
 #undef DEF_PRIMITIVE_TYPE
+#undef DEF_FUNCTION_TYPE_0
 #undef DEF_FUNCTION_TYPE_1
 #undef DEF_FUNCTION_TYPE_2
 #undef DEF_FUNCTION_TYPE_3
 #undef DEF_FUNCTION_TYPE_4
 #undef DEF_FUNCTION_TYPE_5
 #undef DEF_FUNCTION_TYPE_6
+#undef DEF_FUNCTION_TYPE_7
+#undef DEF_FUNCTION_TYPE_8
 #undef DEF_FUNCTION_TYPE_VAR_0
 #undef DEF_FUNCTION_TYPE_VAR_1
 #undef DEF_FUNCTION_TYPE_VAR_2
@@ -747,6 +753,10 @@ lto_handle_option (size_t scode, const char *arg,
 
     case OPT_Wabi:
       warn_psabi = value;
+      break;
+
+    case OPT_fwpa:
+      flag_wpa = value ? "" : NULL;
       break;
 
     default:
@@ -1075,11 +1085,14 @@ lto_getdecls (void)
 static void
 lto_write_globals (void)
 {
-  tree *vec = lto_global_var_decls->address ();
-  int len = lto_global_var_decls->length ();
-  wrapup_global_declarations (vec, len);
-  emit_debug_global_declarations (vec, len);
-  vec_free (lto_global_var_decls);
+  if (flag_wpa)
+    return;
+
+  /* Output debug info for global variables.  */  
+  varpool_node *vnode;
+  FOR_EACH_DEFINED_VARIABLE (vnode)
+    if (!decl_function_context (vnode->decl))
+      debug_hooks->global_decl (vnode->decl);
 }
 
 static tree
@@ -1148,10 +1161,10 @@ static bool
 lto_init (void)
 {
   /* We need to generate LTO if running in WPA mode.  */
-  flag_generate_lto = flag_wpa;
+  flag_generate_lto = (flag_wpa != NULL);
 
   /* Create the basic integer types.  */
-  build_common_tree_nodes (flag_signed_char, /*short_double=*/false);
+  build_common_tree_nodes (flag_signed_char, flag_short_double);
 
   /* The global tree for the main identifier is filled in by
      language-specific front-end initialization that is not run in the
@@ -1215,10 +1228,14 @@ lto_init (void)
   NAME_TYPE (long_double_type_node, "long double");
   NAME_TYPE (void_type_node, "void");
   NAME_TYPE (boolean_type_node, "bool");
+  NAME_TYPE (complex_float_type_node, "complex float");
+  NAME_TYPE (complex_double_type_node, "complex double");
+  NAME_TYPE (complex_long_double_type_node, "complex long double");
+  if (int128_integer_type_node)
+    NAME_TYPE (int128_integer_type_node, "__int128");
 #undef NAME_TYPE
 
   /* Initialize LTO-specific data structures.  */
-  vec_alloc (lto_global_var_decls, 256);
   in_lto_p = true;
 
   return true;

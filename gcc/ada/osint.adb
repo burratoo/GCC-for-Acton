@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -2190,6 +2190,19 @@ package body Osint is
       return GNAT_Time;
    end OS_Time_To_GNAT_Time;
 
+   -----------------
+   -- Prep_Suffix --
+   -----------------
+
+   function Prep_Suffix return String is
+   begin
+      if Hostparm.OpenVMS then
+         return "_prep";
+      else
+         return ".prep";
+      end if;
+   end Prep_Suffix;
+
    ------------------
    -- Program_Name --
    ------------------
@@ -2975,7 +2988,7 @@ package body Osint is
 
    exception
       when others =>
-         Fail ("erroneous directory spec: " & Host_Dir);
+         Fail ("invalid directory spec: " & Host_Dir);
          return null;
    end To_Canonical_Dir_Spec;
 
@@ -3068,7 +3081,7 @@ package body Osint is
 
    exception
       when others =>
-         Fail ("erroneous file spec: " & Host_File);
+         Fail ("invalid file spec: " & Host_File);
          return null;
    end To_Canonical_File_Spec;
 
@@ -3101,7 +3114,7 @@ package body Osint is
 
    exception
       when others =>
-         Fail ("erroneous path spec: " & Host_Path);
+         Fail ("invalid path spec: " & Host_Path);
          return null;
    end To_Canonical_Path_Spec;
 

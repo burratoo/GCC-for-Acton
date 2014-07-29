@@ -171,7 +171,7 @@ cpp_define_builtins (cpp_reader *pfile)
   cpp_define (pfile, "_LANGUAGE_FORTRAN=1");
 
   if (gfc_option.gfc_flag_openmp)
-    cpp_define (pfile, "_OPENMP=201107");
+    cpp_define (pfile, "_OPENMP=201307");
 
   /* The defines below are necessary for the TARGET_* macros.
 
@@ -576,6 +576,7 @@ gfc_cpp_init (void)
   if (gfc_option.flag_preprocessed)
     return;
 
+  cpp_change_file (cpp_in, LC_RENAME, _("<built-in>"));
   if (!gfc_cpp_option.no_predefined)
     {
       /* Make sure all of the builtins about to be declared have

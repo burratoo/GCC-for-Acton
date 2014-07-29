@@ -435,7 +435,7 @@ AS_HELP_STRING([--disable-libstdcxx],
 ENABLE_LIBSTDCXX=$enableval,
 ENABLE_LIBSTDCXX=default)
 [if test "${ENABLE_LIBSTDCXX}" = "no" ; then
-  noconfigdirs="$noconfigdirs libstdc++-v3"
+  noconfigdirs="$noconfigdirs target-libstdc++-v3"
 fi]
 
 # Save it here so that, even in case of --enable-libgcj, if the Java
@@ -1145,7 +1145,7 @@ case "${target}" in
   tic6x-*-*)
     noconfigdirs="$noconfigdirs sim"
     ;;
-  tilepro-*-* | tilegx-*-*)
+  tilepro*-*-* | tilegx*-*-*)
     noconfigdirs="$noconfigdirs sim"
     ;;
   v810-*-*)
@@ -1176,6 +1176,9 @@ case "${host}" in
     ;;
   *-mingw*)
     host_makefile_frag="config/mh-mingw"
+    ;;
+  alpha*-*-linux*)
+    host_makefile_frag="config/mh-alpha-linux"
     ;;
   hppa*-hp-hpux10*)
     host_makefile_frag="config/mh-pa-hpux10"
@@ -1650,13 +1653,7 @@ if test "x$with_isl" != "xno" &&
   dnl with user input.
   ISL_INIT_FLAGS
   dnl The versions of ISL that work for Graphite
-  ISL_CHECK_VERSION(0,10)
-  if test "${gcc_cv_isl}" = no ; then
-    ISL_CHECK_VERSION(0,11)
-    if test "${gcc_cv_isl}" = no ; then
-      ISL_CHECK_VERSION(0,12)
-    fi
-  fi
+  ISL_CHECK_VERSION(0,12)
   dnl Only execute fail-action, if ISL has been requested.
   ISL_IF_FAILED([
     AC_MSG_ERROR([Unable to find a usable ISL.  See config.log for details.])])
@@ -1667,10 +1664,7 @@ if test "x$with_isl" != "xno" &&
     dnl with user input.
     CLOOG_INIT_FLAGS
     dnl The versions of CLooG that work for Graphite.
-    CLOOG_CHECK_VERSION(0,17,0)
-    if test "${gcc_cv_cloog}" = no ; then
-      CLOOG_CHECK_VERSION(0,18,0)
-    fi
+    CLOOG_CHECK_VERSION(0,18,1)
 
     dnl Only execute fail-action, if CLooG has been requested.
     CLOOG_IF_FAILED([
@@ -1730,6 +1724,19 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
     *) ;;
   esac
 ])
+
+AC_ARG_ENABLE(linker-plugin-configure-flags,
+  [AS_HELP_STRING([[--enable-linker-plugin-configure-flags=FLAGS]],
+    [additional flags for configuring linker plugins @<:@none@:>@])],
+  extra_linker_plugin_configure_flags=$enableval,
+  extra_linker_plugin_configure_flags=)
+AC_SUBST(extra_linker_plugin_configure_flags)
+AC_ARG_ENABLE(linker-plugin-flags,
+  [AS_HELP_STRING([[--enable-linker-plugin-flags=FLAGS]],
+    [additional flags for configuring and building linker plugins @<:@none@:>@])],
+  extra_linker_plugin_flags=$enableval,
+  extra_linker_plugin_flags=)
+AC_SUBST(extra_linker_plugin_flags)
 
 
 # By default, C and C++ are the only stage 1 languages.
@@ -2057,9 +2064,17 @@ case ,${enable_languages},:${enable_objc_gc} in
     ;;
 esac
 
-# Disable libitm, libsanitizer, libvtv if we're not building C++
+# Disable libcilkrts, libitm, libsanitizer, libvtv if we're not building C++
 case ,${enable_languages}, in
-  *,c++,*) ;;
+  *,c++,*)
+    # Disable libcilkrts, libitm, libsanitizer if we're not building libstdc++
+    case "${noconfigdirs}" in
+      *target-libstdc++-v3*)
+        noconfigdirs="$noconfigdirs target-libcilkrts target-libitm target-libsanitizer"
+        ;;
+      *) ;;
+    esac
+    ;;
   *)
     noconfigdirs="$noconfigdirs target-libcilkrts target-libitm target-libsanitizer target-libvtv"
     ;;
@@ -2132,6 +2147,21 @@ for i in ${target_configdirs_all} ; do
     target_configdirs="${target_configdirs} $i"
   fi
 done
+
+# libiberty-linker-plugin is special: it doesn't have its own source directory,
+# so we have to add it after the preceding checks.
+if test x"$extra_linker_plugin_flags$extra_linker_plugin_configure_flags" != x
+then
+  case " $configdirs " in
+    *" libiberty "*)
+      # If we can build libiberty, we can also build libiberty-linker-plugin.
+      configdirs="$configdirs libiberty-linker-plugin"
+      extra_linker_plugin_configure_flags="$extra_linker_plugin_configure_flags \
+        --with-libiberty=../libiberty-linker-plugin";;
+    *)
+      AC_MSG_ERROR([libiberty missing]);;
+  esac
+fi
 
 # Produce a warning message for the subdirs we can't configure.
 # This isn't especially interesting in the Cygnus tree, but in the individual
@@ -2370,6 +2400,9 @@ case "${target}" in
   mips*-*-*linux* | mips*-*-gnu*)
     target_makefile_frag="config/mt-mips-gnu"
     ;;
+  nios2-*-elf*)
+    target_makefile_frag="config/mt-nios2-elf"
+    ;;
   *-*-linux* | *-*-gnu* | *-*-k*bsd*-gnu | *-*-kopensolaris*-gnu)
     target_makefile_frag="config/mt-gnu"
     ;;
@@ -2472,23 +2505,87 @@ else
   GCC_SHLIB_SUBDIR=
 fi
 
+# Adjust the toplevel makefile according to whether bootstrap was selected.
+case $enable_bootstrap in
+  yes)
+    bootstrap_suffix=bootstrap
+    BUILD_CONFIG=bootstrap-debug
+    ;;
+  no)
+    bootstrap_suffix=no-bootstrap
+    BUILD_CONFIG=
+    ;;
+esac
+
+AC_MSG_CHECKING(for default BUILD_CONFIG)
+
+AC_ARG_WITH([build-config],
+  [AS_HELP_STRING([--with-build-config='NAME NAME2...'],
+		  [use config/NAME.mk build configuration])],
+  [case $with_build_config in
+   yes) with_build_config= ;;
+   no) with_build_config= BUILD_CONFIG= ;;
+   esac])
+
+if test "x${with_build_config}" != x; then
+  BUILD_CONFIG=$with_build_config
+else
+  case $BUILD_CONFIG in
+  bootstrap-debug)
+    if echo "int f (void) { return 0; }" > conftest.c &&
+       ${CC} -c conftest.c &&
+       mv conftest.o conftest.o.g0 &&
+       ${CC} -c -g conftest.c &&
+       mv conftest.o conftest.o.g &&
+       ${srcdir}/contrib/compare-debug conftest.o.g0 conftest.o.g > /dev/null 2>&1; then
+      :
+    else
+      BUILD_CONFIG=
+    fi
+    rm -f conftest.c conftest.o conftest.o.g0 conftest.o.g
+    ;;
+  esac
+fi
+AC_MSG_RESULT($BUILD_CONFIG)
+AC_SUBST(BUILD_CONFIG)
+
+# Use same top-level configure hooks in libgcc/libstdc++/libvtv.
+AC_MSG_CHECKING([for --enable-vtable-verify])
+AC_ARG_ENABLE(vtable-verify,
+[  --enable-vtable-verify    Enable vtable verification feature ],
+[case "$enableval" in
+ yes) enable_vtable_verify=yes ;;
+ no)  enable_vtable_verify=no ;;
+ *)   enable_vtable_verify=no;;
+ esac],
+[enable_vtable_verify=no])
+AC_MSG_RESULT($enable_vtable_verify)
+
 # Record target_configdirs and the configure arguments for target and
 # build configuration in Makefile.
 target_configdirs=`echo "${target_configdirs}" | sed -e 's/target-//g'`
 build_configdirs=`echo "${build_configdirs}" | sed -e 's/build-//g'`
+bootstrap_fixincludes=no
 
 # If we are building libgomp, bootstrap it.
 if echo " ${target_configdirs} " | grep " libgomp " > /dev/null 2>&1 ; then
   bootstrap_target_libs=${bootstrap_target_libs}target-libgomp,
 fi
 
-# If we are building libsanitizer, bootstrap it.
-if echo " ${target_configdirs} " | grep " libsanitizer " > /dev/null 2>&1 ; then
-  bootstrap_target_libs=${bootstrap_target_libs}target-libsanitizer,
+# If we are building libsanitizer and $BUILD_CONFIG contains bootstrap-asan
+# or bootstrap-ubsan, bootstrap it.
+if echo " ${target_configdirs} " | grep " libsanitizer " > /dev/null 2>&1; then
+  case "$BUILD_CONFIG" in
+    *bootstrap-asan* | *bootstrap-ubsan* )
+      bootstrap_target_libs=${bootstrap_target_libs}target-libsanitizer,
+      bootstrap_fixincludes=yes
+      ;;
+  esac
 fi
 
-# If we are building libvtv, bootstrap it.
-if echo " ${target_configdirs} " | grep " libvtv " > /dev/null 2>&1 ; then
+# If we are building libvtv and --enable-vtable-verify, bootstrap it.
+if echo " ${target_configdirs} " | grep " libvtv " > /dev/null 2>&1 &&
+   test "$enable_vtable_verify" != no; then
   bootstrap_target_libs=${bootstrap_target_libs}target-libvtv,
 fi
 
@@ -2541,50 +2638,6 @@ case "$enable_bootstrap:$ENABLE_GOLD: $configdirs :,$stage1_languages," in
     ;;
 esac
 
-# Adjust the toplevel makefile according to whether bootstrap was selected.
-case $enable_bootstrap in
-  yes)
-    bootstrap_suffix=bootstrap
-    BUILD_CONFIG=bootstrap-debug
-    ;;
-  no)
-    bootstrap_suffix=no-bootstrap
-    BUILD_CONFIG=
-    ;;
-esac
-
-AC_MSG_CHECKING(for default BUILD_CONFIG)
-
-AC_ARG_WITH([build-config],
-  [AS_HELP_STRING([--with-build-config='NAME NAME2...'],
-		  [use config/NAME.mk build configuration])],
-  [case $with_build_config in
-   yes) with_build_config= ;;
-   no) with_build_config= BUILD_CONFIG= ;;
-   esac])
-
-if test "x${with_build_config}" != x; then
-  BUILD_CONFIG=$with_build_config
-else
-  case $BUILD_CONFIG in
-  bootstrap-debug)
-    if echo "int f (void) { return 0; }" > conftest.c &&
-       ${CC} -c conftest.c &&
-       mv conftest.o conftest.o.g0 &&
-       ${CC} -c -g conftest.c &&
-       mv conftest.o conftest.o.g &&
-       ${srcdir}/contrib/compare-debug conftest.o.g0 conftest.o.g > /dev/null 2>&1; then
-      :
-    else
-      BUILD_CONFIG=
-    fi
-    rm -f conftest.c conftest.o conftest.o.g0 conftest.o.g
-    ;;
-  esac
-fi
-AC_MSG_RESULT($BUILD_CONFIG)
-AC_SUBST(BUILD_CONFIG)
-
 extrasub_build=
 for module in ${build_configdirs} ; do
   if test -z "${no_recursion}" \
@@ -2608,11 +2661,15 @@ for module in ${configdirs} ; do
       fi
     done
   fi
+  case ${module},${bootstrap_fixincludes} in
+    fixincludes,no) host_bootstrap_suffix=no-bootstrap ;;
+    *) host_bootstrap_suffix=$bootstrap_suffix ;;
+  esac
   extrasub_host="$extrasub_host
 /^@if $module\$/d
 /^@endif $module\$/d
-/^@if $module-$bootstrap_suffix\$/d
-/^@endif $module-$bootstrap_suffix\$/d"
+/^@if $module-$host_bootstrap_suffix\$/d
+/^@endif $module-$host_bootstrap_suffix\$/d"
 done
 extrasub_target=
 for module in ${target_configdirs} ; do
