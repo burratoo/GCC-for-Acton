@@ -414,6 +414,11 @@ gnat_init_gcc_fp (void)
     flag_trapping_math = 1;
   else if (!global_options_set.x_flag_trapping_math)
     flag_trapping_math = 0;
+
+  /* We don't care in Ada about errno, and it causes __builtin_sqrt to
+     to call the libm function rather than do it inline.  */
+  if (!global_options_set.x_flag_errno_math)
+    flag_errno_math = 0;
 }
 
 /* Print language-specific items in declaration NODE.  */
@@ -769,11 +774,6 @@ enumerate_modes (void (*f) (const char *, int, int, int, int, int, int, int))
 
 	  else
 	    gcc_unreachable();
-
-	  if (fmt == &vax_f_format
-	      || fmt == &vax_d_format
-	      || fmt == &vax_g_format)
-	    float_rep = VAX_Native;
 	}
 
       /* First register any C types for this mode that the front end

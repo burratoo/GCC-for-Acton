@@ -2511,8 +2511,7 @@ package body Exp_Ch9 is
    --  Start of processing for Build_Wrapper_Spec
 
    begin
-      --  There is no point in building wrappers for non-tagged concurrent
-      --  types.
+      --  No point in building wrappers for untagged concurrent types
 
       pragma Assert (Is_Tagged_Type (Obj_Typ));
 
@@ -4755,7 +4754,8 @@ package body Exp_Ch9 is
                   --  case of limited type. We cannot assign it unless the
                   --  Assignment_OK flag is set first. An out formal of an
                   --  access type must also be initialized from the actual,
-                  --  as stated in RM 6.4.1 (13).
+                  --  as stated in RM 6.4.1 (13), but no constraint is applied
+                  --  before the call.
 
                   if Ekind (Formal) /= E_Out_Parameter
                     or else Is_Access_Type (Etype (Formal))
@@ -4767,6 +4767,13 @@ package body Exp_Ch9 is
                        Make_Assignment_Statement (Loc,
                          Name => N_Var,
                          Expression => Relocate_Node (Actual)));
+
+                     --  If actual is an out parameter of a null-excluding
+                     --  access type, there is access check on entry, so set
+                     --  Suppress_Assignment_Checks on the generated statement
+                     --  that assigns the actual to the parameter block
+
+                     Set_Suppress_Assignment_Checks (Last (Stats));
                   end if;
 
                   Append (N_Node, Decls);
@@ -8870,6 +8877,12 @@ package body Exp_Ch9 is
       --  to the internal body, for possible inlining later on. The source
       --  operation is invisible to the back-end and is never actually called.
 
+      function Discriminated_Size (Comp : Entity_Id) return Boolean;
+      --  If a component size is not static then a warning will be emitted
+      --  in Ravenscar or other restricted contexts. When a component is non-
+      --  static because of a discriminant constraint we can specialize the
+      --  warning by mentioning discriminants explicitly.
+
       procedure Expand_Entry_Declaration (Comp : Entity_Id);
       --  Create the subprograms for the barrier and for the body, and append
       --  then to Entry_Bodies_Array.
@@ -8897,9 +8910,66 @@ package body Exp_Ch9 is
          end if;
       end Check_Inlining;
 
-      ---------------------------------
-      -- Check_Static_Component_Size --
-      ---------------------------------
+      ------------------------
+      -- Discriminated_Size --
+      ------------------------
+
+      function Discriminated_Size (Comp : Entity_Id) return Boolean is
+         Typ   : constant Entity_Id := Etype (Comp);
+         Index : Node_Id;
+
+         function Non_Static_Bound (Bound : Node_Id) return Boolean;
+         --  Check whether the bound of an index is non-static and does denote
+         --  a discriminant, in which case any protected object of the type
+         --  will have a non-static size.
+
+         ----------------------
+         -- Non_Static_Bound --
+         ----------------------
+
+         function Non_Static_Bound (Bound : Node_Id) return Boolean is
+         begin
+            if Is_Static_Expression (Bound) then
+               return False;
+
+            elsif Is_Entity_Name (Bound)
+              and then Present (Discriminal_Link (Entity (Bound)))
+            then
+               return False;
+
+            else
+               return True;
+            end if;
+         end Non_Static_Bound;
+
+      --  Start of processing for Discriminated_Size
+
+      begin
+         if not Is_Array_Type (Typ) then
+            return False;
+         end if;
+
+         if Ekind (Typ) = E_Array_Subtype then
+            Index := First_Index (Typ);
+            while Present (Index) loop
+               if Non_Static_Bound (Low_Bound (Index))
+                 or else Non_Static_Bound (High_Bound (Index))
+               then
+                  return False;
+               end if;
+
+               Next_Index (Index);
+            end loop;
+
+            return True;
+         end if;
+
+         return False;
+      end Discriminated_Size;
+
+      ---------------------------
+      -- Static_Component_Size --
+      ---------------------------
 
       function Static_Component_Size (Comp : Entity_Id) return Boolean is
          Typ : constant Entity_Id := Etype (Comp);
@@ -9093,11 +9163,26 @@ package body Exp_Ch9 is
                      Check_Restriction (No_Implicit_Heap_Allocations, Priv);
 
                   elsif Restriction_Active (No_Implicit_Heap_Allocations) then
-                     Error_Msg_N ("component has non-static size??", Priv);
-                     Error_Msg_NE
-                       ("\creation of protected object of type& will violate"
-                        & " restriction No_Implicit_Heap_Allocations??",
-                        Priv, Prot_Typ);
+                     if not Discriminated_Size (Defining_Identifier (Priv))
+                     then
+
+                        --  Any object of the type will be  non-static.
+
+                        Error_Msg_N ("component has non-static size??", Priv);
+                        Error_Msg_NE
+                          ("\creation of protected object of type& will"
+                           & " violate restriction "
+                           & "No_Implicit_Heap_Allocations??", Priv, Prot_Typ);
+                     else
+
+                        --  Object will be non-static if discriminants are.
+
+                        Error_Msg_NE
+                          ("creation of protected object of type& with "
+                           &  "non-static discriminants  will violate"
+                           & " restriction No_Implicit_Heap_Allocations??",
+                           Priv, Prot_Typ);
+                     end if;
                   end if;
                end if;
 
@@ -11675,7 +11760,7 @@ package body Exp_Ch9 is
       if Present (Taskdef)
         and then Has_Storage_Size_Pragma (Taskdef)
         and then
-          Is_Static_Expression
+          Is_OK_Static_Expression
             (Expression
                (First (Pragma_Argument_Associations
                          (Get_Rep_Pragma (TaskId, Name_Storage_Size)))))

@@ -1245,17 +1245,17 @@ package body Sem_Ch8 is
 
       elsif Nkind (Original_Node (Nam)) = N_Function_Call
 
-            --  When expansion is disabled, attribute reference is not
-            --  rewritten as function call. Otherwise it may be rewritten
-            --  as a conversion, so check original node.
+        --  When expansion is disabled, attribute reference is not rewritten
+        --  as function call. Otherwise it may be rewritten as a conversion,
+        --  so check original node.
 
         or else (Nkind (Original_Node (Nam)) = N_Attribute_Reference
                   and then Is_Function_Attribute_Name
                              (Attribute_Name (Original_Node (Nam))))
 
-            --  Weird but legal, equivalent to renaming a function call.
-            --  Illegal if the literal is the result of constant-folding an
-            --  attribute reference that is not a function.
+        --  Weird but legal, equivalent to renaming a function call. Illegal
+        --  if the literal is the result of constant-folding an attribute
+        --  reference that is not a function.
 
         or else (Is_Entity_Name (Nam)
                   and then Ekind (Entity (Nam)) = E_Enumeration_Literal
@@ -1295,6 +1295,28 @@ package body Sem_Ch8 is
          Set_Never_Set_In_Source (Id, True);
          Set_Is_True_Constant    (Id, True);
       end if;
+
+      --  The entity of the renaming declaration needs to reflect whether the
+      --  renamed object is volatile. Is_Volatile is set if the renamed object
+      --  is volatile in the RM legality sense.
+
+      Set_Is_Volatile (Id, Is_Volatile_Object (Nam));
+
+      --  Treat as volatile if we just set the Volatile flag
+
+      if Is_Volatile (Id)
+
+        --  Or if we are renaming an entity which was marked this way
+
+        --  Are there more cases, e.g. X(J) where X is Treat_As_Volatile ???
+
+        or else (Is_Entity_Name (Nam)
+                  and then Treat_As_Volatile (Entity (Nam)))
+      then
+         Set_Treat_As_Volatile (Id, True);
+      end if;
+
+      --  Now make the link to the renamed object
 
       Set_Renamed_Object (Id, Nam);
 
@@ -3366,12 +3388,11 @@ package body Sem_Ch8 is
 
       --  This procedure is called in the context of subprogram renaming, and
       --  thus the attribute must be one that is a subprogram. All of those
-      --  have at least one formal parameter, with the exceptions of AST_Entry
-      --  (which is a real oddity, it is odd that this can be renamed at all)
-      --  and the GNAT attribute 'Img, which GNAT treats as renameable.
+      --  have at least one formal parameter, with the exceptions of the GNAT
+      --  attribute 'Img, which GNAT treats as renameable.
 
       if not Is_Non_Empty_List (Parameter_Specifications (Spec)) then
-         if Aname /= Name_AST_Entry and then Aname /= Name_Img then
+         if Aname /= Name_Img then
             Error_Msg_N
               ("subprogram renaming an attribute must have formals", N);
             return;
@@ -3441,46 +3462,18 @@ package body Sem_Ch8 is
          end if;
       end if;
 
-      --  AST_Entry is an odd case. It doesn't really make much sense to allow
-      --  it to be renamed, but that's the DEC rule, so we have to do it right.
-      --  The point is that the AST_Entry call should be made now, and what the
-      --  function will return is the returned value.
+      --  Rewrite attribute node to have a list of expressions corresponding to
+      --  the subprogram formals. A renaming declaration is not a freeze point,
+      --  and the analysis of the attribute reference should not freeze the
+      --  type of the prefix. We use the original node in the renaming so that
+      --  its source location is preserved, and checks on stream attributes are
+      --  properly applied.
 
-      --  Note that there is no Expr_List in this case anyway
+      Attr_Node := Relocate_Node (Nam);
+      Set_Expressions (Attr_Node, Expr_List);
 
-      if Aname = Name_AST_Entry then
-         declare
-            Ent  : constant Entity_Id := Make_Temporary (Loc, 'R', Nam);
-            Decl : Node_Id;
-
-         begin
-            Decl :=
-              Make_Object_Declaration (Loc,
-                Defining_Identifier => Ent,
-                Object_Definition   =>
-                  New_Occurrence_Of (RTE (RE_AST_Handler), Loc),
-                Expression          => Nam,
-                Constant_Present    => True);
-
-            Set_Assignment_OK (Decl, True);
-            Insert_Action (N, Decl);
-            Attr_Node := Make_Identifier (Loc, Chars (Ent));
-         end;
-
-      --  For all other attributes, we rewrite the attribute node to have
-      --  a list of expressions corresponding to the subprogram formals.
-      --  A renaming declaration is not a freeze point, and the analysis of
-      --  the attribute reference should not freeze the type of the prefix.
-      --  We use the original node in the renaming so that its source location
-      --  is preserved, and checks on stream attributes are properly applied.
-
-      else
-         Attr_Node := Relocate_Node (Nam);
-         Set_Expressions (Attr_Node, Expr_List);
-
-         Set_Must_Not_Freeze (Attr_Node);
-         Set_Must_Not_Freeze (Prefix (Nam));
-      end if;
+      Set_Must_Not_Freeze (Attr_Node);
+      Set_Must_Not_Freeze (Prefix (Nam));
 
       --  Case of renaming a function
 
@@ -3525,7 +3518,7 @@ package body Sem_Ch8 is
       --  In case of tagged types we add the body of the generated function to
       --  the freezing actions of the type (because in the general case such
       --  type is still not frozen). We exclude from this processing generic
-      --  formal subprograms found in instantiations and AST_Entry renamings.
+      --  formal subprograms found in instantiations.
 
       --  We must exclude VM targets and restricted run-time libraries because
       --  entity AST_Handler is defined in package System.Aux_Dec which is not
@@ -7533,6 +7526,8 @@ package body Sem_Ch8 is
       Default_Pool             := SST.Save_Default_Storage_Pool;
       SPARK_Mode               := SST.Save_SPARK_Mode;
       SPARK_Mode_Pragma        := SST.Save_SPARK_Mode_Pragma;
+      Default_SSO              := SST.Save_Default_SSO;
+      Uneval_Old               := SST.Save_Uneval_Old;
 
       if Debug_Flag_W then
          Write_Str ("<-- exiting scope: ");
@@ -7605,6 +7600,8 @@ package body Sem_Ch8 is
          SST.Save_Default_Storage_Pool     := Default_Pool;
          SST.Save_SPARK_Mode               := SPARK_Mode;
          SST.Save_SPARK_Mode_Pragma        := SPARK_Mode_Pragma;
+         SST.Save_Default_SSO              := Default_SSO;
+         SST.Save_Uneval_Old               := Uneval_Old;
 
          if Scope_Stack.Last > Scope_Stack.First then
             SST.Component_Alignment_Default := Scope_Stack.Table
@@ -7620,6 +7617,7 @@ package body Sem_Ch8 is
          SST.First_Use_Clause               := Empty;
          SST.Is_Active_Stack_Base           := False;
          SST.Previous_Visibility            := False;
+         SST.Locked_Shared_Objects          := No_Elist;
       end;
 
       if Debug_Flag_W then

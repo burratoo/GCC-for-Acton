@@ -1196,8 +1196,15 @@ package body Sem_Ch10 is
 
       Set_Analyzed (N);
 
+      --  Call Check_Package_Body so that a body containing subprograms with
+      --  Inline_Always can be made available for front end inlining.
+
       if Nkind (Unit_Node) = N_Package_Declaration
         and then Get_Cunit_Unit_Number (N) /= Main_Unit
+
+        --  We don't need to do this if the Expander is not active, since there
+        --  is no code to inline.
+
         and then Expander_Active
       then
          declare
@@ -1209,7 +1216,8 @@ package body Sem_Ch10 is
             Save_Style_Check_Options (Options);
             Reset_Style_Check_Options;
             Opt.Warning_Mode := Suppress;
-            Check_Body_For_Inlining (N, Defining_Entity (Unit_Node));
+
+            Check_Package_Body_For_Inlining (N, Defining_Entity (Unit_Node));
 
             Reset_Style_Check_Options;
             Set_Style_Check_Options (Options);
@@ -1325,18 +1333,47 @@ package body Sem_Ch10 is
            and then not Limited_Present (Item)
          then
             --  Skip analyzing with clause if no unit, nothing to do (this
-            --  happens for a with that references a non-existent unit). Skip
-            --  as well if this is a with_clause for the main unit, which
-            --  happens if a subunit has a useless with_clause on its parent.
+            --  happens for a with that references a non-existent unit).
 
             if Present (Library_Unit (Item)) then
+
+               --  Skip analyzing with clause if this is a with_clause for
+               --  the main unit, which happens if a subunit has a useless
+               --  with_clause on its parent.
+
                if Library_Unit (Item) /= Cunit (Current_Sem_Unit) then
                   Analyze (Item);
+
+                  --  This is the point at which we check for the case of an
+                  --  improper WITH from a unit with No_Elaboration_Code_All.
+
+                  if No_Elab_Code (Current_Sem_Unit) >=
+                       No_Elab_Code_All_Warn
+                  then
+                     if No_Elab_Code
+                          (Get_Source_Unit (Library_Unit (Item))) /=
+                             No_Elab_Code_All
+                     then
+                        Error_Msg_Warn :=
+                          No_Elab_Code (Current_Sem_Unit) =
+                            No_Elab_Code_All_Warn;
+                        Error_Msg_N
+                          ("<unit with No_Elaboration_Code_All has bad WITH",
+                           Item);
+                        Error_Msg_NE
+                          ("\<unit& does not have No_Elaboration_Code_All",
+                           Item, Entity (Name (Item)));
+                     end if;
+                  end if;
+
+               --  Here for the case of a useless with for the main unit
 
                else
                   Set_Entity (Name (Item), Cunit_Entity (Current_Sem_Unit));
                end if;
             end if;
+
+            --  Do version update (skipped for implicit with)
 
             if not Implicit_With (Item) then
                Version_Update (N, Library_Unit (Item));
@@ -1616,6 +1653,7 @@ package body Sem_Ch10 is
                Set_Corresponding_Stub (Unit (Comp_Unit), N);
                Analyze_Subunit (Comp_Unit);
                Set_Library_Unit (N, Comp_Unit);
+               Set_Corresponding_Body (N, Defining_Entity (Unit (Comp_Unit)));
             end if;
 
          elsif Unum = No_Unit
@@ -1705,15 +1743,22 @@ package body Sem_Ch10 is
       --  should be ignored, except that if we are building trees for ASIS
       --  usage we want to annotate the stub properly. If the main unit is
       --  itself a subunit, another subunit is irrelevant unless it is a
-      --  subunit of the current one.
+      --  subunit of the current one, that is to say appears in the current
+      --  source tree.
 
       elsif Nkind (Unit (Cunit (Main_Unit))) = N_Subunit
         and then Subunit_Name /= Unit_Name (Main_Unit)
       then
-         if ASIS_Mode
-           and then Scope (Defining_Entity (N)) = Cunit_Entity (Main_Unit)
-         then
-            Optional_Subunit;
+         if ASIS_Mode then
+            declare
+               PB : constant Node_Id := Proper_Body (Unit (Cunit (Main_Unit)));
+            begin
+               if Nkind_In (PB, N_Package_Body, N_Subprogram_Body)
+                 and then List_Containing (N) = Declarations (PB)
+               then
+                  Optional_Subunit;
+               end if;
+            end;
          end if;
 
          --  But before we return, set the flag for unloaded subunits. This
@@ -5678,13 +5723,11 @@ package body Sem_Ch10 is
             -------------------
 
             procedure Process_State (State : Node_Id) is
-               Loc  : constant Source_Ptr := Sloc (State);
-               Elmt : Node_Id;
-               Id   : Entity_Id;
-               Name : Name_Id;
-
+               Loc   : constant Source_Ptr := Sloc (State);
+               Decl  : Node_Id;
                Dummy : Entity_Id;
-               pragma Unreferenced (Dummy);
+               Elmt  : Node_Id;
+               Id    : Entity_Id;
 
             begin
                --  Multiple abstract states appear as an aggregate
@@ -5693,9 +5736,9 @@ package body Sem_Ch10 is
                   Elmt := First (Expressions (State));
                   while Present (Elmt) loop
                      Process_State (Elmt);
-
                      Next (Elmt);
                   end loop;
+
                   return;
 
                --  A null state has no abstract view
@@ -5707,12 +5750,12 @@ package body Sem_Ch10 is
                --  extension aggregate.
 
                elsif Nkind (State) = N_Extension_Aggregate then
-                  Name := Chars (Ancestor_Part (State));
+                  Decl := Ancestor_Part (State);
 
                --  Simple state declaration
 
                elsif Nkind (State) = N_Identifier then
-                  Name := Chars (State);
+                  Decl := State;
 
                --  Possibly an illegal state declaration
 
@@ -5720,14 +5763,26 @@ package body Sem_Ch10 is
                   return;
                end if;
 
-               --  Construct a dummy state for the purposes of establishing a
-               --  non-limited => limited view relation. Note that the dummy
-               --  state is not added to list Abstract_States to avoid multiple
-               --  definitions.
+               --  Abstract states are elaborated when the related pragma is
+               --  elaborated. Since the withed package is not analyzed yet,
+               --  the entities of the abstract states are not available. To
+               --  overcome this complication, create the entities now and
+               --  store them in their respective declarations. The entities
+               --  are later used by routine Create_Abstract_State to declare
+               --  and enter the states into visibility.
 
-               Id := Make_Defining_Identifier (Loc, New_External_Name (Name));
-               Set_Parent     (Id, State);
-               Decorate_State (Id, Scop);
+               if No (Entity (Decl)) then
+                  Id := Make_Defining_Identifier (Loc, Chars (Decl));
+
+                  Set_Entity     (Decl, Id);
+                  Set_Parent     (Id, State);
+                  Decorate_State (Id, Scop);
+
+               --  Otherwise the package was previously withed
+
+               else
+                  Id := Entity (Decl);
+               end if;
 
                Build_Shadow_Entity (Id, Scop, Dummy);
             end Process_State;

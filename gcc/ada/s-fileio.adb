@@ -29,19 +29,17 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Finalization;  use Ada.Finalization;
-with Ada.IO_Exceptions; use Ada.IO_Exceptions;
+with Ada.Finalization;           use Ada.Finalization;
+with Ada.IO_Exceptions;          use Ada.IO_Exceptions;
+with Ada.Unchecked_Deallocation;
 
 with Interfaces.C;
-with Interfaces.C_Streams; use Interfaces.C_Streams;
+with Interfaces.C_Streams;       use Interfaces.C_Streams;
 
+with System.Case_Util;           use System.Case_Util;
 with System.CRTL;
-
-with System.Case_Util;    use System.Case_Util;
 with System.OS_Lib;
 with System.Soft_Links;
-
-with Ada.Unchecked_Deallocation;
 
 package body System.File_IO is
 
@@ -49,8 +47,8 @@ package body System.File_IO is
 
    package SSL renames System.Soft_Links;
 
-   use type Interfaces.C.int;
    use type CRTL.size_t;
+   use type Interfaces.C.int;
 
    subtype String_Access is System.OS_Lib.String_Access;
    procedure Free (X : in out String_Access) renames System.OS_Lib.Free;
@@ -122,12 +120,12 @@ package body System.File_IO is
       Creat   : Boolean;
       Amethod : Character;
       Fopstr  : out Fopen_String);
-   --  Determines proper open mode for a file to be opened in the given
-   --  Ada mode. Text is true for a text file and false otherwise, and
-   --  Creat is true for a create call, and False for an open call. The
-   --  value stored in Fopstr is a nul-terminated string suitable for a
-   --  call to fopen or freopen. Amethod is the character designating
-   --  the access method from the Access_Method field of the FCB.
+   --  Determines proper open mode for a file to be opened in the given Ada
+   --  mode. Text is true for a text file and false otherwise, and Creat is
+   --  true for a create call, and False for an open call. The value stored
+   --  in Fopstr is a nul-terminated string suitable for a call to fopen or
+   --  freopen. Amethod is the character designating the access method from
+   --  the Access_Method field of the FCB.
 
    function Errno_Message
      (Name  : String;
@@ -389,10 +387,6 @@ package body System.File_IO is
    -- Finalize --
    --------------
 
-   --  Note: we do not need to worry about locking against multiple task access
-   --  in this routine, since it is called only from the environment task just
-   --  before terminating execution.
-
    procedure Finalize (V : in out File_IO_Clean_Up_Type) is
       pragma Warnings (Off, V);
 
@@ -400,7 +394,6 @@ package body System.File_IO is
       Fptr2   : AFCB_Ptr;
 
       Discard : int;
-      pragma Unreferenced (Discard);
 
    begin
       --  Take a lock to protect global Open_Files data structure
@@ -940,6 +933,11 @@ package body System.File_IO is
       pragma Import (C, Get_Case_Sensitive,
                      "__gnat_get_file_names_case_sensitive");
 
+      procedure Record_AFCB;
+      --  Create and record new AFCB into the runtime, note that the
+      --  implementation uses the variables below which corresponds to the
+      --  status of the opened file.
+
       File_Names_Case_Sensitive : constant Boolean := Get_Case_Sensitive /= 0;
       --  Set to indicate whether the operating system convention is for file
       --  names to be case sensitive (e.g., in Unix, set True), or not case
@@ -981,6 +979,36 @@ package body System.File_IO is
 
       Encoding : CRTL.Filename_Encoding;
       --  Filename encoding specified into the form parameter
+
+      -----------------
+      -- Record_AFCB --
+      -----------------
+
+      procedure Record_AFCB is
+      begin
+         File_Ptr := AFCB_Allocate (Dummy_FCB);
+
+         --  Note that we cannot use an aggregate here as File_Ptr is a
+         --  class-wide access to a limited type (Root_Stream_Type).
+
+         File_Ptr.Is_Regular_File   := is_regular_file (fileno (Stream)) /= 0;
+         File_Ptr.Is_System_File    := False;
+         File_Ptr.Text_Encoding     := Text_Encoding;
+         File_Ptr.Shared_Status     := Shared;
+         File_Ptr.Access_Method     := Amethod;
+         File_Ptr.Stream            := Stream;
+         File_Ptr.Form              := new String'(Formstr);
+         File_Ptr.Name              := new String'(Fullname
+                                                     (1 .. Full_Name_Len));
+         File_Ptr.Mode              := Mode;
+         File_Ptr.Is_Temporary_File := Tempfile;
+         File_Ptr.Encoding          := Encoding;
+
+         Chain_File (File_Ptr);
+         Append_Set (File_Ptr);
+      end Record_AFCB;
+
+   --  Start of processing for Open
 
    begin
       if File_Ptr /= null then
@@ -1198,6 +1226,9 @@ package body System.File_IO is
                        and then P.Shared_Status = Yes
                      then
                         Stream := P.Stream;
+
+                        Record_AFCB;
+
                         exit;
 
                      --  Otherwise one of the files has Shared=Yes and one has
@@ -1224,9 +1255,13 @@ package body System.File_IO is
             end;
          end if;
 
-         --  Open specified file if we did not find an existing stream
+         --  Open specified file if we did not find an existing stream,
+         --  otherwise we just return as there is nothing more to be done.
 
-         if Stream = NULL_Stream then
+         if Stream /= NULL_Stream then
+            return;
+
+         else
             Fopen_Mode
               (Mode, Text_Encoding in Text_Content_Encoding,
                Creat, Amethod, Fopstr);
@@ -1299,22 +1334,7 @@ package body System.File_IO is
       --  committed to completing the opening of the file. Allocate block on
       --  heap and fill in its fields.
 
-      File_Ptr := AFCB_Allocate (Dummy_FCB);
-
-      File_Ptr.Is_Regular_File   := (is_regular_file (fileno (Stream)) /= 0);
-      File_Ptr.Is_System_File    := False;
-      File_Ptr.Text_Encoding     := Text_Encoding;
-      File_Ptr.Shared_Status     := Shared;
-      File_Ptr.Access_Method     := Amethod;
-      File_Ptr.Stream            := Stream;
-      File_Ptr.Form              := new String'(Formstr);
-      File_Ptr.Name              := new String'(Fullname (1 .. Full_Name_Len));
-      File_Ptr.Mode              := Mode;
-      File_Ptr.Is_Temporary_File := Tempfile;
-      File_Ptr.Encoding          := Encoding;
-
-      Chain_File (File_Ptr);
-      Append_Set (File_Ptr);
+      Record_AFCB;
    end Open;
 
    ------------------------
