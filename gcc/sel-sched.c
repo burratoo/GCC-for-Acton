@@ -1014,22 +1014,15 @@ vinsn_writes_one_of_regs_p (vinsn_t vi, regset used_regs,
 static enum reg_class
 get_reg_class (rtx insn)
 {
-  int alt, i, n_ops;
+  int i, n_ops;
 
   extract_insn (insn);
   if (! constrain_operands (1))
     fatal_insn_not_found (insn);
-  preprocess_constraints ();
-  alt = which_alternative;
+  preprocess_constraints (insn);
   n_ops = recog_data.n_operands;
 
-  for (i = 0; i < n_ops; ++i)
-    {
-      int matches = recog_op_alt[i][alt].matches;
-      if (matches >= 0)
-	recog_op_alt[i][alt].cl = recog_op_alt[matches][alt].cl;
-    }
-
+  const operand_alternative *op_alt = which_op_alt ();
   if (asm_noperands (PATTERN (insn)) > 0)
     {
       for (i = 0; i < n_ops; i++)
@@ -1037,7 +1030,7 @@ get_reg_class (rtx insn)
 	  {
 	    rtx *loc = recog_data.operand_loc[i];
 	    rtx op = *loc;
-	    enum reg_class cl = recog_op_alt[i][alt].cl;
+	    enum reg_class cl = alternative_class (op_alt, i);
 
 	    if (REG_P (op)
 		&& REGNO (op) == ORIGINAL_REGNO (op))
@@ -1051,7 +1044,7 @@ get_reg_class (rtx insn)
       for (i = 0; i < n_ops + recog_data.n_dups; i++)
        {
 	 int opn = i < n_ops ? i : recog_data.dup_num[i - n_ops];
-	 enum reg_class cl = recog_op_alt[opn][alt].cl;
+	 enum reg_class cl = alternative_class (op_alt, opn);
 
 	 if (recog_data.operand_type[opn] == OP_OUT ||
 	     recog_data.operand_type[opn] == OP_INOUT)
@@ -1116,8 +1109,15 @@ init_regs_for_mode (enum machine_mode mode)
 
   for (cur_reg = 0; cur_reg < FIRST_PSEUDO_REGISTER; cur_reg++)
     {
-      int nregs = hard_regno_nregs[cur_reg][mode];
+      int nregs;
       int i;
+
+      /* See whether it accepts all modes that occur in
+         original insns.  */
+      if (! HARD_REGNO_MODE_OK (cur_reg, mode))
+        continue;
+
+      nregs = hard_regno_nregs[cur_reg][mode];
 
       for (i = nregs - 1; i >= 0; --i)
         if (fixed_regs[cur_reg + i]
@@ -1138,11 +1138,6 @@ init_regs_for_mode (enum machine_mode mode)
           break;
 
       if (i >= 0)
-        continue;
-
-      /* See whether it accepts all modes that occur in
-         original insns.  */
-      if (! HARD_REGNO_MODE_OK (cur_reg, mode))
         continue;
 
       if (HARD_REGNO_CALL_PART_CLOBBERED (cur_reg, mode))
@@ -2139,7 +2134,7 @@ implicit_clobber_conflict_p (insn_t through_insn, expr_t expr)
 
   /* Calculate implicit clobbers.  */
   extract_insn (insn);
-  preprocess_constraints ();
+  preprocess_constraints (insn);
   ira_implicitly_set_insn_hard_regs (&temp);
   AND_COMPL_HARD_REG_SET (temp, ira_no_alloc_regs);
 
@@ -3500,8 +3495,6 @@ process_pipelined_exprs (av_set_t *av_ptr)
 static void
 process_spec_exprs (av_set_t *av_ptr)
 {
-  bool try_data_p = true;
-  bool try_control_p = true;
   expr_t expr;
   av_set_iterator si;
 
@@ -3526,34 +3519,6 @@ process_spec_exprs (av_set_t *av_ptr)
         {
           av_set_iter_remove (&si);
           continue;
-        }
-
-      if ((spec_info->flags & PREFER_NON_DATA_SPEC)
-          && !(ds & BEGIN_DATA))
-        try_data_p = false;
-
-      if ((spec_info->flags & PREFER_NON_CONTROL_SPEC)
-          && !(ds & BEGIN_CONTROL))
-        try_control_p = false;
-    }
-
-  FOR_EACH_EXPR_1 (expr, si, av_ptr)
-    {
-      ds_t ds;
-
-      ds = EXPR_SPEC_DONE_DS (expr);
-
-      if (ds & SPECULATIVE)
-        {
-          if ((ds & BEGIN_DATA) && !try_data_p)
-            /* We don't want any data speculative instructions right
-               now.  */
-            av_set_iter_remove (&si);
-
-          if ((ds & BEGIN_CONTROL) && !try_control_p)
-            /* We don't want any control speculative instructions right
-               now.  */
-            av_set_iter_remove (&si);
         }
     }
 }
@@ -3821,7 +3786,8 @@ fill_vec_av_set (av_set_t av, blist_t bnds, fence_t fence,
 
       /* If insn was already scheduled on the current fence,
 	 set TARGET_AVAILABLE to -1 no matter what expr's attribute says.  */
-      if (vinsn_vec_has_expr_p (vec_target_unavailable_vinsns, expr))
+      if (vinsn_vec_has_expr_p (vec_target_unavailable_vinsns, expr)
+	  && !fence_insn_p)
 	target_available = -1;
 
       /* If the availability of the EXPR is invalidated by the insertion of
@@ -4252,7 +4218,7 @@ invoke_dfa_lookahead_guard (void)
       if (! have_hook || i == 0)
         r = 0;
       else
-        r = !targetm.sched.first_cycle_multipass_dfa_lookahead_guard (insn);
+        r = targetm.sched.first_cycle_multipass_dfa_lookahead_guard (insn, i);
 
       gcc_assert (INSN_CODE (insn) >= 0);
 
@@ -6741,7 +6707,11 @@ code_motion_path_driver (insn_t insn, av_set_t orig_ops, ilist_t path,
      the numbering by creating bookkeeping blocks.  */
   if (removed_last_insn)
     insn = PREV_INSN (insn);
-  bitmap_set_bit (code_motion_visited_blocks, BLOCK_FOR_INSN (insn)->index);
+
+  /* If we have simplified the control flow and removed the first jump insn,
+     there's no point in marking this block in the visited blocks bitmap.  */
+  if (BLOCK_FOR_INSN (insn))
+    bitmap_set_bit (code_motion_visited_blocks, BLOCK_FOR_INSN (insn)->index);
   return true;
 }
 
@@ -7460,12 +7430,13 @@ find_min_max_seqno (flist_t fences, int *min_seqno, int *max_seqno)
     }
 }
 
-/* Calculate new fences from FENCES.  */
+/* Calculate new fences from FENCES.  Write the current time to PTIME.  */
 static flist_t
-calculate_new_fences (flist_t fences, int orig_max_seqno)
+calculate_new_fences (flist_t fences, int orig_max_seqno, int *ptime)
 {
   flist_t old_fences = fences;
   struct flist_tail_def _new_fences, *new_fences = &_new_fences;
+  int max_time = 0;
 
   flist_tail_init (new_fences);
   for (; fences; fences = FLIST_NEXT (fences))
@@ -7494,9 +7465,11 @@ calculate_new_fences (flist_t fences, int orig_max_seqno)
         }
       else
         extract_new_fences_from (fences, new_fences, orig_max_seqno);
+      max_time = MAX (max_time, FENCE_CYCLE (fence));
     }
 
   flist_clear (&old_fences);
+  *ptime = max_time;
   return FLIST_TAIL_HEAD (new_fences);
 }
 
@@ -7551,6 +7524,7 @@ static void
 sel_sched_region_2 (int orig_max_seqno)
 {
   int highest_seqno_in_use = orig_max_seqno;
+  int max_time = 0;
 
   stat_bookkeeping_copies = 0;
   stat_insns_needed_bookkeeping = 0;
@@ -7566,19 +7540,22 @@ sel_sched_region_2 (int orig_max_seqno)
 
       find_min_max_seqno (fences, &min_seqno, &max_seqno);
       schedule_on_fences (fences, max_seqno, &scheduled_insns_tailp);
-      fences = calculate_new_fences (fences, orig_max_seqno);
+      fences = calculate_new_fences (fences, orig_max_seqno, &max_time);
       highest_seqno_in_use = update_seqnos_and_stage (min_seqno, max_seqno,
                                                       highest_seqno_in_use,
                                                       &scheduled_insns);
     }
 
   if (sched_verbose >= 1)
-    sel_print ("Scheduled %d bookkeeping copies, %d insns needed "
-               "bookkeeping, %d insns renamed, %d insns substituted\n",
-               stat_bookkeeping_copies,
-               stat_insns_needed_bookkeeping,
-               stat_renamed_scheduled,
-               stat_substitutions_total);
+    {
+      sel_print ("Total scheduling time: %d cycles\n", max_time);
+      sel_print ("Scheduled %d bookkeeping copies, %d insns needed "
+		 "bookkeeping, %d insns renamed, %d insns substituted\n",
+		 stat_bookkeeping_copies,
+		 stat_insns_needed_bookkeeping,
+		 stat_renamed_scheduled,
+		 stat_substitutions_total);
+    }
 }
 
 /* Schedule a region.  When pipelining, search for possibly never scheduled

@@ -38,71 +38,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "ipa-utils.h"
 #include "lto-partition.h"
 
-/* Classifcation of symbols into classes WRT partitioning.  */
-enum symbol_class
-{
-   /* External declarations are ignored by partitioning algorithms and they are
-      added into the boundary later via compute_ltrans_boundary.  */
-   SYMBOL_EXTERNAL,
-   /* Partitioned symbols are pur into one of partitions.  */
-   SYMBOL_PARTITION,
-   /* Duplicated symbols (such as comdat or constant pool references) are
-      copied into every node needing them via add_symbol_to_partition.  */
-   SYMBOL_DUPLICATE
-};
-
 vec<ltrans_partition> ltrans_partitions;
 
 static void add_symbol_to_partition (ltrans_partition part, symtab_node *node);
 
-/* Classify symbol NODE.  */
-
-enum symbol_class
-get_symbol_class (symtab_node *node)
-{
-  /* Inline clones are always duplicated.
-     This include external delcarations.   */
-  cgraph_node *cnode = dyn_cast <cgraph_node> (node);
-
-  if (DECL_ABSTRACT (node->decl))
-    return SYMBOL_EXTERNAL;
-
-  if (cnode && cnode->global.inlined_to)
-    return SYMBOL_DUPLICATE;
-
-  /* Weakref aliases are always duplicated.  */
-  if (node->weakref)
-    return SYMBOL_DUPLICATE;
-
-  /* External declarations are external.  */
-  if (DECL_EXTERNAL (node->decl))
-    return SYMBOL_EXTERNAL;
-
-  if (varpool_node *vnode = dyn_cast <varpool_node> (node))
-    {
-      /* Constant pool references use local symbol names that can not
-         be promoted global.  We should never put into a constant pool
-         objects that can not be duplicated across partitions.  */
-      if (DECL_IN_CONSTANT_POOL (node->decl))
-	return SYMBOL_DUPLICATE;
-      gcc_checking_assert (vnode->definition);
-    }
-  /* Functions that are cloned may stay in callgraph even if they are unused.
-     Handle them as external; compute_ltrans_boundary take care to make
-     proper things to happen (i.e. to make them appear in the boundary but
-     with body streamed, so clone can me materialized).  */
-  else if (!cgraph (node)->definition)
-    return SYMBOL_EXTERNAL;
-
-  /* Comdats are duplicated to every use unless they are keyed.
-     Those do not need duplication.  */
-  if (DECL_COMDAT (node->decl)
-      && !node->force_output
-      && !symtab_used_from_object_file_p (node))
-    return SYMBOL_DUPLICATE;
-
-  return SYMBOL_PARTITION;
-}
 
 /* Create new partition with name NAME.  */
 
@@ -147,17 +86,18 @@ static void
 add_references_to_partition (ltrans_partition part, symtab_node *node)
 {
   int i;
-  struct ipa_ref *ref;
+  struct ipa_ref *ref = NULL;
 
   /* Add all duplicated references to the partition.  */
-  for (i = 0; ipa_ref_list_reference_iterate (&node->ref_list, i, ref); i++)
-    if (get_symbol_class (ref->referred) == SYMBOL_DUPLICATE)
+  for (i = 0; node->iterate_reference (i, ref); i++)
+    if (ref->referred->get_partitioning_class () == SYMBOL_DUPLICATE)
       add_symbol_to_partition (part, ref->referred);
     /* References to a readonly variable may be constant foled into its value.
        Recursively look into the initializers of the constant variable and add
        references, too.  */
-    else if (is_a <varpool_node> (ref->referred)
-	     && ctor_for_folding (ref->referred->decl) != error_mark_node
+    else if (is_a <varpool_node *> (ref->referred)
+	     && dyn_cast <varpool_node *> (ref->referred)
+	       ->ctor_useable_for_folding_p ()
 	     && !lto_symtab_encoder_in_partition_p (part->encoder, ref->referred))
       {
 	if (!part->initializers_visited)
@@ -173,8 +113,7 @@ add_references_to_partition (ltrans_partition part, symtab_node *node)
 static bool
 add_symbol_to_partition_1 (ltrans_partition part, symtab_node *node)
 {
-  enum symbol_class c = get_symbol_class (node);
-  int i;
+  enum symbol_partitioning_class c = node->get_partitioning_class ();
   struct ipa_ref *ref;
   symtab_node *node1;
 
@@ -207,16 +146,17 @@ add_symbol_to_partition_1 (ltrans_partition part, symtab_node *node)
     }
   node->aux = (void *)((size_t)node->aux + 1);
 
-  if (cgraph_node *cnode = dyn_cast <cgraph_node> (node))
+  if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
     {
       struct cgraph_edge *e;
-      part->insns += inline_summary (cnode)->self_size;
+      if (!node->alias)
+        part->insns += inline_summary (cnode)->self_size;
 
       /* Add all inline clones and callees that are duplicated.  */
       for (e = cnode->callees; e; e = e->next_callee)
 	if (!e->inline_failed)
 	  add_symbol_to_partition_1 (part, e->callee);
-	else if (get_symbol_class (e->callee) == SYMBOL_DUPLICATE)
+	else if (e->callee->get_partitioning_class () == SYMBOL_DUPLICATE)
 	  add_symbol_to_partition (part, e->callee);
 
       /* Add all thunks associated with the function.  */
@@ -228,18 +168,20 @@ add_symbol_to_partition_1 (ltrans_partition part, symtab_node *node)
   add_references_to_partition (part, node);
 
   /* Add all aliases associated with the symbol.  */
-  for (i = 0; ipa_ref_list_referring_iterate (&node->ref_list, i, ref); i++)
-    if (ref->use == IPA_REF_ALIAS && !node->weakref)
+
+  FOR_EACH_ALIAS (node, ref)
+    if (!node->weakref)
       add_symbol_to_partition_1 (part, ref->referring);
 
   /* Ensure that SAME_COMDAT_GROUP lists all allways added in a group.  */
   if (node->same_comdat_group)
     for (node1 = node->same_comdat_group;
 	 node1 != node; node1 = node1->same_comdat_group)
-      {
-	bool added = add_symbol_to_partition_1 (part, node1);
-	gcc_assert (added);
-      }
+      if (!node->alias)
+	{
+	  bool added = add_symbol_to_partition_1 (part, node1);
+	  gcc_assert (added);
+	}
   return true;
 }
 
@@ -253,15 +195,15 @@ contained_in_symbol (symtab_node *node)
   /* Weakrefs are never contained in anything.  */
   if (node->weakref)
     return node;
-  if (cgraph_node *cnode = dyn_cast <cgraph_node> (node))
+  if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
     {
-      cnode = cgraph_function_node (cnode, NULL);
+      cnode = cnode->function_symbol ();
       if (cnode->global.inlined_to)
 	cnode = cnode->global.inlined_to;
       return cnode;
     }
-  else if (varpool_node *vnode = dyn_cast <varpool_node> (node))
-    return varpool_variable_node (vnode, NULL);
+  else if (varpool_node *vnode = dyn_cast <varpool_node *> (node))
+    return vnode->ultimate_alias_target ();
   return node;
 }
 
@@ -274,7 +216,7 @@ add_symbol_to_partition (ltrans_partition part, symtab_node *node)
   symtab_node *node1;
 
   /* Verify that we do not try to duplicate something that can not be.  */
-  gcc_checking_assert (get_symbol_class (node) == SYMBOL_DUPLICATE
+  gcc_checking_assert (node->get_partitioning_class () == SYMBOL_DUPLICATE
 		       || !symbol_partitioned_p (node));
 
   while ((node1 = contained_in_symbol (node)) != node)
@@ -287,7 +229,7 @@ add_symbol_to_partition (ltrans_partition part, symtab_node *node)
      Be lax about comdats; they may or may not be duplicated and we may
      end up in need to duplicate keyed comdat because it has unkeyed alias.  */
 
-  gcc_assert (get_symbol_class (node) == SYMBOL_DUPLICATE
+  gcc_assert (node->get_partitioning_class () == SYMBOL_DUPLICATE
 	      || DECL_COMDAT (node->decl)
 	      || !symbol_partitioned_p (node));
 
@@ -304,13 +246,14 @@ undo_partition (ltrans_partition partition, unsigned int n_nodes)
     {
       symtab_node *node = lto_symtab_encoder_deref (partition->encoder,
 						   n_nodes);
+      cgraph_node *cnode;
 
       /* After UNDO we no longer know what was visited.  */
       if (partition->initializers_visited)
 	pointer_set_destroy (partition->initializers_visited);
       partition->initializers_visited = NULL;
 
-      if (cgraph_node *cnode = dyn_cast <cgraph_node> (node))
+      if (!node->alias && (cnode = dyn_cast <cgraph_node *> (node)))
         partition->insns -= inline_summary (cnode)->self_size;
       lto_symtab_encoder_delete_node (partition->encoder, node);
       node->aux = (void *)((size_t)node->aux - 1);
@@ -334,7 +277,7 @@ lto_1_to_1_map (void)
 
   FOR_EACH_SYMBOL (node)
     {
-      if (get_symbol_class (node) != SYMBOL_PARTITION
+      if (node->get_partitioning_class () != SYMBOL_PARTITION
 	  || symbol_partitioned_p (node))
 	continue;
 
@@ -386,7 +329,7 @@ lto_max_map (void)
 
   FOR_EACH_SYMBOL (node)
     {
-      if (get_symbol_class (node) != SYMBOL_PARTITION
+      if (node->get_partitioning_class () != SYMBOL_PARTITION
 	  || symbol_partitioned_p (node))
 	continue;
       partition = new_partition (node->asm_name ());
@@ -473,7 +416,7 @@ varpool_node_cmp (const void *pa, const void *pb)
    and in-partition calls was reached.  */
 
 void
-lto_balanced_map (void)
+lto_balanced_map (int n_lto_partitions)
 {
   int n_nodes = 0;
   int n_varpool_nodes = 0, varpool_pos = 0, best_varpool_pos = 0;
@@ -496,10 +439,11 @@ lto_balanced_map (void)
     gcc_assert (!vnode->aux);
     
   FOR_EACH_DEFINED_FUNCTION (node)
-    if (get_symbol_class (node) == SYMBOL_PARTITION)
+    if (node->get_partitioning_class () == SYMBOL_PARTITION)
       {
 	order[n_nodes++] = node;
-	total_size += inline_summary (node)->size;
+	if (!node->alias)
+	  total_size += inline_summary (node)->size;
       }
 
   /* Streaming works best when the source units do not cross partition
@@ -516,20 +460,20 @@ lto_balanced_map (void)
   if (!flag_toplevel_reorder)
     {
       FOR_EACH_VARIABLE (vnode)
-	if (get_symbol_class (vnode) == SYMBOL_PARTITION)
+	if (vnode->get_partitioning_class () == SYMBOL_PARTITION)
 	  n_varpool_nodes++;
       varpool_order = XNEWVEC (varpool_node *, n_varpool_nodes);
 
       n_varpool_nodes = 0;
       FOR_EACH_VARIABLE (vnode)
-	if (get_symbol_class (vnode) == SYMBOL_PARTITION)
+	if (vnode->get_partitioning_class () == SYMBOL_PARTITION)
 	  varpool_order[n_varpool_nodes++] = vnode;
       qsort (varpool_order, n_varpool_nodes, sizeof (varpool_node *),
 	     varpool_node_cmp);
     }
 
   /* Compute partition size and create the first partition.  */
-  partition_size = total_size / PARAM_VALUE (PARAM_LTO_PARTITIONS);
+  partition_size = total_size / n_lto_partitions;
   if (partition_size < PARAM_VALUE (MIN_PARTITION_SIZE))
     partition_size = PARAM_VALUE (MIN_PARTITION_SIZE);
   npartitions = 1;
@@ -555,7 +499,8 @@ lto_balanced_map (void)
 	  }
 
       add_symbol_to_partition (partition, order[i]);
-      total_size -= inline_summary (order[i])->size;
+      if (!order[i]->alias)
+        total_size -= inline_summary (order[i])->size;
 	  
 
       /* Once we added a new node to the partition, we also want to add
@@ -572,17 +517,17 @@ lto_balanced_map (void)
 	 it and thus we need to subtract it from COST.  */
       while (last_visited_node < lto_symtab_encoder_size (partition->encoder))
 	{
-	  struct ipa_ref_list *refs;
+	  symtab_node *refs_node;
 	  int j;
-	  struct ipa_ref *ref;
+	  struct ipa_ref *ref = NULL;
 	  symtab_node *snode = lto_symtab_encoder_deref (partition->encoder,
 							last_visited_node);
 
-	  if (cgraph_node *node = dyn_cast <cgraph_node> (snode))
+	  if (cgraph_node *node = dyn_cast <cgraph_node *> (snode))
 	    {
 	      struct cgraph_edge *edge;
 
-	      refs = &node->ref_list;
+	      refs_node = node;
 
 	      last_visited_node++;
 
@@ -626,22 +571,22 @@ lto_balanced_map (void)
 	    }
 	  else
 	    {
-	      refs = &snode->ref_list;
+	      refs_node = snode;
 	      last_visited_node++;
 	    }
 
 	  /* Compute boundary cost of IPA REF edges and at the same time look into
 	     variables referenced from current partition and try to add them.  */
-	  for (j = 0; ipa_ref_list_reference_iterate (refs, j, ref); j++)
-	    if (is_a <varpool_node> (ref->referred))
+	  for (j = 0; refs_node->iterate_reference (j, ref); j++)
+	    if (is_a <varpool_node *> (ref->referred))
 	      {
 		int index;
 
-		vnode = ipa_ref_varpool_node (ref);
+		vnode = dyn_cast <varpool_node *> (ref->referred);
 		if (!vnode->definition)
 		  continue;
 		if (!symbol_partitioned_p (vnode) && flag_toplevel_reorder
-		    && get_symbol_class (vnode) == SYMBOL_PARTITION)
+		    && vnode->get_partitioning_class () == SYMBOL_PARTITION)
 		  add_symbol_to_partition (partition, vnode);
 		index = lto_symtab_encoder_lookup (partition->encoder,
 						   vnode);
@@ -655,7 +600,7 @@ lto_balanced_map (void)
 	      {
 		int index;
 
-		node = ipa_ref_node (ref);
+		node = dyn_cast <cgraph_node *> (ref->referred);
 		if (!node->definition)
 		  continue;
 		index = lto_symtab_encoder_lookup (partition->encoder,
@@ -666,15 +611,19 @@ lto_balanced_map (void)
 		else
 		  cost++;
 	      }
-	  for (j = 0; ipa_ref_list_referring_iterate (refs, j, ref); j++)
-	    if (is_a <varpool_node> (ref->referring))
+	  for (j = 0; refs_node->iterate_referring (j, ref); j++)
+	    if (is_a <varpool_node *> (ref->referring))
 	      {
 		int index;
 
-		vnode = ipa_ref_referring_varpool_node (ref);
+		vnode = dyn_cast <varpool_node *> (ref->referring);
 		gcc_assert (vnode->definition);
+		/* It is better to couple variables with their users, because it allows them
+		   to be removed.  Coupling with objects they refer to only helps to reduce
+		   number of symbols promoted to hidden.  */
 		if (!symbol_partitioned_p (vnode) && flag_toplevel_reorder
-		    && get_symbol_class (vnode) == SYMBOL_PARTITION)
+		    && !vnode->can_remove_if_no_refs_p ()
+		    && vnode->get_partitioning_class () == SYMBOL_PARTITION)
 		  add_symbol_to_partition (partition, vnode);
 		index = lto_symtab_encoder_lookup (partition->encoder,
 						   vnode);
@@ -688,7 +637,7 @@ lto_balanced_map (void)
 	      {
 		int index;
 
-		node = ipa_ref_referring_node (ref);
+		node = dyn_cast <cgraph_node *> (ref->referring);
 		gcc_assert (node->definition);
 		index = lto_symtab_encoder_lookup (partition->encoder,
 						   node);
@@ -751,9 +700,8 @@ lto_balanced_map (void)
 
 	  /* Since the size of partitions is just approximate, update the size after
 	     we finished current one.  */
-	  if (npartitions < PARAM_VALUE (PARAM_LTO_PARTITIONS))
-	    partition_size = total_size
-	      / (PARAM_VALUE (PARAM_LTO_PARTITIONS) - npartitions);
+	  if (npartitions < n_lto_partitions)
+	    partition_size = total_size / (n_lto_partitions - npartitions);
 	  else
 	    partition_size = INT_MAX;
 
@@ -767,7 +715,7 @@ lto_balanced_map (void)
   if (flag_toplevel_reorder)
     {
       FOR_EACH_VARIABLE (vnode)
-        if (get_symbol_class (vnode) == SYMBOL_PARTITION
+	if (vnode->get_partitioning_class () == SYMBOL_PARTITION
 	    && !symbol_partitioned_p (vnode))
 	  add_symbol_to_partition (partition, vnode);
     }
@@ -864,10 +812,10 @@ promote_symbol (symtab_node *node)
 static bool
 may_need_named_section_p (lto_symtab_encoder_t encoder, symtab_node *node)
 {
-  struct cgraph_node *cnode = dyn_cast <cgraph_node> (node);
+  struct cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
   if (!cnode)
     return false;
-  if (symtab_real_symbol_p (node))
+  if (node->real_symbol_p ())
     return false;
   return (!encoder
 	  || (lto_symtab_encoder_lookup (encoder, node) != LCC_NOT_FOUND
@@ -894,7 +842,7 @@ rename_statics (lto_symtab_encoder_t encoder, symtab_node *node)
 	 external symbols (i.e. those not defined).  Remove this test
 	 once this is fixed.  */
         || DECL_EXTERNAL (node->decl)
-        || !symtab_real_symbol_p (node))
+	|| !node->real_symbol_p ())
        && !may_need_named_section_p (encoder, node))
     return;
 
@@ -903,7 +851,7 @@ rename_statics (lto_symtab_encoder_t encoder, symtab_node *node)
      same name as external or public symbol.)  */
   for (s = symtab_node_for_asm (name);
        s; s = s->next_sharing_asm_name)
-    if ((symtab_real_symbol_p (s) || may_need_named_section_p (encoder, s))
+    if ((s->real_symbol_p () || may_need_named_section_p (encoder, s))
 	&& s->decl != node->decl
 	&& (!encoder
 	    || lto_symtab_encoder_lookup (encoder, s) != LCC_NOT_FOUND))
@@ -921,7 +869,7 @@ rename_statics (lto_symtab_encoder_t encoder, symtab_node *node)
      mangled name.  */
   for (s = symtab_node_for_asm (name); s;)
     if (!s->externally_visible
-	&& ((symtab_real_symbol_p (s)
+	&& ((s->real_symbol_p ()
              && !DECL_EXTERNAL (node->decl)
 	     && !TREE_PUBLIC (node->decl))
  	    || may_need_named_section_p (encoder, s))
@@ -977,7 +925,7 @@ lto_promote_cross_file_statics (void)
 	      || lto_symtab_encoder_in_partition_p (encoder, node)
 	      /* ... or if we do not partition it. This mean that it will
 		 appear in every partition refernecing it.  */
-	      || get_symbol_class (node) != SYMBOL_PARTITION)
+	      || node->get_partitioning_class () != SYMBOL_PARTITION)
 	    continue;
 
           promote_symbol (node);

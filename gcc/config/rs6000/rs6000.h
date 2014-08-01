@@ -477,6 +477,10 @@ extern int rs6000_vector_align[];
 #define VECTOR_ELT_ORDER_BIG                                  \
   (BYTES_BIG_ENDIAN || (rs6000_altivec_element_order == 2))
 
+/* Element number of the 64-bit value in a 128-bit vector that can be accessed
+   with scalar instructions.  */
+#define VECTOR_ELEMENT_SCALAR_64BIT	((BYTES_BIG_ENDIAN) ? 0 : 1)
+
 /* Alignment options for fields in structures for sub-targets following
    AIX-like ABI.
    ALIGN_POWER word-aligns FP doubles (default AIX ABI).
@@ -529,6 +533,7 @@ extern int rs6000_vector_align[];
 
 #define TARGET_XSCVDPSPN	(TARGET_DIRECT_MOVE || TARGET_P8_VECTOR)
 #define TARGET_XSCVSPDPN	(TARGET_DIRECT_MOVE || TARGET_P8_VECTOR)
+#define TARGET_VADDUQM		(TARGET_P8_VECTOR && TARGET_POWERPC64)
 
 /* Byte/char syncs were added as phased in for ISA 2.06B, but are not present
    in power7, so conditionalize them on p8 features.  TImode syncs need quad
@@ -619,7 +624,8 @@ extern int rs6000_vector_align[];
 				      || TARGET_CMPB	  /* ISA 2.05 */ \
 				      || TARGET_POPCNTD	  /* ISA 2.06 */ \
 				      || TARGET_ALTIVEC			 \
-				      || TARGET_VSX)))
+				      || TARGET_VSX			 \
+				      || TARGET_HARD_FLOAT)))
 
 /* E500 cores only support plain "sync", not lwsync.  */
 #define TARGET_NO_LWSYNC (rs6000_cpu == PROCESSOR_PPC8540 \
@@ -972,8 +978,6 @@ enum data_align { align_abi, align_opt, align_both };
    On RS/6000, r1 is used for the stack.  On Darwin, r2 is available
    as a local register; for all other OS's r2 is the TOC pointer.
 
-   cr5 is not supposed to be used.
-
    On System V implementations, r13 is fixed and not available for use.  */
 
 #define FIXED_REGISTERS  \
@@ -981,7 +985,7 @@ enum data_align { align_abi, align_opt, align_both };
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-   0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1,	   \
+   0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,	   \
    /* AltiVec registers.  */			   \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
@@ -1042,7 +1046,8 @@ enum data_align { align_abi, align_opt, align_both };
 	fp13 - fp2	(not saved; incoming fp arg registers)
 	fp1		(not saved; return value)
 	fp31 - fp14	(saved; order given to save least number)
-	cr7, cr6	(not saved or special)
+	cr7, cr5	(not saved or special)
+	cr6		(not saved, but used for vector operations)
 	cr1		(not saved, but used for FP operations)
 	cr0		(not saved, but used for arithmetic operations)
 	cr4, cr3, cr2	(saved)
@@ -1055,7 +1060,7 @@ enum data_align { align_abi, align_opt, align_both };
 	r12		(not saved; if used for DImode or DFmode would use r13)
 	ctr		(not saved; when we have the choice ctr is better)
 	lr		(saved)
-	cr5, r1, r2, ap, ca (fixed)
+	r1, r2, ap, ca	(fixed)
 	v0 - v1		(not saved or used for anything)
 	v13 - v3	(not saved; incoming vector arg registers)
 	v2		(not saved; incoming vector arg reg; return value)
@@ -1093,14 +1098,14 @@ enum data_align { align_abi, align_opt, align_both };
    33,								\
    63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51,		\
    50, 49, 48, 47, 46,						\
-   75, 74, 69, 68, 72, 71, 70,					\
+   75, 73, 74, 69, 68, 72, 71, 70,				\
    MAYBE_R2_AVAILABLE						\
    9, 10, 8, 7, 6, 5, 4,					\
    3, EARLY_R12 11, 0,						\
    31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19,		\
    18, 17, 16, 15, 14, 13, LATE_R12				\
    66, 65,							\
-   73, 1, MAYBE_R2_FIXED 67, 76,				\
+   1, MAYBE_R2_FIXED 67, 76,					\
    /* AltiVec registers.  */					\
    77, 78,							\
    90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80,			\
@@ -1194,7 +1199,7 @@ enum data_align { align_abi, align_opt, align_both };
 
 #define ALTIVEC_OR_VSX_VECTOR_MODE(MODE)				\
   (ALTIVEC_VECTOR_MODE (MODE) || VSX_VECTOR_MODE (MODE)			\
-   || (MODE) == V2DImode)
+   || (MODE) == V2DImode || (MODE) == V1TImode)
 
 #define SPE_VECTOR_MODE(MODE)		\
 	((MODE) == V4HImode          	\
@@ -1596,7 +1601,14 @@ extern enum reg_class rs6000_constraints[RS6000_CONSTRAINT_MAX];
 /* Define this if stack space is still allocated for a parameter passed
    in a register.  The value is the number of bytes allocated to this
    area.  */
-#define REG_PARM_STACK_SPACE(FNDECL) rs6000_reg_parm_stack_space((FNDECL))
+#define REG_PARM_STACK_SPACE(FNDECL) \
+  rs6000_reg_parm_stack_space ((FNDECL), false)
+
+/* Define this macro if space guaranteed when compiling a function body
+   is different to space required when making a call, a situation that
+   can arise with K&R style function definitions.  */
+#define INCOMING_REG_PARM_STACK_SPACE(FNDECL) \
+  rs6000_reg_parm_stack_space ((FNDECL), true)
 
 /* Define this if the above stack space is to be considered part of the
    space allocated by the caller.  */
@@ -2495,8 +2507,8 @@ extern int frame_pointer_needed;
 #define RS6000_BTC_SAT		RS6000_BTC_MISC	/* saturate sets VSCR.  */
 
 /* Builtin targets.  For now, we reuse the masks for those options that are in
-   target flags, and pick two random bits for SPE and paired which aren't in
-   target_flags.  */
+   target flags, and pick three random bits for SPE, paired and ldbl128 which
+   aren't in target_flags.  */
 #define RS6000_BTM_ALWAYS	0		/* Always enabled.  */
 #define RS6000_BTM_ALTIVEC	MASK_ALTIVEC	/* VMX/altivec vectors.  */
 #define RS6000_BTM_VSX		MASK_VSX	/* VSX (vector/scalar).  */
@@ -2511,6 +2523,9 @@ extern int frame_pointer_needed;
 #define RS6000_BTM_FRSQRTES	MASK_POPCNTB	/* FRSQRTES instruction.  */
 #define RS6000_BTM_POPCNTD	MASK_POPCNTD	/* Target supports ISA 2.06.  */
 #define RS6000_BTM_CELL		MASK_FPRND	/* Target is cell powerpc.  */
+#define RS6000_BTM_DFP		MASK_DFP	/* Decimal floating point.  */
+#define RS6000_BTM_HARD_FLOAT	MASK_SOFT_FLOAT	/* Hardware floating point.  */
+#define RS6000_BTM_LDBL128	MASK_MULTIPLE	/* 128-bit long double.  */
 
 #define RS6000_BTM_COMMON	(RS6000_BTM_ALTIVEC			\
 				 | RS6000_BTM_VSX			\
@@ -2522,7 +2537,10 @@ extern int frame_pointer_needed;
 				 | RS6000_BTM_FRSQRTES			\
 				 | RS6000_BTM_HTM			\
 				 | RS6000_BTM_POPCNTD			\
-				 | RS6000_BTM_CELL)
+				 | RS6000_BTM_CELL			\
+				 | RS6000_BTM_DFP			\
+				 | RS6000_BTM_HARD_FLOAT		\
+				 | RS6000_BTM_LDBL128)
 
 /* Define builtin enum index.  */
 
@@ -2577,6 +2595,7 @@ enum rs6000_builtin_type_index
   RS6000_BTI_opaque_p_V2SI,
   RS6000_BTI_opaque_V4SI,
   RS6000_BTI_V16QI,
+  RS6000_BTI_V1TI,
   RS6000_BTI_V2SI,
   RS6000_BTI_V2SF,
   RS6000_BTI_V2DI,
@@ -2586,6 +2605,7 @@ enum rs6000_builtin_type_index
   RS6000_BTI_V4SF,
   RS6000_BTI_V8HI,
   RS6000_BTI_unsigned_V16QI,
+  RS6000_BTI_unsigned_V1TI,
   RS6000_BTI_unsigned_V8HI,
   RS6000_BTI_unsigned_V4SI,
   RS6000_BTI_unsigned_V2DI,
@@ -2611,8 +2631,13 @@ enum rs6000_builtin_type_index
   RS6000_BTI_UINTSI,		 /* unsigned_intSI_type_node */
   RS6000_BTI_INTDI,		 /* intDI_type_node */
   RS6000_BTI_UINTDI,		 /* unsigned_intDI_type_node */
+  RS6000_BTI_INTTI,		 /* intTI_type_node */
+  RS6000_BTI_UINTTI,		 /* unsigned_intTI_type_node */
   RS6000_BTI_float,	         /* float_type_node */
   RS6000_BTI_double,	         /* double_type_node */
+  RS6000_BTI_long_double,        /* long_double_type_node */
+  RS6000_BTI_dfloat64,		 /* dfloat64_type_node */
+  RS6000_BTI_dfloat128,		 /* dfloat128_type_node */
   RS6000_BTI_void,	         /* void_type_node */
   RS6000_BTI_MAX
 };
@@ -2623,6 +2648,7 @@ enum rs6000_builtin_type_index
 #define opaque_p_V2SI_type_node       (rs6000_builtin_types[RS6000_BTI_opaque_p_V2SI])
 #define opaque_V4SI_type_node         (rs6000_builtin_types[RS6000_BTI_opaque_V4SI])
 #define V16QI_type_node               (rs6000_builtin_types[RS6000_BTI_V16QI])
+#define V1TI_type_node                (rs6000_builtin_types[RS6000_BTI_V1TI])
 #define V2DI_type_node                (rs6000_builtin_types[RS6000_BTI_V2DI])
 #define V2DF_type_node                (rs6000_builtin_types[RS6000_BTI_V2DF])
 #define V2SI_type_node                (rs6000_builtin_types[RS6000_BTI_V2SI])
@@ -2632,6 +2658,7 @@ enum rs6000_builtin_type_index
 #define V4SF_type_node                (rs6000_builtin_types[RS6000_BTI_V4SF])
 #define V8HI_type_node                (rs6000_builtin_types[RS6000_BTI_V8HI])
 #define unsigned_V16QI_type_node      (rs6000_builtin_types[RS6000_BTI_unsigned_V16QI])
+#define unsigned_V1TI_type_node       (rs6000_builtin_types[RS6000_BTI_unsigned_V1TI])
 #define unsigned_V8HI_type_node       (rs6000_builtin_types[RS6000_BTI_unsigned_V8HI])
 #define unsigned_V4SI_type_node       (rs6000_builtin_types[RS6000_BTI_unsigned_V4SI])
 #define unsigned_V2DI_type_node       (rs6000_builtin_types[RS6000_BTI_unsigned_V2DI])
@@ -2658,10 +2685,16 @@ enum rs6000_builtin_type_index
 #define uintSI_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_UINTSI])
 #define intDI_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_INTDI])
 #define uintDI_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_UINTDI])
+#define intTI_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_INTTI])
+#define uintTI_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_UINTTI])
 #define float_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_float])
 #define double_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_double])
+#define long_double_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_long_double])
+#define dfloat64_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_dfloat64])
+#define dfloat128_type_internal_node	 (rs6000_builtin_types[RS6000_BTI_dfloat128])
 #define void_type_internal_node		 (rs6000_builtin_types[RS6000_BTI_void])
 
 extern GTY(()) tree rs6000_builtin_types[RS6000_BTI_MAX];
 extern GTY(()) tree rs6000_builtin_decls[RS6000_BUILTIN_COUNT];
 
+#define TARGET_SUPPORTS_WIDE_INT 1

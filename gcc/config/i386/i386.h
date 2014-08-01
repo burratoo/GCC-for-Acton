@@ -104,6 +104,12 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_AES_P(x)	TARGET_ISA_AES_P(x)
 #define TARGET_SHA	TARGET_ISA_SHA
 #define TARGET_SHA_P(x)	TARGET_ISA_SHA_P(x)
+#define TARGET_CLFLUSHOPT	TARGET_ISA_CLFLUSHOPT
+#define TARGET_CLFLUSHOPT_P(x)	TARGET_ISA_CLFLUSHOPT_P(x)
+#define TARGET_XSAVEC	TARGET_ISA_XSAVEC
+#define TARGET_XSAVEC_P(x)	TARGET_ISA_XSAVEC_P(x)
+#define TARGET_XSAVES	TARGET_ISA_XSAVES
+#define TARGET_XSAVES_P(x)	TARGET_ISA_XSAVES_P(x)
 #define TARGET_PCLMUL	TARGET_ISA_PCLMUL
 #define TARGET_PCLMUL_P(x)	TARGET_ISA_PCLMUL_P(x)
 #define TARGET_CMPXCHG16B	TARGET_ISA_CX16
@@ -130,6 +136,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_XSAVE_P(x)	TARGET_ISA_XSAVE_P(x)
 #define TARGET_XSAVEOPT	TARGET_ISA_XSAVEOPT
 #define TARGET_XSAVEOPT_P(x)	TARGET_ISA_XSAVEOPT_P(x)
+#define TARGET_PREFETCHWT1	TARGET_ISA_PREFETCHWT1
+#define TARGET_PREFETCHWT1_P(x)	TARGET_ISA_PREFETCHWT1_P(x)
 
 #define TARGET_LP64	TARGET_ABI_64
 #define TARGET_LP64_P(x)	TARGET_ABI_64_P(x)
@@ -282,10 +290,13 @@ extern const struct processor_costs ix86_size_cost;
 #else
 #ifndef TARGET_BI_ARCH
 #undef TARGET_64BIT
+#undef TARGET_64BIT_P
 #if TARGET_64BIT_DEFAULT
 #define TARGET_64BIT 1
+#define TARGET_64BIT_P(x) 1
 #else
 #define TARGET_64BIT 0
+#define TARGET_64BIT_P(x) 0
 #endif
 #endif
 #endif
@@ -420,6 +431,10 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 	ix86_tune_features[X86_TUNE_USE_VECTOR_FP_CONVERTS]
 #define TARGET_USE_VECTOR_CONVERTS \
 	ix86_tune_features[X86_TUNE_USE_VECTOR_CONVERTS]
+#define TARGET_SLOW_PSHUFB \
+	ix86_tune_features[X86_TUNE_SLOW_PSHUFB]
+#define TARGET_VECTOR_PARALLEL_EXECUTION \
+	ix86_tune_features[X86_TUNE_VECTOR_PARALLEL_EXECUTION]
 #define TARGET_FUSE_CMP_AND_BRANCH_32 \
 	ix86_tune_features[X86_TUNE_FUSE_CMP_AND_BRANCH_32]
 #define TARGET_FUSE_CMP_AND_BRANCH_64 \
@@ -668,12 +683,15 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 #define LONG_LONG_TYPE_SIZE 64
 #define FLOAT_TYPE_SIZE 32
 #define DOUBLE_TYPE_SIZE 64
-#define LONG_DOUBLE_TYPE_SIZE (TARGET_LONG_DOUBLE_64 ? 64 : 80)
+#define LONG_DOUBLE_TYPE_SIZE \
+  (TARGET_LONG_DOUBLE_64 ? 64 : (TARGET_LONG_DOUBLE_128 ? 128 : 80))
 
 /* Define this to set long double type size to use in libgcc2.c, which can
    not depend on target_flags.  */
 #ifdef __LONG_DOUBLE_64__
 #define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 64
+#elif defined (__LONG_DOUBLE_128__)
+#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 128
 #else
 #define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 80
 #endif
@@ -1534,12 +1552,12 @@ enum reg_class
    mode the difference is less drastic but visible.  
 
    FIXME: Unlike earlier implementations, the size of unwind info seems to
-   actually grouw with accumulation.  Is that because accumulated args
+   actually grow with accumulation.  Is that because accumulated args
    unwind info became unnecesarily bloated?
-   
-   64-bit MS ABI seem to require 16 byte alignment everywhere except for
-   function prologue and epilogue.  This is not possible without
-   ACCUMULATE_OUTGOING_ARGS.  
+
+   With the 64-bit MS ABI, we can generate correct code with or without
+   accumulated args, but because of OUTGOING_REG_PARM_STACK_SPACE the code
+   generated without accumulated args is terrible.
 
    If stack probes are required, the space used for large function
    arguments on the stack must also be probed, so enable
@@ -1603,6 +1621,8 @@ typedef struct ix86_args {
 				   is used */
   int sse_words;		/* # sse words passed so far */
   int sse_nregs;		/* # sse registers available for passing */
+  int warn_avx512f;		/* True when we want to warn
+				   about AVX512F ABI.  */
   int warn_avx;			/* True when we want to warn about AVX ABI.  */
   int warn_sse;			/* True when we want to warn about SSE ABI.  */
   int warn_mmx;			/* True when we want to warn about MMX ABI.  */
@@ -2009,12 +2029,28 @@ do {							\
 /* Table of additional register names to use in user input.  */
 
 #define ADDITIONAL_REGISTER_NAMES \
-{ { "eax", 0 }, { "edx", 1 }, { "ecx", 2 }, { "ebx", 3 },	\
-  { "esi", 4 }, { "edi", 5 }, { "ebp", 6 }, { "esp", 7 },	\
-  { "rax", 0 }, { "rdx", 1 }, { "rcx", 2 }, { "rbx", 3 },	\
-  { "rsi", 4 }, { "rdi", 5 }, { "rbp", 6 }, { "rsp", 7 },	\
-  { "al", 0 }, { "dl", 1 }, { "cl", 2 }, { "bl", 3 },		\
-  { "ah", 0 }, { "dh", 1 }, { "ch", 2 }, { "bh", 3 } }
+{ { "eax", 0 }, { "edx", 1 }, { "ecx", 2 }, { "ebx", 3 },		\
+  { "esi", 4 }, { "edi", 5 }, { "ebp", 6 }, { "esp", 7 },		\
+  { "rax", 0 }, { "rdx", 1 }, { "rcx", 2 }, { "rbx", 3 },		\
+  { "rsi", 4 }, { "rdi", 5 }, { "rbp", 6 }, { "rsp", 7 },		\
+  { "al", 0 }, { "dl", 1 }, { "cl", 2 }, { "bl", 3 },			\
+  { "ah", 0 }, { "dh", 1 }, { "ch", 2 }, { "bh", 3 },			\
+  { "ymm0", 21}, { "ymm1", 22}, { "ymm2", 23}, { "ymm3", 24},		\
+  { "ymm4", 25}, { "ymm5", 26}, { "ymm6", 27}, { "ymm7", 28},		\
+  { "ymm8", 45}, { "ymm9", 46}, { "ymm10", 47}, { "ymm11", 48},		\
+  { "ymm12", 49}, { "ymm13", 50}, { "ymm14", 51}, { "ymm15", 52},	\
+  { "ymm16", 53}, { "ymm17", 54}, { "ymm18", 55}, { "ymm19", 56},	\
+  { "ymm20", 57}, { "ymm21", 58}, { "ymm22", 59}, { "ymm23", 60},	\
+  { "ymm24", 61}, { "ymm25", 62}, { "ymm26", 63}, { "ymm27", 64},	\
+  { "ymm28", 65}, { "ymm29", 66}, { "ymm30", 67}, { "ymm31", 68},	\
+  { "zmm0", 21}, { "zmm1", 22}, { "zmm2", 23}, { "zmm3", 24},		\
+  { "zmm4", 25}, { "zmm5", 26}, { "zmm6", 27}, { "zmm7", 28},		\
+  { "zmm8", 45}, { "zmm9", 46}, { "zmm10", 47}, { "zmm11", 48},		\
+  { "zmm12", 49}, { "zmm13", 50}, { "zmm14", 51}, { "zmm15", 52},	\
+  { "zmm16", 53}, { "zmm17", 54}, { "zmm18", 55}, { "zmm19", 56},	\
+  { "zmm20", 57}, { "zmm21", 58}, { "zmm22", 59}, { "zmm23", 60},	\
+  { "zmm24", 61}, { "zmm25", 62}, { "zmm26", 63}, { "zmm27", 64},	\
+  { "zmm28", 65}, { "zmm29", 66}, { "zmm30", 67}, { "zmm31", 68} }
 
 /* Note we are omitting these since currently I don't know how
 to get gcc to use these, since they want the same but different
@@ -2284,43 +2320,6 @@ enum avx_u128_state
 #define NUM_MODES_FOR_MODE_SWITCHING \
   { AVX_U128_ANY, I387_CW_ANY, I387_CW_ANY, I387_CW_ANY, I387_CW_ANY }
 
-/* ENTITY is an integer specifying a mode-switched entity.  If
-   `OPTIMIZE_MODE_SWITCHING' is defined, you must define this macro to
-   return an integer value not larger than the corresponding element
-   in `NUM_MODES_FOR_MODE_SWITCHING', to denote the mode that ENTITY
-   must be switched into prior to the execution of INSN.  */
-
-#define MODE_NEEDED(ENTITY, I) ix86_mode_needed ((ENTITY), (I))
-
-/* If this macro is defined, it is evaluated for every INSN during
-   mode switching.  It determines the mode that an insn results in (if
-   different from the incoming mode).  */
-
-#define MODE_AFTER(ENTITY, MODE, I) ix86_mode_after ((ENTITY), (MODE), (I))
-
-/* If this macro is defined, it is evaluated for every ENTITY that
-   needs mode switching.  It should evaluate to an integer, which is
-   a mode that ENTITY is assumed to be switched to at function entry.  */
-
-#define MODE_ENTRY(ENTITY) ix86_mode_entry (ENTITY)
-
-/* If this macro is defined, it is evaluated for every ENTITY that
-   needs mode switching.  It should evaluate to an integer, which is
-   a mode that ENTITY is assumed to be switched to at function exit.  */
-
-#define MODE_EXIT(ENTITY) ix86_mode_exit (ENTITY)
-
-/* This macro specifies the order in which modes for ENTITY are
-   processed.  0 is the highest priority.  */
-
-#define MODE_PRIORITY_TO_MODE(ENTITY, N) (N)
-
-/* Generate one or more insns to set ENTITY to MODE.  HARD_REG_LIVE
-   is the set of hard registers live at the point where the insn(s)
-   are to be inserted.  */
-
-#define EMIT_MODE_SET(ENTITY, MODE, HARD_REGS_LIVE) \
-  ix86_emit_mode_set ((ENTITY), (MODE), (HARD_REGS_LIVE))
 
 /* Avoid renaming of stack registers, as doing so in combination with
    scheduling just increases amount of live registers at time and in

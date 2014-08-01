@@ -99,7 +99,6 @@ cilk_set_spawn_marker (location_t loc, tree fcall)
        it.  */
     return false; 
   else if (TREE_CODE (fcall) != CALL_EXPR
-	   && TREE_CODE (fcall) != FUNCTION_DECL
 	   /* In C++, TARGET_EXPR is generated when we have an overloaded
 	      '=' operator.  */
 	   && TREE_CODE (fcall) != TARGET_EXPR)
@@ -172,7 +171,7 @@ call_graph_add_fn (tree fndecl)
   gcc_assert (cfun->decl == outer);
 
   push_cfun (f);
-  cgraph_create_node (fndecl);
+  cgraph_node::create (fndecl);
   pop_cfun_to (outer);
 }
 
@@ -235,6 +234,9 @@ recognize_spawn (tree exp, tree *exp0)
       walk_tree (exp0, unwrap_cilk_spawn_stmt, NULL, NULL);
       spawn_found = true;
     }
+  /* _Cilk_spawn can't be wrapped in expression such as PLUS_EXPR.  */
+  else if (contains_cilk_spawn_stmt (exp))
+    error ("invalid use of %<_Cilk_spawn%>");
   return spawn_found;
 }
 
@@ -312,6 +314,7 @@ create_cilk_helper_decl (struct wrapper_data *wd)
   tree block = make_node (BLOCK);
   DECL_INITIAL (fndecl) = block;
   TREE_USED (block) = 1;
+  BLOCK_SUPERCONTEXT (block) = fndecl;
   gcc_assert (!DECL_SAVED_TREE (fndecl));
 
   /* Inlining would defeat the purpose of this wrapper.
@@ -664,8 +667,7 @@ declare_one_free_variable (const void *var0, void **map0,
 
   /* Maybe promote to int.  */
   if (INTEGRAL_TYPE_P (var_type) && COMPLETE_TYPE_P (var_type)
-      && INT_CST_LT_UNSIGNED (TYPE_SIZE (var_type),
-			      TYPE_SIZE (integer_type_node)))
+      && tree_int_cst_lt (TYPE_SIZE (var_type), TYPE_SIZE (integer_type_node)))
     arg_type = integer_type_node;
   else
     arg_type = var_type;
@@ -996,6 +998,7 @@ extract_free_variables (tree t, struct wrapper_data *wd,
     {
     case ERROR_MARK:
     case IDENTIFIER_NODE:
+    case VOID_CST:
     case INTEGER_CST:
     case REAL_CST:
     case FIXED_CST:
@@ -1291,4 +1294,26 @@ build_cilk_sync (void)
   tree sync = build0 (CILK_SYNC_STMT, void_type_node);
   TREE_SIDE_EFFECTS (sync) = 1;
   return sync;
+}
+
+/* Helper for contains_cilk_spawn_stmt, callback for walk_tree.  Return
+   non-null tree if TP contains CILK_SPAWN_STMT.  */
+
+static tree
+contains_cilk_spawn_stmt_walker (tree *tp, int *, void *)
+{
+  if (TREE_CODE (*tp) == CILK_SPAWN_STMT)
+    return *tp;
+  else
+    return NULL_TREE;
+}
+
+/* Returns true if EXPR or any of its subtrees contain CILK_SPAWN_STMT
+   node.  */
+
+bool
+contains_cilk_spawn_stmt (tree expr)
+{
+  return walk_tree (&expr, contains_cilk_spawn_stmt_walker, NULL, NULL)
+	 != NULL_TREE;
 }

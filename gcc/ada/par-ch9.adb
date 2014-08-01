@@ -151,6 +151,19 @@ package body Ch9 is
             end if;
 
             Parse_Decls_Begin_End (Task_Node);
+
+            --  The statement list of a task body needs to include at least a
+            --  null statement, so if a parsing error produces an empty list,
+            --  patch it now.
+
+            if No (First (Statements
+                           (Handled_Statement_Sequence
+                             (Task_Body_Statement_Sequence (Task_Node)))))
+            then
+               Set_Statements (Task_Body_Statement_Sequence
+                                 (Handled_Statement_Sequence (Task_Node)),
+                 New_List (Make_Null_Statement (Token_Ptr)));
+            end if;
          end if;
 
          return Task_Node;

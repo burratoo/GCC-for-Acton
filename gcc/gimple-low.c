@@ -83,6 +83,7 @@ static void lower_gimple_bind (gimple_stmt_iterator *, struct lower_data *);
 static void lower_try_catch (gimple_stmt_iterator *, struct lower_data *);
 static void lower_gimple_return (gimple_stmt_iterator *, struct lower_data *);
 static void lower_builtin_setjmp (gimple_stmt_iterator *);
+static void lower_builtin_posix_memalign (gimple_stmt_iterator *);
 
 
 /* Lower the body of current_function_decl from High GIMPLE into Low
@@ -162,8 +163,6 @@ const pass_data pass_data_lower_cf =
   GIMPLE_PASS, /* type */
   "lower", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  false, /* has_gate */
-  true, /* has_execute */
   TV_NONE, /* tv_id */
   PROP_gimple_any, /* properties_required */
   PROP_gimple_lcf, /* properties_provided */
@@ -180,7 +179,7 @@ public:
   {}
 
   /* opt_pass methods: */
-  unsigned int execute () { return lower_function_body (); }
+  virtual unsigned int execute (function *) { return lower_function_body (); }
 
 }; // class pass_lower_cf
 
@@ -327,12 +326,20 @@ lower_stmt (gimple_stmt_iterator *gsi, struct lower_data *data)
 	  }
 
 	if (decl
-	    && DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL
-	    && DECL_FUNCTION_CODE (decl) == BUILT_IN_SETJMP)
+	    && DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL)
 	  {
-	    lower_builtin_setjmp (gsi);
-	    data->cannot_fallthru = false;
-	    return;
+	    if (DECL_FUNCTION_CODE (decl) == BUILT_IN_SETJMP)
+	      {
+		lower_builtin_setjmp (gsi);
+		data->cannot_fallthru = false;
+		return;
+	      }
+	    else if (DECL_FUNCTION_CODE (decl) == BUILT_IN_POSIX_MEMALIGN
+		     && flag_tree_bit_ccp)
+	      {
+		lower_builtin_posix_memalign (gsi);
+		return;
+	      }
 	  }
 
 	if (decl && (flags_from_decl_or_type (decl) & ECF_NORETURN))
@@ -713,7 +720,7 @@ lower_builtin_setjmp (gimple_stmt_iterator *gsi)
      these builtins are modelled as non-local label jumps to the label
      that is passed to these two builtins, so pretend we have a non-local
      label during GIMPLE passes too.  See PR60003.  */ 
-  cfun->has_nonlocal_label = true;
+  cfun->has_nonlocal_label = 1;
 
   /* NEXT_LABEL is the label __builtin_longjmp will jump to.  Its address is
      passed to both __builtin_setjmp_setup and __builtin_setjmp_receiver.  */
@@ -771,6 +778,60 @@ lower_builtin_setjmp (gimple_stmt_iterator *gsi)
   /* Remove the call to __builtin_setjmp.  */
   gsi_remove (gsi, false);
 }
+
+/* Lower calls to posix_memalign to
+     res = posix_memalign (ptr, align, size);
+     if (res == 0)
+       *ptr = __builtin_assume_aligned (*ptr, align);
+   or to
+     void *tem;
+     res = posix_memalign (&tem, align, size);
+     if (res == 0)
+       ptr = __builtin_assume_aligned (tem, align);
+   in case the first argument was &ptr.  That way we can get at the
+   alignment of the heap pointer in CCP.  */
+
+static void
+lower_builtin_posix_memalign (gimple_stmt_iterator *gsi)
+{
+  gimple stmt, call = gsi_stmt (*gsi);
+  tree pptr = gimple_call_arg (call, 0);
+  tree align = gimple_call_arg (call, 1);
+  tree res = gimple_call_lhs (call);
+  tree ptr = create_tmp_reg (ptr_type_node, NULL);
+  if (TREE_CODE (pptr) == ADDR_EXPR)
+    {
+      tree tem = create_tmp_var (ptr_type_node, NULL);
+      TREE_ADDRESSABLE (tem) = 1;
+      gimple_call_set_arg (call, 0, build_fold_addr_expr (tem));
+      stmt = gimple_build_assign (ptr, tem);
+    }
+  else
+    stmt = gimple_build_assign (ptr,
+				fold_build2 (MEM_REF, ptr_type_node, pptr,
+					     build_int_cst (ptr_type_node, 0)));
+  if (res == NULL_TREE)
+    {
+      res = create_tmp_reg (integer_type_node, NULL);
+      gimple_call_set_lhs (call, res);
+    }
+  tree align_label = create_artificial_label (UNKNOWN_LOCATION);
+  tree noalign_label = create_artificial_label (UNKNOWN_LOCATION);
+  gimple cond = gimple_build_cond (EQ_EXPR, res, integer_zero_node,
+				   align_label, noalign_label);
+  gsi_insert_after (gsi, cond, GSI_NEW_STMT);
+  gsi_insert_after (gsi, gimple_build_label (align_label), GSI_NEW_STMT);
+  gsi_insert_after (gsi, stmt, GSI_NEW_STMT);
+  stmt = gimple_build_call (builtin_decl_implicit (BUILT_IN_ASSUME_ALIGNED),
+			    2, ptr, align);
+  gimple_call_set_lhs (stmt, ptr);
+  gsi_insert_after (gsi, stmt, GSI_NEW_STMT);
+  stmt = gimple_build_assign (fold_build2 (MEM_REF, ptr_type_node, pptr,
+					   build_int_cst (ptr_type_node, 0)),
+			      ptr);
+  gsi_insert_after (gsi, stmt, GSI_NEW_STMT);
+  gsi_insert_after (gsi, gimple_build_label (noalign_label), GSI_NEW_STMT);
+}
 
 
 /* Record the variables in VARS into function FN.  */
@@ -778,11 +839,6 @@ lower_builtin_setjmp (gimple_stmt_iterator *gsi)
 void
 record_vars_into (tree vars, tree fn)
 {
-  bool change_cfun = fn != current_function_decl;
-
-  if (change_cfun)
-    push_cfun (DECL_STRUCT_FUNCTION (fn));
-
   for (; vars; vars = DECL_CHAIN (vars))
     {
       tree var = vars;
@@ -797,11 +853,8 @@ record_vars_into (tree vars, tree fn)
 	continue;
 
       /* Record the variable.  */
-      add_local_decl (cfun, var);
+      add_local_decl (DECL_STRUCT_FUNCTION (fn), var);
     }
-
-  if (change_cfun)
-    pop_cfun ();
 }
 
 

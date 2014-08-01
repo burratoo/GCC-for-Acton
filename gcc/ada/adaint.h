@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2013, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2014, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -78,6 +78,11 @@ typedef long OS_Time;
 */
 
 struct file_attributes {
+  int           error;
+  /* Errno value returned by stat()/fstat(). If non-zero, other fields should
+   * be considered as invalid.
+   */
+
   unsigned char exists;
 
   unsigned char writable;
@@ -102,6 +107,8 @@ extern void   __gnat_current_time_string           (char *);
 extern void   __gnat_to_gm_time			   (OS_Time *, int *, int *,
 				                    int *, int *,
 				                    int *, int *);
+extern void   __gnat_to_os_time                    (OS_Time *, int, int, int,
+                                                    int, int, int);
 extern int    __gnat_get_maximum_file_name_length  (void);
 extern int    __gnat_get_switches_case_sensitive   (void);
 extern int    __gnat_get_file_names_case_sensitive (void);
@@ -163,7 +170,8 @@ extern int    __gnat_is_writable_file		   (char *);
 extern int    __gnat_is_readable_file		   (char *name);
 extern int    __gnat_is_executable_file      (char *name);
 
-extern void __gnat_reset_attributes (struct file_attributes* attr);
+extern void   __gnat_reset_attributes (struct file_attributes *);
+extern int    __gnat_error_attributes (struct file_attributes *);
 extern long   __gnat_file_length_attr        (int, char *, struct file_attributes *);
 extern OS_Time __gnat_file_time_name_attr    (char *, struct file_attributes *);
 extern OS_Time __gnat_file_time_fd_attr      (int,    struct file_attributes *);
@@ -177,7 +185,7 @@ extern int    __gnat_is_symbolic_link_attr   (char *, struct file_attributes *);
 
 extern void   __gnat_set_non_writable              (char *name);
 extern void   __gnat_set_writable                  (char *name);
-extern void   __gnat_set_executable                (char *name);
+extern void   __gnat_set_executable                (char *name, int);
 extern void   __gnat_set_readable                  (char *name);
 extern void   __gnat_set_non_readable              (char *name);
 extern int    __gnat_is_symbolic_link		   (char *name);
@@ -236,6 +244,7 @@ extern int    __gnat_pipe			   (int *);
 extern int    __gnat_expect_poll		   (int *, int, int, int *);
 extern void   __gnat_set_binary_mode		   (int);
 extern void   __gnat_set_text_mode		   (int);
+extern void   __gnat_set_mode			   (int,int);
 extern char  *__gnat_ttyname			   (int);
 extern int    __gnat_lseek			   (int, long, int);
 extern int    __gnat_set_close_on_exec		   (int, int);

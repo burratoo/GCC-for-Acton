@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -204,7 +204,7 @@ package body Sprint is
      (Node    : Node_Id;
       Default : Node_Id);
    --  Print the end label for a Handled_Sequence_Of_Statements in a body.
-   --  If there is not end label, use the defining identifier of the enclosing
+   --  If there is no end label, use the defining identifier of the enclosing
    --  construct. If the end label is present, treat it as a reference to the
    --  defining entity of the construct: this guarantees that it carries the
    --  proper sloc information for debugging purposes.
@@ -1131,7 +1131,7 @@ package body Sprint is
 
             if Present (Identifier (Node))
               and then (not Has_Created_Identifier (Node)
-                          or else not Dump_Original_Only)
+                         or else not Dump_Original_Only)
             then
                Write_Rewrite_Str ("<<<");
                Write_Id (Identifier (Node));
@@ -1325,6 +1325,13 @@ package body Sprint is
                Sprint_Indented_List (Component_Items (Node));
                Sprint_Node (Variant_Part (Node));
             end if;
+
+         when N_Compound_Statement =>
+            Write_Indent_Str ("do");
+            Indent_Begin;
+            Sprint_Node_List (Actions (Node));
+            Indent_End;
+            Write_Indent_Str ("end;");
 
          when N_Conditional_Entry_Call =>
             Write_Indent_Str_Sloc ("select");
@@ -2251,7 +2258,32 @@ package body Sprint is
                      Write_Str_With_Col_Check ("not null ");
                   end if;
 
-                  Sprint_Node (Object_Definition (Node));
+                  --  Print type. We used to print the Object_Definition from
+                  --  the node, but it is much more useful to print the Etype
+                  --  of the defining identifier for the case where the nominal
+                  --  type is an unconstrained array type. For example, this
+                  --  will be a clear reference to the Itype with the bounds
+                  --  in the case of a type like String. The object after
+                  --  all is constrained, even if its nominal subtype is
+                  --  unconstrained.
+
+                  declare
+                     Odef : constant Node_Id := Object_Definition (Node);
+
+                  begin
+                     if Nkind (Odef) = N_Identifier
+                       and then Is_Array_Type (Etype (Odef))
+                       and then not Is_Constrained (Etype (Odef))
+                       and then Present (Etype (Def_Id))
+                     then
+                        Sprint_Node (Etype (Def_Id));
+
+                     --  In other cases, the nominal type is fine to print
+
+                     else
+                        Sprint_Node (Odef);
+                     end if;
+                  end;
 
                   if Present (Expression (Node)) then
                      Write_Str (" := ");
@@ -3320,7 +3352,7 @@ package body Sprint is
             --  correspond to the non-existent children of Text_IO.
 
             if Dump_Original_Only
-              and then Is_Text_IO_Kludge_Unit (Name (Node))
+              and then Is_Text_IO_Special_Unit (Name (Node))
             then
                null;
 
@@ -4310,6 +4342,7 @@ package body Sprint is
                         Len : constant Uint :=
                                 String_Literal_Length (Typ);
                      begin
+                        Write_Header (False);
                         Write_Str ("String (");
                         Write_Int (UI_To_Int (LB));
                         Write_Str (" .. ");

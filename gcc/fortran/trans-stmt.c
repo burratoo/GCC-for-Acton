@@ -784,8 +784,11 @@ gfc_trans_sync (gfc_code *code, gfc_exec_op type)
       else
 	{
 	  tree cond2;
+	  tmp = build_call_expr_loc (input_location, gfor_fndecl_caf_num_images,
+				     2, integer_zero_node,
+				     build_int_cst (integer_type_node, -1));
 	  cond = fold_build2_loc (input_location, GT_EXPR, boolean_type_node,
-				  images, gfort_gvar_caf_num_images);
+				  images, tmp);
 	  cond2 = fold_build2_loc (input_location, LT_EXPR, boolean_type_node,
 				   images,
 				   build_int_cst (TREE_TYPE (images), 1));
@@ -1164,22 +1167,27 @@ trans_associate_var (gfc_symbol *sym, gfc_wrapped_block *block)
     {
       gfc_se se;
       tree desc;
+      bool cst_array_ctor;
 
       desc = sym->backend_decl;
+      cst_array_ctor = e->expr_type == EXPR_ARRAY
+	      && gfc_constant_array_constructor_p (e->value.constructor);
 
       /* If association is to an expression, evaluate it and create temporary.
 	 Otherwise, get descriptor of target for pointer assignment.  */
       gfc_init_se (&se, NULL);
-      if (sym->assoc->variable)
+      if (sym->assoc->variable || cst_array_ctor)
 	{
 	  se.direct_byref = 1;
+	  se.use_offset = 1;
 	  se.expr = desc;
 	}
+
       gfc_conv_expr_descriptor (&se, e);
 
       /* If we didn't already do the pointer assignment, set associate-name
 	 descriptor to the one generated for the temporary.  */
-      if (!sym->assoc->variable)
+      if (!sym->assoc->variable && !cst_array_ctor)
 	{
 	  int dim;
 
@@ -1190,6 +1198,17 @@ trans_associate_var (gfc_symbol *sym, gfc_wrapped_block *block)
 	  for (dim = 0; dim < e->rank; ++dim)
 	    gfc_conv_shift_descriptor_lbound (&se.pre, desc,
 					      dim, gfc_index_one_node);
+	}
+
+      /* If this is a subreference array pointer associate name use the
+	 associate variable element size for the value of 'span'.  */
+      if (sym->attr.subref_array_pointer)
+	{
+	  gcc_assert (e->expr_type == EXPR_VARIABLE);
+	  tmp = e->symtree->n.sym->backend_decl;
+	  tmp = gfc_get_element_type (TREE_TYPE (tmp));
+	  tmp = fold_convert (gfc_array_index_type, size_in_bytes (tmp));
+	  gfc_add_modify (&se.pre, GFC_DECL_SPAN(desc), tmp);
 	}
 
       /* Done, register stuff as init / cleanup code.  */
@@ -5017,6 +5036,11 @@ gfc_trans_allocate (gfc_code * code)
 	      if (tmp && TREE_CODE (tmp) == VAR_DECL)
 		gfc_add_modify (&se.pre, tmp, fold_convert (TREE_TYPE (tmp),
 				memsz));
+	      else if (al->expr->ts.type == BT_CHARACTER
+		       && al->expr->ts.deferred && se.string_length)
+		gfc_add_modify (&se.pre, se.string_length,
+				fold_convert (TREE_TYPE (se.string_length),
+				memsz));
 
 	      /* Convert to size in bytes, using the character KIND.  */
 	      if (unlimited_char)
@@ -5091,8 +5115,8 @@ gfc_trans_allocate (gfc_code * code)
 				  boolean_type_node, stat,
 				  build_int_cst (TREE_TYPE (stat), 0));
 	  tmp = fold_build3_loc (input_location, COND_EXPR, void_type_node,
-				 gfc_unlikely (parm), tmp,
-				     build_empty_stmt (input_location));
+				 gfc_unlikely (parm, PRED_FORTRAN_FAIL_ALLOC),
+				 tmp, build_empty_stmt (input_location));
 	  gfc_add_expr_to_block (&block, tmp);
 	}
 
@@ -5485,7 +5509,7 @@ gfc_trans_deallocate (gfc_code *code)
 	  cond = fold_build2_loc (input_location, NE_EXPR, boolean_type_node, stat,
 				  build_int_cst (TREE_TYPE (stat), 0));
 	  tmp = fold_build3_loc (input_location, COND_EXPR, void_type_node,
-				 gfc_unlikely (cond),
+				 gfc_unlikely (cond, PRED_FORTRAN_FAIL_ALLOC),
 				 build1_v (GOTO_EXPR, label_errmsg),
 				 build_empty_stmt (input_location));
 	  gfc_add_expr_to_block (&se.pre, tmp);
@@ -5525,7 +5549,7 @@ gfc_trans_deallocate (gfc_code *code)
       cond = fold_build2_loc (input_location, NE_EXPR, boolean_type_node, stat,
 			     build_int_cst (TREE_TYPE (stat), 0));
       tmp = fold_build3_loc (input_location, COND_EXPR, void_type_node,
-			     gfc_unlikely (cond), tmp,
+			     gfc_unlikely (cond, PRED_FORTRAN_FAIL_ALLOC), tmp,
 			     build_empty_stmt (input_location));
 
       gfc_add_expr_to_block (&block, tmp);

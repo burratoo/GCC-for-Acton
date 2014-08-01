@@ -20,8 +20,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "internal-fn.h"
 #include "tree.h"
+#include "internal-fn.h"
 #include "stor-layout.h"
 #include "expr.h"
 #include "optabs.h"
@@ -36,6 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "predict.h"
 #include "stringpool.h"
 #include "tree-ssanames.h"
+#include "diagnostic-core.h"
 
 /* The names of each internal function, indexed by function number.  */
 const char *const internal_fn_name_array[] = {
@@ -158,6 +159,14 @@ expand_UBSAN_NULL (gimple stmt ATTRIBUTE_UNUSED)
   gcc_unreachable ();
 }
 
+/* This should get expanded in the sanopt pass.  */
+
+static void
+expand_UBSAN_BOUNDS (gimple stmt ATTRIBUTE_UNUSED)
+{
+  gcc_unreachable ();
+}
+
 /* Add sub/add overflow checking to the statement STMT.
    CODE says whether the operation is +, or -.  */
 
@@ -220,14 +229,15 @@ ubsan_expand_si_overflow_addsub_check (tree_code code, gimple stmt)
       res = expand_binop (mode, code == PLUS_EXPR ? add_optab : sub_optab,
 			  op0, op1, NULL_RTX, false, OPTAB_LIB_WIDEN);
 
-      /* If we can prove one of the arguments is always non-negative
-	 or always negative, we can do just one comparison and
-	 conditional jump instead of 2 at runtime, 3 present in the
+      /* If we can prove one of the arguments (for MINUS_EXPR only
+	 the second operand, as subtraction is not commutative) is always
+	 non-negative or always negative, we can do just one comparison
+	 and conditional jump instead of 2 at runtime, 3 present in the
 	 emitted code.  If one of the arguments is CONST_INT, all we
 	 need is to make sure it is op1, then the first
 	 emit_cmp_and_jump_insns will be just folded.  Otherwise try
 	 to use range info if available.  */
-      if (CONST_INT_P (op0))
+      if (code == PLUS_EXPR && CONST_INT_P (op0))
 	{
 	  rtx tem = op0;
 	  op0 = op1;
@@ -235,14 +245,14 @@ ubsan_expand_si_overflow_addsub_check (tree_code code, gimple stmt)
 	}
       else if (CONST_INT_P (op1))
 	;
-      else if (TREE_CODE (arg0) == SSA_NAME)
+      else if (code == PLUS_EXPR && TREE_CODE (arg0) == SSA_NAME)
 	{
-	  double_int arg0_min, arg0_max;
+	  wide_int arg0_min, arg0_max;
 	  if (get_range_info (arg0, &arg0_min, &arg0_max) == VR_RANGE)
 	    {
-	      if (!arg0_min.is_negative ())
+	      if (!wi::neg_p (arg0_min, TYPE_SIGN (TREE_TYPE (arg0))))
 		pos_neg = 1;
-	      else if (arg0_max.is_negative ())
+	      else if (wi::neg_p (arg0_max, TYPE_SIGN (TREE_TYPE (arg0))))
 		pos_neg = 2;
 	    }
 	  if (pos_neg != 3)
@@ -254,12 +264,12 @@ ubsan_expand_si_overflow_addsub_check (tree_code code, gimple stmt)
 	}
       if (pos_neg == 3 && !CONST_INT_P (op1) && TREE_CODE (arg1) == SSA_NAME)
 	{
-	  double_int arg1_min, arg1_max;
+	  wide_int arg1_min, arg1_max;
 	  if (get_range_info (arg1, &arg1_min, &arg1_max) == VR_RANGE)
 	    {
-	      if (!arg1_min.is_negative ())
+	      if (!wi::neg_p (arg1_min, TYPE_SIGN (TREE_TYPE (arg1))))
 		pos_neg = 1;
-	      else if (arg1_max.is_negative ())
+	      else if (wi::neg_p (arg1_max, TYPE_SIGN (TREE_TYPE (arg1))))
 		pos_neg = 2;
 	    }
 	}
@@ -476,7 +486,7 @@ ubsan_expand_si_overflow_mul_check (gimple stmt)
 	  rtx do_overflow = gen_label_rtx ();
 	  rtx hipart_different = gen_label_rtx ();
 
-	  int hprec = GET_MODE_PRECISION (hmode);
+	  unsigned int hprec = GET_MODE_PRECISION (hmode);
 	  rtx hipart0 = expand_shift (RSHIFT_EXPR, mode, op0, hprec,
 				      NULL_RTX, 0);
 	  hipart0 = gen_lowpart (hmode, hipart0);
@@ -508,37 +518,35 @@ ubsan_expand_si_overflow_mul_check (gimple stmt)
 
 	  if (TREE_CODE (arg0) == SSA_NAME)
 	    {
-	      double_int arg0_min, arg0_max;
+	      wide_int arg0_min, arg0_max;
 	      if (get_range_info (arg0, &arg0_min, &arg0_max) == VR_RANGE)
 		{
-		  if (arg0_max.sle (double_int::max_value (hprec, false))
-		      && double_int::min_value (hprec, false).sle (arg0_min))
+		  unsigned int mprec0 = wi::min_precision (arg0_min, SIGNED);
+		  unsigned int mprec1 = wi::min_precision (arg0_max, SIGNED);
+		  if (mprec0 <= hprec && mprec1 <= hprec)
 		    op0_small_p = true;
-		  else if (arg0_max.sle (double_int::max_value (hprec, true))
-			   && (~double_int::max_value (hprec,
-						       true)).sle (arg0_min))
+		  else if (mprec0 <= hprec + 1 && mprec1 <= hprec + 1)
 		    op0_medium_p = true;
-		  if (!arg0_min.is_negative ())
+		  if (!wi::neg_p (arg0_min, TYPE_SIGN (TREE_TYPE (arg0))))
 		    op0_sign = 0;
-		  else if (arg0_max.is_negative ())
+		  else if (wi::neg_p (arg0_max, TYPE_SIGN (TREE_TYPE (arg0))))
 		    op0_sign = -1;
 		}
 	    }
 	  if (TREE_CODE (arg1) == SSA_NAME)
 	    {
-	      double_int arg1_min, arg1_max;
+	      wide_int arg1_min, arg1_max;
 	      if (get_range_info (arg1, &arg1_min, &arg1_max) == VR_RANGE)
 		{
-		  if (arg1_max.sle (double_int::max_value (hprec, false))
-		      && double_int::min_value (hprec, false).sle (arg1_min))
+		  unsigned int mprec0 = wi::min_precision (arg1_min, SIGNED);
+		  unsigned int mprec1 = wi::min_precision (arg1_max, SIGNED);
+		  if (mprec0 <= hprec && mprec1 <= hprec)
 		    op1_small_p = true;
-		  else if (arg1_max.sle (double_int::max_value (hprec, true))
-			   && (~double_int::max_value (hprec,
-						       true)).sle (arg1_min))
+		  else if (mprec0 <= hprec + 1 && mprec1 <= hprec + 1)
 		    op1_medium_p = true;
-		  if (!arg1_min.is_negative ())
+		  if (!wi::neg_p (arg1_min, TYPE_SIGN (TREE_TYPE (arg1))))
 		    op1_sign = 0;
-		  else if (arg1_max.is_negative ())
+		  else if (wi::neg_p (arg1_max, TYPE_SIGN (TREE_TYPE (arg1))))
 		    op1_sign = -1;
 		}
 	    }
@@ -646,7 +654,8 @@ ubsan_expand_si_overflow_mul_check (gimple stmt)
 	    emit_cmp_and_jump_insns (hipart, const0_rtx, GE, NULL_RTX, hmode,
 				     false, after_hipart_neg, PROB_EVEN);
 
-	  tem = expand_shift (LSHIFT_EXPR, mode, lopart, hprec, NULL_RTX, 1);
+	  tem = convert_modes (mode, hmode, lopart, 1);
+	  tem = expand_shift (LSHIFT_EXPR, mode, tem, hprec, NULL_RTX, 1);
 	  tem = expand_simple_binop (mode, MINUS, loxhi, tem, NULL_RTX,
 				     1, OPTAB_DIRECT);
 	  emit_move_insn (loxhi, tem);
@@ -820,6 +829,8 @@ expand_MASK_LOAD (gimple stmt)
 
   maskt = gimple_call_arg (stmt, 2);
   lhs = gimple_call_lhs (stmt);
+  if (lhs == NULL_TREE)
+    return;
   type = TREE_TYPE (lhs);
   rhs = fold_build2 (MEM_REF, type, gimple_call_arg (stmt, 0),
 		     gimple_call_arg (stmt, 1));
@@ -860,6 +871,23 @@ expand_MASK_STORE (gimple stmt)
 static void
 expand_ABNORMAL_DISPATCHER (gimple)
 {
+}
+
+static void
+expand_BUILTIN_EXPECT (gimple stmt)
+{
+  /* When guessing was done, the hints should be already stripped away.  */
+  gcc_assert (!flag_guess_branch_prob || optimize == 0 || seen_error ());
+
+  rtx target;
+  tree lhs = gimple_call_lhs (stmt);
+  if (lhs)
+    target = expand_expr (lhs, NULL_RTX, VOIDmode, EXPAND_WRITE);
+  else
+    target = const0_rtx;
+  rtx val = expand_expr (gimple_call_arg (stmt, 0), target, VOIDmode, EXPAND_NORMAL);
+  if (lhs && val != target)
+    emit_move_insn (target, val);
 }
 
 /* Routines to expand each internal function, indexed by function number.

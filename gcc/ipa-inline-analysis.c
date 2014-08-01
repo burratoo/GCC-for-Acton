@@ -189,7 +189,7 @@ false_predicate (void)
 }
 
 
-/* Return true if P is (false).  */
+/* Return true if P is (true).  */
 
 static inline bool
 true_predicate_p (struct predicate *p)
@@ -310,7 +310,7 @@ add_clause (conditions conditions, struct predicate *p, clause_t clause)
   if (false_predicate_p (p))
     return;
 
-  /* No one should be sily enough to add false into nontrivial clauses.  */
+  /* No one should be silly enough to add false into nontrivial clauses.  */
   gcc_checking_assert (!(clause & (1 << predicate_false_condition)));
 
   /* Look where to insert the clause.  At the same time prune out
@@ -671,6 +671,11 @@ dump_inline_hints (FILE *f, inline_hints hints)
       hints &= ~INLINE_HINT_array_index;
       fprintf (f, " array_index");
     }
+  if (hints & INLINE_HINT_known_hot)
+    {
+      hints &= ~INLINE_HINT_known_hot;
+      fprintf (f, " known_hot");
+    }
   gcc_assert (!hints);
 }
 
@@ -746,6 +751,20 @@ static void
 edge_set_predicate (struct cgraph_edge *e, struct predicate *predicate)
 {
   struct inline_edge_summary *es = inline_edge_summary (e);
+
+  /* If the edge is determined to be never executed, redirect it
+     to BUILTIN_UNREACHABLE to save inliner from inlining into it.  */
+  if (predicate && false_predicate_p (predicate) && e->callee)
+    {
+      struct cgraph_node *callee = !e->inline_failed ? e->callee : NULL;
+
+      cgraph_redirect_edge_callee (e,
+				   cgraph_node::get_create
+				     (builtin_decl_implicit (BUILT_IN_UNREACHABLE)));
+      e->inline_failed = CIF_UNREACHABLE;
+      if (callee)
+	callee->remove_symbol_and_inline_clones ();
+    }
   if (predicate && !true_predicate_p (predicate))
     {
       if (!es->predicate)
@@ -865,8 +884,7 @@ evaluate_properties_for_edge (struct cgraph_edge *e, bool inline_p,
 			      vec<tree> *known_binfos_ptr,
 			      vec<ipa_agg_jump_function_p> *known_aggs_ptr)
 {
-  struct cgraph_node *callee =
-    cgraph_function_or_thunk_node (e->callee, NULL);
+  struct cgraph_node *callee = e->callee->ultimate_alias_target ();
   struct inline_summary *info = inline_summary (callee);
   vec<tree> known_vals = vNULL;
   vec<ipa_agg_jump_function_p> known_aggs = vNULL;
@@ -1035,7 +1053,7 @@ inline_node_removal_hook (struct cgraph_node *node,
   memset (info, 0, sizeof (inline_summary_t));
 }
 
-/* Remap predicate P of former function to be predicate of duplicated functoin.
+/* Remap predicate P of former function to be predicate of duplicated function.
    POSSIBLE_TRUTHS is clause of possible truths in the duplicated node,
    INFO is inline summary of the duplicated node.  */
 
@@ -1301,8 +1319,7 @@ dump_inline_edge_summary (FILE *f, int indent, struct cgraph_node *node,
   for (edge = node->callees; edge; edge = edge->next_callee)
     {
       struct inline_edge_summary *es = inline_edge_summary (edge);
-      struct cgraph_node *callee =
-	cgraph_function_or_thunk_node (edge->callee, NULL);
+      struct cgraph_node *callee = edge->callee->ultimate_alias_target ();
       int i;
 
       fprintf (f,
@@ -1383,6 +1400,7 @@ dump_inline_summary (FILE *f, struct cgraph_node *node)
       fprintf (f, "  global time:     %i\n", s->time);
       fprintf (f, "  self size:       %i\n", s->self_size);
       fprintf (f, "  global size:     %i\n", s->size);
+      fprintf (f, "  min size:       %i\n", s->min_size);
       fprintf (f, "  self stack:      %i\n",
 	       (int) s->estimated_self_stack_size);
       fprintf (f, "  global stack:    %i\n", (int) s->estimated_stack_size);
@@ -1724,12 +1742,19 @@ set_cond_stmt_execution_predicate (struct ipa_node_params *info,
 
       FOR_EACH_EDGE (e, ei, bb->succs)
 	{
-	  struct predicate p = add_condition (summary, index, &aggpos,
-					      e->flags & EDGE_TRUE_VALUE
-					      ? code : inverted_code,
-					      gimple_cond_rhs (last));
-	  e->aux = pool_alloc (edge_predicate_pool);
-	  *(struct predicate *) e->aux = p;
+	  enum tree_code this_code = (e->flags & EDGE_TRUE_VALUE
+				      ? code : inverted_code);
+	  /* invert_tree_comparison will return ERROR_MARK on FP
+	     comparsions that are not EQ/NE instead of returning proper
+	     unordered one.  Be sure it is not confused with NON_CONSTANT.  */
+	  if (this_code != ERROR_MARK)
+	    {
+	      struct predicate p = add_condition (summary, index, &aggpos,
+						  this_code,
+						  gimple_cond_rhs (last));
+	      e->aux = pool_alloc (edge_predicate_pool);
+	      *(struct predicate *) e->aux = p;
+	    }
 	}
     }
 
@@ -1887,8 +1912,15 @@ compute_bb_predicates (struct cgraph_node *node,
 		}
 	      else if (!predicates_equal_p (&p, (struct predicate *) bb->aux))
 		{
-		  done = false;
-		  *((struct predicate *) bb->aux) = p;
+		  /* This OR operation is needed to ensure monotonous data flow
+		     in the case we hit the limit on number of clauses and the
+		     and/or operations above give approximate answers.  */
+		  p = or_predicates (summary->conds, &p, (struct predicate *)bb->aux);
+	          if (!predicates_equal_p (&p, (struct predicate *) bb->aux))
+		    {
+		      done = false;
+		      *((struct predicate *) bb->aux) = p;
+		    }
 		}
 	    }
 	}
@@ -2299,7 +2331,10 @@ find_foldable_builtin_expect (basic_block bb)
   for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi); gsi_next (&bsi))
     {
       gimple stmt = gsi_stmt (bsi);
-      if (gimple_call_builtin_p (stmt, BUILT_IN_EXPECT))
+      if (gimple_call_builtin_p (stmt, BUILT_IN_EXPECT)
+	  || (is_gimple_call (stmt)
+	      && gimple_call_internal_p (stmt)
+	      && gimple_call_internal_fn (stmt) == IFN_BUILTIN_EXPECT))
         {
           tree var = gimple_call_lhs (stmt);
           tree arg = gimple_call_arg (stmt, 0);
@@ -2561,7 +2596,7 @@ estimate_function_body_sizes (struct cgraph_node *node, bool early)
 	  if (is_gimple_call (stmt)
 	      && !gimple_call_internal_p (stmt))
 	    {
-	      struct cgraph_edge *edge = cgraph_edge (node, stmt);
+	      struct cgraph_edge *edge = node->get_edge (stmt);
 	      struct inline_edge_summary *es = inline_edge_summary (edge);
 
 	      /* Special case: results of BUILT_IN_CONSTANT_P will be always
@@ -2853,7 +2888,7 @@ compute_inline_parameters (struct cgraph_node *node, bool early)
   estimate_function_body_sizes (node, early);
 
   for (e = node->callees; e; e = e->next_callee)
-    if (symtab_comdat_local_p (e->callee))
+    if (e->callee->comdat_local_p ())
       break;
   node->calls_comdat_local = (e != NULL);
 
@@ -2877,7 +2912,7 @@ compute_inline_parameters (struct cgraph_node *node, bool early)
 static unsigned int
 compute_inline_parameters_for_current (void)
 {
-  compute_inline_parameters (cgraph_get_node (current_function_decl), true);
+  compute_inline_parameters (cgraph_node::get (current_function_decl), true);
   return 0;
 }
 
@@ -2888,8 +2923,6 @@ const pass_data pass_data_inline_parameters =
   GIMPLE_PASS, /* type */
   "inline_param", /* name */
   OPTGROUP_INLINE, /* optinfo_flags */
-  false, /* has_gate */
-  true, /* has_execute */
   TV_INLINE_PARAMETERS, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
@@ -2907,9 +2940,10 @@ public:
 
   /* opt_pass methods: */
   opt_pass * clone () { return new pass_inline_parameters (m_ctxt); }
-  unsigned int execute () {
-    return compute_inline_parameters_for_current ();
-  }
+  virtual unsigned int execute (function *)
+    {
+      return compute_inline_parameters_for_current ();
+    }
 
 }; // class pass_inline_parameters
 
@@ -2935,6 +2969,7 @@ estimate_edge_devirt_benefit (struct cgraph_edge *ie,
   tree target;
   struct cgraph_node *callee;
   struct inline_summary *isummary;
+  enum availability avail;
 
   if (!known_vals.exists () && !known_binfos.exists ())
     return false;
@@ -2952,17 +2987,25 @@ estimate_edge_devirt_benefit (struct cgraph_edge *ie,
   gcc_checking_assert (*time >= 0);
   gcc_checking_assert (*size >= 0);
 
-  callee = cgraph_get_node (target);
+  callee = cgraph_node::get (target);
   if (!callee || !callee->definition)
+    return false;
+  callee = callee->function_symbol (&avail);
+  if (avail < AVAIL_AVAILABLE)
     return false;
   isummary = inline_summary (callee);
   return isummary->inlinable;
 }
 
-/* Increase SIZE and TIME for size and time needed to handle edge E.  */
+/* Increase SIZE, MIN_SIZE (if non-NULL) and TIME for size and time needed to
+   handle edge E with probability PROB.
+   Set HINTS if edge may be devirtualized.
+   KNOWN_VALS, KNOWN_AGGS and KNOWN_BINFOS describe context of the call
+   site.  */
 
 static inline void
-estimate_edge_size_and_time (struct cgraph_edge *e, int *size, int *time,
+estimate_edge_size_and_time (struct cgraph_edge *e, int *size, int *min_size,
+			     int *time,
 			     int prob,
 			     vec<tree> known_vals,
 			     vec<tree> known_binfos,
@@ -2972,12 +3015,16 @@ estimate_edge_size_and_time (struct cgraph_edge *e, int *size, int *time,
   struct inline_edge_summary *es = inline_edge_summary (e);
   int call_size = es->call_stmt_size;
   int call_time = es->call_stmt_time;
+  int cur_size;
   if (!e->callee
       && estimate_edge_devirt_benefit (e, &call_size, &call_time,
 				       known_vals, known_binfos, known_aggs)
       && hints && cgraph_maybe_hot_edge_p (e))
     *hints |= INLINE_HINT_indirect_call;
-  *size += call_size * INLINE_SIZE_SCALE;
+  cur_size = call_size * INLINE_SIZE_SCALE;
+  *size += cur_size;
+  if (min_size)
+    *min_size += cur_size;
   *time += apply_probability ((gcov_type) call_time, prob)
     * e->frequency * (INLINE_TIME_SCALE / CGRAPH_FREQ_BASE);
   if (*time > MAX_TIME * INLINE_TIME_SCALE)
@@ -2986,12 +3033,14 @@ estimate_edge_size_and_time (struct cgraph_edge *e, int *size, int *time,
 
 
 
-/* Increase SIZE and TIME for size and time needed to handle all calls in NODE.
-   POSSIBLE_TRUTHS, KNOWN_VALS and KNOWN_BINFOS describe context of the call
-   site.  */
+/* Increase SIZE, MIN_SIZE and TIME for size and time needed to handle all
+   calls in NODE.
+   POSSIBLE_TRUTHS, KNOWN_VALS, KNOWN_AGGS and KNOWN_BINFOS describe context of
+   the call site.  */
 
 static void
-estimate_calls_size_and_time (struct cgraph_node *node, int *size, int *time,
+estimate_calls_size_and_time (struct cgraph_node *node, int *size,
+			      int *min_size, int *time,
 			      inline_hints *hints,
 			      clause_t possible_truths,
 			      vec<tree> known_vals,
@@ -3009,12 +3058,15 @@ estimate_calls_size_and_time (struct cgraph_node *node, int *size, int *time,
 	    {
 	      /* Predicates of calls shall not use NOT_CHANGED codes,
 	         sowe do not need to compute probabilities.  */
-	      estimate_edge_size_and_time (e, size, time, REG_BR_PROB_BASE,
+	      estimate_edge_size_and_time (e, size,
+					   es->predicate ? NULL : min_size,
+					   time, REG_BR_PROB_BASE,
 					   known_vals, known_binfos,
 					   known_aggs, hints);
 	    }
 	  else
-	    estimate_calls_size_and_time (e->callee, size, time, hints,
+	    estimate_calls_size_and_time (e->callee, size, min_size, time,
+					  hints,
 					  possible_truths,
 					  known_vals, known_binfos,
 					  known_aggs);
@@ -3025,7 +3077,9 @@ estimate_calls_size_and_time (struct cgraph_node *node, int *size, int *time,
       struct inline_edge_summary *es = inline_edge_summary (e);
       if (!es->predicate
 	  || evaluate_predicate (es->predicate, possible_truths))
-	estimate_edge_size_and_time (e, size, time, REG_BR_PROB_BASE,
+	estimate_edge_size_and_time (e, size,
+				     es->predicate ? NULL : min_size,
+				     time, REG_BR_PROB_BASE,
 				     known_vals, known_binfos, known_aggs,
 				     hints);
     }
@@ -3033,8 +3087,13 @@ estimate_calls_size_and_time (struct cgraph_node *node, int *size, int *time,
 
 
 /* Estimate size and time needed to execute NODE assuming
-   POSSIBLE_TRUTHS clause, and KNOWN_VALS and KNOWN_BINFOS information
-   about NODE's arguments. */
+   POSSIBLE_TRUTHS clause, and KNOWN_VALS, KNOWN_AGGS and KNOWN_BINFOS
+   information about NODE's arguments.  If non-NULL use also probability
+   information present in INLINE_PARAM_SUMMARY vector.
+   Additionally detemine hints determined by the context.  Finally compute
+   minimal size needed for the call that is independent on the call context and
+   can be used for fast estimates.  Return the values in RET_SIZE,
+   RET_MIN_SIZE, RET_TIME and RET_HINTS.  */
 
 static void
 estimate_node_size_and_time (struct cgraph_node *node,
@@ -3042,7 +3101,7 @@ estimate_node_size_and_time (struct cgraph_node *node,
 			     vec<tree> known_vals,
 			     vec<tree> known_binfos,
 			     vec<ipa_agg_jump_function_p> known_aggs,
-			     int *ret_size, int *ret_time,
+			     int *ret_size, int *ret_min_size, int *ret_time,
 			     inline_hints *ret_hints,
 			     vec<inline_param_summary>
 			     inline_param_summary)
@@ -3051,6 +3110,7 @@ estimate_node_size_and_time (struct cgraph_node *node,
   size_time_entry *e;
   int size = 0;
   int time = 0;
+  int min_size = 0;
   inline_hints hints = 0;
   int i;
 
@@ -3096,6 +3156,8 @@ estimate_node_size_and_time (struct cgraph_node *node,
 	gcc_checking_assert (time >= 0);
 
       }
+  gcc_checking_assert (true_predicate_p (&(*info->entry)[0].predicate));
+  min_size = (*info->entry)[0].size;
   gcc_checking_assert (size >= 0);
   gcc_checking_assert (time >= 0);
 
@@ -3113,12 +3175,13 @@ estimate_node_size_and_time (struct cgraph_node *node,
   if (DECL_DECLARED_INLINE_P (node->decl))
     hints |= INLINE_HINT_declared_inline;
 
-  estimate_calls_size_and_time (node, &size, &time, &hints, possible_truths,
+  estimate_calls_size_and_time (node, &size, &min_size, &time, &hints, possible_truths,
 				known_vals, known_binfos, known_aggs);
   gcc_checking_assert (size >= 0);
   gcc_checking_assert (time >= 0);
   time = RDIV (time, INLINE_TIME_SCALE);
   size = RDIV (size, INLINE_SIZE_SCALE);
+  min_size = RDIV (min_size, INLINE_SIZE_SCALE);
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     fprintf (dump_file, "\n   size:%i time:%i\n", (int) size, (int) time);
@@ -3126,6 +3189,8 @@ estimate_node_size_and_time (struct cgraph_node *node,
     *ret_time = time;
   if (ret_size)
     *ret_size = size;
+  if (ret_min_size)
+    *ret_min_size = min_size;
   if (ret_hints)
     *ret_hints = hints;
   return;
@@ -3150,7 +3215,7 @@ estimate_ipcp_clone_size_and_time (struct cgraph_node *node,
   clause = evaluate_conditions_for_known_args (node, false, known_vals,
 					       known_aggs);
   estimate_node_size_and_time (node, clause, known_vals, known_binfos,
-			       known_aggs, ret_size, ret_time, hints, vNULL);
+			       known_aggs, ret_size, NULL, ret_time, hints, vNULL);
 }
 
 /* Translate all conditions from callee representation into caller
@@ -3551,7 +3616,8 @@ inline_update_overall_summary (struct cgraph_node *node)
       if (info->time > MAX_TIME * INLINE_TIME_SCALE)
 	info->time = MAX_TIME * INLINE_TIME_SCALE;
     }
-  estimate_calls_size_and_time (node, &info->size, &info->time, NULL,
+  estimate_calls_size_and_time (node, &info->size, &info->min_size,
+				&info->time, NULL,
 				~(clause_t) (1 << predicate_false_condition),
 				vNULL, vNULL, vNULL);
   info->time = (info->time + INLINE_TIME_SCALE / 2) / INLINE_TIME_SCALE;
@@ -3596,15 +3662,27 @@ do_estimate_edge_time (struct cgraph_edge *edge)
   vec<tree> known_binfos;
   vec<ipa_agg_jump_function_p> known_aggs;
   struct inline_edge_summary *es = inline_edge_summary (edge);
+  int min_size;
 
-  callee = cgraph_function_or_thunk_node (edge->callee, NULL);
+  callee = edge->callee->ultimate_alias_target ();
 
   gcc_checking_assert (edge->inline_failed);
   evaluate_properties_for_edge (edge, true,
 				&clause, &known_vals, &known_binfos,
 				&known_aggs);
   estimate_node_size_and_time (callee, clause, known_vals, known_binfos,
-			       known_aggs, &size, &time, &hints, es->param);
+			       known_aggs, &size, &min_size, &time, &hints, es->param);
+
+  /* When we have profile feedback, we can quite safely identify hot
+     edges and for those we disable size limits.  Don't do that when
+     probability that caller will call the callee is low however, since it
+     may hurt optimization of the caller's hot path.  */
+  if (edge->count && cgraph_maybe_hot_edge_p (edge)
+      && (edge->count * 2
+          > (edge->caller->global.inlined_to
+	     ? edge->caller->global.inlined_to->count : edge->caller->count)))
+    hints |= INLINE_HINT_known_hot;
+
   known_vals.release ();
   known_binfos.release ();
   known_aggs.release ();
@@ -3614,6 +3692,7 @@ do_estimate_edge_time (struct cgraph_edge *edge)
   /* When caching, update the cache entry.  */
   if (edge_growth_cache.exists ())
     {
+      inline_summary (edge->callee)->min_size = min_size;
       if ((int) edge_growth_cache.length () <= edge->uid)
 	edge_growth_cache.safe_grow_cleared (cgraph_edge_max_uid);
       edge_growth_cache[edge->uid].time = time + (time >= 0);
@@ -3649,7 +3728,7 @@ do_estimate_edge_size (struct cgraph_edge *edge)
       return size - (size > 0);
     }
 
-  callee = cgraph_function_or_thunk_node (edge->callee, NULL);
+  callee = edge->callee->ultimate_alias_target ();
 
   /* Early inliner runs without caching, go ahead and do the dirty work.  */
   gcc_checking_assert (edge->inline_failed);
@@ -3657,7 +3736,7 @@ do_estimate_edge_size (struct cgraph_edge *edge)
 				&clause, &known_vals, &known_binfos,
 				&known_aggs);
   estimate_node_size_and_time (callee, clause, known_vals, known_binfos,
-			       known_aggs, &size, NULL, NULL, vNULL);
+			       known_aggs, &size, NULL, NULL, NULL, vNULL);
   known_vals.release ();
   known_binfos.release ();
   known_aggs.release ();
@@ -3688,7 +3767,7 @@ do_estimate_edge_hints (struct cgraph_edge *edge)
       return hints - 1;
     }
 
-  callee = cgraph_function_or_thunk_node (edge->callee, NULL);
+  callee = edge->callee->ultimate_alias_target ();
 
   /* Early inliner runs without caching, go ahead and do the dirty work.  */
   gcc_checking_assert (edge->inline_failed);
@@ -3696,7 +3775,7 @@ do_estimate_edge_hints (struct cgraph_edge *edge)
 				&clause, &known_vals, &known_binfos,
 				&known_aggs);
   estimate_node_size_and_time (callee, clause, known_vals, known_binfos,
-			       known_aggs, NULL, NULL, &hints, vNULL);
+			       known_aggs, NULL, NULL, NULL, &hints, vNULL);
   known_vals.release ();
   known_binfos.release ();
   known_aggs.release ();
@@ -3782,7 +3861,7 @@ do_estimate_growth (struct cgraph_node *node)
   struct growth_data d = { node, 0, false };
   struct inline_summary *info = inline_summary (node);
 
-  cgraph_for_node_and_aliases (node, do_estimate_growth_1, &d, true);
+  node->call_for_symbol_thunks_and_aliases (do_estimate_growth_1, &d, true);
 
   /* For self recursive functions the growth estimation really should be
      infinity.  We don't want to return very large values because the growth
@@ -3794,13 +3873,13 @@ do_estimate_growth (struct cgraph_node *node)
     ;
   else
     {
-      if (cgraph_will_be_removed_from_program_if_no_direct_calls (node))
+      if (node->will_be_removed_from_program_if_no_direct_calls_p ())
 	d.growth -= info->size;
       /* COMDAT functions are very often not shared across multiple units
          since they come from various template instantiations.
          Take this into account.  */
       else if (DECL_COMDAT (node->decl)
-	       && cgraph_can_remove_if_no_direct_calls_p (node))
+	       && node->can_remove_if_no_direct_calls_p ())
 	d.growth -= (info->size
 		     * (100 - PARAM_VALUE (PARAM_COMDAT_SHARING_PROBABILITY))
 		     + 50) / 100;
@@ -3813,6 +3892,55 @@ do_estimate_growth (struct cgraph_node *node)
       node_growth_cache[node->uid] = d.growth + (d.growth >= 0);
     }
   return d.growth;
+}
+
+
+/* Make cheap estimation if growth of NODE is likely positive knowing
+   EDGE_GROWTH of one particular edge. 
+   We assume that most of other edges will have similar growth
+   and skip computation if there are too many callers.  */
+
+bool
+growth_likely_positive (struct cgraph_node *node, int edge_growth ATTRIBUTE_UNUSED)
+{
+  int max_callers;
+  int ret;
+  struct cgraph_edge *e;
+  gcc_checking_assert (edge_growth > 0);
+
+  /* Unlike for functions called once, we play unsafe with
+     COMDATs.  We can allow that since we know functions
+     in consideration are small (and thus risk is small) and
+     moreover grow estimates already accounts that COMDAT
+     functions may or may not disappear when eliminated from
+     current unit. With good probability making aggressive
+     choice in all units is going to make overall program
+     smaller.
+
+     Consequently we ask cgraph_can_remove_if_no_direct_calls_p
+     instead of
+     cgraph_will_be_removed_from_program_if_no_direct_calls  */
+  if (DECL_EXTERNAL (node->decl)
+      || !node->can_remove_if_no_direct_calls_p ())
+    return true;
+
+  /* If there is cached value, just go ahead.  */
+  if ((int)node_growth_cache.length () > node->uid
+      && (ret = node_growth_cache[node->uid]))
+    return ret > 0;
+  if (!node->will_be_removed_from_program_if_no_direct_calls_p ()
+      && (!DECL_COMDAT (node->decl)
+	  || !node->can_remove_if_no_direct_calls_p ()))
+    return true;
+  max_callers = inline_summary (node)->size * 4 / edge_growth + 2;
+
+  for (e = node->callers; e; e = e->next_caller)
+    {
+      max_callers--;
+      if (!max_callers)
+	return true;
+    }
+  return estimate_growth (node) > 0;
 }
 
 
@@ -3833,7 +3961,7 @@ inline_indirect_intraprocedural_analysis (struct cgraph_node *node)
 
 /* Note function body size.  */
 
-static void
+void
 inline_analyze_function (struct cgraph_node *node)
 {
   push_cfun (DECL_STRUCT_FUNCTION (node->decl));
@@ -3981,7 +4109,8 @@ inline_read_section (struct lto_file_decl_data *file_data, const char *data,
 
       index = streamer_read_uhwi (&ib);
       encoder = file_data->symtab_node_encoder;
-      node = cgraph (lto_symtab_encoder_deref (encoder, index));
+      node = dyn_cast<cgraph_node *> (lto_symtab_encoder_deref (encoder,
+								index));
       info = inline_summary (node);
 
       info->estimated_stack_size
@@ -4126,7 +4255,7 @@ inline_write_summary (void)
   for (i = 0; i < lto_symtab_encoder_size (encoder); i++)
     {
       symtab_node *snode = lto_symtab_encoder_deref (encoder, i);
-      cgraph_node *cnode = dyn_cast <cgraph_node> (snode);
+      cgraph_node *cnode = dyn_cast <cgraph_node *> (snode);
       if (cnode && cnode->definition && !cnode->alias)
 	count++;
     }
@@ -4135,7 +4264,7 @@ inline_write_summary (void)
   for (i = 0; i < lto_symtab_encoder_size (encoder); i++)
     {
       symtab_node *snode = lto_symtab_encoder_deref (encoder, i);
-      cgraph_node *cnode = dyn_cast <cgraph_node> (snode);
+      cgraph_node *cnode = dyn_cast <cgraph_node *> (snode);
       if (cnode && (node = cnode)->definition && !node->alias)
 	{
 	  struct inline_summary *info = inline_summary (node);

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -66,6 +66,7 @@ package body Opt is
       SPARK_Mode_Config                     := SPARK_Mode;
       SPARK_Mode_Pragma_Config              := SPARK_Mode_Pragma;
       Use_VADS_Size_Config                  := Use_VADS_Size;
+      Warnings_As_Errors_Count_Config       := Warnings_As_Errors_Count;
 
       --  Reset the indication that Optimize_Alignment was set locally, since
       --  if we had a pragma in the config file, it would set this flag True,
@@ -103,6 +104,7 @@ package body Opt is
       SPARK_Mode                     := Save.SPARK_Mode;
       SPARK_Mode_Pragma              := Save.SPARK_Mode_Pragma;
       Use_VADS_Size                  := Save.Use_VADS_Size;
+      Warnings_As_Errors_Count       := Save.Warnings_As_Errors_Count;
 
       --  Update consistently the value of Init_Or_Norm_Scalars. The value of
       --  Normalize_Scalars is not saved/restored because after set to True its
@@ -141,6 +143,7 @@ package body Opt is
       Save.SPARK_Mode                     := SPARK_Mode;
       Save.SPARK_Mode_Pragma              := SPARK_Mode_Pragma;
       Save.Use_VADS_Size                  := Use_VADS_Size;
+      Save.Warnings_As_Errors_Count       := Warnings_As_Errors_Count;
    end Save_Opt_Config_Switches;
 
    -----------------------------
@@ -170,6 +173,9 @@ package body Opt is
          Persistent_BSS_Mode         := False;
          Use_VADS_Size               := False;
          Optimize_Alignment_Local    := True;
+
+         --  Note: we do not need to worry about Warnings_As_Errors_Count since
+         --  we do not expect to get any warnings from compiling such a unit.
 
          --  For an internal unit, assertions/debug pragmas are off unless this
          --  is the main unit and they were explicitly enabled. We also make
@@ -212,6 +218,7 @@ package body Opt is
          SPARK_Mode                  := SPARK_Mode_Config;
          SPARK_Mode_Pragma           := SPARK_Mode_Pragma_Config;
          Use_VADS_Size               := Use_VADS_Size_Config;
+         Warnings_As_Errors_Count    := Warnings_As_Errors_Count_Config;
 
          --  Update consistently the value of Init_Or_Norm_Scalars. The value
          --  of Normalize_Scalars is not saved/restored because once set to
@@ -242,9 +249,13 @@ package body Opt is
 
    begin
       Tree_Read_Int  (Tree_ASIS_Version_Number);
+
+      Tree_Read_Bool (Address_Is_Private);
       Tree_Read_Bool (Brief_Output);
       Tree_Read_Bool (GNAT_Mode);
       Tree_Read_Char (Identifier_Character_Set);
+      Tree_Read_Bool (Ignore_Rep_Clauses);
+      Tree_Read_Bool (Ignore_Style_Checks_Pragmas);
       Tree_Read_Int  (Maximum_File_Name_Length);
       Tree_Read_Data (Suppress_Options'Address,
                       (Suppress_Options'Size + SU - 1) / SU);
@@ -287,6 +298,7 @@ package body Opt is
       Tree_Read_Bool (Inline_Active);
       Tree_Read_Bool (Inline_Processing_Required);
       Tree_Read_Bool (List_Units);
+      Tree_Read_Int  (Multiple_Unit_Index);
       Tree_Read_Bool (Configurable_Run_Time_Mode);
       Tree_Read_Data (Operating_Mode'Address,
                       (Operating_Mode'Size + SU - 1) / Storage_Unit);
@@ -307,9 +319,13 @@ package body Opt is
 
    begin
       Tree_Write_Int  (ASIS_Version_Number);
+
+      Tree_Write_Bool (Address_Is_Private);
       Tree_Write_Bool (Brief_Output);
       Tree_Write_Bool (GNAT_Mode);
       Tree_Write_Char (Identifier_Character_Set);
+      Tree_Write_Bool (Ignore_Rep_Clauses);
+      Tree_Write_Bool (Ignore_Style_Checks_Pragmas);
       Tree_Write_Int  (Maximum_File_Name_Length);
       Tree_Write_Data (Suppress_Options'Address,
                        (Suppress_Options'Size + SU - 1) / SU);
@@ -332,6 +348,7 @@ package body Opt is
       Tree_Write_Bool (Inline_Active);
       Tree_Write_Bool (Inline_Processing_Required);
       Tree_Write_Bool (List_Units);
+      Tree_Write_Int  (Multiple_Unit_Index);
       Tree_Write_Bool (Configurable_Run_Time_Mode);
       Tree_Write_Data (Operating_Mode'Address,
                        (Operating_Mode'Size + SU - 1) / SU);

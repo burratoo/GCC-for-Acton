@@ -79,11 +79,16 @@ call_ ## FUNC (void)					\
 }
 #endif
 
+#if defined(TARGET_DL_ITERATE_PHDR) && \
+   (defined(__DragonFly__) || defined(__FreeBSD__))
+#define BSD_DL_ITERATE_PHDR_AVAILABLE
+#endif
+ 
 #if defined(OBJECT_FORMAT_ELF) \
     && !defined(OBJECT_FORMAT_FLAT) \
     && defined(HAVE_LD_EH_FRAME_HDR) \
     && !defined(inhibit_libc) && !defined(CRTSTUFFT_O) \
-    && defined(__FreeBSD__) && __FreeBSD__ >= 7
+    && defined(BSD_DL_ITERATE_PHDR_AVAILABLE)
 #include <link.h>
 # define USE_PT_GNU_EH_FRAME
 #endif
@@ -460,12 +465,14 @@ frame_dummy (void)
 #endif /* USE_EH_FRAME_REGISTRY */
 
 #ifdef JCR_SECTION_NAME
-  if (__JCR_LIST__[0])
+  void **jcr_list;
+  __asm ("" : "=g" (jcr_list) : "0" (__JCR_LIST__));
+  if (__builtin_expect (*jcr_list != NULL, 0))
     {
       void (*register_classes) (void *) = _Jv_RegisterClasses;
       __asm ("" : "+r" (register_classes));
       if (register_classes)
-	register_classes (__JCR_LIST__);
+	register_classes (jcr_list);
     }
 #endif /* JCR_SECTION_NAME */
 
@@ -565,12 +572,14 @@ __do_global_ctors_1(void)
 #endif
 
 #ifdef JCR_SECTION_NAME
-  if (__JCR_LIST__[0])
+  void **jcr_list
+  __asm ("" : "=g" (jcr_list) : "0" (__JCR_LIST__));
+  if (__builtin_expect (*jcr_list != NULL, 0))
     {
       void (*register_classes) (void *) = _Jv_RegisterClasses;
       __asm ("" : "+r" (register_classes));
       if (register_classes)
-	register_classes (__JCR_LIST__);
+	register_classes (jcr_list);
     }
 #endif
 

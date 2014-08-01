@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -214,15 +214,25 @@ package Sem_Eval is
    --  static, or because one or the other bound raises CE).
 
    function Subtypes_Statically_Compatible
-     (T1 : Entity_Id;
-      T2 : Entity_Id) return Boolean;
+     (T1                      : Entity_Id;
+      T2                      : Entity_Id;
+      Formal_Derived_Matching : Boolean := False) return Boolean;
    --  Returns true if the subtypes are unconstrained or the constraint on
    --  on T1 is statically compatible with T2 (as defined by 4.9.1(4)).
-   --  Otherwise returns false.
+   --  Otherwise returns false. Formal_Derived_Matching indicates whether
+   --  the type T1 is a generic actual being checked against ancestor T2
+   --  in a formal derived type association.
 
-   function Subtypes_Statically_Match (T1, T2 : Entity_Id) return Boolean;
+   function Subtypes_Statically_Match
+     (T1                      : Entity_Id;
+      T2                      : Entity_Id;
+      Formal_Derived_Matching : Boolean := False) return Boolean;
    --  Determine whether two types T1, T2, which have the same base type,
-   --  are statically matching subtypes (RM 4.9.1(1-2)).
+   --  are statically matching subtypes (RM 4.9.1(1-2)). Also includes the
+   --  extra GNAT rule that object sizes must match (this can be false for
+   --  types that match in the RM sense because of use of 'Object_Size),
+   --  except when testing a generic actual T1 against an ancestor T2 in a
+   --  formal derived type association (indicated by Formal_Derived_Matching).
 
    function Compile_Time_Known_Value (Op : Node_Id) return Boolean;
    --  Returns true if Op is an expression not raising Constraint_Error whose
@@ -238,7 +248,7 @@ package Sem_Eval is
    --  In general we take a pessimistic view. False does not mean the value
    --  could not be known at compile time, but True means that absolutely
    --  definition it is known at compile time and it is safe to call
-   --  Expr_Value on the expression Op.
+   --  Expr_Value[_XX] on the expression Op.
    --
    --  Note that we don't define precisely the set of expressions that return
    --  True. Callers should not make any assumptions regarding the value that
@@ -355,9 +365,12 @@ package Sem_Eval is
    procedure Eval_Unchecked_Conversion   (N : Node_Id);
 
    function Eval_Static_Predicate_Check
-     (N  : Node_Id;
-     Typ : Entity_Id) return Boolean;
-   --  Evaluate a static predicate check applied to a scalar literal
+     (N   : Node_Id;
+      Typ : Entity_Id) return Boolean;
+   --  Evaluate a static predicate check applied expression which represents
+   --  a value that is known at compile time (does not have to be static). The
+   --  caller has checked that a static predicate does apply to Typ, and thus
+   --  the type is known to be scalar.
 
    procedure Fold_Str (N : Node_Id; Val : String_Id; Static : Boolean);
    --  Rewrite N with a new N_String_Literal node as the result of the compile
@@ -452,19 +465,31 @@ package Sem_Eval is
    --  it cannot (because the value of Lo or Hi is not known at compile time)
    --  then it returns False.
 
+   function Predicates_Match (T1, T2 : Entity_Id) return Boolean;
+   --  In Ada 2012, subtypes statically match if their static predicates
+   --  match as well. This function performs the required check that
+   --  predicates match. Separated out from Subtypes_Statically_Match so
+   --  that it can be used in specializing error messages.
+
    procedure Why_Not_Static (Expr : Node_Id);
    --  This procedure may be called after generating an error message that
-   --  complains that something is non-static. If it finds good reasons,
-   --  it generates one or more continuation error messages pointing the
-   --  appropriate offending component of the expression. If no good reasons
-   --  can be figured out, then no messages are generated. The expectation here
-   --  is that the caller has already issued a message complaining that the
-   --  expression is non-static. Note that this message should be placed using
-   --  Error_Msg_F or Error_Msg_FE, so that it will sort before any messages
-   --  placed by this call. Note that it is fine to call Why_Not_Static with
-   --  something that is not an expression, and usually this has no effect, but
-   --  in some cases (N_Parameter_Association or N_Range), it makes sense for
-   --  the internal recursive calls.
+   --  complains that something is non-static. If it finds good reasons, it
+   --  generates one or more error messages pointing the appropriate offending
+   --  component of the expression. If no good reasons can be figured out, then
+   --  no messages are generated. The expectation here is that the caller has
+   --  already issued a message complaining that the expression is non-static.
+   --  Note that this message should be placed using Error_Msg_F or
+   --  Error_Msg_FE, so that it will sort before any messages placed by this
+   --  call. Note that it is fine to call Why_Not_Static with something that
+   --  is not an expression, and usually this has no effect, but in some cases
+   --  (N_Parameter_Association or N_Range), it makes sense for the internal
+   --  recursive calls.
+   --
+   --  Note that these messages are not continuation messages, instead they are
+   --  separate unconditional messages, marked with '!'. The reason for this is
+   --  that they can be posted at a different location from the maim message as
+   --  documented above ("appropriate offending component"), and continuation
+   --  messages must always point to the same location as the parent message.
 
    procedure Initialize;
    --  Initializes the internal data structures. Must be called before each

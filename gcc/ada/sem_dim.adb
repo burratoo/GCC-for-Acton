@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2011-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 2011-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -772,7 +772,7 @@ package body Sem_Dim is
 
                Others_Seen := True;
 
-            --  All other cases are erroneous declarations of dimension names
+            --  All other cases are illegal declarations of dimension names
 
             else
                Error_Msg_NE ("wrong syntax for aspect&", Choice, Id);
@@ -2590,7 +2590,7 @@ package body Sem_Dim is
 
       Actual_1 :=
         Make_Type_Conversion (Loc,
-          Subtype_Mark => New_Reference_To (Standard_Long_Long_Float, Loc),
+          Subtype_Mark => New_Occurrence_Of (Standard_Long_Long_Float, Loc),
           Expression   => Relocate_Node (L));
 
       Actual_2 :=
@@ -2606,10 +2606,10 @@ package body Sem_Dim is
 
       New_N :=
          Make_Type_Conversion (Loc,
-           Subtype_Mark => New_Reference_To (New_Id, Loc),
+           Subtype_Mark => New_Occurrence_Of (New_Id, Loc),
            Expression   =>
              Make_Function_Call (Loc,
-               Name => New_Reference_To (RTE (RE_Expon_LLF), Loc),
+               Name => New_Occurrence_Of (RTE (RE_Expon_LLF), Loc),
                Parameter_Associations => New_List (
                  Actual_1, Actual_2)));
 

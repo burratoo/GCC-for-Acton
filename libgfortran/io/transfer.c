@@ -2670,16 +2670,22 @@ data_transfer_init (st_parameter_dt *dtp, int read_flag)
 	= !(cf & IOPARM_DT_HAS_DELIM) ? DELIM_UNSPECIFIED :
 	  find_option (&dtp->common, dtp->delim, dtp->delim_len,
 	  delim_opt, "Bad DELIM parameter in data transfer statement");
-  
+
   if (dtp->u.p.current_unit->delim_status == DELIM_UNSPECIFIED)
-    dtp->u.p.current_unit->delim_status = dtp->u.p.current_unit->flags.delim;
+    {
+      if (ionml && dtp->u.p.current_unit->flags.delim == DELIM_UNSPECIFIED)
+	dtp->u.p.current_unit->delim_status =
+	  compile_options.allow_std & GFC_STD_GNU ? DELIM_QUOTE : DELIM_NONE;
+      else
+	dtp->u.p.current_unit->delim_status = dtp->u.p.current_unit->flags.delim;
+    }
 
   /* Check the pad mode.  */
   dtp->u.p.current_unit->pad_status
 	= !(cf & IOPARM_DT_HAS_PAD) ? PAD_UNSPECIFIED :
 	  find_option (&dtp->common, dtp->pad, dtp->pad_len, pad_opt,
 			"Bad PAD parameter in data transfer statement");
-  
+
   if (dtp->u.p.current_unit->pad_status == PAD_UNSPECIFIED)
 	dtp->u.p.current_unit->pad_status = dtp->u.p.current_unit->flags.pad;
 
@@ -3506,7 +3512,7 @@ next_record (st_parameter_dt *dtp, int done)
     pre_position (dtp);
 
   fbuf_flush (dtp->u.p.current_unit, dtp->u.p.mode);
-  flush_if_unbuffered (dtp->u.p.current_unit->s);
+  smarkeor (dtp->u.p.current_unit->s);
 }
 
 
@@ -3780,9 +3786,9 @@ st_set_nml_var (st_parameter_dt *dtp, void * var_addr, char * var_name,
   if (nml->var_rank > 0)
     {
       nml->dim = (descriptor_dimension*)
-		   xmalloc (nml->var_rank * sizeof (descriptor_dimension));
+	xmallocarray (nml->var_rank, sizeof (descriptor_dimension));
       nml->ls = (array_loop_spec*)
-		  xmalloc (nml->var_rank * sizeof (array_loop_spec));
+	xmallocarray (nml->var_rank, sizeof (array_loop_spec));
     }
   else
     {

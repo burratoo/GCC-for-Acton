@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -408,128 +408,10 @@ package body Sem_Aggr is
    --  The bounds of the aggregate itype are cooked up to look reasonable
    --  (in this particular case the bounds will be 1 .. 2).
 
-   procedure Aggregate_Constraint_Checks
-     (Exp       : Node_Id;
-      Check_Typ : Entity_Id);
-   --  Checks expression Exp against subtype Check_Typ. If Exp is an
-   --  aggregate and Check_Typ a constrained record type with discriminants,
-   --  we generate the appropriate discriminant checks. If Exp is an array
-   --  aggregate then emit the appropriate length checks. If Exp is a scalar
-   --  type, or a string literal, Exp is changed into Check_Typ'(Exp) to
-   --  ensure that range checks are performed at run time.
-
    procedure Make_String_Into_Aggregate (N : Node_Id);
    --  A string literal can appear in  a context in  which a one dimensional
    --  array of characters is expected. This procedure simply rewrites the
    --  string as an aggregate, prior to resolution.
-
-   ---------------------------------
-   -- Aggregate_Constraint_Checks --
-   ---------------------------------
-
-   procedure Aggregate_Constraint_Checks
-     (Exp       : Node_Id;
-      Check_Typ : Entity_Id)
-   is
-      Exp_Typ : constant Entity_Id  := Etype (Exp);
-
-   begin
-      if Raises_Constraint_Error (Exp) then
-         return;
-      end if;
-
-      --  Ada 2005 (AI-230): Generate a conversion to an anonymous access
-      --  component's type to force the appropriate accessibility checks.
-
-      --  Ada 2005 (AI-231): Generate conversion to the null-excluding
-      --  type to force the corresponding run-time check
-
-      if Is_Access_Type (Check_Typ)
-        and then ((Is_Local_Anonymous_Access (Check_Typ))
-                    or else (Can_Never_Be_Null (Check_Typ)
-                               and then not Can_Never_Be_Null (Exp_Typ)))
-      then
-         Rewrite (Exp, Convert_To (Check_Typ, Relocate_Node (Exp)));
-         Analyze_And_Resolve (Exp, Check_Typ);
-         Check_Unset_Reference (Exp);
-      end if;
-
-      --  This is really expansion activity, so make sure that expansion is
-      --  on and is allowed. In GNATprove mode, we also want check flags to be
-      --  added in the tree, so that the formal verification can rely on those
-      --  to be present.
-
-      if not (Expander_Active or GNATprove_Mode) or In_Spec_Expression then
-         return;
-      end if;
-
-      --  First check if we have to insert discriminant checks
-
-      if Has_Discriminants (Exp_Typ) then
-         Apply_Discriminant_Check (Exp, Check_Typ);
-
-      --  Next emit length checks for array aggregates
-
-      elsif Is_Array_Type (Exp_Typ) then
-         Apply_Length_Check (Exp, Check_Typ);
-
-      --  Finally emit scalar and string checks. If we are dealing with a
-      --  scalar literal we need to check by hand because the Etype of
-      --  literals is not necessarily correct.
-
-      elsif Is_Scalar_Type (Exp_Typ)
-        and then Compile_Time_Known_Value (Exp)
-      then
-         if Is_Out_Of_Range (Exp, Base_Type (Check_Typ)) then
-            Apply_Compile_Time_Constraint_Error
-              (Exp, "value not in range of}??", CE_Range_Check_Failed,
-               Ent => Base_Type (Check_Typ),
-               Typ => Base_Type (Check_Typ));
-
-         elsif Is_Out_Of_Range (Exp, Check_Typ) then
-            Apply_Compile_Time_Constraint_Error
-              (Exp, "value not in range of}??", CE_Range_Check_Failed,
-               Ent => Check_Typ,
-               Typ => Check_Typ);
-
-         elsif not Range_Checks_Suppressed (Check_Typ) then
-            Apply_Scalar_Range_Check (Exp, Check_Typ);
-         end if;
-
-      --  Verify that target type is also scalar, to prevent view anomalies
-      --  in instantiations.
-
-      elsif (Is_Scalar_Type (Exp_Typ)
-              or else Nkind (Exp) = N_String_Literal)
-        and then Is_Scalar_Type (Check_Typ)
-        and then Exp_Typ /= Check_Typ
-      then
-         if Is_Entity_Name (Exp)
-           and then Ekind (Entity (Exp)) = E_Constant
-         then
-            --  If expression is a constant, it is worthwhile checking whether
-            --  it is a bound of the type.
-
-            if (Is_Entity_Name (Type_Low_Bound (Check_Typ))
-                 and then Entity (Exp) = Entity (Type_Low_Bound (Check_Typ)))
-              or else (Is_Entity_Name (Type_High_Bound (Check_Typ))
-                and then Entity (Exp) = Entity (Type_High_Bound (Check_Typ)))
-            then
-               return;
-
-            else
-               Rewrite (Exp, Convert_To (Check_Typ, Relocate_Node (Exp)));
-               Analyze_And_Resolve (Exp, Check_Typ);
-               Check_Unset_Reference (Exp);
-            end if;
-         else
-            Rewrite (Exp, Convert_To (Check_Typ, Relocate_Node (Exp)));
-            Analyze_And_Resolve (Exp, Check_Typ);
-            Check_Unset_Reference (Exp);
-         end if;
-
-      end if;
-   end Aggregate_Constraint_Checks;
 
    ------------------------
    -- Array_Aggr_Subtype --
@@ -728,7 +610,7 @@ package body Sem_Aggr is
            and then Size_Known_At_Compile_Time (Component_Type (Typ)));
 
       --  We always need a freeze node for a packed array subtype, so that we
-      --  can build the Packed_Array_Type corresponding to the subtype. If
+      --  can build the Packed_Array_Impl_Type corresponding to the subtype. If
       --  expansion is disabled, the packed array subtype is not built, and we
       --  must not generate a freeze node for the type, or else it will appear
       --  incomplete to gigi.
@@ -1372,7 +1254,7 @@ package body Sem_Aggr is
                Expr :=
                  Make_Attribute_Reference
                    (Loc,
-                    Prefix         => New_Reference_To (Index_Typ, Loc),
+                    Prefix         => New_Occurrence_Of (Index_Typ, Loc),
                     Attribute_Name => Name_Val,
                     Expressions    => New_List (Expr_Pos));
             end if;
@@ -1395,7 +1277,7 @@ package body Sem_Aggr is
             To_Pos :=
               Make_Attribute_Reference
                 (Loc,
-                 Prefix         => New_Reference_To (Index_Typ, Loc),
+                 Prefix         => New_Occurrence_Of (Index_Typ, Loc),
                  Attribute_Name => Name_Pos,
                  Expressions    => New_List (Duplicate_Subexpr (To)));
 
@@ -1407,7 +1289,7 @@ package body Sem_Aggr is
             Expr :=
               Make_Attribute_Reference
                 (Loc,
-                 Prefix         => New_Reference_To (Index_Typ, Loc),
+                 Prefix         => New_Occurrence_Of (Index_Typ, Loc),
                  Attribute_Name => Name_Val,
                  Expressions    => New_List (Expr_Pos));
 
@@ -1427,11 +1309,12 @@ package body Sem_Aggr is
                   Insert_Action (N,
                     Make_Object_Declaration (Loc,
                       Defining_Identifier => Def_Id,
-                      Object_Definition   => New_Reference_To (Index_Typ, Loc),
+                      Object_Definition   =>
+                        New_Occurrence_Of (Index_Typ, Loc),
                       Constant_Present    => True,
                       Expression          => Relocate_Node (Expr)));
 
-                  Expr := New_Reference_To (Def_Id, Loc);
+                  Expr := New_Occurrence_Of (Def_Id, Loc);
                end;
             end if;
          end if;
@@ -1937,6 +1820,25 @@ package body Sem_Aggr is
             Errors_Posted_On_Choices : Boolean := False;
             --  Keeps track of whether any choices have semantic errors
 
+            function Empty_Range (A : Node_Id)  return Boolean;
+            --  If an association covers an empty range, some warnings on the
+            --  expression of the association can be disabled.
+
+            -----------------
+            -- Empty_Range --
+            -----------------
+
+            function Empty_Range (A : Node_Id)  return Boolean is
+               R : constant Node_Id := First (Choices (A));
+            begin
+               return No (Next (R))
+                 and then Nkind (R) = N_Range
+                 and then Compile_Time_Compare
+                            (Low_Bound (R), High_Bound (R), False) = GT;
+            end Empty_Range;
+
+         --  Start of processing for Step_2
+
          begin
             --  STEP 2 (A): Check discrete choices validity
 
@@ -2059,6 +1961,7 @@ package body Sem_Aggr is
 
                if Ada_Version >= Ada_2005
                  and then Known_Null (Expression (Assoc))
+                 and then not Empty_Range (Assoc)
                then
                   Check_Can_Never_Be_Null (Etype (N), Expression (Assoc));
                end if;
@@ -2376,7 +2279,8 @@ package body Sem_Aggr is
                   --  is fine, it's just the wrong length. We skip this check
                   --  for standard character types (since there are no literals
                   --  and it is too much trouble to concoct them), and also if
-                  --  any of the bounds have not-known-at-compile-time values.
+                  --  any of the bounds have values that are not known at
+                  --  compile time.
 
                   --  Another case warranting a warning is when the length is
                   --  right, but as above we have an index type that is an
@@ -4717,16 +4621,17 @@ package body Sem_Aggr is
          --  Apply_Compile_Time_Constraint_Error here to the Expr, which might
          --  seem the more natural approach. That's because in some cases the
          --  components are rewritten, and the replacement would be missed.
+         --  We do not mark the whole aggregate as raising a constraint error,
+         --  because the association may be a null array range.
 
-         Insert_Action
-           (Compile_Time_Constraint_Error
-              (Expr,
-               "(Ada 2005) null not allowed in null-excluding component??"),
-            Make_Raise_Constraint_Error
-              (Sloc (Expr), Reason => CE_Access_Check_Failed));
+         Error_Msg_N
+           ("(Ada 2005) null not allowed in null-excluding component??", Expr);
+         Error_Msg_N
+           ("\Constraint_Error will be raised at run time??", Expr);
 
-         --  Set proper type for bogus component (why is this needed???)
-
+         Rewrite (Expr,
+           Make_Raise_Constraint_Error
+             (Sloc (Expr), Reason => CE_Access_Check_Failed));
          Set_Etype    (Expr, Comp_Typ);
          Set_Analyzed (Expr);
       end if;

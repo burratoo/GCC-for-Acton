@@ -44,6 +44,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "hashtab.h"
 #include "tree-pass.h"
 #include "diagnostic-core.h"
+#include "params.h"
 
 /* This implements the pass that does predicate aware warning on uses of
    possibly uninitialized variables. The pass first collects the set of
@@ -122,17 +123,25 @@ uninit_undefined_value_p (tree t) {
 
 /* Emit a warning for EXPR based on variable VAR at the point in the
    program T, an SSA_NAME, is used being uninitialized.  The exact
-   warning text is in MSGID and LOCUS may contain a location or be null.
-   WC is the warning code.  */
+   warning text is in MSGID and DATA is the gimple stmt with info about
+   the location in source code. When DATA is a GIMPLE_PHI, PHIARG_IDX
+   gives which argument of the phi node to take the location from.  WC
+   is the warning code.  */
 
 static void
-warn_uninit (enum opt_code wc, tree t,
-	     tree expr, tree var, const char *gmsgid, void *data)
+warn_uninit (enum opt_code wc, tree t, tree expr, tree var,
+	     const char *gmsgid, void *data, location_t phiarg_loc)
 {
   gimple context = (gimple) data;
   location_t location, cfun_loc;
   expanded_location xloc, floc;
 
+  /* Ignore COMPLEX_EXPR as initializing only a part of a complex
+     turns in a COMPLEX_EXPR with the not initialized part being
+     set to its previous (undefined) value.  */
+  if (is_gimple_assign (context)
+      && gimple_assign_rhs_code (context) == COMPLEX_EXPR)
+    return;
   if (!has_undefined_value_p (t))
     return;
 
@@ -145,9 +154,12 @@ warn_uninit (enum opt_code wc, tree t,
       || TREE_NO_WARNING (expr))
     return;
 
-  location = (context != NULL && gimple_has_location (context))
-	     ? gimple_location (context)
-	     : DECL_SOURCE_LOCATION (var);
+  if (context != NULL && gimple_has_location (context))
+    location = gimple_location (context);
+  else if (phiarg_loc != UNKNOWN_LOCATION)
+    location = phiarg_loc;
+  else
+    location = DECL_SOURCE_LOCATION (var);
   location = linemap_resolve_location (line_table, location,
 				       LRK_SPELLING_LOCATION,
 				       NULL);
@@ -199,17 +211,16 @@ warn_uninitialized_vars (bool warn_possibly_uninitialized)
 		warn_uninit (OPT_Wuninitialized, use,
 			     SSA_NAME_VAR (use), SSA_NAME_VAR (use),
 			     "%qD is used uninitialized in this function",
-			     stmt);
+			     stmt, UNKNOWN_LOCATION);
 	      else if (warn_possibly_uninitialized)
 		warn_uninit (OPT_Wmaybe_uninitialized, use,
 			     SSA_NAME_VAR (use), SSA_NAME_VAR (use),
 			     "%qD may be used uninitialized in this function",
-			     stmt);
+			     stmt, UNKNOWN_LOCATION);
 	    }
 
 	  /* For memory the only cheap thing we can do is see if we
 	     have a use of the default def of the virtual operand.
-	     ???  Note that at -O0 we do not have virtual operands.
 	     ???  Not so cheap would be to use the alias oracle via
 	     walk_aliased_vdefs, if we don't find any aliasing vdef
 	     warn as is-used-uninitialized, if we don't find an aliasing
@@ -236,12 +247,12 @@ warn_uninitialized_vars (bool warn_possibly_uninitialized)
 		warn_uninit (OPT_Wuninitialized, use,
 			     gimple_assign_rhs1 (stmt), base,
 			     "%qE is used uninitialized in this function",
-			     stmt);
+			     stmt, UNKNOWN_LOCATION);
 	      else if (warn_possibly_uninitialized)
 		warn_uninit (OPT_Wmaybe_uninitialized, use,
 			     gimple_assign_rhs1 (stmt), base,
 			     "%qE may be used uninitialized in this function",
-			     stmt);
+			     stmt, UNKNOWN_LOCATION);
 	    }
 	}
     }
@@ -390,8 +401,8 @@ find_control_equiv_block (basic_block bb)
 
 /* Computes the control dependence chains (paths of edges)
    for DEP_BB up to the dominating basic block BB (the head node of a
-   chain should be dominated by it).  CD_CHAINS is pointer to a
-   dynamic array holding the result chains. CUR_CD_CHAIN is the current
+   chain should be dominated by it).  CD_CHAINS is pointer to an
+   array holding the result chains.  CUR_CD_CHAIN is the current
    chain being computed.  *NUM_CHAINS is total number of chains.  The
    function returns true if the information is successfully computed,
    return false if there is no control dependence or not computed.  */
@@ -400,7 +411,8 @@ static bool
 compute_control_dep_chain (basic_block bb, basic_block dep_bb,
                            vec<edge> *cd_chains,
                            size_t *num_chains,
-                           vec<edge> *cur_cd_chain)
+			   vec<edge> *cur_cd_chain,
+			   int *num_calls)
 {
   edge_iterator ei;
   edge e;
@@ -410,6 +422,10 @@ compute_control_dep_chain (basic_block bb, basic_block dep_bb,
 
   if (EDGE_COUNT (bb->succs) < 2)
     return false;
+
+  if (*num_calls > PARAM_VALUE (PARAM_UNINIT_CONTROL_DEP_ATTEMPTS))
+    return false;
+  ++*num_calls;
 
   /* Could use a set instead.  */
   cur_chain_len = cur_cd_chain->length ();
@@ -450,7 +466,7 @@ compute_control_dep_chain (basic_block bb, basic_block dep_bb,
 
           /* Now check if DEP_BB is indirectly control dependent on BB.  */
           if (compute_control_dep_chain (cd_bb, dep_bb, cd_chains,
-                                         num_chains, cur_cd_chain))
+					 num_chains, cur_cd_chain, num_calls))
             {
               found_cd_chain = true;
               break;
@@ -595,13 +611,11 @@ find_predicates (pred_chain_union *preds,
                  basic_block use_bb)
 {
   size_t num_chains = 0, i;
-  vec<edge> *dep_chains = 0;
-  vec<edge> cur_chain = vNULL;
+  int num_calls = 0;
+  vec<edge> dep_chains[MAX_NUM_CHAINS];
+  auto_vec<edge, MAX_CHAIN_LEN + 1> cur_chain;
   bool has_valid_pred = false;
   basic_block cd_root = 0;
-
-  typedef vec<edge> vec_edge_heap;
-  dep_chains = XCNEWVEC (vec_edge_heap, MAX_NUM_CHAINS);
 
   /* First find the closest bb that is control equivalent to PHI_BB
      that also dominates USE_BB.  */
@@ -615,19 +629,13 @@ find_predicates (pred_chain_union *preds,
         break;
     }
 
-  compute_control_dep_chain (cd_root, use_bb,
-                             dep_chains, &num_chains,
-                             &cur_chain);
+  compute_control_dep_chain (cd_root, use_bb, dep_chains, &num_chains,
+			     &cur_chain, &num_calls);
 
   has_valid_pred
-      = convert_control_dep_chain_into_preds (dep_chains,
-                                              num_chains,
-                                              preds);
-  /* Free individual chain  */
-  cur_chain.release ();
+    = convert_control_dep_chain_into_preds (dep_chains, num_chains, preds);
   for (i = 0; i < num_chains; i++)
     dep_chains[i].release ();
-  free (dep_chains);
   return has_valid_pred;
 }
 
@@ -694,15 +702,12 @@ static bool
 find_def_preds (pred_chain_union *preds, gimple phi)
 {
   size_t num_chains = 0, i, n;
-  vec<edge> *dep_chains = 0;
-  vec<edge> cur_chain = vNULL;
+  vec<edge> dep_chains[MAX_NUM_CHAINS];
+  auto_vec<edge, MAX_CHAIN_LEN + 1> cur_chain;
   vec<edge> def_edges = vNULL;
   bool has_valid_pred = false;
   basic_block phi_bb, cd_root = 0;
   pointer_set_t *visited_phis;
-
-  typedef vec<edge> vec_edge_heap;
-  dep_chains = XCNEWVEC (vec_edge_heap, MAX_NUM_CHAINS);
 
   phi_bb = gimple_bb (phi);
   /* First find the closest dominating bb to be
@@ -722,37 +727,29 @@ find_def_preds (pred_chain_union *preds, gimple phi)
   for (i = 0; i < n; i++)
     {
       size_t prev_nc, j;
+      int num_calls = 0;
       edge opnd_edge;
 
       opnd_edge = def_edges[i];
       prev_nc = num_chains;
-      compute_control_dep_chain (cd_root, opnd_edge->src,
-                                 dep_chains, &num_chains,
-                                 &cur_chain);
-      /* Free individual chain  */
-      cur_chain.release ();
+      compute_control_dep_chain (cd_root, opnd_edge->src, dep_chains,
+				 &num_chains, &cur_chain, &num_calls);
 
       /* Now update the newly added chains with
          the phi operand edge:  */
       if (EDGE_COUNT (opnd_edge->src->succs) > 1)
         {
-          if (prev_nc == num_chains
-              && num_chains < MAX_NUM_CHAINS)
-            num_chains++;
+	  if (prev_nc == num_chains && num_chains < MAX_NUM_CHAINS)
+	    dep_chains[num_chains++] = vNULL;
           for (j = prev_nc; j < num_chains; j++)
-            {
-              dep_chains[j].safe_push (opnd_edge);
-            }
+	    dep_chains[j].safe_push (opnd_edge);
         }
     }
 
   has_valid_pred
-      = convert_control_dep_chain_into_preds (dep_chains,
-                                              num_chains,
-                                              preds);
+    = convert_control_dep_chain_into_preds (dep_chains, num_chains, preds);
   for (i = 0; i < num_chains; i++)
     dep_chains[i].release ();
-  free (dep_chains);
   return has_valid_pred;
 }
 
@@ -868,12 +865,11 @@ is_value_included_in (tree val, tree boundary, enum tree_code cmpc)
       if (cmpc == EQ_EXPR)
         result = tree_int_cst_equal (val, boundary);
       else if (cmpc == LT_EXPR)
-        result = INT_CST_LT_UNSIGNED (val, boundary);
+        result = tree_int_cst_lt (val, boundary);
       else
         {
           gcc_assert (cmpc == LE_EXPR);
-          result = (tree_int_cst_equal (val, boundary)
-                    || INT_CST_LT_UNSIGNED (val, boundary));
+          result = tree_int_cst_le (val, boundary);
         }
     }
   else
@@ -881,12 +877,12 @@ is_value_included_in (tree val, tree boundary, enum tree_code cmpc)
       if (cmpc == EQ_EXPR)
         result = tree_int_cst_equal (val, boundary);
       else if (cmpc == LT_EXPR)
-        result = INT_CST_LT (val, boundary);
+        result = tree_int_cst_lt (val, boundary);
       else
         {
           gcc_assert (cmpc == LE_EXPR);
           result = (tree_int_cst_equal (val, boundary)
-                    || INT_CST_LT (val, boundary));
+                    || tree_int_cst_lt (val, boundary));
         }
     }
 
@@ -1821,8 +1817,13 @@ push_pred (pred_chain_union *norm_preds, pred_info pred)
    OP != 0 and push it WORK_LIST.  */
 
 inline static void
-push_to_worklist (tree op, vec<pred_info, va_heap, vl_ptr> *work_list)
+push_to_worklist (tree op, vec<pred_info, va_heap, vl_ptr> *work_list,
+                  pointer_set_t *mark_set)
 {
+  if (pointer_set_contains (mark_set, op))
+    return;
+  pointer_set_insert (mark_set, op);
+
   pred_info arg_pred;
   arg_pred.pred_lhs = op;
   arg_pred.pred_rhs = integer_zero_node;
@@ -1905,7 +1906,8 @@ normalize_one_pred_1 (pred_chain_union *norm_preds,
                       pred_chain *norm_chain,
                       pred_info pred,
                       enum tree_code and_or_code,
-                      vec<pred_info, va_heap, vl_ptr> *work_list)
+                      vec<pred_info, va_heap, vl_ptr> *work_list,
+		      pointer_set_t *mark_set)
 {
   if (!is_neq_zero_form_p (pred))
     {
@@ -1945,39 +1947,37 @@ normalize_one_pred_1 (pred_chain_union *norm_preds,
           if (integer_zerop (op))
             continue;
 
-          push_to_worklist (op, work_list);
+          push_to_worklist (op, work_list, mark_set);
         }
-     }
-   else if (gimple_code (def_stmt) != GIMPLE_ASSIGN)
-     {
-       if (and_or_code == BIT_IOR_EXPR)
-         push_pred (norm_preds, pred);
-       else
-         norm_chain->safe_push (pred);
-     }
-   else if (gimple_assign_rhs_code (def_stmt) == and_or_code)
-     {
-        push_to_worklist (gimple_assign_rhs1 (def_stmt),
-                          work_list);
-        push_to_worklist (gimple_assign_rhs2 (def_stmt),
-                          work_list);
-     }
-   else if (TREE_CODE_CLASS (gimple_assign_rhs_code (def_stmt))
-            == tcc_comparison)
-     {
-       pred_info n_pred = get_pred_info_from_cmp (def_stmt);
-       if (and_or_code == BIT_IOR_EXPR)
-         push_pred (norm_preds, n_pred);
-       else
-         norm_chain->safe_push (n_pred);
-     }
-   else
-     {
-       if (and_or_code == BIT_IOR_EXPR)
-         push_pred (norm_preds, pred);
-       else
-         norm_chain->safe_push (pred);
-     }
+    }
+  else if (gimple_code (def_stmt) != GIMPLE_ASSIGN)
+    {
+      if (and_or_code == BIT_IOR_EXPR)
+	push_pred (norm_preds, pred);
+      else
+	norm_chain->safe_push (pred);
+    }
+  else if (gimple_assign_rhs_code (def_stmt) == and_or_code)
+    {
+      push_to_worklist (gimple_assign_rhs1 (def_stmt), work_list, mark_set);
+      push_to_worklist (gimple_assign_rhs2 (def_stmt), work_list, mark_set);
+    }
+  else if (TREE_CODE_CLASS (gimple_assign_rhs_code (def_stmt))
+	   == tcc_comparison)
+    {
+      pred_info n_pred = get_pred_info_from_cmp (def_stmt);
+      if (and_or_code == BIT_IOR_EXPR)
+	push_pred (norm_preds, n_pred);
+      else
+	norm_chain->safe_push (n_pred);
+    }
+  else
+    {
+      if (and_or_code == BIT_IOR_EXPR)
+	push_pred (norm_preds, pred);
+      else
+	norm_chain->safe_push (pred);
+    }
 }
 
 /* Normalize PRED and store the normalized predicates into NORM_PREDS.  */
@@ -1987,6 +1987,7 @@ normalize_one_pred (pred_chain_union *norm_preds,
                     pred_info pred)
 {
   vec<pred_info, va_heap, vl_ptr> work_list = vNULL;
+  pointer_set_t *mark_set = NULL;
   enum tree_code and_or_code = ERROR_MARK;
   pred_chain norm_chain = vNULL;
 
@@ -2014,16 +2015,19 @@ normalize_one_pred (pred_chain_union *norm_preds,
     }
 
   work_list.safe_push (pred);
+  mark_set = pointer_set_create ();
+
   while (!work_list.is_empty ())
     {
       pred_info a_pred = work_list.pop ();
       normalize_one_pred_1 (norm_preds, &norm_chain, a_pred,
-                            and_or_code, &work_list);
+                            and_or_code, &work_list, mark_set);
     }
   if (and_or_code == BIT_AND_EXPR)
     norm_preds->safe_push (norm_chain);
 
   work_list.release ();
+  pointer_set_destroy (mark_set);
 }
 
 static void
@@ -2031,21 +2035,26 @@ normalize_one_pred_chain (pred_chain_union *norm_preds,
                           pred_chain one_chain)
 {
   vec<pred_info, va_heap, vl_ptr> work_list = vNULL;
+  pointer_set_t *mark_set = pointer_set_create ();
   pred_chain norm_chain = vNULL;
   size_t i;
 
   for (i = 0; i < one_chain.length (); i++)
-    work_list.safe_push (one_chain[i]);
+    {
+      work_list.safe_push (one_chain[i]);
+      pointer_set_insert (mark_set, one_chain[i].pred_lhs);
+    }
 
   while (!work_list.is_empty ())
     {
       pred_info a_pred = work_list.pop ();
       normalize_one_pred_1 (0, &norm_chain, a_pred,
-                            BIT_AND_EXPR, &work_list);
+                            BIT_AND_EXPR, &work_list, mark_set);
     }
 
   norm_preds->safe_push (norm_chain);
   work_list.release ();
+  pointer_set_destroy (mark_set);
 }
 
 /* Normalize predicate chains PREDS and returns the normalized one.  */
@@ -2248,6 +2257,8 @@ warn_uninitialized_phi (gimple phi, vec<gimple> *worklist,
   unsigned uninit_opnds;
   gimple uninit_use_stmt = 0;
   tree uninit_op;
+  int phiarg_index;
+  location_t loc;
 
   /* Don't look at virtual operands.  */
   if (virtual_operand_p (gimple_phi_result (phi)))
@@ -2272,21 +2283,58 @@ warn_uninitialized_phi (gimple phi, vec<gimple> *worklist,
   if (!uninit_use_stmt)
     return;
 
-  uninit_op = gimple_phi_arg_def (phi, MASK_FIRST_SET_BIT (uninit_opnds));
+  phiarg_index = MASK_FIRST_SET_BIT (uninit_opnds);
+  uninit_op = gimple_phi_arg_def (phi, phiarg_index);
   if (SSA_NAME_VAR (uninit_op) == NULL_TREE)
     return;
+  if (gimple_phi_arg_has_location (phi, phiarg_index))
+    loc = gimple_phi_arg_location (phi, phiarg_index);
+  else
+    loc = UNKNOWN_LOCATION;
   warn_uninit (OPT_Wmaybe_uninitialized, uninit_op, SSA_NAME_VAR (uninit_op),
 	       SSA_NAME_VAR (uninit_op),
                "%qD may be used uninitialized in this function",
-               uninit_use_stmt);
+               uninit_use_stmt, loc);
 
 }
 
+static bool
+gate_warn_uninitialized (void)
+{
+  return warn_uninitialized || warn_maybe_uninitialized;
+}
 
-/* Entry point to the late uninitialized warning pass.  */
+namespace {
 
-static unsigned int
-execute_late_warn_uninitialized (void)
+const pass_data pass_data_late_warn_uninitialized =
+{
+  GIMPLE_PASS, /* type */
+  "uninit", /* name */
+  OPTGROUP_NONE, /* optinfo_flags */
+  TV_NONE, /* tv_id */
+  PROP_ssa, /* properties_required */
+  0, /* properties_provided */
+  0, /* properties_destroyed */
+  0, /* todo_flags_start */
+  0, /* todo_flags_finish */
+};
+
+class pass_late_warn_uninitialized : public gimple_opt_pass
+{
+public:
+  pass_late_warn_uninitialized (gcc::context *ctxt)
+    : gimple_opt_pass (pass_data_late_warn_uninitialized, ctxt)
+  {}
+
+  /* opt_pass methods: */
+  opt_pass * clone () { return new pass_late_warn_uninitialized (m_ctxt); }
+  virtual bool gate (function *) { return gate_warn_uninitialized (); }
+  virtual unsigned int execute (function *);
+
+}; // class pass_late_warn_uninitialized
+
+unsigned int
+pass_late_warn_uninitialized::execute (function *fun)
 {
   basic_block bb;
   gimple_stmt_iterator gsi;
@@ -2306,34 +2354,34 @@ execute_late_warn_uninitialized (void)
   added_to_worklist = pointer_set_create ();
 
   /* Initialize worklist  */
-  FOR_EACH_BB_FN (bb, cfun)
+  FOR_EACH_BB_FN (bb, fun)
     for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi); gsi_next (&gsi))
       {
-        gimple phi = gsi_stmt (gsi);
-        size_t n, i;
+	gimple phi = gsi_stmt (gsi);
+	size_t n, i;
 
-        n = gimple_phi_num_args (phi);
+	n = gimple_phi_num_args (phi);
 
-        /* Don't look at virtual operands.  */
-        if (virtual_operand_p (gimple_phi_result (phi)))
-          continue;
+	/* Don't look at virtual operands.  */
+	if (virtual_operand_p (gimple_phi_result (phi)))
+	  continue;
 
-        for (i = 0; i < n; ++i)
-          {
-            tree op = gimple_phi_arg_def (phi, i);
-            if (TREE_CODE (op) == SSA_NAME
-                && uninit_undefined_value_p (op))
-              {
-                worklist.safe_push (phi);
+	for (i = 0; i < n; ++i)
+	  {
+	    tree op = gimple_phi_arg_def (phi, i);
+	    if (TREE_CODE (op) == SSA_NAME
+		&& uninit_undefined_value_p (op))
+	      {
+		worklist.safe_push (phi);
 		pointer_set_insert (added_to_worklist, phi);
-                if (dump_file && (dump_flags & TDF_DETAILS))
-                  {
-                    fprintf (dump_file, "[WORKLIST]: add to initial list: ");
-                    print_gimple_stmt (dump_file, phi, 0, 0);
-                  }
-                break;
-              }
-          }
+		if (dump_file && (dump_flags & TDF_DETAILS))
+		  {
+		    fprintf (dump_file, "[WORKLIST]: add to initial list: ");
+		    print_gimple_stmt (dump_file, phi, 0, 0);
+		  }
+		break;
+	      }
+	  }
       }
 
   while (worklist.length () != 0)
@@ -2351,43 +2399,6 @@ execute_late_warn_uninitialized (void)
   timevar_pop (TV_TREE_UNINIT);
   return 0;
 }
-
-static bool
-gate_warn_uninitialized (void)
-{
-  return warn_uninitialized != 0;
-}
-
-namespace {
-
-const pass_data pass_data_late_warn_uninitialized =
-{
-  GIMPLE_PASS, /* type */
-  "uninit", /* name */
-  OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
-  TV_NONE, /* tv_id */
-  PROP_ssa, /* properties_required */
-  0, /* properties_provided */
-  0, /* properties_destroyed */
-  0, /* todo_flags_start */
-  0, /* todo_flags_finish */
-};
-
-class pass_late_warn_uninitialized : public gimple_opt_pass
-{
-public:
-  pass_late_warn_uninitialized (gcc::context *ctxt)
-    : gimple_opt_pass (pass_data_late_warn_uninitialized, ctxt)
-  {}
-
-  /* opt_pass methods: */
-  opt_pass * clone () { return new pass_late_warn_uninitialized (m_ctxt); }
-  bool gate () { return gate_warn_uninitialized (); }
-  unsigned int execute () { return execute_late_warn_uninitialized (); }
-
-}; // class pass_late_warn_uninitialized
 
 } // anon namespace
 
@@ -2425,8 +2436,6 @@ const pass_data pass_data_early_warn_uninitialized =
   GIMPLE_PASS, /* type */
   "*early_warn_uninitialized", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_TREE_UNINIT, /* tv_id */
   PROP_ssa, /* properties_required */
   0, /* properties_provided */
@@ -2443,8 +2452,11 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_warn_uninitialized (); }
-  unsigned int execute () { return execute_early_warn_uninitialized (); }
+  virtual bool gate (function *) { return gate_warn_uninitialized (); }
+  virtual unsigned int execute (function *)
+    {
+      return execute_early_warn_uninitialized ();
+    }
 
 }; // class pass_early_warn_uninitialized
 

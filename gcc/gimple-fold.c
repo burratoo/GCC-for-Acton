@@ -52,6 +52,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-address.h"
 #include "langhooks.h"
 #include "gimplify-me.h"
+#include "dbgcnt.h"
+#include "builtins.h"
 
 /* Return true when DECL can be referenced from current unit.
    FROM_DECL (if non-null) specify constructor of variable DECL was taken from.
@@ -93,37 +95,45 @@ can_refer_decl_in_current_unit_p (tree decl, tree from_decl)
   /* Static objects can be referred only if they was not optimized out yet.  */
   if (!TREE_PUBLIC (decl) && !DECL_EXTERNAL (decl))
     {
-      snode = symtab_get_node (decl);
-      if (!snode)
+      /* Before we start optimizing unreachable code we can be sure all
+	 static objects are defined.  */
+      if (cgraph_function_flags_ready)
+	return true;
+      snode = symtab_node::get (decl);
+      if (!snode || !snode->definition)
 	return false;
-      node = dyn_cast <cgraph_node> (snode);
+      node = dyn_cast <cgraph_node *> (snode);
       return !node || !node->global.inlined_to;
     }
 
   /* We will later output the initializer, so we can refer to it.
      So we are concerned only when DECL comes from initializer of
-     external var.  */
+     external var or var that has been optimized out.  */
   if (!from_decl
       || TREE_CODE (from_decl) != VAR_DECL
-      || !DECL_EXTERNAL (from_decl)
+      || (!DECL_EXTERNAL (from_decl)
+	  && (vnode = varpool_node::get (from_decl)) != NULL
+	  && vnode->definition)
       || (flag_ltrans
-	  && symtab_get_node (from_decl)->in_other_partition))
+	  && (vnode = varpool_node::get (from_decl)) != NULL
+	  && vnode->in_other_partition))
     return true;
   /* We are folding reference from external vtable.  The vtable may reffer
      to a symbol keyed to other compilation unit.  The other compilation
      unit may be in separate DSO and the symbol may be hidden.  */
   if (DECL_VISIBILITY_SPECIFIED (decl)
       && DECL_EXTERNAL (decl)
-      && (!(snode = symtab_get_node (decl)) || !snode->in_other_partition))
+      && DECL_VISIBILITY (decl) != VISIBILITY_DEFAULT
+      && (!(snode = symtab_node::get (decl)) || !snode->in_other_partition))
     return false;
   /* When function is public, we always can introduce new reference.
      Exception are the COMDAT functions where introducing a direct
      reference imply need to include function body in the curren tunit.  */
   if (TREE_PUBLIC (decl) && !DECL_COMDAT (decl))
     return true;
-  /* We are not at ltrans stage; so don't worry about WHOPR.
-     Also when still gimplifying all referred comdat functions will be
-     produced.
+  /* We have COMDAT.  We are going to check if we still have definition
+     or if the definition is going to be output in other partition.
+     Bypass this when gimplifying; all needed functions will be produced.
 
      As observed in PR20991 for already optimized out comdat virtual functions
      it may be tempting to not necessarily give up because the copy will be
@@ -132,35 +142,17 @@ can_refer_decl_in_current_unit_p (tree decl, tree from_decl)
      units where they are used and when the other unit was compiled with LTO
      it is possible that vtable was kept public while the function itself
      was privatized. */
-  if (!flag_ltrans && (!DECL_COMDAT (decl) || !cgraph_function_flags_ready))
+  if (!cgraph_function_flags_ready)
     return true;
 
-  /* OK we are seeing either COMDAT or static variable.  In this case we must
-     check that the definition is still around so we can refer it.  */
-  if (TREE_CODE (decl) == FUNCTION_DECL)
-    {
-      node = cgraph_get_node (decl);
-      /* Check that we still have function body and that we didn't took
-         the decision to eliminate offline copy of the function yet.
-         The second is important when devirtualization happens during final
-         compilation stage when making a new reference no longer makes callee
-         to be compiled.  */
-      if (!node || !node->definition || node->global.inlined_to)
-	{
-	  gcc_checking_assert (!TREE_ASM_WRITTEN (decl));
-	  return false;
-	}
-    }
-  else if (TREE_CODE (decl) == VAR_DECL)
-    {
-      vnode = varpool_get_node (decl);
-      if (!vnode || !vnode->definition)
-	{
-	  gcc_checking_assert (!TREE_ASM_WRITTEN (decl));
-	  return false;
-	}
-    }
-  return true;
+  snode = symtab_node::get (decl);
+  if (!snode
+      || ((!snode->definition || DECL_EXTERNAL (decl))
+	  && (!snode->in_other_partition
+	      || (!snode->forced_by_abi && !snode->force_output))))
+    return false;
+  node = dyn_cast <cgraph_node *> (snode);
+  return !node || !node->global.inlined_to;
 }
 
 /* CVAL is value taken from DECL_INITIAL of variable.  Try to transform it into
@@ -209,7 +201,7 @@ canonicalize_constructor_val (tree cval, tree from_decl)
 	  /* Make sure we create a cgraph node for functions we'll reference.
 	     They can be non-existent if the reference comes from an entry
 	     of an external vtable for example.  */
-	  cgraph_get_create_node (base);
+	  cgraph_node::get_create (base);
 	}
       /* Fixup types in global initializers.  */
       if (TREE_TYPE (TREE_TYPE (cval)) != TREE_TYPE (TREE_OPERAND (cval, 0)))
@@ -384,14 +376,25 @@ fold_gimple_assign (gimple_stmt_iterator *si)
 	      {
 		bool final;
 		vec <cgraph_node *>targets
-		  = possible_polymorphic_call_targets (val, &final);
-		if (final && targets.length () <= 1)
+		  = possible_polymorphic_call_targets (val, stmt, &final);
+		if (final && targets.length () <= 1 && dbg_cnt (devirt))
 		  {
 		    tree fndecl;
+
 		    if (targets.length () == 1)
 		      fndecl = targets[0]->decl;
 		    else
 		      fndecl = builtin_decl_implicit (BUILT_IN_UNREACHABLE);
+		    if (dump_enabled_p ())
+		      {
+			location_t loc = gimple_location_safe (stmt);
+			dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, loc,
+					 "resolving virtual function address "
+					 "reference to function %s\n",
+					 targets.length () == 1
+					 ? targets[0]->name ()
+					 : "__builtin_unreachable");
+		      }
 		    val = fold_convert (TREE_TYPE (val), fndecl);
 		    STRIP_USELESS_TYPE_CONVERSION (val);
 		    return val;
@@ -1071,74 +1074,6 @@ gimple_fold_builtin (gimple stmt)
 }
 
 
-/* Return a binfo to be used for devirtualization of calls based on an object
-   represented by a declaration (i.e. a global or automatically allocated one)
-   or NULL if it cannot be found or is not safe.  CST is expected to be an
-   ADDR_EXPR of such object or the function will return NULL.  Currently it is
-   safe to use such binfo only if it has no base binfo (i.e. no ancestors)
-   EXPECTED_TYPE is type of the class virtual belongs to.  */
-
-tree
-gimple_extract_devirt_binfo_from_cst (tree cst, tree expected_type)
-{
-  HOST_WIDE_INT offset, size, max_size;
-  tree base, type, binfo;
-  bool last_artificial = false;
-
-  if (!flag_devirtualize
-      || TREE_CODE (cst) != ADDR_EXPR
-      || TREE_CODE (TREE_TYPE (TREE_TYPE (cst))) != RECORD_TYPE)
-    return NULL_TREE;
-
-  cst = TREE_OPERAND (cst, 0);
-  base = get_ref_base_and_extent (cst, &offset, &size, &max_size);
-  type = TREE_TYPE (base);
-  if (!DECL_P (base)
-      || max_size == -1
-      || max_size != size
-      || TREE_CODE (type) != RECORD_TYPE)
-    return NULL_TREE;
-
-  /* Find the sub-object the constant actually refers to and mark whether it is
-     an artificial one (as opposed to a user-defined one).  */
-  while (true)
-    {
-      HOST_WIDE_INT pos, size;
-      tree fld;
-
-      if (types_same_for_odr (type, expected_type))
-	break;
-      if (offset < 0)
-	return NULL_TREE;
-
-      for (fld = TYPE_FIELDS (type); fld; fld = DECL_CHAIN (fld))
-	{
-	  if (TREE_CODE (fld) != FIELD_DECL)
-	    continue;
-
-	  pos = int_bit_position (fld);
-	  size = tree_to_uhwi (DECL_SIZE (fld));
-	  if (pos <= offset && (pos + size) > offset)
-	    break;
-	}
-      if (!fld || TREE_CODE (TREE_TYPE (fld)) != RECORD_TYPE)
-	return NULL_TREE;
-
-      last_artificial = DECL_ARTIFICIAL (fld);
-      type = TREE_TYPE (fld);
-      offset -= pos;
-    }
-  /* Artificial sub-objects are ancestors, we do not want to use them for
-     devirtualization, at least not here.  */
-  if (last_artificial)
-    return NULL_TREE;
-  binfo = TYPE_BINFO (type);
-  if (!binfo || BINFO_N_BASE_BINFOS (binfo) > 0)
-    return NULL_TREE;
-  else
-    return binfo;
-}
-
 /* Attempt to fold a call statement referenced by the statement iterator GSI.
    The statement may be replaced by another statement, e.g., if the call
    simplifies to a constant value. Return true if any changes were made.
@@ -1172,8 +1107,8 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
 	{
           if (dump_file && virtual_method_call_p (callee)
 	      && !possible_polymorphic_call_target_p
-		    (callee, cgraph_get_node (gimple_call_addr_fndecl
-                                                 (OBJ_TYPE_REF_EXPR (callee)))))
+		    (callee, cgraph_node::get (gimple_call_addr_fndecl
+					       (OBJ_TYPE_REF_EXPR (callee)))))
 	    {
 	      fprintf (dump_file,
 		       "Type inheritance inconsistent devirtualization of ");
@@ -1190,10 +1125,19 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
 	{
 	  bool final;
 	  vec <cgraph_node *>targets
-	    = possible_polymorphic_call_targets (callee, &final);
-	  if (final && targets.length () <= 1)
+	    = possible_polymorphic_call_targets (callee, stmt, &final);
+	  if (final && targets.length () <= 1 && dbg_cnt (devirt))
 	    {
 	      tree lhs = gimple_call_lhs (stmt);
+	      if (dump_enabled_p ())
+		{
+		  location_t loc = gimple_location_safe (stmt);
+		  dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, loc,
+				   "folding virtual function call to %s\n",
+		 		   targets.length () == 1
+		  		   ? targets[0]->name ()
+		  		   : "__builtin_unreachable");
+		}
 	      if (targets.length () == 1)
 		{
 		  gimple_call_set_fndecl (stmt, targets[0]->decl);
@@ -1220,8 +1164,13 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
 		    {
 		      tree var = create_tmp_var (TREE_TYPE (lhs), NULL);
 		      tree def = get_or_create_ssa_default_def (cfun, var);
-		      gsi_insert_before (gsi, new_stmt, GSI_SAME_STMT);
+
+		      /* To satisfy condition for
+			 cgraph_update_edges_for_call_stmt_node,
+			 we need to preserve GIMPLE_CALL statement
+			 at position of GSI iterator.  */
 		      update_call_from_tree (gsi, def);
+		      gsi_insert_before (gsi, new_stmt, GSI_NEW_STMT);
 		    }
 		  else
 		    gsi_replace (gsi, new_stmt, true);
@@ -1247,6 +1196,63 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
 	}
       else if (gimple_call_builtin_p (stmt, BUILT_IN_MD))
 	changed |= targetm.gimple_fold_builtin (gsi);
+    }
+  else if (gimple_call_internal_p (stmt))
+    {
+      enum tree_code subcode = ERROR_MARK;
+      tree result = NULL_TREE;
+      switch (gimple_call_internal_fn (stmt))
+	{
+	case IFN_BUILTIN_EXPECT:
+	  result = fold_builtin_expect (gimple_location (stmt),
+					gimple_call_arg (stmt, 0),
+					gimple_call_arg (stmt, 1),
+					gimple_call_arg (stmt, 2));
+	  break;
+	case IFN_UBSAN_CHECK_ADD:
+	  subcode = PLUS_EXPR;
+	  break;
+	case IFN_UBSAN_CHECK_SUB:
+	  subcode = MINUS_EXPR;
+	  break;
+	case IFN_UBSAN_CHECK_MUL:
+	  subcode = MULT_EXPR;
+	  break;
+	default:
+	  break;
+	}
+      if (subcode != ERROR_MARK)
+	{
+	  tree arg0 = gimple_call_arg (stmt, 0);
+	  tree arg1 = gimple_call_arg (stmt, 1);
+	  /* x = y + 0; x = y - 0; x = y * 0; */
+	  if (integer_zerop (arg1))
+	    result = subcode == MULT_EXPR
+		     ? build_zero_cst (TREE_TYPE (arg0))
+		     : arg0;
+	  /* x = 0 + y; x = 0 * y; */
+	  else if (subcode != MINUS_EXPR && integer_zerop (arg0))
+	    result = subcode == MULT_EXPR
+		     ? build_zero_cst (TREE_TYPE (arg0))
+		     : arg1;
+	  /* x = y - y; */
+	  else if (subcode == MINUS_EXPR && operand_equal_p (arg0, arg1, 0))
+	    result = build_zero_cst (TREE_TYPE (arg0));
+	  /* x = y * 1; x = 1 * y; */
+	  else if (subcode == MULT_EXPR)
+	    {
+	      if (integer_onep (arg1))
+		result = arg0;
+	      else if (integer_onep (arg0))
+		result = arg1;
+	    }
+	}
+      if (result)
+	{
+	  if (!update_call_from_tree (gsi, result))
+	    gimplify_and_update_call_from_tree (gsi, result);
+	  changed = true;
+	}
     }
 
   return changed;
@@ -2640,22 +2646,7 @@ gimple_fold_stmt_to_constant_1 (gimple stmt, tree (*valueize) (tree))
               /* Handle unary operators that can appear in GIMPLE form.
                  Note that we know the single operand must be a constant,
                  so this should almost always return a simplified RHS.  */
-	      tree lhs = gimple_assign_lhs (stmt);
               tree op0 = (*valueize) (gimple_assign_rhs1 (stmt));
-
-	      /* Conversions are useless for CCP purposes if they are
-		 value-preserving.  Thus the restrictions that
-		 useless_type_conversion_p places for restrict qualification
-		 of pointer types should not apply here.
-		 Substitution later will only substitute to allowed places.  */
-	      if (CONVERT_EXPR_CODE_P (subcode)
-		  && POINTER_TYPE_P (TREE_TYPE (lhs))
-		  && POINTER_TYPE_P (TREE_TYPE (op0))
-		  && TYPE_ADDR_SPACE (TREE_TYPE (lhs))
-		     == TYPE_ADDR_SPACE (TREE_TYPE (op0))
-		  && TYPE_MODE (TREE_TYPE (lhs))
-		     == TYPE_MODE (TREE_TYPE (op0)))
-		return op0;
 
               return
 		fold_unary_ignore_overflow_loc (loc, subcode,
@@ -2736,15 +2727,32 @@ gimple_fold_stmt_to_constant_1 (gimple stmt, tree (*valueize) (tree))
 	      default:
 		return NULL_TREE;
 	      }
-	    tree op0 = (*valueize) (gimple_call_arg (stmt, 0));
-	    tree op1 = (*valueize) (gimple_call_arg (stmt, 1));
+	    tree arg0 = gimple_call_arg (stmt, 0);
+	    tree arg1 = gimple_call_arg (stmt, 1);
+	    tree op0 = (*valueize) (arg0);
+	    tree op1 = (*valueize) (arg1);
 
 	    if (TREE_CODE (op0) != INTEGER_CST
 		|| TREE_CODE (op1) != INTEGER_CST)
-	      return NULL_TREE;
-	    tree res = fold_binary_loc (loc, subcode,
-					TREE_TYPE (gimple_call_arg (stmt, 0)),
-					op0, op1);
+	      {
+		switch (subcode)
+		  {
+		  case MULT_EXPR:
+		    /* x * 0 = 0 * x = 0 without overflow.  */
+		    if (integer_zerop (op0) || integer_zerop (op1))
+		      return build_zero_cst (TREE_TYPE (arg0));
+		    break;
+		  case MINUS_EXPR:
+		    /* y - y = 0 without overflow.  */
+		    if (operand_equal_p (op0, op1, 0))
+		      return build_zero_cst (TREE_TYPE (arg0));
+		    break;
+		  default:
+		    break;
+		  }
+	      }
+	    tree res
+	      = fold_binary_loc (loc, subcode, TREE_TYPE (arg0), op0, op1);
 	    if (res
 		&& TREE_CODE (res) == INTEGER_CST
 		&& !TREE_OVERFLOW (res))
@@ -2824,7 +2832,7 @@ get_base_constructor (tree base, HOST_WIDE_INT *bit_offset,
 	{
 	  if (!tree_fits_shwi_p (TREE_OPERAND (base, 1)))
 	    return NULL_TREE;
-	  *bit_offset += (mem_ref_offset (base).low
+	  *bit_offset += (mem_ref_offset (base).to_short_addr ()
 			  * BITS_PER_UNIT);
 	}
 
@@ -2873,41 +2881,6 @@ get_base_constructor (tree base, HOST_WIDE_INT *bit_offset,
     }
 }
 
-/* CTOR is STRING_CST.  Fold reference of type TYPE and size SIZE
-   to the memory at bit OFFSET.
-
-   We do only simple job of folding byte accesses.  */
-
-static tree
-fold_string_cst_ctor_reference (tree type, tree ctor,
-				unsigned HOST_WIDE_INT offset,
-				unsigned HOST_WIDE_INT size)
-{
-  if (INTEGRAL_TYPE_P (type)
-      && (TYPE_MODE (type)
-	  == TYPE_MODE (TREE_TYPE (TREE_TYPE (ctor))))
-      && (GET_MODE_CLASS (TYPE_MODE (TREE_TYPE (TREE_TYPE (ctor))))
-	  == MODE_INT)
-      && GET_MODE_SIZE (TYPE_MODE (TREE_TYPE (TREE_TYPE (ctor)))) == 1
-      && size == BITS_PER_UNIT
-      && !(offset % BITS_PER_UNIT))
-    {
-      offset /= BITS_PER_UNIT;
-      if (offset < (unsigned HOST_WIDE_INT) TREE_STRING_LENGTH (ctor))
-	return build_int_cst_type (type, (TREE_STRING_POINTER (ctor)
-				   [offset]));
-      /* Folding
-	 const char a[20]="hello";
-	 return a[10];
-
-	 might lead to offset greater than string length.  In this case we
-	 know value is either initialized to 0 or out of bounds.  Return 0
-	 in both cases.  */
-      return build_zero_cst (type);
-    }
-  return NULL_TREE;
-}
-
 /* CTOR is CONSTRUCTOR of an array type.  Fold reference of type TYPE and size
    SIZE to the memory at bit OFFSET.  */
 
@@ -2919,9 +2892,10 @@ fold_array_ctor_reference (tree type, tree ctor,
 {
   unsigned HOST_WIDE_INT cnt;
   tree cfield, cval;
-  double_int low_bound, elt_size;
-  double_int index, max_index;
-  double_int access_index;
+  offset_int low_bound;
+  offset_int elt_size;
+  offset_int index, max_index;
+  offset_int access_index;
   tree domain_type = NULL_TREE, index_type = NULL_TREE;
   HOST_WIDE_INT inner_offset;
 
@@ -2933,32 +2907,30 @@ fold_array_ctor_reference (tree type, tree ctor,
       /* Static constructors for variably sized objects makes no sense.  */
       gcc_assert (TREE_CODE (TYPE_MIN_VALUE (domain_type)) == INTEGER_CST);
       index_type = TREE_TYPE (TYPE_MIN_VALUE (domain_type));
-      low_bound = tree_to_double_int (TYPE_MIN_VALUE (domain_type));
+      low_bound = wi::to_offset (TYPE_MIN_VALUE (domain_type));
     }
   else
-    low_bound = double_int_zero;
+    low_bound = 0;
   /* Static constructors for variably sized objects makes no sense.  */
   gcc_assert (TREE_CODE (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))))
 	      == INTEGER_CST);
-  elt_size =
-    tree_to_double_int (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))));
-
+  elt_size = wi::to_offset (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))));
 
   /* We can handle only constantly sized accesses that are known to not
      be larger than size of array element.  */
   if (!TYPE_SIZE_UNIT (type)
       || TREE_CODE (TYPE_SIZE_UNIT (type)) != INTEGER_CST
-      || elt_size.slt (tree_to_double_int (TYPE_SIZE_UNIT (type)))
-      || elt_size.is_zero ())
+      || wi::lts_p (elt_size, wi::to_offset (TYPE_SIZE_UNIT (type)))
+      || elt_size == 0)
     return NULL_TREE;
 
   /* Compute the array index we look for.  */
-  access_index = double_int::from_uhwi (offset / BITS_PER_UNIT)
-		 .udiv (elt_size, TRUNC_DIV_EXPR);
+  access_index = wi::udiv_trunc (offset_int (offset / BITS_PER_UNIT),
+				 elt_size);
   access_index += low_bound;
   if (index_type)
-    access_index = access_index.ext (TYPE_PRECISION (index_type),
-				     TYPE_UNSIGNED (index_type));
+    access_index = wi::ext (access_index, TYPE_PRECISION (index_type),
+			    TYPE_SIGN (index_type));
 
   /* And offset within the access.  */
   inner_offset = offset % (elt_size.to_uhwi () * BITS_PER_UNIT);
@@ -2968,9 +2940,10 @@ fold_array_ctor_reference (tree type, tree ctor,
   if (inner_offset + size > elt_size.to_uhwi () * BITS_PER_UNIT)
     return NULL_TREE;
 
-  index = low_bound - double_int_one;
+  index = low_bound - 1;
   if (index_type)
-    index = index.ext (TYPE_PRECISION (index_type), TYPE_UNSIGNED (index_type));
+    index = wi::ext (index, TYPE_PRECISION (index_type),
+		     TYPE_SIGN (index_type));
 
   FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
     {
@@ -2980,26 +2953,26 @@ fold_array_ctor_reference (tree type, tree ctor,
       if (cfield)
 	{
 	  if (TREE_CODE (cfield) == INTEGER_CST)
-	    max_index = index = tree_to_double_int (cfield);
+	    max_index = index = wi::to_offset (cfield);
 	  else
 	    {
 	      gcc_assert (TREE_CODE (cfield) == RANGE_EXPR);
-	      index = tree_to_double_int (TREE_OPERAND (cfield, 0));
-	      max_index = tree_to_double_int (TREE_OPERAND (cfield, 1));
+	      index = wi::to_offset (TREE_OPERAND (cfield, 0));
+	      max_index = wi::to_offset (TREE_OPERAND (cfield, 1));
 	    }
 	}
       else
 	{
-	  index += double_int_one;
+	  index += 1;
 	  if (index_type)
-	    index = index.ext (TYPE_PRECISION (index_type),
-			       TYPE_UNSIGNED (index_type));
+	    index = wi::ext (index, TYPE_PRECISION (index_type),
+			     TYPE_SIGN (index_type));
 	  max_index = index;
 	}
 
       /* Do we have match?  */
-      if (access_index.cmp (index, 1) >= 0
-	  && access_index.cmp (max_index, 1) <= 0)
+      if (wi::cmpu (access_index, index) >= 0
+	  && wi::cmpu (access_index, max_index) <= 0)
 	return fold_ctor_reference (type, cval, inner_offset, size,
 				    from_decl);
     }
@@ -3026,10 +2999,8 @@ fold_nonarray_ctor_reference (tree type, tree ctor,
       tree byte_offset = DECL_FIELD_OFFSET (cfield);
       tree field_offset = DECL_FIELD_BIT_OFFSET (cfield);
       tree field_size = DECL_SIZE (cfield);
-      double_int bitoffset;
-      double_int byte_offset_cst = tree_to_double_int (byte_offset);
-      double_int bits_per_unit_cst = double_int::from_uhwi (BITS_PER_UNIT);
-      double_int bitoffset_end, access_end;
+      offset_int bitoffset;
+      offset_int bitoffset_end, access_end;
 
       /* Variable sized objects in static constructors makes no sense,
 	 but field_size can be NULL for flexible array members.  */
@@ -3040,30 +3011,30 @@ fold_nonarray_ctor_reference (tree type, tree ctor,
 		      : TREE_CODE (TREE_TYPE (cfield)) == ARRAY_TYPE));
 
       /* Compute bit offset of the field.  */
-      bitoffset = tree_to_double_int (field_offset)
-		  + byte_offset_cst * bits_per_unit_cst;
+      bitoffset = (wi::to_offset (field_offset)
+		   + wi::lshift (wi::to_offset (byte_offset),
+				 LOG2_BITS_PER_UNIT));
       /* Compute bit offset where the field ends.  */
       if (field_size != NULL_TREE)
-	bitoffset_end = bitoffset + tree_to_double_int (field_size);
+	bitoffset_end = bitoffset + wi::to_offset (field_size);
       else
-	bitoffset_end = double_int_zero;
+	bitoffset_end = 0;
 
-      access_end = double_int::from_uhwi (offset)
-		   + double_int::from_uhwi (size);
+      access_end = offset_int (offset) + size;
 
       /* Is there any overlap between [OFFSET, OFFSET+SIZE) and
 	 [BITOFFSET, BITOFFSET_END)?  */
-      if (access_end.cmp (bitoffset, 0) > 0
+      if (wi::cmps (access_end, bitoffset) > 0
 	  && (field_size == NULL_TREE
-	      || double_int::from_uhwi (offset).slt (bitoffset_end)))
+	      || wi::lts_p (offset, bitoffset_end)))
 	{
-	  double_int inner_offset = double_int::from_uhwi (offset) - bitoffset;
+	  offset_int inner_offset = offset_int (offset) - bitoffset;
 	  /* We do have overlap.  Now see if field is large enough to
 	     cover the access.  Give up for accesses spanning multiple
 	     fields.  */
-	  if (access_end.cmp (bitoffset_end, 0) > 0)
+	  if (wi::cmps (access_end, bitoffset_end) > 0)
 	    return NULL_TREE;
-	  if (double_int::from_uhwi (offset).slt (bitoffset))
+	  if (wi::lts_p (offset, bitoffset))
 	    return NULL_TREE;
 	  return fold_ctor_reference (type, cval,
 				      inner_offset.to_uhwi (), size,
@@ -3101,8 +3072,19 @@ fold_ctor_reference (tree type, tree ctor, unsigned HOST_WIDE_INT offset,
 	STRIP_NOPS (ret);
       return ret;
     }
-  if (TREE_CODE (ctor) == STRING_CST)
-    return fold_string_cst_ctor_reference (type, ctor, offset, size);
+  /* For constants and byte-aligned/sized reads try to go through
+     native_encode/interpret.  */
+  if (CONSTANT_CLASS_P (ctor)
+      && BITS_PER_UNIT == 8
+      && offset % BITS_PER_UNIT == 0
+      && size % BITS_PER_UNIT == 0
+      && size <= MAX_BITSIZE_MODE_ANY_MODE)
+    {
+      unsigned char buf[MAX_BITSIZE_MODE_ANY_MODE / BITS_PER_UNIT];
+      if (native_encode_expr (ctor, buf, size / BITS_PER_UNIT,
+			      offset / BITS_PER_UNIT) > 0)
+	return native_interpret_expr (type, buf, size / BITS_PER_UNIT);
+    }
   if (TREE_CODE (ctor) == CONSTRUCTOR)
     {
 
@@ -3154,37 +3136,42 @@ fold_const_aggregate_ref_1 (tree t, tree (*valueize) (tree))
 	  && TREE_CODE (idx) == INTEGER_CST)
 	{
 	  tree low_bound, unit_size;
-	  double_int doffset;
 
 	  /* If the resulting bit-offset is constant, track it.  */
 	  if ((low_bound = array_ref_low_bound (t),
 	       TREE_CODE (low_bound) == INTEGER_CST)
 	      && (unit_size = array_ref_element_size (t),
-		  tree_fits_uhwi_p (unit_size))
-	      && (doffset = (TREE_INT_CST (idx) - TREE_INT_CST (low_bound))
-			    .sext (TYPE_PRECISION (TREE_TYPE (idx))),
-		  doffset.fits_shwi ()))
+		  tree_fits_uhwi_p (unit_size)))
 	    {
-	      offset = doffset.to_shwi ();
-	      offset *= tree_to_uhwi (unit_size);
-	      offset *= BITS_PER_UNIT;
+	      offset_int woffset
+		= wi::sext (wi::to_offset (idx) - wi::to_offset (low_bound),
+			    TYPE_PRECISION (TREE_TYPE (idx)));
 
-	      base = TREE_OPERAND (t, 0);
-	      ctor = get_base_constructor (base, &offset, valueize);
-	      /* Empty constructor.  Always fold to 0.  */
-	      if (ctor == error_mark_node)
-		return build_zero_cst (TREE_TYPE (t));
-	      /* Out of bound array access.  Value is undefined,
-		 but don't fold.  */
-	      if (offset < 0)
-		return NULL_TREE;
-	      /* We can not determine ctor.  */
-	      if (!ctor)
-		return NULL_TREE;
-	      return fold_ctor_reference (TREE_TYPE (t), ctor, offset,
-					  tree_to_uhwi (unit_size)
-					  * BITS_PER_UNIT,
-					  base);
+	      if (wi::fits_shwi_p (woffset))
+		{
+		  offset = woffset.to_shwi ();
+		  /* TODO: This code seems wrong, multiply then check
+		     to see if it fits.  */
+		  offset *= tree_to_uhwi (unit_size);
+		  offset *= BITS_PER_UNIT;
+
+		  base = TREE_OPERAND (t, 0);
+		  ctor = get_base_constructor (base, &offset, valueize);
+		  /* Empty constructor.  Always fold to 0.  */
+		  if (ctor == error_mark_node)
+		    return build_zero_cst (TREE_TYPE (t));
+		  /* Out of bound array access.  Value is undefined,
+		     but don't fold.  */
+		  if (offset < 0)
+		    return NULL_TREE;
+		  /* We can not determine ctor.  */
+		  if (!ctor)
+		    return NULL_TREE;
+		  return fold_ctor_reference (TREE_TYPE (t), ctor, offset,
+					      tree_to_uhwi (unit_size)
+					      * BITS_PER_UNIT,
+					      base);
+		}
 	    }
 	}
       /* Fallthru.  */
@@ -3236,40 +3223,40 @@ fold_const_aggregate_ref (tree t)
   return fold_const_aggregate_ref_1 (t, NULL);
 }
 
-/* Return a declaration of a function which an OBJ_TYPE_REF references. TOKEN
-   is integer form of OBJ_TYPE_REF_TOKEN of the reference expression.
-   KNOWN_BINFO carries the binfo describing the true type of
-   OBJ_TYPE_REF_OBJECT(REF).  */
+/* Lookup virtual method with index TOKEN in a virtual table V
+   at OFFSET.  
+   Set CAN_REFER if non-NULL to false if method
+   is not referable or if the virtual table is ill-formed (such as rewriten
+   by non-C++ produced symbol). Otherwise just return NULL in that calse.  */
 
 tree
-gimple_get_virt_method_for_binfo (HOST_WIDE_INT token, tree known_binfo)
+gimple_get_virt_method_for_vtable (HOST_WIDE_INT token,
+				   tree v,
+				   unsigned HOST_WIDE_INT offset,
+				   bool *can_refer)
 {
-  unsigned HOST_WIDE_INT offset, size;
-  tree v, fn, vtable, init;
+  tree vtable = v, init, fn;
+  unsigned HOST_WIDE_INT size;
+  unsigned HOST_WIDE_INT elt_size, access_index;
+  tree domain_type;
 
-  vtable = v = BINFO_VTABLE (known_binfo);
-  /* If there is no virtual methods table, leave the OBJ_TYPE_REF alone.  */
-  if (!v)
-    return NULL_TREE;
+  if (can_refer)
+    *can_refer = true;
 
-  if (TREE_CODE (v) == POINTER_PLUS_EXPR)
-    {
-      offset = tree_to_uhwi (TREE_OPERAND (v, 1)) * BITS_PER_UNIT;
-      v = TREE_OPERAND (v, 0);
-    }
-  else
-    offset = 0;
-
-  if (TREE_CODE (v) != ADDR_EXPR)
-    return NULL_TREE;
-  v = TREE_OPERAND (v, 0);
-
+  /* First of all double check we have virtual table.  */
   if (TREE_CODE (v) != VAR_DECL
       || !DECL_VIRTUAL_P (v))
-    return NULL_TREE;
+    {
+      gcc_assert (in_lto_p);
+      /* Pass down that we lost track of the target.  */
+      if (can_refer)
+	*can_refer = false;
+      return NULL_TREE;
+    }
+
   init = ctor_for_folding (v);
 
-  /* The virtual tables should always be born with constructors.
+  /* The virtual tables should always be born with constructors
      and we always should assume that they are avaialble for
      folding.  At the moment we do not stream them in all cases,
      but it should never happen that ctor seem unreachable.  */
@@ -3277,33 +3264,104 @@ gimple_get_virt_method_for_binfo (HOST_WIDE_INT token, tree known_binfo)
   if (init == error_mark_node)
     {
       gcc_assert (in_lto_p);
+      /* Pass down that we lost track of the target.  */
+      if (can_refer)
+	*can_refer = false;
       return NULL_TREE;
     }
   gcc_checking_assert (TREE_CODE (TREE_TYPE (v)) == ARRAY_TYPE);
   size = tree_to_uhwi (TYPE_SIZE (TREE_TYPE (TREE_TYPE (v))));
+  offset *= BITS_PER_UNIT;
   offset += token * size;
-  fn = fold_ctor_reference (TREE_TYPE (TREE_TYPE (v)), init,
-			    offset, size, v);
-  if (!fn || integer_zerop (fn))
-    return NULL_TREE;
-  gcc_assert (TREE_CODE (fn) == ADDR_EXPR
-	      || TREE_CODE (fn) == FDESC_EXPR);
-  fn = TREE_OPERAND (fn, 0);
-  gcc_assert (TREE_CODE (fn) == FUNCTION_DECL);
 
-  /* When cgraph node is missing and function is not public, we cannot
-     devirtualize.  This can happen in WHOPR when the actual method
-     ends up in other partition, because we found devirtualization
-     possibility too late.  */
-  if (!can_refer_decl_in_current_unit_p (fn, vtable))
-    return NULL_TREE;
+  /* Lookup the value in the constructor that is assumed to be array.
+     This is equivalent to
+     fn = fold_ctor_reference (TREE_TYPE (TREE_TYPE (v)), init,
+			       offset, size, NULL);
+     but in a constant time.  We expect that frontend produced a simple
+     array without indexed initializers.  */
+
+  gcc_checking_assert (TREE_CODE (TREE_TYPE (init)) == ARRAY_TYPE);
+  domain_type = TYPE_DOMAIN (TREE_TYPE (init));
+  gcc_checking_assert (integer_zerop (TYPE_MIN_VALUE (domain_type)));
+  elt_size = tree_to_uhwi (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (init))));
+
+  access_index = offset / BITS_PER_UNIT / elt_size;
+  gcc_checking_assert (offset % (elt_size * BITS_PER_UNIT) == 0);
+
+  /* This code makes an assumption that there are no 
+     indexed fileds produced by C++ FE, so we can directly index the array. */
+  if (access_index < CONSTRUCTOR_NELTS (init))
+    {
+      fn = CONSTRUCTOR_ELT (init, access_index)->value;
+      gcc_checking_assert (!CONSTRUCTOR_ELT (init, access_index)->index);
+      STRIP_NOPS (fn);
+    }
+  else
+    fn = NULL;
+
+  /* For type inconsistent program we may end up looking up virtual method
+     in virtual table that does not contain TOKEN entries.  We may overrun
+     the virtual table and pick up a constant or RTTI info pointer.
+     In any case the call is undefined.  */
+  if (!fn
+      || (TREE_CODE (fn) != ADDR_EXPR && TREE_CODE (fn) != FDESC_EXPR)
+      || TREE_CODE (TREE_OPERAND (fn, 0)) != FUNCTION_DECL)
+    fn = builtin_decl_implicit (BUILT_IN_UNREACHABLE);
+  else
+    {
+      fn = TREE_OPERAND (fn, 0);
+
+      /* When cgraph node is missing and function is not public, we cannot
+	 devirtualize.  This can happen in WHOPR when the actual method
+	 ends up in other partition, because we found devirtualization
+	 possibility too late.  */
+      if (!can_refer_decl_in_current_unit_p (fn, vtable))
+	{
+	  if (can_refer)
+	    {
+	      *can_refer = false;
+	      return fn;
+	    }
+	  return NULL_TREE;
+	}
+    }
 
   /* Make sure we create a cgraph node for functions we'll reference.
      They can be non-existent if the reference comes from an entry
      of an external vtable for example.  */
-  cgraph_get_create_node (fn);
+  cgraph_node::get_create (fn);
 
   return fn;
+}
+
+/* Return a declaration of a function which an OBJ_TYPE_REF references. TOKEN
+   is integer form of OBJ_TYPE_REF_TOKEN of the reference expression.
+   KNOWN_BINFO carries the binfo describing the true type of
+   OBJ_TYPE_REF_OBJECT(REF).
+   Set CAN_REFER if non-NULL to false if method
+   is not referable or if the virtual table is ill-formed (such as rewriten
+   by non-C++ produced symbol). Otherwise just return NULL in that calse.  */
+
+tree
+gimple_get_virt_method_for_binfo (HOST_WIDE_INT token, tree known_binfo,
+				  bool *can_refer)
+{
+  unsigned HOST_WIDE_INT offset;
+  tree v;
+
+  v = BINFO_VTABLE (known_binfo);
+  /* If there is no virtual methods table, leave the OBJ_TYPE_REF alone.  */
+  if (!v)
+    return NULL_TREE;
+
+  if (!vtable_pointer_value_to_vtable (v, &v, &offset))
+    {
+      if (can_refer)
+	*can_refer = false;
+      return NULL_TREE;
+    }
+  return gimple_get_virt_method_for_vtable (token, v, offset, can_refer);
 }
 
 /* Return true iff VAL is a gimple expression that is known to be
@@ -3420,7 +3478,7 @@ gimple_val_nonnegative_real_p (tree val)
 		  if ((n & 1) == 0)
 		    {
 		      REAL_VALUE_TYPE cint;
-		      real_from_integer (&cint, VOIDmode, n, n < 0 ? -1 : 0, 0);
+		      real_from_integer (&cint, VOIDmode, n, SIGNED);
 		      if (real_identical (&c, &cint))
 			return true;
 		    }
@@ -3533,9 +3591,7 @@ gimple_fold_indirect_ref (tree t)
 	  || DECL_P (TREE_OPERAND (addr, 0)))
 	return fold_build2 (MEM_REF, type,
 			    addr,
-			    build_int_cst_wide (ptype,
-						TREE_INT_CST_LOW (off),
-						TREE_INT_CST_HIGH (off)));
+			    wide_int_to_tree (ptype, off));
     }
 
   /* *(foo *)fooarrptr => (*fooarrptr)[0] */

@@ -488,13 +488,14 @@ consider_split (struct split_point *current, bitmap non_ssa_vars,
 			       SSA_NAME_VERSION (ddef)))
 	    {
 	      if (!VOID_TYPE_P (TREE_TYPE (parm)))
-		call_overhead += estimate_move_cost (TREE_TYPE (parm));
+		call_overhead += estimate_move_cost (TREE_TYPE (parm), false);
 	      num_args++;
 	    }
 	}
     }
   if (!VOID_TYPE_P (TREE_TYPE (current_function_decl)))
-    call_overhead += estimate_move_cost (TREE_TYPE (current_function_decl));
+    call_overhead += estimate_move_cost (TREE_TYPE (current_function_decl),
+					 false);
 
   if (current->split_size <= call_overhead)
     {
@@ -1087,7 +1088,7 @@ split_function (struct split_point *split_point)
   bitmap args_to_skip;
   tree parm;
   int num = 0;
-  struct cgraph_node *node, *cur_node = cgraph_get_node (current_function_decl);
+  cgraph_node *node, *cur_node = cgraph_node::get (current_function_decl);
   basic_block return_bb = find_return_bb ();
   basic_block call_bb;
   gimple_stmt_iterator gsi;
@@ -1177,8 +1178,7 @@ split_function (struct split_point *split_point)
       e = make_edge (new_return_bb, EXIT_BLOCK_PTR_FOR_FN (cfun), 0);
       e->probability = REG_BR_PROB_BASE;
       e->count = new_return_bb->count;
-      if (current_loops)
-	add_bb_to_loop (new_return_bb, current_loops->tree_root);
+      add_bb_to_loop (new_return_bb, current_loops->tree_root);
       bitmap_set_bit (split_point->split_bbs, new_return_bb->index);
     }
   /* When we pass around the value, use existing return block.  */
@@ -1230,12 +1230,9 @@ split_function (struct split_point *split_point)
 
   /* Now create the actual clone.  */
   rebuild_cgraph_edges ();
-  node = cgraph_function_versioning (cur_node, vNULL,
-				     NULL,
-				     args_to_skip,
-				     !split_part_return_p,
-				     split_point->split_bbs,
-				     split_point->entry_bb, "part");
+  node = cur_node->create_version_clone_with_body
+    (vNULL, NULL, args_to_skip, !split_part_return_p, split_point->split_bbs,
+     split_point->entry_bb, "part");
 
   /* Let's take a time profile for splitted function.  */
   node->tp_first_run = cur_node->tp_first_run + 1;
@@ -1251,8 +1248,8 @@ split_function (struct split_point *split_point)
   /* If the original function is declared inline, there is no point in issuing
      a warning for the non-inlinable part.  */
   DECL_NO_INLINE_WARNING_P (node->decl) = 1;
-  cgraph_node_remove_callees (cur_node);
-  ipa_remove_all_references (&cur_node->ref_list);
+  cur_node->remove_callees ();
+  cur_node->remove_all_references ();
   if (!split_part_return_p)
     TREE_THIS_VOLATILE (node->decl) = 1;
   if (dump_file)
@@ -1512,7 +1509,7 @@ execute_split_functions (void)
   basic_block bb;
   int overall_time = 0, overall_size = 0;
   int todo = 0;
-  struct cgraph_node *node = cgraph_get_node (current_function_decl);
+  struct cgraph_node *node = cgraph_node::get (current_function_decl);
 
   if (flags_from_decl_or_type (current_function_decl)
       & (ECF_NORETURN|ECF_MALLOC))
@@ -1646,17 +1643,6 @@ execute_split_functions (void)
   return todo;
 }
 
-/* Gate function splitting pass.  When doing profile feedback, we want
-   to execute the pass after profiling is read.  So disable one in 
-   early optimization.  */
-
-static bool
-gate_split_functions (void)
-{
-  return (flag_partial_inlining
-	  && !profile_arc_flag && !flag_branch_probabilities);
-}
-
 namespace {
 
 const pass_data pass_data_split_functions =
@@ -1664,14 +1650,12 @@ const pass_data pass_data_split_functions =
   GIMPLE_PASS, /* type */
   "fnsplit", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_IPA_FNSPLIT, /* tv_id */
   PROP_cfg, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_all, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_split_functions : public gimple_opt_pass
@@ -1682,10 +1666,22 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_split_functions (); }
-  unsigned int execute () { return execute_split_functions (); }
+  virtual bool gate (function *);
+  virtual unsigned int execute (function *)
+    {
+      return execute_split_functions ();
+    }
 
 }; // class pass_split_functions
+
+bool
+pass_split_functions::gate (function *)
+{
+  /* When doing profile feedback, we want to execute the pass after profiling
+     is read.  So disable one in early optimization.  */
+  return (flag_partial_inlining
+	  && !profile_arc_flag && !flag_branch_probabilities);
+}
 
 } // anon namespace
 
@@ -1693,17 +1689,6 @@ gimple_opt_pass *
 make_pass_split_functions (gcc::context *ctxt)
 {
   return new pass_split_functions (ctxt);
-}
-
-/* Gate feedback driven function splitting pass.
-   We don't need to split when profiling at all, we are producing
-   lousy code anyway.  */
-
-static bool
-gate_feedback_split_functions (void)
-{
-  return (flag_partial_inlining
-	  && flag_branch_probabilities);
 }
 
 /* Execute function splitting pass.  */
@@ -1724,14 +1709,12 @@ const pass_data pass_data_feedback_split_functions =
   GIMPLE_PASS, /* type */
   "feedback_fnsplit", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_IPA_FNSPLIT, /* tv_id */
   PROP_cfg, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_all, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_feedback_split_functions : public gimple_opt_pass
@@ -1742,10 +1725,22 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_feedback_split_functions (); }
-  unsigned int execute () { return execute_feedback_split_functions (); }
+  virtual bool gate (function *);
+  virtual unsigned int execute (function *)
+    {
+      return execute_feedback_split_functions ();
+    }
 
 }; // class pass_feedback_split_functions
+
+bool
+pass_feedback_split_functions::gate (function *)
+{
+  /* We don't need to split when profiling at all, we are producing
+     lousy code anyway.  */
+  return (flag_partial_inlining
+	  && flag_branch_probabilities);
+}
 
 } // anon namespace
 

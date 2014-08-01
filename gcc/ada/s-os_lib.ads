@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1995-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -48,7 +48,10 @@
 --  be used by other predefined packages. User access to this package is via
 --  a renaming of this package in GNAT.OS_Lib (file g-os_lib.ads).
 
-pragma Compiler_Unit;
+--  Note: a distinct body for this spec is included in the .NET runtime library
+--  and must be kept in sync with changes made in this file.
+
+pragma Compiler_Unit_Warning;
 
 with System;
 with System.Strings;
@@ -148,6 +151,17 @@ package System.OS_Lib is
    --  Analogous to the Split routine in Ada.Calendar, takes an OS_Time and
    --  provides a representation of it as a set of component parts, to be
    --  interpreted as a date point in UTC.
+
+   function GM_Time_Of
+     (Year   : Year_Type;
+      Month  : Month_Type;
+      Day    : Day_Type;
+      Hour   : Hour_Type;
+      Minute : Minute_Type;
+      Second : Second_Type) return OS_Time;
+   --  Analogous to the Time_Of routine in Ada.Calendar, takes a set of time
+   --  component parts and returns an OS_Time. Returns Invalid_Time if the
+   --  creation fails.
 
    ----------------
    -- File Stuff --
@@ -302,6 +316,13 @@ package System.OS_Lib is
       Success  : out Boolean);
    --  Rename a file. Success is set True or False indicating if the rename is
    --  successful or not.
+   --
+   --  WARNING: In one very important respect, this function is significantly
+   --  non-portable. If New_Name already exists then on Unix systems, the call
+   --  deletes the existing file, and the call signals success. On Windows, the
+   --  call fails, without doing the rename operation. See also the procedure
+   --  Ada.Directories.Rename, which portably provides the windows semantics,
+   --  i.e. fails if the output file already exists.
 
    --  The following defines the mode for the Copy_File procedure below. Note
    --  that "time stamps and other file attributes" in the descriptions below
@@ -373,6 +394,10 @@ package System.OS_Lib is
    --
    --  Note: this procedure is not supported on VMS and VxWorks 5. On these
    --  platforms, Success is always set to False.
+
+   procedure Set_File_Last_Modify_Time_Stamp (Name : String; Time : OS_Time);
+   --  Given the name of a file or directory, Name, set the last modification
+   --  time stamp. This function must be used for an unopened file.
 
    function Read
      (FD : File_Descriptor;
@@ -523,8 +548,15 @@ package System.OS_Lib is
    --  This renaming is provided for backwards compatibility with previous
    --  versions. The use of Set_Non_Writable is preferred (clearer name).
 
-   procedure Set_Executable (Name : String);
-   --  Change permissions on the named file to make it executable for its owner
+   S_Owner  : constant := 1;
+   S_Group  : constant := 2;
+   S_Others : constant := 4;
+   --  Constants for use in Mode parameter to Set_Executable
+
+   procedure Set_Executable (Name : String; Mode : Positive := S_Owner);
+   --  Change permissions on the file given by Name to make it executable
+   --  for its owner, group or others, according to the setting of Mode.
+   --  As indicated, the default if no Mode parameter is given is owner.
 
    procedure Set_Readable (Name : String);
    --  Change permissions on the named file to make it readable for its
@@ -802,10 +834,8 @@ package System.OS_Lib is
    --  Similar to the procedure above, but saves the output of the command to
    --  a file with the name Output_File.
    --
-   --  Success is set to True if the command is executed and its output
-   --  successfully written to the file. Invalid_Pid is returned if the output
-   --  file could not be created or if the program could not be spawned
-   --  successfully.
+   --  Invalid_Pid is returned if the output file could not be created or if
+   --  the program could not be spawned successfully.
    --
    --  Spawning processes from tasking programs is not recommended. See
    --  "NOTE: Spawn in tasking programs" below.
@@ -956,6 +986,13 @@ package System.OS_Lib is
    procedure Set_Errno (Errno : Integer);
    pragma Import (C, Set_Errno, "__set_errno");
    --  Set the task-safe error number
+
+   function Errno_Message
+     (Err     : Integer := Errno;
+      Default : String  := "") return String;
+   --  Return a message describing the given Errno value. If none is provided
+   --  by the system, return Default if not empty, else return a generic
+   --  message indicating the numeric errno value.
 
    Directory_Separator : constant Character;
    --  The character that is used to separate parts of a pathname

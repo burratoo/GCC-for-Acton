@@ -60,6 +60,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "params.h"
 #include "diagnostic-core.h"
+#include "builtins.h"
 
 /*  This is a simple global reassociation pass.  It is, in part, based
     on the LLVM pass of the same name (They do some things more/less
@@ -219,7 +220,37 @@ static struct pointer_map_t *operand_rank;
 
 /* Forward decls.  */
 static long get_rank (tree);
+static bool reassoc_stmt_dominates_stmt_p (gimple, gimple);
 
+/* Wrapper around gsi_remove, which adjusts gimple_uid of debug stmts
+   possibly added by gsi_remove.  */
+
+bool
+reassoc_remove_stmt (gimple_stmt_iterator *gsi)
+{
+  gimple stmt = gsi_stmt (*gsi);
+
+  if (!MAY_HAVE_DEBUG_STMTS || gimple_code (stmt) == GIMPLE_PHI)
+    return gsi_remove (gsi, true);
+
+  gimple_stmt_iterator prev = *gsi;
+  gsi_prev (&prev);
+  unsigned uid = gimple_uid (stmt);
+  basic_block bb = gimple_bb (stmt);
+  bool ret = gsi_remove (gsi, true);
+  if (!gsi_end_p (prev))
+    gsi_next (&prev);
+  else
+    prev = gsi_start_bb (bb);
+  gimple end_stmt = gsi_stmt (*gsi);
+  while ((stmt = gsi_stmt (prev)) != end_stmt)
+    {
+      gcc_assert (stmt && is_gimple_debug (stmt) && gimple_uid (stmt) == 0);
+      gimple_set_uid (stmt, uid);
+      gsi_next (&prev);
+    }
+  return ret;
+}
 
 /* Bias amount for loop-carried phis.  We want this to be larger than
    the depth of any reassociation tree we can see, but not larger than
@@ -506,11 +537,37 @@ sort_by_operand_rank (const void *pa, const void *pb)
     }
 
   /* Lastly, make sure the versions that are the same go next to each
-     other.  We use SSA_NAME_VERSION because it's stable.  */
+     other.  */
   if ((oeb->rank - oea->rank == 0)
       && TREE_CODE (oea->op) == SSA_NAME
       && TREE_CODE (oeb->op) == SSA_NAME)
     {
+      /* As SSA_NAME_VERSION is assigned pretty randomly, because we reuse
+	 versions of removed SSA_NAMEs, so if possible, prefer to sort
+	 based on basic block and gimple_uid of the SSA_NAME_DEF_STMT.
+	 See PR60418.  */
+      if (!SSA_NAME_IS_DEFAULT_DEF (oea->op)
+	  && !SSA_NAME_IS_DEFAULT_DEF (oeb->op)
+	  && SSA_NAME_VERSION (oeb->op) != SSA_NAME_VERSION (oea->op))
+	{
+	  gimple stmta = SSA_NAME_DEF_STMT (oea->op);
+	  gimple stmtb = SSA_NAME_DEF_STMT (oeb->op);
+	  basic_block bba = gimple_bb (stmta);
+	  basic_block bbb = gimple_bb (stmtb);
+	  if (bbb != bba)
+	    {
+	      if (bb_rank[bbb->index] != bb_rank[bba->index])
+		return bb_rank[bbb->index] - bb_rank[bba->index];
+	    }
+	  else
+	    {
+	      bool da = reassoc_stmt_dominates_stmt_p (stmta, stmtb);
+	      bool db = reassoc_stmt_dominates_stmt_p (stmtb, stmta);
+	      if (da != db)
+		return da ? 1 : -1;
+	    }
+	}
+
       if (SSA_NAME_VERSION (oeb->op) != SSA_NAME_VERSION (oea->op))
 	return SSA_NAME_VERSION (oeb->op) - SSA_NAME_VERSION (oea->op);
       else
@@ -806,8 +863,7 @@ eliminate_not_pairs (enum tree_code opcode,
 	  if (opcode == BIT_AND_EXPR)
 	    oe->op = build_zero_cst (TREE_TYPE (oe->op));
 	  else if (opcode == BIT_IOR_EXPR)
-	    oe->op = build_low_bits_mask (TREE_TYPE (oe->op),
-					  TYPE_PRECISION (TREE_TYPE (oe->op)));
+	    oe->op = build_all_ones_cst (TREE_TYPE (oe->op));
 
 	  reassociate_stats.ops_eliminated += ops->length () - 1;
 	  ops->truncate (0);
@@ -967,32 +1023,36 @@ static vec<oecount> cvec;
 
 /* Oecount hashtable helpers.  */
 
-struct oecount_hasher : typed_noop_remove <void>
+struct oecount_hasher
 {
-  /* Note that this hash table stores integers, not pointers.
-     So, observe the casting in the member functions.  */
-  typedef void value_type;
-  typedef void compare_type;
-  static inline hashval_t hash (const value_type *);
-  static inline bool equal (const value_type *, const compare_type *);
+  typedef int value_type;
+  typedef int compare_type;
+  typedef int store_values_directly;
+  static inline hashval_t hash (const value_type &);
+  static inline bool equal (const value_type &, const compare_type &);
+  static bool is_deleted (int &v) { return v == 1; }
+  static void mark_deleted (int &e) { e = 1; }
+  static bool is_empty (int &v) { return v == 0; }
+  static void mark_empty (int &e) { e = 0; }
+  static void remove (int &) {}
 };
 
 /* Hash function for oecount.  */
 
 inline hashval_t
-oecount_hasher::hash (const value_type *p)
+oecount_hasher::hash (const value_type &p)
 {
-  const oecount *c = &cvec[(size_t)p - 42];
+  const oecount *c = &cvec[p - 42];
   return htab_hash_pointer (c->op) ^ (hashval_t)c->oecode;
 }
 
 /* Comparison function for oecount.  */
 
 inline bool
-oecount_hasher::equal (const value_type *p1, const compare_type *p2)
+oecount_hasher::equal (const value_type &p1, const compare_type &p2)
 {
-  const oecount *c1 = &cvec[(size_t)p1 - 42];
-  const oecount *c2 = &cvec[(size_t)p2 - 42];
+  const oecount *c1 = &cvec[p1 - 42];
+  const oecount *c2 = &cvec[p2 - 42];
   return (c1->oecode == c2->oecode
 	  && c1->op == c2->op);
 }
@@ -1056,7 +1116,7 @@ decrement_power (gimple stmt)
       arg1 = gimple_call_arg (stmt, 1);
       c = TREE_REAL_CST (arg1);
       power = real_to_integer (&c) - 1;
-      real_from_integer (&cint, VOIDmode, power, 0, 0);
+      real_from_integer (&cint, VOIDmode, power, SIGNED);
       gimple_call_set_arg (stmt, 1, build_real (TREE_TYPE (arg1), cint));
       return power;
 
@@ -1097,7 +1157,7 @@ propagate_op_to_single_use (tree op, gimple stmt, tree *def)
     update_stmt (use_stmt);
   gsi = gsi_for_stmt (stmt);
   unlink_stmt_vdef (stmt);
-  gsi_remove (&gsi, true);
+  reassoc_remove_stmt (&gsi);
   release_defs (stmt);
 }
 
@@ -1349,7 +1409,6 @@ undistribute_ops_list (enum tree_code opcode,
   unsigned nr_candidates, nr_candidates2;
   sbitmap_iterator sbi0;
   vec<operand_entry_t> *subops;
-  hash_table <oecount_hasher> ctable;
   bool changed = false;
   int next_oecount_id = 0;
 
@@ -1397,7 +1456,9 @@ undistribute_ops_list (enum tree_code opcode,
 
   /* Build linearized sub-operand lists and the counting table.  */
   cvec.create (0);
-  ctable.create (15);
+
+  hash_table<oecount_hasher> ctable (15);
+
   /* ??? Macro arguments cannot have multi-argument template types in
      them.  This typedef is needed to workaround that limitation.  */
   typedef vec<operand_entry_t> vec_operand_entry_t_heap;
@@ -1416,27 +1477,26 @@ undistribute_ops_list (enum tree_code opcode,
       FOR_EACH_VEC_ELT (subops[i], j, oe1)
 	{
 	  oecount c;
-	  void **slot;
-	  size_t idx;
+	  int *slot;
+	  int idx;
 	  c.oecode = oecode;
 	  c.cnt = 1;
 	  c.id = next_oecount_id++;
 	  c.op = oe1->op;
 	  cvec.safe_push (c);
 	  idx = cvec.length () + 41;
-	  slot = ctable.find_slot ((void *)idx, INSERT);
+	  slot = ctable.find_slot (idx, INSERT);
 	  if (!*slot)
 	    {
-	      *slot = (void *)idx;
+	      *slot = idx;
 	    }
 	  else
 	    {
 	      cvec.pop ();
-	      cvec[(size_t)*slot - 42].cnt++;
+	      cvec[*slot - 42].cnt++;
 	    }
 	}
     }
-  ctable.dispose ();
 
   /* Sort the counting table.  */
   cvec.qsort (oecount_cmp);
@@ -1840,7 +1900,8 @@ init_range_entry (struct range_entry *r, tree exp, gimple stmt)
 
       if (exp != NULL_TREE)
 	{
-	  if (TREE_CODE (exp) != SSA_NAME)
+	  if (TREE_CODE (exp) != SSA_NAME
+	      || SSA_NAME_OCCURS_IN_ABNORMAL_PHI (exp))
 	    break;
 
 	  stmt = SSA_NAME_DEF_STMT (exp);
@@ -3045,7 +3106,7 @@ remove_visited_stmt_chain (tree var)
 	{
 	  var = gimple_assign_rhs1 (stmt);
 	  gsi = gsi_for_stmt (stmt);
-	  gsi_remove (&gsi, true);
+	  reassoc_remove_stmt (&gsi);
 	  release_defs (stmt);
 	}
       else
@@ -3467,7 +3528,7 @@ linearize_expr (gimple stmt)
   update_stmt (stmt);
 
   gsi = gsi_for_stmt (oldbinrhs);
-  gsi_remove (&gsi, true);
+  reassoc_remove_stmt (&gsi);
   release_defs (oldbinrhs);
 
   gimple_set_visited (stmt, true);
@@ -3648,8 +3709,7 @@ acceptable_pow_call (gimple stmt, tree *base, HOST_WIDE_INT *exponent)
 	return false;
 
       *exponent = real_to_integer (&c);
-      real_from_integer (&cint, VOIDmode, *exponent,
-			 *exponent < 0 ? -1 : 0, 0);
+      real_from_integer (&cint, VOIDmode, *exponent, SIGNED);
       if (!real_identical (&c, &cint))
 	return false;
 
@@ -3869,7 +3929,7 @@ repropagate_negates (void)
 	      gimple_assign_set_rhs_with_ops (&gsi2, NEGATE_EXPR, x, NULL);
 	      user = gsi_stmt (gsi2);
 	      update_stmt (user);
-	      gsi_remove (&gsi, true);
+	      reassoc_remove_stmt (&gsi);
 	      release_defs (feed);
 	      plus_negates.safe_push (gimple_assign_lhs (user));
 	    }
@@ -4386,7 +4446,7 @@ reassociate_bb (basic_block bb)
 		 reassociations.  */
 	      if (has_zero_uses (gimple_get_lhs (stmt)))
 		{
-		  gsi_remove (&gsi, true);
+		  reassoc_remove_stmt (&gsi);
 		  release_defs (stmt);
 		  /* We might end up removing the last stmt above which
 		     places the iterator to the end of the sequence.
@@ -4638,12 +4698,6 @@ execute_reassoc (void)
   return 0;
 }
 
-static bool
-gate_tree_ssa_reassoc (void)
-{
-  return flag_tree_reassoc != 0;
-}
-
 namespace {
 
 const pass_data pass_data_reassoc =
@@ -4651,16 +4705,12 @@ const pass_data pass_data_reassoc =
   GIMPLE_PASS, /* type */
   "reassoc", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_TREE_REASSOC, /* tv_id */
   ( PROP_cfg | PROP_ssa ), /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_verify_ssa
-    | TODO_update_ssa_only_virtuals
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_update_ssa_only_virtuals, /* todo_flags_finish */
 };
 
 class pass_reassoc : public gimple_opt_pass
@@ -4672,8 +4722,8 @@ public:
 
   /* opt_pass methods: */
   opt_pass * clone () { return new pass_reassoc (m_ctxt); }
-  bool gate () { return gate_tree_ssa_reassoc (); }
-  unsigned int execute () { return execute_reassoc (); }
+  virtual bool gate (function *) { return flag_tree_reassoc != 0; }
+  virtual unsigned int execute (function *) { return execute_reassoc (); }
 
 }; // class pass_reassoc
 

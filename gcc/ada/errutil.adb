@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1991-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1991-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,6 +31,7 @@ with Opt;      use Opt;
 with Output;   use Output;
 with Scans;    use Scans;
 with Sinput;   use Sinput;
+with Stringt;  use Stringt;
 with Stylesw;  use Stylesw;
 
 package body Errutil is
@@ -176,7 +177,7 @@ package body Errutil is
          raise Error_Msg_Exception;
       end if;
 
-      Test_Style_Warning_Serious_Unconditional_Msg (Msg);
+      Prescan_Message (Msg);
       Set_Msg_Text (Msg, Sptr);
 
       --  Kill continuation if parent message killed
@@ -193,7 +194,7 @@ package body Errutil is
       --  Immediate return if warning message and warnings are suppressed.
       --  Note that style messages are not warnings for this purpose.
 
-      if Is_Warning_Msg and then Warnings_Suppressed (Sptr) then
+      if Is_Warning_Msg and then Warnings_Suppressed (Sptr) /= No_String then
          Cur_Msg := No_Error_Msg;
          return;
       end if;
@@ -211,6 +212,7 @@ package body Errutil is
       Errors.Table (Cur_Msg).Col      := Get_Column_Number (Sptr);
       Errors.Table (Cur_Msg).Style    := Is_Style_Msg;
       Errors.Table (Cur_Msg).Warn     := Is_Warning_Msg;
+      Errors.Table (Cur_Msg).Info     := Is_Info_Msg;
       Errors.Table (Cur_Msg).Warn_Chr := Warning_Msg_Char;
       Errors.Table (Cur_Msg).Serious  := Is_Serious_Error;
       Errors.Table (Cur_Msg).Uncond   := Is_Unconditional_Msg;
@@ -599,9 +601,11 @@ package body Errutil is
       Warnings.Init;
 
       if Warning_Mode = Suppress then
-         Warnings.Increment_Last;
-         Warnings.Table (Warnings.Last).Start := Source_Ptr'First;
-         Warnings.Table (Warnings.Last).Stop  := Source_Ptr'Last;
+         Warnings.Append
+           (New_Val =>
+              (Start  => Source_Ptr'First,
+               Stop   => Source_Ptr'Last,
+               Reason => Null_String_Id));
       end if;
    end Initialize;
 

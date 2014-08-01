@@ -737,7 +737,7 @@ analyze_function (struct cgraph_node *fn, bool ipa)
   l->can_throw = false;
   state_from_flags (&l->state_previously_known, &l->looping_previously_known,
 		    flags_from_decl_or_type (fn->decl),
-		    cgraph_node_cannot_return (fn));
+		    fn->cannot_return_p ());
 
   if (fn->thunk.thunk_p || fn->alias)
     {
@@ -840,14 +840,14 @@ end:
 static void
 add_new_function (struct cgraph_node *node, void *data ATTRIBUTE_UNUSED)
 {
- if (cgraph_function_body_availability (node) < AVAIL_OVERWRITABLE)
+ if (node->get_availability () < AVAIL_INTERPOSABLE)
    return;
   /* There are some shared nodes, in particular the initializers on
      static declarations.  We do not need to scan them more than once
      since all we would be interested in are the addressof
      operations.  */
   visited_nodes = pointer_set_create ();
-  if (cgraph_function_body_availability (node) > AVAIL_OVERWRITABLE)
+  if (node->get_availability () > AVAIL_INTERPOSABLE)
     set_function_state (node, analyze_function (node, true));
   pointer_set_destroy (visited_nodes);
   visited_nodes = NULL;
@@ -920,12 +920,12 @@ pure_const_generate_summary (void)
 
   /* Process all of the functions.
 
-     We process AVAIL_OVERWRITABLE functions.  We can not use the results
+     We process AVAIL_INTERPOSABLE functions.  We can not use the results
      by default, but the info can be used at LTO with -fwhole-program or
      when function got cloned and the clone is AVAILABLE.  */
 
   FOR_EACH_DEFINED_FUNCTION (node)
-    if (cgraph_function_body_availability (node) >= AVAIL_OVERWRITABLE)
+    if (node->get_availability () >= AVAIL_INTERPOSABLE)
       set_function_state (node, analyze_function (node, true));
 
   pointer_set_destroy (visited_nodes);
@@ -1025,7 +1025,8 @@ pure_const_read_summary (void)
 	      fs = XCNEW (struct funct_state_d);
 	      index = streamer_read_uhwi (ib);
 	      encoder = file_data->symtab_node_encoder;
-	      node = cgraph (lto_symtab_encoder_deref (encoder, index));
+	      node = dyn_cast<cgraph_node *> (lto_symtab_encoder_deref (encoder,
+									index));
 	      set_function_state (node, fs);
 
 	      /* Note that the flags must be read in the opposite
@@ -1088,7 +1089,7 @@ self_recursive_p (struct cgraph_node *node)
 {
   struct cgraph_edge *e;
   for (e = node->callees; e; e = e->next_callee)
-    if (cgraph_function_node (e->callee, NULL) == node)
+    if (e->callee->function_symbol () == node)
       return true;
   return false;
 }
@@ -1110,7 +1111,7 @@ propagate_pure_const (void)
   order_pos = ipa_reduced_postorder (order, true, false, NULL);
   if (dump_file)
     {
-      dump_cgraph (dump_file);
+      cgraph_node::dump_cgraph (dump_file);
       ipa_print_order (dump_file, "reduced", order, order_pos);
     }
 
@@ -1138,7 +1139,7 @@ propagate_pure_const (void)
 	  struct cgraph_edge *e;
 	  struct cgraph_edge *ie;
 	  int i;
-	  struct ipa_ref *ref;
+	  struct ipa_ref *ref = NULL;
 
 	  funct_state w_l = get_function_state (w);
 	  if (dump_file && (dump_flags & TDF_DETAILS))
@@ -1155,7 +1156,7 @@ propagate_pure_const (void)
 	    break;
 
 	  /* For overwritable nodes we can not assume anything.  */
-	  if (cgraph_function_body_availability (w) == AVAIL_OVERWRITABLE)
+	  if (w->get_availability () == AVAIL_INTERPOSABLE)
 	    {
 	      worse_state (&pure_const_state, &looping,
 			   w_l->state_previously_known,
@@ -1182,7 +1183,7 @@ propagate_pure_const (void)
 	  for (e = w->callees; e; e = e->next_callee)
 	    {
 	      enum availability avail;
-	      struct cgraph_node *y = cgraph_function_node (e->callee, &avail);
+	      struct cgraph_node *y = e->callee->function_symbol (&avail);
 	      enum pure_const_state_e edge_state = IPA_CONST;
 	      bool edge_looping = false;
 
@@ -1193,7 +1194,7 @@ propagate_pure_const (void)
 			   e->callee->name (),
 			   e->callee->order);
 		}
-	      if (avail > AVAIL_OVERWRITABLE)
+	      if (avail > AVAIL_INTERPOSABLE)
 		{
 		  funct_state y_l = get_function_state (y);
 		  if (dump_file && (dump_flags & TDF_DETAILS))
@@ -1263,7 +1264,7 @@ propagate_pure_const (void)
 	    break;
 
 	  /* And finally all loads and stores.  */
-	  for (i = 0; ipa_ref_list_reference_iterate (&w->ref_list, i, ref); i++)
+	  for (i = 0; w->iterate_reference (i, ref); i++)
 	    {
 	      enum pure_const_state_e ref_state = IPA_CONST;
 	      bool ref_looping = false;
@@ -1271,14 +1272,14 @@ propagate_pure_const (void)
 		{
 		case IPA_REF_LOAD:
 		  /* readonly reads are safe.  */
-		  if (TREE_READONLY (ipa_ref_varpool_node (ref)->decl))
+		  if (TREE_READONLY (ref->referred->decl))
 		    break;
 		  if (dump_file && (dump_flags & TDF_DETAILS))
 		    fprintf (dump_file, "    nonreadonly global var read\n");
 		  ref_state = IPA_PURE;
 		  break;
 		case IPA_REF_STORE:
-		  if (ipa_ref_cannot_lead_to_return (ref))
+		  if (ref->cannot_lead_to_return ())
 		    break;
 		  ref_state = IPA_NEITHER;
 		  if (dump_file && (dump_flags & TDF_DETAILS))
@@ -1286,6 +1287,8 @@ propagate_pure_const (void)
 		  break;
 		case IPA_REF_ADDR:
 		  break;
+		default:
+		  gcc_unreachable ();
 		}
 	      better_state (&ref_state, &ref_looping,
 			    w_l->state_previously_known,
@@ -1327,35 +1330,39 @@ propagate_pure_const (void)
 	  w_l->pure_const_state = this_state;
 	  w_l->looping = this_looping;
 
-	  switch (this_state)
-	    {
-	    case IPA_CONST:
-	      if (!TREE_READONLY (w->decl))
-		{
-		  warn_function_const (w->decl, !this_looping);
-		  if (dump_file)
-		    fprintf (dump_file, "Function found to be %sconst: %s\n",
-			     this_looping ? "looping " : "",
-			     w->name ());
-		}
-	      cgraph_set_const_flag (w, true, this_looping);
-	      break;
+	  /* Inline clones share declaration with their offline copies;
+	     do not modify their declarations since the offline copy may
+	     be different.  */
+	  if (!w->global.inlined_to)
+	    switch (this_state)
+	      {
+	      case IPA_CONST:
+		if (!TREE_READONLY (w->decl))
+		  {
+		    warn_function_const (w->decl, !this_looping);
+		    if (dump_file)
+		      fprintf (dump_file, "Function found to be %sconst: %s\n",
+			       this_looping ? "looping " : "",
+			       w->name ());
+		  }
+		w->set_const_flag (true, this_looping);
+		break;
 
-	    case IPA_PURE:
-	      if (!DECL_PURE_P (w->decl))
-		{
-		  warn_function_pure (w->decl, !this_looping);
-		  if (dump_file)
-		    fprintf (dump_file, "Function found to be %spure: %s\n",
-			     this_looping ? "looping " : "",
-			     w->name ());
-		}
-	      cgraph_set_pure_flag (w, true, this_looping);
-	      break;
+	      case IPA_PURE:
+		if (!DECL_PURE_P (w->decl))
+		  {
+		    warn_function_pure (w->decl, !this_looping);
+		    if (dump_file)
+		      fprintf (dump_file, "Function found to be %spure: %s\n",
+			       this_looping ? "looping " : "",
+			       w->name ());
+		  }
+		w->set_pure_flag (true, this_looping);
+		break;
 
-	    default:
-	      break;
-	    }
+	      default:
+		break;
+	      }
 	  w_info = (struct ipa_dfs_info *) w->aux;
 	  w = w_info->next_cycle;
 	}
@@ -1382,7 +1389,7 @@ propagate_nothrow (void)
   order_pos = ipa_reduced_postorder (order, true, false, ignore_edge);
   if (dump_file)
     {
-      dump_cgraph (dump_file);
+      cgraph_node::dump_cgraph (dump_file);
       ipa_print_order (dump_file, "reduced for nothrow", order, order_pos);
     }
 
@@ -1406,7 +1413,7 @@ propagate_nothrow (void)
 	  funct_state w_l = get_function_state (w);
 
 	  if (w_l->can_throw
-	      || cgraph_function_body_availability (w) == AVAIL_OVERWRITABLE)
+	      || w->get_availability () == AVAIL_INTERPOSABLE)
 	    can_throw = true;
 
 	  if (can_throw)
@@ -1415,9 +1422,9 @@ propagate_nothrow (void)
 	  for (e = w->callees; e; e = e->next_callee)
 	    {
 	      enum availability avail;
-	      struct cgraph_node *y = cgraph_function_node (e->callee, &avail);
+	      struct cgraph_node *y = e->callee->function_symbol (&avail);
 
-	      if (avail > AVAIL_OVERWRITABLE)
+	      if (avail > AVAIL_INTERPOSABLE)
 		{
 		  funct_state y_l = get_function_state (y);
 
@@ -1448,10 +1455,16 @@ propagate_nothrow (void)
 	  funct_state w_l = get_function_state (w);
 	  if (!can_throw && !TREE_NOTHROW (w->decl))
 	    {
-	      cgraph_set_nothrow_flag (w, true);
-	      if (dump_file)
-		fprintf (dump_file, "Function found to be nothrow: %s\n",
-			 w->name ());
+	      /* Inline clones share declaration with their offline copies;
+		 do not modify their declarations since the offline copy may
+		 be different.  */
+	      if (!w->global.inlined_to)
+		{
+		  w->set_nothrow_flag (true);
+		  if (dump_file)
+		    fprintf (dump_file, "Function found to be nothrow: %s\n",
+			     w->name ());
+		}
 	    }
 	  else if (can_throw && !TREE_NOTHROW (w->decl))
 	    w_l->can_throw = true;
@@ -1505,8 +1518,6 @@ const pass_data pass_data_ipa_pure_const =
   IPA_PASS, /* type */
   "pure-const", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_IPA_PURE_CONST, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
@@ -1532,8 +1543,8 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_pure_const (); }
-  unsigned int execute () { return propagate (); }
+  virtual bool gate (function *) { return gate_pure_const (); }
+  virtual unsigned int execute (function *) { return propagate (); }
 
 }; // class pass_ipa_pure_const
 
@@ -1559,7 +1570,7 @@ skip_function_for_local_pure_const (struct cgraph_node *node)
         fprintf (dump_file, "Function called in recursive cycle; ignoring\n");
       return true;
     }
-  if (cgraph_function_body_availability (node) <= AVAIL_OVERWRITABLE)
+  if (node->get_availability () <= AVAIL_INTERPOSABLE)
     {
       if (dump_file)
         fprintf (dump_file, "Function is not available or overwritable; not analyzing.\n");
@@ -1572,116 +1583,6 @@ skip_function_for_local_pure_const (struct cgraph_node *node)
    ipa_pure_const.   This pass is effective when executed together with
    other optimization passes in early optimization pass queue.  */
 
-static unsigned int
-local_pure_const (void)
-{
-  bool changed = false;
-  funct_state l;
-  bool skip;
-  struct cgraph_node *node;
-
-  node = cgraph_get_node (current_function_decl);
-  skip = skip_function_for_local_pure_const (node);
-  if (!warn_suggest_attribute_const
-      && !warn_suggest_attribute_pure
-      && skip)
-    return 0;
-
-  l = analyze_function (node, false);
-
-  /* Do NORETURN discovery.  */
-  if (!skip && !TREE_THIS_VOLATILE (current_function_decl)
-      && EDGE_COUNT (EXIT_BLOCK_PTR_FOR_FN (cfun)->preds) == 0)
-    {
-      warn_function_noreturn (cfun->decl);
-      if (dump_file)
-        fprintf (dump_file, "Function found to be noreturn: %s\n",
-	         current_function_name ());
-
-      /* Update declaration and reduce profile to executed once.  */
-      TREE_THIS_VOLATILE (current_function_decl) = 1;
-      if (node->frequency > NODE_FREQUENCY_EXECUTED_ONCE)
-        node->frequency = NODE_FREQUENCY_EXECUTED_ONCE;
-
-      changed = true;
-    }
-
-  switch (l->pure_const_state)
-    {
-    case IPA_CONST:
-      if (!TREE_READONLY (current_function_decl))
-	{
-	  warn_function_const (current_function_decl, !l->looping);
-	  if (!skip)
-	    {
-	      cgraph_set_const_flag (node, true, l->looping);
-	      changed = true;
-	    }
-	  if (dump_file)
-	    fprintf (dump_file, "Function found to be %sconst: %s\n",
-		     l->looping ? "looping " : "",
-		     current_function_name ());
-	}
-      else if (DECL_LOOPING_CONST_OR_PURE_P (current_function_decl)
-	       && !l->looping)
-	{
-	  if (!skip)
-	    {
-	      cgraph_set_const_flag (node, true, false);
-	      changed = true;
-	    }
-	  if (dump_file)
-	    fprintf (dump_file, "Function found to be non-looping: %s\n",
-		     current_function_name ());
-	}
-      break;
-
-    case IPA_PURE:
-      if (!DECL_PURE_P (current_function_decl))
-	{
-	  if (!skip)
-	    {
-	      cgraph_set_pure_flag (node, true, l->looping);
-	      changed = true;
-	    }
-	  warn_function_pure (current_function_decl, !l->looping);
-	  if (dump_file)
-	    fprintf (dump_file, "Function found to be %spure: %s\n",
-		     l->looping ? "looping " : "",
-		     current_function_name ());
-	}
-      else if (DECL_LOOPING_CONST_OR_PURE_P (current_function_decl)
-	       && !l->looping)
-	{
-	  if (!skip)
-	    {
-	      cgraph_set_pure_flag (node, true, false);
-	      changed = true;
-	    }
-	  if (dump_file)
-	    fprintf (dump_file, "Function found to be non-looping: %s\n",
-		     current_function_name ());
-	}
-      break;
-
-    default:
-      break;
-    }
-  if (!l->can_throw && !TREE_NOTHROW (current_function_decl))
-    {
-      cgraph_set_nothrow_flag (node, true);
-      changed = true;
-      if (dump_file)
-	fprintf (dump_file, "Function found to be nothrow: %s\n",
-		 current_function_name ());
-    }
-  free (l);
-  if (changed)
-    return execute_fixup_cfg ();
-  else
-    return 0;
-}
-
 namespace {
 
 const pass_data pass_data_local_pure_const =
@@ -1689,8 +1590,6 @@ const pass_data pass_data_local_pure_const =
   GIMPLE_PASS, /* type */
   "local-pure-const", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_IPA_PURE_CONST, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
@@ -1708,10 +1607,120 @@ public:
 
   /* opt_pass methods: */
   opt_pass * clone () { return new pass_local_pure_const (m_ctxt); }
-  bool gate () { return gate_pure_const (); }
-  unsigned int execute () { return local_pure_const (); }
+  virtual bool gate (function *) { return gate_pure_const (); }
+  virtual unsigned int execute (function *);
 
 }; // class pass_local_pure_const
+
+unsigned int
+pass_local_pure_const::execute (function *fun)
+{
+  bool changed = false;
+  funct_state l;
+  bool skip;
+  struct cgraph_node *node;
+
+  node = cgraph_node::get (current_function_decl);
+  skip = skip_function_for_local_pure_const (node);
+  if (!warn_suggest_attribute_const
+      && !warn_suggest_attribute_pure
+      && skip)
+    return 0;
+
+  l = analyze_function (node, false);
+
+  /* Do NORETURN discovery.  */
+  if (!skip && !TREE_THIS_VOLATILE (current_function_decl)
+      && EDGE_COUNT (EXIT_BLOCK_PTR_FOR_FN (fun)->preds) == 0)
+    {
+      warn_function_noreturn (fun->decl);
+      if (dump_file)
+	fprintf (dump_file, "Function found to be noreturn: %s\n",
+		 current_function_name ());
+
+      /* Update declaration and reduce profile to executed once.  */
+      TREE_THIS_VOLATILE (current_function_decl) = 1;
+      if (node->frequency > NODE_FREQUENCY_EXECUTED_ONCE)
+	node->frequency = NODE_FREQUENCY_EXECUTED_ONCE;
+
+      changed = true;
+    }
+
+  switch (l->pure_const_state)
+    {
+    case IPA_CONST:
+      if (!TREE_READONLY (current_function_decl))
+	{
+	  warn_function_const (current_function_decl, !l->looping);
+	  if (!skip)
+	    {
+	      node->set_const_flag (true, l->looping);
+	      changed = true;
+	    }
+	  if (dump_file)
+	    fprintf (dump_file, "Function found to be %sconst: %s\n",
+		     l->looping ? "looping " : "",
+		     current_function_name ());
+	}
+      else if (DECL_LOOPING_CONST_OR_PURE_P (current_function_decl)
+	       && !l->looping)
+	{
+	  if (!skip)
+	    {
+	      node->set_const_flag (true, false);
+	      changed = true;
+	    }
+	  if (dump_file)
+	    fprintf (dump_file, "Function found to be non-looping: %s\n",
+		     current_function_name ());
+	}
+      break;
+
+    case IPA_PURE:
+      if (!DECL_PURE_P (current_function_decl))
+	{
+	  if (!skip)
+	    {
+	      node->set_pure_flag (true, l->looping);
+	      changed = true;
+	    }
+	  warn_function_pure (current_function_decl, !l->looping);
+	  if (dump_file)
+	    fprintf (dump_file, "Function found to be %spure: %s\n",
+		     l->looping ? "looping " : "",
+		     current_function_name ());
+	}
+      else if (DECL_LOOPING_CONST_OR_PURE_P (current_function_decl)
+	       && !l->looping)
+	{
+	  if (!skip)
+	    {
+	      node->set_pure_flag (true, false);
+	      changed = true;
+	    }
+	  if (dump_file)
+	    fprintf (dump_file, "Function found to be non-looping: %s\n",
+		     current_function_name ());
+	}
+      break;
+
+    default:
+      break;
+    }
+  if (!l->can_throw && !TREE_NOTHROW (current_function_decl))
+    {
+      node->set_nothrow_flag (true);
+      changed = true;
+      if (dump_file)
+	fprintf (dump_file, "Function found to be nothrow: %s\n",
+		 current_function_name ());
+    }
+  free (l);
+  if (changed)
+    return execute_fixup_cfg ();
+  else
+    return 0;
+}
 
 } // anon namespace
 
@@ -1723,21 +1732,6 @@ make_pass_local_pure_const (gcc::context *ctxt)
 
 /* Emit noreturn warnings.  */
 
-static unsigned int
-execute_warn_function_noreturn (void)
-{
-  if (!TREE_THIS_VOLATILE (current_function_decl)
-      && EDGE_COUNT (EXIT_BLOCK_PTR_FOR_FN (cfun)->preds) == 0)
-    warn_function_noreturn (current_function_decl);
-  return 0;
-}
-
-static bool
-gate_warn_function_noreturn (void)
-{
-  return warn_suggest_attribute_noreturn;
-}
-
 namespace {
 
 const pass_data pass_data_warn_function_noreturn =
@@ -1745,8 +1739,6 @@ const pass_data pass_data_warn_function_noreturn =
   GIMPLE_PASS, /* type */
   "*warn_function_noreturn", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_NONE, /* tv_id */
   PROP_cfg, /* properties_required */
   0, /* properties_provided */
@@ -1763,8 +1755,14 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_warn_function_noreturn (); }
-  unsigned int execute () { return execute_warn_function_noreturn (); }
+  virtual bool gate (function *) { return warn_suggest_attribute_noreturn; }
+  virtual unsigned int execute (function *fun)
+    {
+      if (!TREE_THIS_VOLATILE (current_function_decl)
+	  && EDGE_COUNT (EXIT_BLOCK_PTR_FOR_FN (fun)->preds) == 0)
+	warn_function_noreturn (current_function_decl);
+      return 0;
+    }
 
 }; // class pass_warn_function_noreturn
 

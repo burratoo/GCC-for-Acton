@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -123,7 +123,7 @@ package body Bindgen is
    -- Run-Time Globals --
    ----------------------
 
-   --  This section documents the global variables that set from the
+   --  This section documents the global variables that are set from the
    --  generated binder file.
 
    --     Heap_Size                     : Natural;
@@ -142,6 +142,9 @@ package body Bindgen is
    --  Heap_Size is the heap to use for memory allocations set by use of a
    --  -Hnn parameter for the binder or by the GNAT$NO_MALLOC_64 logical.
    --  Valid values are 32 and 64. This switch is only effective on VMS.
+
+   --  Float_Format is the float representation in use. Valid values are
+   --  'I' for IEEE and 'V' for VAX Float. This is only for VMS.
 
    --  WC_Encoding shows the wide character encoding method used for the main
    --  program. This is one of the encoding letters defined in
@@ -558,6 +561,13 @@ package body Bindgen is
 
                Write_Statement_Buffer;
             end if;
+
+            WBI ("");
+            WBI ("      Float_Format : Character;");
+            WBI ("      pragma Import (C, Float_Format, " &
+                    """__gl_float_format"");");
+
+            Write_Statement_Buffer;
          end if;
 
          --  Initialize stack limit variable of the environment task if the
@@ -610,8 +620,8 @@ package body Bindgen is
          if Dispatching_Domains_Used then
             WBI ("      procedure Freeze_Dispatching_Domains;");
             WBI ("      pragma Import");
-            WBI ("        (Ada, Freeze_Dispatching_Domains, " &
-                 """__gnat_freeze_dispatching_domains"");");
+            WBI ("        (Ada, Freeze_Dispatching_Domains, "
+                 & """__gnat_freeze_dispatching_domains"");");
          end if;
 
          WBI ("   begin");
@@ -619,6 +629,18 @@ package body Bindgen is
          WBI ("         return;");
          WBI ("      end if;");
          WBI ("      Is_Elaborated := True;");
+
+         --  Call System.Elaboration_Allocators.Mark_Start_Of_Elaboration if
+         --  restriction No_Standard_Allocators_After_Elaboration is active.
+
+         if Cumulative_Restrictions.Set
+              (No_Standard_Allocators_After_Elaboration)
+         then
+            WBI ("      System.Elaboration_Allocators."
+                 & "Mark_Start_Of_Elaboration;");
+         end if;
+
+         --  Generate assignments to initialize globals
 
          Set_String ("      Main_Priority := ");
          Set_Int    (Main_Priority);
@@ -723,6 +745,25 @@ package body Bindgen is
          --  Generate call to Set_Features
 
          if OpenVMS_On_Target then
+
+            --  Set_Features will call IEEE$SET_FP_CONTROL appropriately
+            --  depending on the setting of Float_Format.
+
+            WBI ("");
+            Set_String ("      Float_Format := '");
+
+            if Float_Format_Specified = 'G'
+                 or else
+               Float_Format_Specified = 'D'
+            then
+               Set_Char ('V');
+            else
+               Set_Char ('I');
+            end if;
+
+            Set_String ("';");
+            Write_Statement_Buffer;
+
             WBI ("");
             WBI ("      if Features_Set = 0 then");
             WBI ("         Set_Features;");
@@ -822,6 +863,15 @@ package body Bindgen is
 
       Gen_Elab_Calls;
 
+      --  Call System.Elaboration_Allocators.Mark_Start_Of_Elaboration if
+      --  restriction No_Standard_Allocators_After_Elaboration is active.
+
+      if Cumulative_Restrictions.Set
+        (No_Standard_Allocators_After_Elaboration)
+      then
+         WBI ("      System.Elaboration_Allocators.Mark_End_Of_Elaboration;");
+      end if;
+
       --  From this point, no new dispatching domain can be created.
 
       if Dispatching_Domains_Used then
@@ -894,6 +944,8 @@ package body Bindgen is
       Check_Elab_Flag : Boolean;
 
    begin
+      --  Loop through elaboration order entries
+
       for E in Elab_Order.First .. Elab_Order.Last loop
          declare
             Unum : constant Unit_Id := Elab_Order.Table (E);
@@ -924,20 +976,23 @@ package body Bindgen is
 
             --  Case of no elaboration code
 
-            --  In CodePeer mode, we special case subprogram bodies which
-            --  are handled in the 'else' part below, and lead to a call to
-            --  <subp>'Elab_Subp_Body.
-
             elsif U.No_Elab
+
+              --  In CodePeer mode, we special case subprogram bodies which
+              --  are handled in the 'else' part below, and lead to a call
+              --  to <subp>'Elab_Subp_Body.
+
               and then (not CodePeer_Mode
+
+                         --  Test for spec
+
                          or else U.Utype = Is_Spec
                          or else U.Utype = Is_Spec_Only
                          or else U.Unit_Kind /= 's')
             then
-
                --  In the case of a body with a separate spec, where the
                --  separate spec has an elaboration entity defined, this is
-               --  where we increment the elaboration entity.
+               --  where we increment the elaboration entity if one exists
 
                if U.Utype = Is_Body
                  and then Units.Table (Unum_Spec).Set_Elab_Entity
@@ -968,8 +1023,7 @@ package body Bindgen is
                --  a spec with a body, the elaboration entity is initialized
                --  here. This is done because it's the only way to accomplish
                --  initialization of such entities, as there is no mechanism
-               --  provided for initializing global variables at load time on
-               --  AAMP.
+               --  for load time global variable initialization on AAMP.
 
                elsif AAMP_On_Target
                  and then U.Utype = Is_Spec
@@ -1005,8 +1059,7 @@ package body Bindgen is
                --  a spec with a body, the elaboration entity is initialized
                --  here. This is done because it's the only way to accomplish
                --  initialization of such entities, as there is no mechanism
-               --  provided for initializing global variables at load time on
-               --  AAMP.
+               --  for load time global variable initialization on AAMP.
 
                if AAMP_On_Target
                  and then U.Utype = Is_Spec
@@ -1018,8 +1071,39 @@ package body Bindgen is
                   Write_Statement_Buffer;
                end if;
 
+               --  Check incompatibilities with No_Multiple_Elaboration
+
+               if not CodePeer_Mode
+                 and then Cumulative_Restrictions.Set (No_Multiple_Elaboration)
+               then
+                  --  Force_Checking_Of_Elaboration_Flags (-F) not allowed
+
+                  if Force_Checking_Of_Elaboration_Flags then
+                     Osint.Fail
+                       ("-F (force elaboration checks) switch not allowed "
+                        & "with restriction No_Multiple_Elaboration active");
+
+                  --  Interfacing of libraries not allowed
+
+                  elsif Interface_Library_Unit then
+                     Osint.Fail
+                       ("binding of interfaced libraries not allowed "
+                        & "with restriction No_Multiple_Elaboration active");
+
+                  --  Non-Ada main program not allowed
+
+                  elsif not Bind_Main_Program then
+                     Osint.Fail
+                       ("non-Ada main program not allowed "
+                        & "with restriction No_Multiple_Elaboration active");
+                  end if;
+               end if;
+
+               --  OK, see if we need to test elaboration flag
+
                Check_Elab_Flag :=
-                 not CodePeer_Mode
+                 Units.Table (Unum_Spec).Set_Elab_Entity
+                   and then not CodePeer_Mode
                    and then (Force_Checking_Of_Elaboration_Flags
                               or Interface_Library_Unit
                               or not Bind_Main_Program);
@@ -1079,6 +1163,7 @@ package body Bindgen is
 
                if U.Utype /= Is_Spec
                  and then not CodePeer_Mode
+                 and then Units.Table (Unum_Spec).Set_Elab_Entity
                then
                   Set_String ("      E");
                   Set_Unit_Number (Unum_Spec);
@@ -2186,9 +2271,22 @@ package body Bindgen is
          WBI ("with System.Restrictions;");
       end if;
 
+      --  Generate with of Ada.Exceptions if needs library finalization
+
       if Needs_Library_Finalization then
          WBI ("with Ada.Exceptions;");
       end if;
+
+      --  Generate with of System.Elaboration_Allocators if the restriction
+      --  No_Standard_Allocators_After_Elaboration was present.
+
+      if Cumulative_Restrictions.Set
+           (No_Standard_Allocators_After_Elaboration)
+      then
+         WBI ("with System.Elaboration_Allocators;");
+      end if;
+
+      --  Generate start of package body
 
       if Bind_Main_Program then
          WBI ("with Ada.Real_Time;");

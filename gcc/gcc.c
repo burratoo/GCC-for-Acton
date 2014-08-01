@@ -597,6 +597,31 @@ proper position among the other output files.  */
 #endif
 #endif
 
+/* Linker options for compressed debug sections.  */
+#if HAVE_LD_COMPRESS_DEBUG == 0
+/* No linker support.  */
+#define LINK_COMPRESS_DEBUG_SPEC \
+	" %{gz*:%e-gz is not supported in this configuration} "
+#elif HAVE_LD_COMPRESS_DEBUG == 1
+/* GNU style on input, GNU ld options.  Reject, not useful.  */
+#define LINK_COMPRESS_DEBUG_SPEC \
+	" %{gz*:%e-gz is not supported in this configuration} "
+#elif HAVE_LD_COMPRESS_DEBUG == 2
+/* GNU style, GNU gold options.  */
+#define LINK_COMPRESS_DEBUG_SPEC \
+	" %{gz|gz=zlib-gnu:" LD_COMPRESS_DEBUG_OPTION "=zlib}" \
+	" %{gz=none:"        LD_COMPRESS_DEBUG_OPTION "=none}" \
+	" %{gz=zlib:%e-gz=zlib is not supported in this configuration} "
+#elif HAVE_LD_COMPRESS_DEBUG == 3
+/* ELF gABI style.  */
+#define LINK_COMPRESS_DEBUG_SPEC \
+	" %{gz|gz=zlib:"  LD_COMPRESS_DEBUG_OPTION "=zlib}" \
+	" %{gz=none:"	  LD_COMPRESS_DEBUG_OPTION "=none}" \
+	" %{gz=zlib-gnu:" LD_COMPRESS_DEBUG_OPTION "=zlib-gnu} "
+#else
+#error Unknown value for HAVE_LD_COMPRESS_DEBUG.
+#endif
+
 /* config.h can define LIBGCC_SPEC to override how and when libgcc.a is
    included.  */
 #ifndef LIBGCC_SPEC
@@ -630,6 +655,33 @@ proper position among the other output files.  */
 #else
 #define ASM_MAP ""
 #endif
+
+/* Assembler options for compressed debug sections.  */
+#if HAVE_LD_COMPRESS_DEBUG < 2
+/* Reject if the linker cannot write compressed debug sections.  */
+#define ASM_COMPRESS_DEBUG_SPEC \
+	" %{gz*:%e-gz is not supported in this configuration} "
+#else /* HAVE_LD_COMPRESS_DEBUG >= 2 */
+#if HAVE_AS_COMPRESS_DEBUG == 0
+/* No assembler support.  Ignore silently.  */
+#define ASM_COMPRESS_DEBUG_SPEC \
+	" %{gz*:} "
+#elif HAVE_AS_COMPRESS_DEBUG == 1
+/* GNU style, GNU as options.  */
+#define ASM_COMPRESS_DEBUG_SPEC \
+	" %{gz|gz=zlib-gnu:" AS_COMPRESS_DEBUG_OPTION "}" \
+	" %{gz=none:"        AS_NO_COMPRESS_DEBUG_OPTION "}" \
+	" %{gz=zlib:%e-gz=zlib is not supported in this configuration} "
+#elif HAVE_AS_COMPRESS_DEBUG == 2
+/* ELF gABI style.  */
+#define ASM_COMPRESS_DEBUG_SPEC \
+	" %{gz|gz=zlib:"  AS_COMPRESS_DEBUG_OPTION "=zlib}" \
+	" %{gz=none:"	  AS_COMPRESS_DEBUG_OPTION "=none}" \
+	" %{gz=zlib-gnu:" AS_COMPRESS_DEBUG_OPTION "=zlib-gnu} "
+#else
+#error Unknown value for HAVE_AS_COMPRESS_DEBUG.
+#endif
+#endif /* HAVE_LD_COMPRESS_DEBUG >= 2 */
 
 /* Define ASM_DEBUG_SPEC to be a spec suitable for translating '-g'
    to the assembler.  */
@@ -695,7 +747,7 @@ proper position among the other output files.  */
 #if HAVE_LTO_PLUGIN > 0
 /* The linker used has full plugin support, use LTO plugin by default.  */
 #if HAVE_LTO_PLUGIN == 2
-#define PLUGIN_COND "!fno-use-linker-plugin:%{flto|flto=*|fuse-linker-plugin"
+#define PLUGIN_COND "!fno-use-linker-plugin:%{!fno-lto"
 #define PLUGIN_COND_CLOSE "}"
 #else
 /* The linker used has limited plugin support, use LTO plugin with explicit
@@ -761,11 +813,12 @@ proper position among the other output files.  */
     LINK_PLUGIN_SPEC \
    "%{flto|flto=*:%<fcompare-debug*} \
     %{flto} %{flto=*} %l " LINK_PIE_SPEC \
-   "%{fuse-ld=*:-fuse-ld=%*}\
-    %X %{o*} %{e*} %{N} %{n} %{r}\
+   "%{fuse-ld=*:-fuse-ld=%*} " LINK_COMPRESS_DEBUG_SPEC \
+   "%X %{o*} %{e*} %{N} %{n} %{r}\
     %{s} %{t} %{u*} %{z} %{Z} %{!nostdlib:%{!nostartfiles:%S}} " VTABLE_VERIFICATION_SPEC " \
     %{static:} %{L*} %(mfwrap) %(link_libgcc) " SANITIZER_EARLY_SPEC " %o\
     %{fopenmp|ftree-parallelize-loops=*:%:include(libgomp.spec)%(link_gomp)}\
+    %{fcilkplus:%:include(libcilkrts.spec)%(link_cilkrts)}\
     %{fgnu-tm:%:include(libitm.spec)%(link_itm)}\
     %(mflib) " STACK_SPLIT_SPEC "\
     %{fprofile-arcs|fprofile-generate*|coverage:-lgcov} " SANITIZER_SPEC " \
@@ -884,16 +937,17 @@ static const char *asm_options =
    to the assembler equivalents.  */
 "%{v} %{w:-W} %{I*} "
 #endif
+ASM_COMPRESS_DEBUG_SPEC
 "%a %Y %{c:%W{o*}%{!o*:-o %w%b%O}}%{!c:-o %d%w%u%O}";
 
 static const char *invoke_as =
 #ifdef AS_NEEDS_DASH_FOR_PIPED_INPUT
-"%{!fwpa:\
+"%{!fwpa*:\
    %{fcompare-debug=*|fdump-final-insns=*:%:compare-debug-dump-opt()}\
    %{!S:-o %|.s |\n as %(asm_options) %|.s %A }\
   }";
 #else
-"%{!fwpa:\
+"%{!fwpa*:\
    %{fcompare-debug=*|fdump-final-insns=*:%:compare-debug-dump-opt()}\
    %{!S:-o %|.s |\n as %(asm_options) %m.s %A }\
   }";
@@ -932,9 +986,15 @@ static const char *const multilib_defaults_raw[] = MULTILIB_DEFAULTS;
 #define GTM_SELF_SPECS "%{fgnu-tm: -pthread}"
 #endif
 
+/* Likewise for -fcilkplus.  */
+#ifndef CILK_SELF_SPECS
+#define CILK_SELF_SPECS "%{fcilkplus: -pthread}"
+#endif
+
 static const char *const driver_self_specs[] = {
   "%{fdump-final-insns:-fdump-final-insns=.} %<fdump-final-insns",
-  DRIVER_SELF_SPECS, CONFIGURE_SPECS, GOMP_SELF_SPECS, GTM_SELF_SPECS
+  DRIVER_SELF_SPECS, CONFIGURE_SPECS, GOMP_SELF_SPECS, GTM_SELF_SPECS,
+  CILK_SELF_SPECS
 };
 
 #ifndef OPTION_DEFAULT_SPECS
@@ -3651,6 +3711,10 @@ driver_handle_option (struct gcc_options *opts,
       validated = true;
       break;
 
+    case OPT_fwpa:
+      flag_wpa = "";
+      break;
+
     default:
       /* Various driver options need no special processing at this
 	 point, having been handled in a prescan above or being
@@ -5477,7 +5541,7 @@ eval_spec_function (const char *func, const char *args)
   const char *save_suffix_subst;
 
   int save_growing_size;
-  void *save_growing_value;
+  void *save_growing_value = NULL;
 
   sf = lookup_spec_function (func);
   if (sf == NULL)
@@ -7479,7 +7543,7 @@ used_arg (const char *p, int len)
 	{
 	  const char *r;
 
-	  for (q = multilib_options; *q != '\0'; q++)
+	  for (q = multilib_options; *q != '\0'; *q && q++)
 	    {
 	      while (*q == ' ')
 		q++;
@@ -7779,10 +7843,15 @@ set_multilib_dir (void)
 		q2++;
 	      if (*q2 == ':')
 		ml_end = q2;
-	      new_multilib_os_dir = XNEWVEC (char, ml_end - q);
-	      memcpy (new_multilib_os_dir, q + 1, ml_end - q - 1);
-	      new_multilib_os_dir[ml_end - q - 1] = '\0';
-	      multilib_os_dir = *new_multilib_os_dir ? new_multilib_os_dir : ".";
+	      if (ml_end - q == 1)
+		multilib_os_dir = xstrdup (".");
+	      else
+		{
+		  new_multilib_os_dir = XNEWVEC (char, ml_end - q);
+		  memcpy (new_multilib_os_dir, q + 1, ml_end - q - 1);
+		  new_multilib_os_dir[ml_end - q - 1] = '\0';
+		  multilib_os_dir = new_multilib_os_dir;
+		}
 
 	      if (q2 < end && *q2 == ':')
 		{
@@ -8159,7 +8228,8 @@ sanitize_spec_function (int argc, const char **argv)
   if (strcmp (argv[0], "thread") == 0)
     return (flag_sanitize & SANITIZE_THREAD) ? "" : NULL;
   if (strcmp (argv[0], "undefined") == 0)
-    return (flag_sanitize & SANITIZE_UNDEFINED) ? "" : NULL;
+    return ((flag_sanitize & (SANITIZE_UNDEFINED | SANITIZE_NONDEFAULT))
+	    && !flag_sanitize_undefined_trap_on_error) ? "" : NULL;
   if (strcmp (argv[0], "leak") == 0)
     return ((flag_sanitize
 	     & (SANITIZE_ADDRESS | SANITIZE_LEAK | SANITIZE_THREAD))

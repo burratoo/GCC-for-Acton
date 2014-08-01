@@ -686,6 +686,65 @@ static int failure;
 /* Temporary array of pseudo-register number.  */
 static int *temp_pseudo_reg_arr;
 
+/* If a pseudo has no hard reg, delete the insns that made the equivalence.
+   If that insn didn't set the register (i.e., it copied the register to
+   memory), just delete that insn instead of the equivalencing insn plus
+   anything now dead.  If we call delete_dead_insn on that insn, we may
+   delete the insn that actually sets the register if the register dies
+   there and that is incorrect.  */
+static void
+remove_init_insns ()
+{
+  for (int i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
+    {
+      if (reg_renumber[i] < 0 && reg_equiv_init (i) != 0)
+	{
+	  rtx list;
+	  for (list = reg_equiv_init (i); list; list = XEXP (list, 1))
+	    {
+	      rtx equiv_insn = XEXP (list, 0);
+
+	      /* If we already deleted the insn or if it may trap, we can't
+		 delete it.  The latter case shouldn't happen, but can
+		 if an insn has a variable address, gets a REG_EH_REGION
+		 note added to it, and then gets converted into a load
+		 from a constant address.  */
+	      if (NOTE_P (equiv_insn)
+		  || can_throw_internal (equiv_insn))
+		;
+	      else if (reg_set_p (regno_reg_rtx[i], PATTERN (equiv_insn)))
+		delete_dead_insn (equiv_insn);
+	      else
+		SET_INSN_DELETED (equiv_insn);
+	    }
+	}
+    }
+}
+
+/* Return true if remove_init_insns will delete INSN.  */
+static bool
+will_delete_init_insn_p (rtx insn)
+{
+  rtx set = single_set (insn);
+  if (!set || !REG_P (SET_DEST (set)))
+    return false;
+  unsigned regno = REGNO (SET_DEST (set));
+
+  if (can_throw_internal (insn))
+    return false;
+
+  if (regno < FIRST_PSEUDO_REGISTER || reg_renumber[regno] >= 0)
+    return false;
+
+  for (rtx list = reg_equiv_init (regno); list; list = XEXP (list, 1))
+    {
+      rtx equiv_insn = XEXP (list, 0);
+      if (equiv_insn == insn)
+	return true;
+    }
+  return false;
+}
+
 /* Main entry point for the reload pass.
 
    FIRST is the first insn of the function being compiled.
@@ -993,37 +1052,7 @@ reload (rtx first, int global)
       if (ep->can_eliminate)
 	mark_elimination (ep->from, ep->to);
 
-  /* If a pseudo has no hard reg, delete the insns that made the equivalence.
-     If that insn didn't set the register (i.e., it copied the register to
-     memory), just delete that insn instead of the equivalencing insn plus
-     anything now dead.  If we call delete_dead_insn on that insn, we may
-     delete the insn that actually sets the register if the register dies
-     there and that is incorrect.  */
-
-  for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
-    {
-      if (reg_renumber[i] < 0 && reg_equiv_init (i) != 0)
-	{
-	  rtx list;
-	  for (list = reg_equiv_init (i); list; list = XEXP (list, 1))
-	    {
-	      rtx equiv_insn = XEXP (list, 0);
-
-	      /* If we already deleted the insn or if it may trap, we can't
-		 delete it.  The latter case shouldn't happen, but can
-		 if an insn has a variable address, gets a REG_EH_REGION
-		 note added to it, and then gets converted into a load
-		 from a constant address.  */
-	      if (NOTE_P (equiv_insn)
-		  || can_throw_internal (equiv_insn))
-		;
-	      else if (reg_set_p (regno_reg_rtx[i], PATTERN (equiv_insn)))
-		delete_dead_insn (equiv_insn);
-	      else
-		SET_INSN_DELETED (equiv_insn);
-	    }
-	}
-    }
+  remove_init_insns ();
 
   /* Use the reload registers where necessary
      by generating move instructions to move the must-be-register
@@ -1388,33 +1417,20 @@ maybe_fix_stack_asms (void)
 
 	      switch (c)
 		{
-		case '=': case '+': case '*': case '%': case '?': case '!':
-		case '0': case '1': case '2': case '3': case '4': case '<':
-		case '>': case 'V': case 'o': case '&': case 'E': case 'F':
-		case 's': case 'i': case 'n': case 'X': case 'I': case 'J':
-		case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
-		case TARGET_MEM_CONSTRAINT:
-		  break;
-
-		case 'p':
-		  cls = (int) reg_class_subunion[cls]
-		      [(int) base_reg_class (VOIDmode, ADDR_SPACE_GENERIC,
-					     ADDRESS, SCRATCH)];
-		  break;
-
 		case 'g':
-		case 'r':
 		  cls = (int) reg_class_subunion[cls][(int) GENERAL_REGS];
 		  break;
 
 		default:
-		  if (EXTRA_ADDRESS_CONSTRAINT (c, p))
+		  enum constraint_num cn = lookup_constraint (p);
+		  if (insn_extra_address_constraint (cn))
 		    cls = (int) reg_class_subunion[cls]
 		      [(int) base_reg_class (VOIDmode, ADDR_SPACE_GENERIC,
 					     ADDRESS, SCRATCH)];
 		  else
 		    cls = (int) reg_class_subunion[cls]
-		      [(int) REG_CLASS_FROM_CONSTRAINT (c, p)];
+		      [reg_class_for_constraint (cn)];
+		  break;
 		}
 	      p += CONSTRAINT_LEN (c, p);
 	    }
@@ -1484,14 +1500,9 @@ calculate_needs_all_insns (int global)
 	  rtx old_notes = REG_NOTES (insn);
 	  int did_elimination = 0;
 	  int operands_changed = 0;
-	  rtx set = single_set (insn);
 
 	  /* Skip insns that only set an equivalence.  */
-	  if (set && REG_P (SET_DEST (set))
-	      && reg_renumber[REGNO (SET_DEST (set))] < 0
-	      && (reg_equiv_constant (REGNO (SET_DEST (set)))
-		  || (reg_equiv_invariant (REGNO (SET_DEST (set)))))
-		      && reg_equiv_init (REGNO (SET_DEST (set))))
+	  if (will_delete_init_insn_p (insn))
 	    continue;
 
 	  /* If needed, eliminate any eliminable registers.  */
@@ -4586,6 +4597,9 @@ reload_as_needed (int live_known)
       rtx old_prev = PREV_INSN (insn);
 #endif
 
+      if (will_delete_init_insn_p (insn))
+	continue;
+
       /* If we pass a label, copy the offsets from the label information
 	 into the current offsets of each elimination.  */
       if (LABEL_P (insn))
@@ -7238,9 +7252,12 @@ emit_input_reload_insns (struct insn_chain *chain, struct reload *rl,
   /* delete_output_reload is only invoked properly if old contains
      the original pseudo register.  Since this is replaced with a
      hard reg when RELOAD_OVERRIDE_IN is set, see if we can
-     find the pseudo in RELOAD_IN_REG.  */
+     find the pseudo in RELOAD_IN_REG.  This is also used to
+     determine whether a secondary reload is needed.  */
   if (reload_override_in[j]
-      && REG_P (rl->in_reg))
+      && (REG_P (rl->in_reg)
+	  || (GET_CODE (rl->in_reg) == SUBREG
+	      && REG_P (SUBREG_REG (rl->in_reg)))))
     {
       oldequiv = old;
       old = rl->in_reg;
@@ -7362,9 +7379,18 @@ emit_input_reload_insns (struct insn_chain *chain, struct reload *rl,
 	  /* Store into the reload register instead of the pseudo.  */
 	  SET_DEST (PATTERN (temp)) = reloadreg;
 
-	  /* Verify that resulting insn is valid.  */
+	  /* Verify that resulting insn is valid. 
+
+	     Note that we have replaced the destination of TEMP with
+	     RELOADREG.  If TEMP references RELOADREG within an
+	     autoincrement addressing mode, then the resulting insn
+	     is ill-formed and we must reject this optimization.  */
 	  extract_insn (temp);
-	  if (constrain_operands (1))
+	  if (constrain_operands (1)
+#ifdef AUTO_INC_DEC
+	      && ! find_reg_note (temp, REG_INC, reloadreg)
+#endif
+	      )
 	    {
 	      /* If the previous insn is an output reload, the source is
 		 a reload register, and its spill_reg_store entry will

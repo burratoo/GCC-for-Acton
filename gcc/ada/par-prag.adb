@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -352,6 +352,22 @@ begin
             Ada_Version := Ada_2012;
             Ada_Version_Explicit := Ada_2012;
             Ada_Version_Pragma := Pragma_Node;
+         end if;
+
+      ---------------------------
+      -- Compiler_Unit_Warning --
+      ---------------------------
+
+      --  This pragma must be processed at parse time, since the resulting
+      --  status may be tested during the parsing of the program.
+
+      when Pragma_Compiler_Unit | Pragma_Compiler_Unit_Warning =>
+         Check_Arg_Count (0);
+
+         --  Only recognized in main unit
+
+         if Current_Source_Unit = Main_Unit then
+            Compiler_Unit := True;
          end if;
 
       -----------
@@ -1018,10 +1034,10 @@ begin
       -- Warnings (GNAT) --
       ---------------------
 
-      --  pragma Warnings (On | Off);
-      --  pragma Warnings (On | Off, LOCAL_NAME);
-      --  pragma Warnings (static_string_EXPRESSION);
-      --  pragma Warnings (On | Off, static_string_EXPRESSION);
+      --  pragma Warnings (On | Off [,REASON]);
+      --  pragma Warnings (On | Off, LOCAL_NAME [,REASON]);
+      --  pragma Warnings (static_string_EXPRESSION [,REASON]);
+      --  pragma Warnings (On | Off, static_string_EXPRESSION [,REASON]);
 
       --  The one argument ON/OFF case is processed by the parser, since it may
       --  control parser warnings as well as semantic warnings, and in any case
@@ -1042,12 +1058,33 @@ begin
 
             declare
                Argx : constant Node_Id := Expression (Arg1);
+
+               function Get_Reason return String_Id;
+               --  Analyzes Reason argument and returns corresponding String_Id
+               --  value, or null if there is no Reason argument, or if the
+               --  argument is not of the required form.
+
+               ----------------
+               -- Get_Reason --
+               ----------------
+
+               function Get_Reason return String_Id is
+               begin
+                  if Arg_Count = 1 then
+                     return Null_String_Id;
+                  else
+                     Start_String;
+                     Get_Reason_String (Expression (Arg2));
+                     return End_String;
+                  end if;
+               end Get_Reason;
+
             begin
                if Nkind (Argx) = N_Identifier then
                   if Chars (Argx) = Name_On then
                      Set_Warnings_Mode_On (Pragma_Sloc);
                   elsif Chars (Argx) = Name_Off then
-                     Set_Warnings_Mode_Off (Pragma_Sloc);
+                     Set_Warnings_Mode_Off (Pragma_Sloc, Get_Reason);
                   end if;
                end if;
             end;
@@ -1132,7 +1169,6 @@ begin
            Pragma_CIL_Constructor                |
            Pragma_Compile_Time_Error             |
            Pragma_Compile_Time_Warning           |
-           Pragma_Compiler_Unit                  |
            Pragma_Contract_Cases                 |
            Pragma_Convention_Identifier          |
            Pragma_CPP_Class                      |
@@ -1151,6 +1187,7 @@ begin
            Pragma_Debug_Policy                   |
            Pragma_Depends                        |
            Pragma_Detect_Blocking                |
+           Pragma_Default_Scalar_Storage_Order   |
            Pragma_Default_Storage_Pool           |
            Pragma_Disable_Atomic_Synchronization |
            Pragma_Discard_Names                  |
@@ -1250,17 +1287,15 @@ begin
            Pragma_Precondition                   |
            Pragma_Predicate                      |
            Pragma_Preelaborate                   |
-           Pragma_Preelaborate_05                |
            Pragma_Pre_Class                      |
            Pragma_Priority                       |
            Pragma_Priority_Specific_Dispatching  |
            Pragma_Profile                        |
            Pragma_Profile_Warnings               |
            Pragma_Propagate_Exceptions           |
+           Pragma_Provide_Shift_Operators        |
            Pragma_Psect_Object                   |
            Pragma_Pure                           |
-           Pragma_Pure_05                        |
-           Pragma_Pure_12                        |
            Pragma_Pure_Function                  |
            Pragma_Queuing_Policy                 |
            Pragma_Refined_Depends                |
@@ -1314,6 +1349,7 @@ begin
            Pragma_Use_VADS_Size                  |
            Pragma_Volatile                       |
            Pragma_Volatile_Components            |
+           Pragma_Warning_As_Error               |
            Pragma_Weak_External                  |
            Pragma_Validity_Checks                =>
          null;

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -32,9 +32,9 @@
 
 with Atree;  use Atree;
 with Einfo;  use Einfo;
-with Sinfo;  use Sinfo;
 with Snames; use Snames;
 with Stand;  use Stand;
+with Uintp;  use Uintp;
 
 package body Sem_Aux is
 
@@ -163,6 +163,29 @@ package body Sem_Aux is
          return Empty;
       end if;
    end Constant_Value;
+
+   ---------------------------------
+   -- Corresponding_Unsigned_Type --
+   ---------------------------------
+
+   function Corresponding_Unsigned_Type (Typ : Entity_Id) return Entity_Id is
+      pragma Assert (Is_Signed_Integer_Type (Typ));
+      Siz : constant Uint := Esize (Base_Type (Typ));
+   begin
+      if Siz = Esize (Standard_Short_Short_Integer) then
+         return Standard_Short_Short_Unsigned;
+      elsif Siz = Esize (Standard_Short_Integer) then
+         return Standard_Short_Unsigned;
+      elsif Siz = Esize (Standard_Unsigned) then
+         return Standard_Unsigned;
+      elsif Siz = Esize (Standard_Long_Integer) then
+         return Standard_Long_Unsigned;
+      elsif Siz = Esize (Standard_Long_Long_Integer) then
+         return Standard_Long_Long_Unsigned;
+      else
+         raise Program_Error;
+      end if;
+   end Corresponding_Unsigned_Type;
 
    -----------------------------
    -- Enclosing_Dynamic_Scope --
@@ -411,6 +434,52 @@ package body Sem_Aux is
       return Empty;
    end First_Tag_Component;
 
+   ---------------------
+   -- Get_Binary_Nkind --
+   ---------------------
+
+   function Get_Binary_Nkind (Op : Entity_Id) return Node_Kind is
+      Name : constant String := Get_Name_String (Chars (Op));
+   begin
+      if Name = "Oadd" then
+         return N_Op_Add;
+      elsif Name = "Oconcat" then
+         return N_Op_Concat;
+      elsif Name = "Oexpon" then
+         return N_Op_Expon;
+      elsif Name = "Osubtract" then
+         return N_Op_Subtract;
+      elsif Name = "Omod" then
+         return N_Op_Mod;
+      elsif Name = "Omultiply" then
+         return N_Op_Multiply;
+      elsif Name = "Odivide" then
+         return N_Op_Divide;
+      elsif Name = "Orem" then
+         return N_Op_Rem;
+      elsif Name = "Oand" then
+         return N_Op_And;
+      elsif Name = "Oeq" then
+         return N_Op_Eq;
+      elsif Name = "Oge" then
+         return N_Op_Ge;
+      elsif Name = "Ogt" then
+         return N_Op_Gt;
+      elsif Name = "Ole" then
+         return N_Op_Le;
+      elsif Name = "Olt" then
+         return N_Op_Lt;
+      elsif Name = "One" then
+         return N_Op_Ne;
+      elsif Name = "Oxor" then
+         return N_Op_Or;
+      elsif Name = "Oor" then
+         return N_Op_Xor;
+      else
+         raise Program_Error;
+      end if;
+   end Get_Binary_Nkind;
+
    ------------------
    -- Get_Rep_Item --
    ------------------
@@ -578,6 +647,36 @@ package body Sem_Aux is
       return Empty;
    end Get_Rep_Pragma;
 
+   ---------------------
+   -- Get_Unary_Nkind --
+   ---------------------
+
+   function Get_Unary_Nkind (Op : Entity_Id) return Node_Kind is
+      Name : constant String := Get_Name_String (Chars (Op));
+   begin
+      if Name = "Oabs" then
+         return N_Op_Abs;
+      elsif Name = "Osubtract" then
+         return N_Op_Minus;
+      elsif Name = "Onot" then
+         return N_Op_Not;
+      elsif Name = "Oadd" then
+         return N_Op_Plus;
+      else
+         raise Program_Error;
+      end if;
+   end Get_Unary_Nkind;
+
+   ---------------------------------
+   -- Has_External_Tag_Rep_Clause --
+   ---------------------------------
+
+   function Has_External_Tag_Rep_Clause (T : Entity_Id) return Boolean is
+   begin
+      pragma Assert (Is_Tagged_Type (T));
+      return Has_Rep_Item (T, Name_External_Tag, Check_Parents => False);
+   end Has_External_Tag_Rep_Clause;
+
    ------------------
    -- Has_Rep_Item --
    ------------------
@@ -641,6 +740,51 @@ package body Sem_Aux is
          return False;
       end if;
    end Has_Unconstrained_Elements;
+
+   ----------------------
+   -- Has_Variant_Part --
+   ----------------------
+
+   function Has_Variant_Part (Typ : Entity_Id) return Boolean is
+      FSTyp : Entity_Id;
+      Decl  : Node_Id;
+      TDef  : Node_Id;
+      CList : Node_Id;
+
+   begin
+      if not Is_Type (Typ) then
+         return False;
+      end if;
+
+      FSTyp := First_Subtype (Typ);
+
+      if not Has_Discriminants (FSTyp) then
+         return False;
+      end if;
+
+      --  Proceed with cautious checks here, return False if tree is not
+      --  as expected (may be caused by prior errors).
+
+      Decl := Declaration_Node (FSTyp);
+
+      if Nkind (Decl) /= N_Full_Type_Declaration then
+         return False;
+      end if;
+
+      TDef := Type_Definition (Decl);
+
+      if Nkind (TDef) /= N_Record_Definition then
+         return False;
+      end if;
+
+      CList := Component_List (TDef);
+
+      if Nkind (CList) /= N_Component_List then
+         return False;
+      else
+         return Present (Variant_Part (CList));
+      end if;
+   end Has_Variant_Part;
 
    ---------------------
    -- In_Generic_Body --
@@ -782,8 +926,15 @@ package body Sem_Aux is
             begin
                C := First_Component (Btype);
                while Present (C) loop
+
+                  --  For each component, test if its type is a by reference
+                  --  type and if its type is volatile. Also test the component
+                  --  itself for being volatile. This happens for example when
+                  --  a Volatile aspect is added to a component.
+
                   if Is_By_Reference_Type (Etype (C))
                     or else Is_Volatile (Etype (C))
+                    or else Is_Volatile (C)
                   then
                      return True;
                   end if;
@@ -977,7 +1128,7 @@ package body Sem_Aux is
       --  Otherwise we will look around to see if there is some other reason
       --  for it to be limited, except that if an error was posted on the
       --  entity, then just assume it is non-limited, because it can cause
-      --  trouble to recurse into a murky erroneous entity.
+      --  trouble to recurse into a murky entity resulting from other errors.
 
       elsif Error_Posted (Ent) then
          return False;

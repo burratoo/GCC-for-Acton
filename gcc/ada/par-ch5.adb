@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -241,6 +241,10 @@ package body Ch5 is
                    and then Statement_Seen)
                 or else All_Pragmas)
             then
+               --  This Ada 2012 construct not allowed in a compiler unit
+
+               Check_Compiler_Unit ("null statement list", Token_Ptr);
+
                declare
                   Null_Stm : constant Node_Id :=
                                Make_Null_Statement (Token_Ptr);
@@ -1131,8 +1135,7 @@ package body Ch5 is
       procedure Check_Then_Column;
       --  This procedure carries out the style checks for a THEN token
       --  Note that the caller has set Loc to the Source_Ptr value for
-      --  the previous IF or ELSIF token. These checks apply only to a
-      --  THEN at the start of a line.
+      --  the previous IF or ELSIF token.
 
       function Else_Should_Be_Elsif return Boolean;
       --  An internal routine used to do a special error recovery check when
@@ -1170,7 +1173,7 @@ package body Ch5 is
 
       procedure Check_Then_Column is
       begin
-         if Token_Is_At_Start_Of_Line and then Token = Tok_Then then
+         if Token = Tok_Then then
             Check_If_Column;
 
             if Style_Check then

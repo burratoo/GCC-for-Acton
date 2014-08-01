@@ -79,6 +79,9 @@ static int is_cfg_nonregular (void);
 /* Number of regions in the procedure.  */
 int nr_regions = 0;
 
+/* Same as above before adding any new regions.  */
+static int nr_regions_initial = 0;
+
 /* Table of region descriptions.  */
 region *rgn_table = NULL;
 
@@ -2991,6 +2994,15 @@ schedule_region (int rgn)
 
   rgn_n_insns = 0;
 
+  /* Do not support register pressure sensitive scheduling for the new regions
+     as we don't update the liveness info for them.  */
+  if (sched_pressure != SCHED_PRESSURE_NONE
+      && rgn >= nr_regions_initial)
+    {
+      free_global_sched_pressure_data ();
+      sched_pressure = SCHED_PRESSURE_NONE;
+    }
+
   rgn_setup_region (rgn);
 
   /* Don't schedule region that is marked by
@@ -3153,6 +3165,7 @@ sched_rgn_init (bool single_blocks_p)
 
   RGN_BLOCKS (nr_regions) = (RGN_BLOCKS (nr_regions - 1) +
 			     RGN_NR_BLOCKS (nr_regions - 1));
+  nr_regions_initial = nr_regions;
 }
 
 /* Free data structures for region scheduling.  */
@@ -3578,16 +3591,6 @@ advance_target_bb (basic_block bb, rtx insn)
 
 #endif
 
-static bool
-gate_handle_live_range_shrinkage (void)
-{
-#ifdef INSN_SCHEDULING
-  return flag_live_range_shrinkage;
-#else
-  return 0;
-#endif
-}
-
 /* Run instruction scheduler.  */
 static unsigned int
 rest_of_handle_live_range_shrinkage (void)
@@ -3605,16 +3608,6 @@ rest_of_handle_live_range_shrinkage (void)
   return 0;
 }
 
-static bool
-gate_handle_sched (void)
-{
-#ifdef INSN_SCHEDULING
-  return optimize > 0 && flag_schedule_insns && dbg_cnt (sched_func);
-#else
-  return 0;
-#endif
-}
-
 /* Run instruction scheduler.  */
 static unsigned int
 rest_of_handle_sched (void)
@@ -3627,17 +3620,6 @@ rest_of_handle_sched (void)
     schedule_insns ();
 #endif
   return 0;
-}
-
-static bool
-gate_handle_sched2 (void)
-{
-#ifdef INSN_SCHEDULING
-  return optimize > 0 && flag_schedule_insns_after_reload
-    && !targetm.delay_sched2 && dbg_cnt (sched2_func);
-#else
-  return 0;
-#endif
 }
 
 /* Run second scheduling pass after reload.  */
@@ -3668,15 +3650,12 @@ const pass_data pass_data_live_range_shrinkage =
   RTL_PASS, /* type */
   "lr_shrinkage", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_LIVE_RANGE_SHRINKAGE, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_live_range_shrinkage : public rtl_opt_pass
@@ -3687,8 +3666,19 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_live_range_shrinkage (); }
-  unsigned int execute () { return rest_of_handle_live_range_shrinkage (); }
+  virtual bool gate (function *)
+    {
+#ifdef INSN_SCHEDULING
+      return flag_live_range_shrinkage;
+#else
+      return 0;
+#endif
+    }
+
+  virtual unsigned int execute (function *)
+    {
+      return rest_of_handle_live_range_shrinkage ();
+    }
 
 }; // class pass_live_range_shrinkage
 
@@ -3707,15 +3697,12 @@ const pass_data pass_data_sched =
   RTL_PASS, /* type */
   "sched1", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_SCHED, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_sched : public rtl_opt_pass
@@ -3726,10 +3713,20 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_sched (); }
-  unsigned int execute () { return rest_of_handle_sched (); }
+  virtual bool gate (function *);
+  virtual unsigned int execute (function *) { return rest_of_handle_sched (); }
 
 }; // class pass_sched
+
+bool
+pass_sched::gate (function *)
+{
+#ifdef INSN_SCHEDULING
+  return optimize > 0 && flag_schedule_insns && dbg_cnt (sched_func);
+#else
+  return 0;
+#endif
+}
 
 } // anon namespace
 
@@ -3746,15 +3743,12 @@ const pass_data pass_data_sched2 =
   RTL_PASS, /* type */
   "sched2", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_SCHED2, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_sched2 : public rtl_opt_pass
@@ -3765,10 +3759,24 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_sched2 (); }
-  unsigned int execute () { return rest_of_handle_sched2 (); }
+  virtual bool gate (function *);
+  virtual unsigned int execute (function *)
+    {
+      return rest_of_handle_sched2 ();
+    }
 
 }; // class pass_sched2
+
+bool
+pass_sched2::gate (function *)
+{
+#ifdef INSN_SCHEDULING
+  return optimize > 0 && flag_schedule_insns_after_reload
+    && !targetm.delay_sched2 && dbg_cnt (sched2_func);
+#else
+  return 0;
+#endif
+}
 
 } // anon namespace
 

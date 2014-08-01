@@ -130,7 +130,9 @@ struct GTY(()) ipa_ancestor_jf_data
 {
   /* Offset of the field representing the ancestor.  */
   HOST_WIDE_INT offset;
-  /* Type of the result.  */
+  /* Type of the result.
+     When TYPE_PRESERVED is false, TYPE is NULL, since it is only
+     relevant for the devirtualization machinery.  */
   tree type;
   /* Number of the caller's formal parameter being passed.  */
   int formal_id;
@@ -369,8 +371,9 @@ struct ipa_node_params
   /* If this node is an ipa-cp clone, these are the known values that describe
      what it has been specialized for.  */
   vec<tree> known_vals;
-  /* Whether the param uses analysis has already been performed.  */
-  unsigned uses_analysis_done : 1;
+  /* Whether the param uses analysis and jump function computation has already
+     been performed.  */
+  unsigned analysis_done : 1;
   /* Whether the function is enqueued in ipa-cp propagation stack.  */
   unsigned node_enqueued : 1;
   /* Whether we should create a specialized version based on values that are
@@ -573,7 +576,7 @@ ipa_get_agg_replacements_for_node (struct cgraph_node *node)
 /* Function formal parameters related computations.  */
 void ipa_initialize_node_params (struct cgraph_node *node);
 bool ipa_propagate_indirect_call_infos (struct cgraph_edge *cs,
-					vec<cgraph_edge_p> *new_edges);
+					vec<cgraph_edge *> *new_edges);
 
 /* Indirect edge and binfo processing.  */
 tree ipa_get_indirect_edge_target (struct cgraph_edge *ie,
@@ -583,6 +586,7 @@ tree ipa_get_indirect_edge_target (struct cgraph_edge *ie,
 struct cgraph_edge *ipa_make_edge_direct_to_target (struct cgraph_edge *, tree);
 tree ipa_binfo_from_known_type_jfunc (struct ipa_jump_func *);
 tree ipa_intraprocedural_devirtualization (gimple);
+tree ipa_impossible_devirt_target (struct cgraph_edge *, tree);
 
 /* Functions related to both.  */
 void ipa_analyze_node (struct cgraph_node *);

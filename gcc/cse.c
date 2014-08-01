@@ -2336,15 +2336,20 @@ hash_rtx_cb (const_rtx x, enum machine_mode mode,
                + (unsigned int) INTVAL (x));
       return hash;
 
+    case CONST_WIDE_INT:
+      for (i = 0; i < CONST_WIDE_INT_NUNITS (x); i++)
+	hash += CONST_WIDE_INT_ELT (x, i);
+      return hash;
+
     case CONST_DOUBLE:
       /* This is like the general case, except that it only counts
 	 the integers representing the constant.  */
       hash += (unsigned int) code + (unsigned int) GET_MODE (x);
-      if (GET_MODE (x) != VOIDmode)
-	hash += real_hash (CONST_DOUBLE_REAL_VALUE (x));
-      else
+      if (TARGET_SUPPORTS_WIDE_INT == 0 && GET_MODE (x) == VOIDmode)
 	hash += ((unsigned int) CONST_DOUBLE_LOW (x)
 		 + (unsigned int) CONST_DOUBLE_HIGH (x));
+      else
+	hash += real_hash (CONST_DOUBLE_REAL_VALUE (x));
       return hash;
 
     case CONST_FIXED:
@@ -2681,6 +2686,13 @@ exp_equiv_p (const_rtx x, const_rtx y, int validate, bool for_gcse)
 	     equivalent MEMs, we just use the invariant that MEMs that have
 	     the same attributes share the same mem_attrs data structure.  */
 	  if (MEM_ATTRS (x) != MEM_ATTRS (y))
+	    return 0;
+
+	  /* If we are handling exceptions, we cannot consider two expressions
+	     with different trapping status as equivalent, because simple_mem
+	     might accept one and reject the other.  */
+	  if (cfun->can_throw_non_call_exceptions
+	      && (MEM_NOTRAP_P (x) != MEM_NOTRAP_P (y)))
 	    return 0;
 	}
       break;
@@ -3199,9 +3211,27 @@ fold_rtx (rtx x, rtx insn)
 
 #ifdef HAVE_cc0
 	  case CC0:
-	    folded_arg = prev_insn_cc0;
-	    mode_arg = prev_insn_cc0_mode;
-	    const_arg = equiv_constant (folded_arg);
+	    /* The cc0-user and cc0-setter may be in different blocks if
+	       the cc0-setter potentially traps.  In that case PREV_INSN_CC0
+	       will have been cleared as we exited the block with the
+	       setter.
+
+	       While we could potentially track cc0 in this case, it just
+	       doesn't seem to be worth it given that cc0 targets are not
+	       terribly common or important these days and trapping math
+	       is rarely used.  The combination of those two conditions
+	       necessary to trip this situation is exceedingly rare in the
+	       real world.  */
+	    if (!prev_insn_cc0)
+	      {
+		const_arg = NULL_RTX;
+	      }
+	    else
+	      {
+		folded_arg = prev_insn_cc0;
+		mode_arg = prev_insn_cc0_mode;
+		const_arg = equiv_constant (folded_arg);
+	      }
 	    break;
 #endif
 
@@ -3761,6 +3791,7 @@ equiv_constant (rtx x)
 
       /* See if we previously assigned a constant value to this SUBREG.  */
       if ((new_rtx = lookup_as_function (x, CONST_INT)) != 0
+	  || (new_rtx = lookup_as_function (x, CONST_WIDE_INT)) != 0
           || (new_rtx = lookup_as_function (x, CONST_DOUBLE)) != 0
           || (new_rtx = lookup_as_function (x, CONST_FIXED)) != 0)
         return new_rtx;
@@ -4622,6 +4653,13 @@ cse_insn (rtx insn)
 	  && find_reg_note (insn, REG_EQUIV, NULL_RTX) != 0
 	  && REG_P (dest)
 	  && REGNO (dest) >= FIRST_PSEUDO_REGISTER)
+	sets[i].src_volatile = 1;
+
+      /* Also do not record result of a non-volatile inline asm with
+	 more than one result or with clobbers, we do not want CSE to
+	 break the inline asm apart.  */
+      else if (GET_CODE (src) == ASM_OPERANDS
+	       && GET_CODE (x) == PARALLEL)
 	sets[i].src_volatile = 1;
 
 #if 0
@@ -5664,11 +5702,6 @@ cse_insn (rtx insn)
 	  invalidate (XEXP (dest, 0), GET_MODE (dest));
       }
 
-  /* A volatile ASM or an UNSPEC_VOLATILE invalidates everything.  */
-  if (NONJUMP_INSN_P (insn)
-      && volatile_insn_p (PATTERN (insn)))
-    flush_hash_table ();
-
   /* Don't cse over a call to setjmp; on some machines (eg VAX)
      the regs restored by the longjmp come from a later time
      than the setjmp.  */
@@ -6380,14 +6413,11 @@ cse_extended_basic_block (struct cse_basic_block_data *ebb_data)
 	 edge pointing to that bb.  */
       if (bb_has_eh_pred (bb))
 	{
-	  df_ref *def_rec;
+	  df_ref def;
 
-	  for (def_rec = df_get_artificial_defs (bb->index); *def_rec; def_rec++)
-	    {
-	      df_ref def = *def_rec;
-	      if (DF_REF_FLAGS (def) & DF_REF_AT_TOP)
-		invalidate (DF_REF_REG (def), GET_MODE (DF_REF_REG (def)));
-	    }
+	  FOR_EACH_ARTIFICIAL_DEF (def, bb->index)
+	    if (DF_REF_FLAGS (def) & DF_REF_AT_TOP)
+	      invalidate (DF_REF_REG (def), GET_MODE (DF_REF_REG (def)));
 	}
 
       optimize_this_for_speed_p = optimize_bb_for_speed_p (bb);
@@ -7437,12 +7467,6 @@ cse_condition_code_reg (void)
 /* Perform common subexpression elimination.  Nonzero value from
    `cse_main' means that jumps were simplified and some code may now
    be unreachable, so do jump optimization again.  */
-static bool
-gate_handle_cse (void)
-{
-  return optimize > 0;
-}
-
 static unsigned int
 rest_of_handle_cse (void)
 {
@@ -7477,15 +7501,12 @@ const pass_data pass_data_cse =
   RTL_PASS, /* type */
   "cse1", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_CSE, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_cse : public rtl_opt_pass
@@ -7496,8 +7517,8 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_cse (); }
-  unsigned int execute () { return rest_of_handle_cse (); }
+  virtual bool gate (function *) { return optimize > 0; }
+  virtual unsigned int execute (function *) { return rest_of_handle_cse (); }
 
 }; // class pass_cse
 
@@ -7509,12 +7530,6 @@ make_pass_cse (gcc::context *ctxt)
   return new pass_cse (ctxt);
 }
 
-
-static bool
-gate_handle_cse2 (void)
-{
-  return optimize > 0 && flag_rerun_cse_after_loop;
-}
 
 /* Run second CSE pass after loop optimizations.  */
 static unsigned int
@@ -7557,15 +7572,12 @@ const pass_data pass_data_cse2 =
   RTL_PASS, /* type */
   "cse2", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_CSE2, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_cse2 : public rtl_opt_pass
@@ -7576,8 +7588,12 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_cse2 (); }
-  unsigned int execute () { return rest_of_handle_cse2 (); }
+  virtual bool gate (function *)
+    {
+      return optimize > 0 && flag_rerun_cse_after_loop;
+    }
+
+  virtual unsigned int execute (function *) { return rest_of_handle_cse2 (); }
 
 }; // class pass_cse2
 
@@ -7587,12 +7603,6 @@ rtl_opt_pass *
 make_pass_cse2 (gcc::context *ctxt)
 {
   return new pass_cse2 (ctxt);
-}
-
-static bool
-gate_handle_cse_after_global_opts (void)
-{
-  return optimize > 0 && flag_rerun_cse_after_global_opts;
 }
 
 /* Run second CSE pass after loop optimizations.  */
@@ -7635,15 +7645,12 @@ const pass_data pass_data_cse_after_global_opts =
   RTL_PASS, /* type */
   "cse_local", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
   TV_CSE, /* tv_id */
   0, /* properties_required */
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_df_finish | TODO_verify_rtl_sharing
-    | TODO_verify_flow ), /* todo_flags_finish */
+  TODO_df_finish, /* todo_flags_finish */
 };
 
 class pass_cse_after_global_opts : public rtl_opt_pass
@@ -7654,10 +7661,15 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_handle_cse_after_global_opts (); }
-  unsigned int execute () {
-    return rest_of_handle_cse_after_global_opts ();
-  }
+  virtual bool gate (function *)
+    {
+      return optimize > 0 && flag_rerun_cse_after_global_opts;
+    }
+
+  virtual unsigned int execute (function *)
+    {
+      return rest_of_handle_cse_after_global_opts ();
+    }
 
 }; // class pass_cse_after_global_opts
 
