@@ -1750,11 +1750,33 @@ package body Sem_Ch5 is
         and then not ASIS_Mode
       then
          declare
-            Id   : constant Entity_Id := Make_Temporary (Loc, 'R', Iter_Name);
-            Decl : Node_Id;
+            Id    : constant Entity_Id := Make_Temporary (Loc, 'R', Iter_Name);
+            Decl  : Node_Id;
+            Act_S : Node_Id;
 
          begin
-            Typ := Etype (Iter_Name);
+
+            --  If the domain of iteration is an array component that depends
+            --  on a discriminant, create actual subtype for it. Pre-analysis
+            --  does not generate the actual subtype of a selected component.
+
+            if Nkind (Iter_Name) = N_Selected_Component
+              and then Is_Array_Type (Etype (Iter_Name))
+            then
+               Act_S :=
+                 Build_Actual_Subtype_Of_Component
+                   (Etype (Selector_Name (Iter_Name)), Iter_Name);
+               Insert_Action (N, Act_S);
+
+               if Present (Act_S) then
+                  Typ := Defining_Identifier (Act_S);
+               else
+                  Typ := Etype (Iter_Name);
+               end if;
+
+            else
+               Typ := Etype (Iter_Name);
+            end if;
 
             --  Protect against malformed iterator
 
@@ -1985,16 +2007,16 @@ package body Sem_Ch5 is
          end if;
       end if;
 
-      --  A loop parameter cannot be volatile. This check is peformed only
-      --  when SPARK_Mode is on as it is not a standard Ada legality check
-      --  (SPARK RM 7.1.3(6)).
+      --  A loop parameter cannot be effectively volatile. This check is
+      --  peformed only when SPARK_Mode is on as it is not a standard Ada
+      --  legality check (SPARK RM 7.1.3(6)).
 
       --  Not clear whether this applies to element iterators, where the
       --  cursor is not an explicit entity ???
 
       if SPARK_Mode = On
         and then not Of_Present (N)
-        and then Is_SPARK_Volatile (Ent)
+        and then Is_Effectively_Volatile (Ent)
       then
          Error_Msg_N ("loop parameter cannot be volatile", Ent);
       end if;
@@ -2317,11 +2339,11 @@ package body Sem_Ch5 is
          --  Propagate staticness to loop range itself, in case the
          --  corresponding subtype is static.
 
-         if New_Lo /= Lo and then Is_Static_Expression (New_Lo) then
+         if New_Lo /= Lo and then Is_OK_Static_Expression (New_Lo) then
             Rewrite (Low_Bound (R), New_Copy (New_Lo));
          end if;
 
-         if New_Hi /= Hi and then Is_Static_Expression (New_Hi) then
+         if New_Hi /= Hi and then Is_OK_Static_Expression (New_Hi) then
             Rewrite (High_Bound (R), New_Copy (New_Hi));
          end if;
       end Process_Bounds;
@@ -2480,8 +2502,8 @@ package body Sem_Ch5 is
          --  function only, look for a dynamic predicate aspect as well.
 
          if Is_Discrete_Type (Entity (DS))
-           and then Present (Predicate_Function (Entity (DS)))
-           and then (No (Static_Predicate (Entity (DS)))
+           and then Has_Predicates (Entity (DS))
+           and then (not Has_Static_Predicate (Entity (DS))
                       or else Has_Dynamic_Predicate_Aspect (Entity (DS)))
          then
             Bad_Predicated_Subtype_Use
@@ -2710,11 +2732,11 @@ package body Sem_Ch5 is
          end;
       end if;
 
-      --  A loop parameter cannot be volatile. This check is peformed only
-      --  when SPARK_Mode is on as it is not a standard Ada legality check
-      --  (SPARK RM 7.1.3(6)).
+      --  A loop parameter cannot be effectively volatile. This check is
+      --  peformed only when SPARK_Mode is on as it is not a standard Ada
+      --  legality check (SPARK RM 7.1.3(6)).
 
-      if SPARK_Mode = On and then Is_SPARK_Volatile (Id) then
+      if SPARK_Mode = On and then Is_Effectively_Volatile (Id) then
          Error_Msg_N ("loop parameter cannot be volatile", Id);
       end if;
    end Analyze_Loop_Parameter_Specification;
@@ -2832,6 +2854,20 @@ package body Sem_Ch5 is
                Ent := New_Internal_Entity (E_Loop, Current_Scope, Loc, 'L');
             else
                raise Program_Error;
+            end if;
+
+         --  Verify that the loop name is hot hidden by an unrelated
+         --  declaration in an inner scope.
+
+         elsif Ekind (Ent) /= E_Label and then Ekind (Ent) /= E_Loop  then
+            Error_Msg_Sloc := Sloc (Ent);
+            Error_Msg_N ("implicit label declaration for & is hidden#", Id);
+
+            if Present (Homonym (Ent))
+              and then Ekind (Homonym (Ent)) = E_Label
+            then
+               Set_Entity (Id, Ent);
+               Set_Ekind (Ent, E_Loop);
             end if;
 
          else
@@ -3182,16 +3218,21 @@ package body Sem_Ch5 is
                   --  unreachable code, since it is useless and we don't
                   --  want to generate junk warnings.
 
-                  --  We skip this step if we are not in code generation mode.
+                  --  We skip this step if we are not in code generation mode
+                  --  or CodePeer mode.
+
                   --  This is the one case where we remove dead code in the
                   --  semantics as opposed to the expander, and we do not want
                   --  to remove code if we are not in code generation mode,
-                  --  since this messes up the ASIS trees.
+                  --  since this messes up the ASIS trees or loses useful
+                  --  information in the CodePeer tree.
 
                   --  Note that one might react by moving the whole circuit to
                   --  exp_ch5, but then we lose the warning in -gnatc mode.
 
-                  if Operating_Mode = Generate_Code then
+                  if Operating_Mode = Generate_Code
+                    and then not CodePeer_Mode
+                  then
                      loop
                         Nxt := Next (N);
 

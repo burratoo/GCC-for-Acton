@@ -38,7 +38,6 @@ with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Frontend;
 with Gnatvsn;  use Gnatvsn;
-with Hostparm;
 with Inline;
 with Lib;      use Lib;
 with Lib.Writ; use Lib.Writ;
@@ -82,6 +81,7 @@ with Usage;
 with Validsw;  use Validsw;
 
 with System.Assertions;
+with System.OS_Lib;
 
 --------------
 -- Gnat1drv --
@@ -334,6 +334,12 @@ procedure Gnat1drv is
          Front_End_Inlining := False;
          Inline_Active      := False;
 
+         --  Issue warnings for failure to inline subprograms, as otherwise
+         --  expected in GNATprove mode for the local subprograms without
+         --  contracts.
+
+         Ineffective_Inline_Warnings := True;
+
          --  Disable front-end optimizations, to keep the tree as close to the
          --  source code as possible, and also to avoid inconsistencies between
          --  trees when using different optimization switches.
@@ -470,16 +476,10 @@ procedure Gnat1drv is
          Ttypes.Bytes_Big_Endian := not Ttypes.Bytes_Big_Endian;
       end if;
 
-      --  Deal with forcing OpenVMS switches True if debug flag M is set, but
-      --  record the setting of Targparm.Open_VMS_On_Target in True_VMS_Target
-      --  before doing this, so we know if we are in real OpenVMS or not.
+      --  Temporarily set True_VMS_Target to OpenVMS_On_Target. This is just
+      --  temporary, we no longer deal with the debug flag -gnatdm here.
 
       Opt.True_VMS_Target := Targparm.OpenVMS_On_Target;
-
-      if Debug_Flag_M then
-         Targparm.OpenVMS_On_Target := True;
-         Hostparm.OpenVMS := True;
-      end if;
 
       --  Activate front end layout if debug flag -gnatdF is set
 
@@ -504,9 +504,13 @@ procedure Gnat1drv is
       --  Otherwise set overflow mode defaults
 
       else
-         --  Otherwise set overflow checks off by default
+         --  Overflow checks are on by default (Suppress set False) except in
+         --  GNAT_Mode, where we want them off by default (we are not ready to
+         --  enable overflow checks in the compiler yet, for one thing the case
+         --  of 64-bit checks needs System.Arith_64 which is not a compiler
+         --  unit and it is a pain to try to include it in the compiler.
 
-         Suppress_Options.Suppress (Overflow_Check) := True;
+         Suppress_Options.Suppress (Overflow_Check) := GNAT_Mode;
 
          --  Set appropriate default overflow handling mode. Note: at present
          --  we set STRICT in all three of the following cases. They are
@@ -524,8 +528,8 @@ procedure Gnat1drv is
          --  flags set, so this was dead code anyway.
 
          elsif Targparm.Backend_Divide_Checks_On_Target
-           and
-             Targparm.Backend_Overflow_Checks_On_Target
+                 and
+               Targparm.Backend_Overflow_Checks_On_Target
          then
             Suppress_Options.Overflow_Mode_General    := Strict;
             Suppress_Options.Overflow_Mode_Assertions := Strict;
@@ -582,6 +586,35 @@ procedure Gnat1drv is
             Inline_Level := 2;
          end if;
       end if;
+
+      --  Set back end inlining indication
+
+      Back_End_Inlining :=
+
+        --  No back end inlining if inlining is suppressed
+
+        not Suppress_All_Inlining
+
+        --  No back end inlining available for VM targets
+
+        and then VM_Target = No_VM
+
+        --  No back end inlining available on AAMP
+
+        and then not AAMP_On_Target
+
+        --  No back end inlining in GNATprove mode, since it just confuses
+        --  the formal verification process.
+
+        and then not GNATprove_Mode
+
+        --  No back end inlining if front end inlining explicitly enabled?
+
+        and then not Front_End_Inlining
+
+        --  For now, we only enable back end inlining if debug flag .z is set
+
+        and then Debug_Flag_Dot_Z;
 
       --  Output warning if -gnateE specified and cannot be supported
 
@@ -831,6 +864,10 @@ begin
       Sem_Elim.Initialize;
       Sem_Eval.Initialize;
       Sem_Type.Init_Interp_Tables;
+
+      --  Capture compilation date and time
+
+      Opt.Compilation_Time := System.OS_Lib.Current_Time_String;
 
       --  Acquire target parameters from system.ads (source of package System)
 

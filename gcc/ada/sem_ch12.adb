@@ -25,7 +25,6 @@
 
 with Aspects;  use Aspects;
 with Atree;    use Atree;
-with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
@@ -954,6 +953,15 @@ package body Sem_Ch12 is
       --  In Ada 2005, indicates partial parameterization of a formal
       --  package. As usual an other association must be last in the list.
 
+      function Build_Wrapper
+        (Formal : Entity_Id;
+         Actual : Entity_Id := Empty) return Node_Id;
+      --  In GNATProve mode, create a wrapper function for actuals that are
+      --  operators, in order to propagate their contract to the renaming
+      --  declarations generated for them. If the actual is absent, this is
+      --  a formal with a default, and the name of the operator is that of the
+      --  formal.
+
       procedure Check_Overloaded_Formal_Subprogram (Formal : Entity_Id);
       --  Apply RM 12.3 (9): if a formal subprogram is overloaded, the instance
       --  cannot have a named association for it. AI05-0025 extends this rule
@@ -1000,6 +1008,142 @@ package body Sem_Ch12 is
       --  correspondence between the two lists is not one-one. In addition to
       --  anonymous types, the presence a formal equality will introduce an
       --  implicit declaration for the corresponding inequality.
+
+      -------------------
+      -- Build_Wrapper --
+      -------------------
+
+      function Build_Wrapper
+        (Formal : Entity_Id;
+         Actual : Entity_Id := Empty) return Node_Id
+      is
+         Loc       : constant Source_Ptr := Sloc (I_Node);
+         Typ       : constant Entity_Id := Etype (Formal);
+         Is_Binary : constant Boolean :=
+                       Present (Next_Formal (First_Formal (Formal)));
+
+         Decl    : Node_Id;
+         Expr    : Node_Id;
+         F1, F2  : Entity_Id;
+         Func    : Entity_Id;
+         Op_Name : Name_Id;
+         Spec    : Node_Id;
+
+         L, R   : Node_Id;
+
+      begin
+         if No (Actual) then
+            Op_Name := Chars (Formal);
+         else
+            Op_Name := Chars (Actual);
+         end if;
+
+         --  Create entities for wrapper function and its formals
+
+         F1 := Make_Temporary (Loc, 'A');
+         F2 := Make_Temporary (Loc, 'B');
+         L  := New_Occurrence_Of (F1, Loc);
+         R  := New_Occurrence_Of (F2, Loc);
+
+         Func := Make_Defining_Identifier (Loc, Chars (Formal));
+         Set_Ekind (Func, E_Function);
+         Set_Is_Generic_Actual_Subprogram (Func);
+
+         Spec :=
+           Make_Function_Specification (Loc,
+             Defining_Unit_Name       => Func,
+             Parameter_Specifications => New_List (
+               Make_Parameter_Specification (Loc,
+                  Defining_Identifier => F1,
+                  Parameter_Type      =>
+                    Make_Identifier (Loc,
+                      Chars => Chars (Etype (First_Formal (Formal)))))),
+             Result_Definition        => Make_Identifier (Loc, Chars (Typ)));
+
+         if Is_Binary then
+            Append_To (Parameter_Specifications (Spec),
+               Make_Parameter_Specification (Loc,
+                 Defining_Identifier => F2,
+                 Parameter_Type =>
+                   Make_Identifier (Loc,
+                     Chars (Etype (Next_Formal (First_Formal (Formal)))))));
+         end if;
+
+         --  Build expression as a function call, or as an operator node
+         --  that corresponds to the name of the actual, starting with binary
+         --  operators.
+
+         if Present (Actual) and then Op_Name not in Any_Operator_Name then
+            Expr :=
+              Make_Function_Call (Loc,
+                Name                   =>
+                  New_Occurrence_Of (Entity (Actual), Loc),
+                Parameter_Associations => New_List (L));
+
+            if Is_Binary then
+               Append_To (Parameter_Associations (Expr), R);
+            end if;
+
+         --  Binary operators
+
+         elsif Is_Binary then
+            if Op_Name = Name_Op_And then
+               Expr := Make_Op_And (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Or then
+               Expr := Make_Op_Or (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Xor then
+               Expr := Make_Op_Xor (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Eq then
+               Expr := Make_Op_Eq (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Ne then
+               Expr := Make_Op_Ne (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Le then
+               Expr := Make_Op_Le (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Gt then
+               Expr := Make_Op_Gt (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Ge then
+               Expr := Make_Op_Ge (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Lt then
+               Expr := Make_Op_Lt (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Add then
+               Expr := Make_Op_Add (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Subtract then
+               Expr := Make_Op_Subtract (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Concat then
+               Expr := Make_Op_Concat (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Multiply then
+               Expr := Make_Op_Multiply (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Divide then
+               Expr := Make_Op_Divide (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Mod then
+               Expr := Make_Op_Mod (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Rem then
+               Expr := Make_Op_Rem (Loc, Left_Opnd => L, Right_Opnd => R);
+            elsif Op_Name = Name_Op_Expon then
+               Expr := Make_Op_Expon (Loc, Left_Opnd => L, Right_Opnd => R);
+            end if;
+
+         --  Unary operators
+
+         else
+            if Op_Name = Name_Op_Add then
+               Expr := Make_Op_Plus (Loc, Right_Opnd => L);
+            elsif Op_Name = Name_Op_Subtract then
+               Expr := Make_Op_Minus (Loc, Right_Opnd => L);
+            elsif Op_Name = Name_Op_Abs then
+               Expr := Make_Op_Abs (Loc, Right_Opnd => L);
+            elsif Op_Name = Name_Op_Not then
+               Expr := Make_Op_Not (Loc, Right_Opnd => L);
+            end if;
+         end if;
+
+         Decl :=
+           Make_Expression_Function (Loc,
+             Specification => Spec,
+             Expression    => Expr);
+
+         return Decl;
+      end Build_Wrapper;
 
       ----------------------------------------
       -- Check_Overloaded_Formal_Subprogram --
@@ -1517,9 +1661,43 @@ package body Sem_Ch12 is
                      end if;
 
                   else
-                     Append_To (Assoc,
-                       Instantiate_Formal_Subprogram
-                         (Formal, Match, Analyzed_Formal));
+                     if GNATprove_Mode
+                        and then Ekind (Defining_Entity (Analyzed_Formal))
+                          = E_Function
+                     then
+
+                        --  If actual is an entity (function or operator),
+                        --  build wrapper for it.
+
+                        if Present (Match) and then Is_Entity_Name (Match) then
+                           Append_To (Assoc,
+                             Build_Wrapper
+                               (Defining_Entity (Analyzed_Formal), Match));
+
+                        --  Ditto if formal is an operator with a default.
+
+                        elsif Box_Present (Formal)
+                           and then Nkind (Defining_Entity (Analyzed_Formal))
+                             = N_Defining_Operator_Symbol
+
+                        then
+                           Append_To (Assoc,
+                             Build_Wrapper
+                               (Defining_Entity (Analyzed_Formal)));
+
+                        --  Otherwise create renaming declaration.
+
+                        else
+                           Append_To (Assoc,
+                             Instantiate_Formal_Subprogram
+                               (Formal, Match, Analyzed_Formal));
+                        end if;
+
+                     else
+                        Append_To (Assoc,
+                          Instantiate_Formal_Subprogram
+                            (Formal, Match, Analyzed_Formal));
+                     end if;
 
                      --  An instantiation is a freeze point for the actuals,
                      --  unless this is a rewritten formal package.
@@ -3698,7 +3876,7 @@ package body Sem_Ch12 is
               and then Might_Inline_Subp
               and then not Is_Actual_Pack
             then
-               if not Debug_Flag_Dot_K
+               if not Back_End_Inlining
                  and then Front_End_Inlining
                  and then (Is_In_Main_Unit (N)
                             or else In_Main_Context (Current_Scope))
@@ -3706,7 +3884,7 @@ package body Sem_Ch12 is
                then
                   Inline_Now := True;
 
-               elsif Debug_Flag_Dot_K
+               elsif Back_End_Inlining
                  and then Must_Inline_Subp
                  and then (Is_In_Main_Unit (N)
                             or else In_Main_Context (Current_Scope))
@@ -5336,9 +5514,8 @@ package body Sem_Ch12 is
                Expr2 := Expression (Parent (E2));
             end if;
 
-            if Is_Static_Expression (Expr1) then
-
-               if not Is_Static_Expression (Expr2) then
+            if Is_OK_Static_Expression (Expr1) then
+               if not Is_OK_Static_Expression (Expr2) then
                   Check_Mismatch (True);
 
                elsif Is_Discrete_Type (Etype (E1)) then
@@ -9906,13 +10083,13 @@ package body Sem_Ch12 is
            ("actual must exclude null to match generic formal#", Actual);
       end if;
 
-      --  A volatile object cannot be used as an actual in a generic instance.
-      --  The following check is only relevant when SPARK_Mode is on as it is
-      --  not a standard Ada legality rule.
+      --  An effectively volatile object cannot be used as an actual in
+      --  a generic instance. The following check is only relevant when
+      --  SPARK_Mode is on as it is not a standard Ada legality rule.
 
       if SPARK_Mode = On
         and then Present (Actual)
-        and then Is_SPARK_Volatile_Object (Actual)
+        and then Is_Effectively_Volatile_Object (Actual)
       then
          Error_Msg_N
            ("volatile object cannot act as actual in generic instantiation "

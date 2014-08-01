@@ -1572,7 +1572,7 @@ package body Scng is
                Token := Tok_Arrow;
 
                if Style_Check then
-                  Style.Check_Arrow;
+                  Style.Check_Arrow (Inside_Depends);
                end if;
 
                return;
