@@ -1283,10 +1283,19 @@ package body Sem_Ch13 is
                --  the proper insertion point. As a result the order of pragmas
                --  is the same as the order of aspects.
 
+               --  As precondition pragmas generated from conjuncts in the
+               --  precondition aspect are presented in reverse order to
+               --  Insert_Pragma, insert them in the correct order here by not
+               --  skipping previously inserted precondition pragmas when the
+               --  current pragma is a precondition.
+
                Decl := First (Declarations (N));
                while Present (Decl) loop
                   if Nkind (Decl) = N_Pragma
                     and then From_Aspect_Specification (Decl)
+                    and then not (Get_Pragma_Id (Decl) = Pragma_Precondition
+                                    and then
+                                  Get_Pragma_Id (Prag) = Pragma_Precondition)
                   then
                      Next (Decl);
                   else
@@ -1875,67 +1884,92 @@ package body Sem_Ch13 is
                   --  pragma is one of Convention/Import/Export.
 
                   declare
-                     P_Name   : Name_Id;
-                     A_Name   : Name_Id;
-                     A        : Node_Id;
-                     Arg_List : List_Id;
-                     Found    : Boolean;
-                     L_Assoc  : Node_Id;
-                     E_Assoc  : Node_Id;
+                     Args : constant List_Id := New_List (
+                              Make_Pragma_Argument_Association (Sloc (Expr),
+                                Expression => Relocate_Node (Expr)),
+                              Make_Pragma_Argument_Association (Sloc (Ent),
+                                Expression => Ent));
+
+                     Imp_Exp_Seen : Boolean := False;
+                     --  Flag set when aspect Import or Export has been seen
+
+                     Imp_Seen : Boolean := False;
+                     --  Flag set when aspect Import has been seen
+
+                     Asp        : Node_Id;
+                     Asp_Nam    : Name_Id;
+                     Extern_Arg : Node_Id;
+                     Link_Arg   : Node_Id;
+                     Prag_Nam   : Name_Id;
 
                   begin
-                     P_Name   := Chars (Id);
-                     Found    := False;
-                     Arg_List := New_List;
-                     L_Assoc  := Empty;
-                     E_Assoc  := Empty;
+                     Extern_Arg := Empty;
+                     Link_Arg   := Empty;
+                     Prag_Nam   := Chars (Id);
 
-                     A := First (L);
-                     while Present (A) loop
-                        A_Name := Chars (Identifier (A));
+                     Asp := First (L);
+                     while Present (Asp) loop
+                        Asp_Nam := Chars (Identifier (Asp));
 
-                        if Nam_In (A_Name, Name_Import, Name_Export) then
-                           if Found then
-                              Error_Msg_N ("conflicting", A);
+                        --  Aspects Import and Export take precedence over
+                        --  aspect Convention. As a result the generated pragma
+                        --  must carry the proper interfacing aspect's name.
+
+                        if Nam_In (Asp_Nam, Name_Import, Name_Export) then
+                           if Imp_Exp_Seen then
+                              Error_Msg_N ("conflicting", Asp);
                            else
-                              Found := True;
+                              Imp_Exp_Seen := True;
+
+                              if Asp_Nam = Name_Import then
+                                 Imp_Seen := True;
+                              end if;
                            end if;
 
-                           P_Name := A_Name;
+                           Prag_Nam := Asp_Nam;
 
-                        elsif A_Name = Name_Link_Name then
-                           L_Assoc :=
-                             Make_Pragma_Argument_Association (Loc,
-                               Chars      => A_Name,
-                               Expression => Relocate_Node (Expression (A)));
+                        --  Aspect External_Name adds an extra argument to the
+                        --  generated pragma.
 
-                        elsif A_Name = Name_External_Name then
-                           E_Assoc :=
+                        elsif Asp_Nam = Name_External_Name then
+                           Extern_Arg :=
                              Make_Pragma_Argument_Association (Loc,
-                               Chars      => A_Name,
-                               Expression => Relocate_Node (Expression (A)));
+                               Chars      => Asp_Nam,
+                               Expression => Relocate_Node (Expression (Asp)));
+
+                        --  Aspect Link_Name adds an extra argument to the
+                        --  generated pragma.
+
+                        elsif Asp_Nam = Name_Link_Name then
+                           Link_Arg :=
+                             Make_Pragma_Argument_Association (Loc,
+                               Chars      => Asp_Nam,
+                               Expression => Relocate_Node (Expression (Asp)));
                         end if;
 
-                        Next (A);
+                        Next (Asp);
                      end loop;
 
-                     Arg_List := New_List (
-                       Make_Pragma_Argument_Association (Sloc (Expr),
-                         Expression => Relocate_Node (Expr)),
-                       Make_Pragma_Argument_Association (Sloc (Ent),
-                         Expression => Ent));
+                     --  Assemble the full argument list
 
-                     if Present (L_Assoc) then
-                        Append_To (Arg_List, L_Assoc);
+                     if Present (Link_Arg) then
+                        Append_To (Args, Link_Arg);
                      end if;
 
-                     if Present (E_Assoc) then
-                        Append_To (Arg_List, E_Assoc);
+                     if Present (Extern_Arg) then
+                        Append_To (Args, Extern_Arg);
                      end if;
 
                      Make_Aitem_Pragma
-                       (Pragma_Argument_Associations => Arg_List,
-                        Pragma_Name                  => P_Name);
+                       (Pragma_Argument_Associations => Args,
+                        Pragma_Name                  => Prag_Nam);
+
+                     --  Store the generated pragma Import in the related
+                     --  subprogram.
+
+                     if Imp_Seen and then Is_Subprogram (E) then
+                        Set_Import_Pragma (E, Aitem);
+                     end if;
                   end;
 
                --  CPU, Interrupt_Priority, Priority
@@ -2917,6 +2951,21 @@ package body Sem_Ch13 is
                      --  that verifed that there was a matching convention
                      --  is now obsolete.
 
+                     if A_Id = Aspect_Import then
+                        Set_Is_Imported (E);
+
+                        --  An imported entity cannot have an explicit
+                        --  initialization.
+
+                        if Nkind (N) = N_Object_Declaration
+                          and then Present (Expression (N))
+                        then
+                           Error_Msg_N
+                             ("imported entities cannot be initialized "
+                              & "(RM B.1(24))", Expression (N));
+                        end if;
+                     end if;
+
                      goto Continue;
                   end if;
 
@@ -2932,7 +2981,7 @@ package body Sem_Ch13 is
                     and then Nkind (Parent (N)) /= N_Compilation_Unit
                   then
                      Error_Msg_N
-                        ("incorrect context for library unit aspect&", Id);
+                       ("incorrect context for library unit aspect&", Id);
                      goto Continue;
                   end if;
 
@@ -3474,7 +3523,7 @@ package body Sem_Ch13 is
       ------------------------------
 
       procedure Check_Indexing_Functions is
-         Indexing_Found : Boolean;
+         Indexing_Found : Boolean := False;
 
          procedure Check_One_Function (Subp : Entity_Id);
          --  Check one possible interpretation. Sets Indexing_Found True if a
@@ -8776,6 +8825,15 @@ package body Sem_Ch13 is
                --  For discrete subtype, build the static predicate list
 
                if Is_Discrete_Type (Typ) then
+                  if not Is_Static_Subtype (Typ) then
+
+                     --  This can only happen in the presence of previous
+                     --  semantic errors.
+
+                     pragma Assert (Serious_Errors_Detected > 0);
+                     return;
+                  end if;
+
                   Build_Discrete_Static_Predicate (Typ, Expr, Object_Name);
 
                   --  If we don't get a static predicate list, it means that we
@@ -10464,6 +10522,130 @@ package body Sem_Ch13 is
    --------------------------
 
    procedure Freeze_Entity_Checks (N : Node_Id) is
+      procedure Hide_Non_Overridden_Subprograms (Typ : Entity_Id);
+      --  Inspect the primitive operations of type Typ and hide all pairs of
+      --  implicitly declared non-overridden non-fully conformant homographs
+      --  (Ada RM 8.3 12.3/2).
+
+      -------------------------------------
+      -- Hide_Non_Overridden_Subprograms --
+      -------------------------------------
+
+      procedure Hide_Non_Overridden_Subprograms (Typ : Entity_Id) is
+         procedure Hide_Matching_Homographs
+           (Subp_Id    : Entity_Id;
+            Start_Elmt : Elmt_Id);
+         --  Inspect a list of primitive operations starting with Start_Elmt
+         --  and find matching implicitly declared non-overridden non-fully
+         --  conformant homographs of Subp_Id. If found, all matches along
+         --  with Subp_Id are hidden from all visibility.
+
+         function Is_Non_Overridden_Or_Null_Procedure
+           (Subp_Id : Entity_Id) return Boolean;
+         --  Determine whether subprogram Subp_Id is implicitly declared non-
+         --  overridden subprogram or an implicitly declared null procedure.
+
+         ------------------------------
+         -- Hide_Matching_Homographs --
+         ------------------------------
+
+         procedure Hide_Matching_Homographs
+           (Subp_Id    : Entity_Id;
+            Start_Elmt : Elmt_Id)
+         is
+            Prim      : Entity_Id;
+            Prim_Elmt : Elmt_Id;
+
+         begin
+            Prim_Elmt := Start_Elmt;
+            while Present (Prim_Elmt) loop
+               Prim := Node (Prim_Elmt);
+
+               --  The current primitive is implicitly declared non-overridden
+               --  non-fully conformant homograph of Subp_Id. Both subprograms
+               --  must be hidden from visibility.
+
+               if Chars (Prim) = Chars (Subp_Id)
+                 and then Is_Non_Overridden_Or_Null_Procedure (Prim)
+                 and then not Fully_Conformant (Prim, Subp_Id)
+               then
+                  Set_Is_Hidden_Non_Overridden_Subpgm (Prim);
+                  Set_Is_Immediately_Visible          (Prim, False);
+                  Set_Is_Potentially_Use_Visible      (Prim, False);
+
+                  Set_Is_Hidden_Non_Overridden_Subpgm (Subp_Id);
+                  Set_Is_Immediately_Visible          (Subp_Id, False);
+                  Set_Is_Potentially_Use_Visible      (Subp_Id, False);
+               end if;
+
+               Next_Elmt (Prim_Elmt);
+            end loop;
+         end Hide_Matching_Homographs;
+
+         -----------------------------------------
+         -- Is_Non_Overridden_Or_Null_Procedure --
+         -----------------------------------------
+
+         function Is_Non_Overridden_Or_Null_Procedure
+           (Subp_Id : Entity_Id) return Boolean
+         is
+            Alias_Id : Entity_Id;
+
+         begin
+            --  The subprogram is inherited (implicitly declared), it does not
+            --  override and does not cover a primitive of an interface.
+
+            if Ekind_In (Subp_Id, E_Function, E_Procedure)
+              and then Present (Alias (Subp_Id))
+              and then No (Interface_Alias (Subp_Id))
+              and then No (Overridden_Operation (Subp_Id))
+            then
+               Alias_Id := Alias (Subp_Id);
+
+               if Requires_Overriding (Alias_Id) then
+                  return True;
+
+               elsif Nkind (Parent (Alias_Id)) = N_Procedure_Specification
+                 and then Null_Present (Parent (Alias_Id))
+               then
+                  return True;
+               end if;
+            end if;
+
+            return False;
+         end Is_Non_Overridden_Or_Null_Procedure;
+
+         --  Local variables
+
+         Prim_Ops  : constant Elist_Id := Direct_Primitive_Operations (Typ);
+         Prim      : Entity_Id;
+         Prim_Elmt : Elmt_Id;
+
+      --  Start of processing for Hide_Non_Overridden_Subprograms
+
+      begin
+         --  Inspect the list of primitives looking for non-overridden
+         --  subprograms.
+
+         if Present (Prim_Ops) then
+            Prim_Elmt := First_Elmt (Prim_Ops);
+            while Present (Prim_Elmt) loop
+               Prim := Node (Prim_Elmt);
+               Next_Elmt (Prim_Elmt);
+
+               if Is_Non_Overridden_Or_Null_Procedure (Prim) then
+                  Hide_Matching_Homographs
+                    (Subp_Id    => Prim,
+                     Start_Elmt => Prim_Elmt);
+               end if;
+            end loop;
+         end if;
+      end Hide_Non_Overridden_Subprograms;
+
+      ---------------------
+      -- Local variables --
+      ---------------------
+
       E : constant Entity_Id := Entity (N);
 
       Non_Generic_Case : constant Boolean := Nkind (N) = N_Freeze_Entity;
@@ -10471,6 +10653,9 @@ package body Sem_Ch13 is
       --  for the generic case since it is not needed. Basically in the
       --  generic case, we only need to do stuff that might generate error
       --  messages or warnings.
+
+   --  Start of processing for Freeze_Entity_Checks
+
    begin
       --  Remember that we are processing a freezing entity. Required to
       --  ensure correct decoration of internal entities associated with
@@ -10504,6 +10689,18 @@ package body Sem_Ch13 is
          --  spurious errors in case of late overriding.
 
          Add_Internal_Interface_Entities (E);
+      end if;
+
+      --  After all forms of overriding have been resolved, a tagged type may
+      --  be left with a set of implicitly declared and possibly erroneous
+      --  abstract subprograms, null procedures and subprograms that require
+      --  overriding. If this set contains fully conformat homographs, then one
+      --  is chosen arbitrarily (already done during resolution), otherwise all
+      --  remaining non-fully conformant homographs are hidden from visibility
+      --  (Ada RM 8.3 12.3/2).
+
+      if Is_Tagged_Type (E) then
+         Hide_Non_Overridden_Subprograms (E);
       end if;
 
       --  Check CPP types
@@ -10662,7 +10859,7 @@ package body Sem_Ch13 is
       end if;
 
       --  For a record type, deal with variant parts. This has to be delayed
-      --  to this point, because of the issue of statically precicated
+      --  to this point, because of the issue of statically predicated
       --  subtypes, which we have to ensure are frozen before checking
       --  choices, since we need to have the static choice list set.
 

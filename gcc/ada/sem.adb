@@ -1412,11 +1412,33 @@ package body Sem is
          GNAT_Mode := True;
       end if;
 
+      --  For generic main, never do expansion
+
       if Generic_Main then
          Expander_Mode_Save_And_Set (False);
+
+      --  Non generic case
+
       else
          Expander_Mode_Save_And_Set
-           (Operating_Mode = Generate_Code or Debug_Flag_X);
+
+           --  Turn on expansion if generating code
+
+           (Operating_Mode = Generate_Code
+
+             --  or if special debug flag -gnatdx is set
+
+             or else Debug_Flag_X
+
+             --  Or if in configuration run-time mode. We do this so we get
+             --  error messages about missing entities in the run-time even
+             --  if we are compiling in -gnatc (no code generation) mode.
+             --  Similar processing applies to No_Run_Time_Mode. However,
+             --  don't do this if debug flag -gnatd.Z is set (this is to handle
+             --  a situation where this new processing causes trouble).
+
+             or else ((Configurable_Run_Time_Mode or No_Run_Time_Mode)
+                       and not Debug_Flag_Dot_ZZ));
       end if;
 
       Full_Analysis      := True;
@@ -1484,13 +1506,7 @@ package body Sem is
             null;
 
          else
-            --  Initialize if first time
-
-            if No (Comp_Unit_List) then
-               Comp_Unit_List := New_Elmt_List;
-            end if;
-
-            Append_Elmt (Comp_Unit, Comp_Unit_List);
+            Append_New_Elmt (Comp_Unit, To => Comp_Unit_List);
 
             if Debug_Unit_Walk then
                Write_Str ("Appending ");

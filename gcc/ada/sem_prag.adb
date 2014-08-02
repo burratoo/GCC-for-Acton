@@ -326,11 +326,7 @@ package body Sem_Prag is
 
    procedure Add_Item (Item : Entity_Id; To_List : in out Elist_Id) is
    begin
-      if No (To_List) then
-         To_List := New_Elmt_List;
-      end if;
-
-      Append_Elmt (Item, To_List);
+      Append_New_Elmt (Item, To => To_List);
    end Add_Item;
 
    -------------------------------
@@ -3248,8 +3244,7 @@ package body Sem_Prag is
          Arg_Parameter_Types          : Node_Id;
          Arg_Result_Type              : Node_Id := Empty;
          Arg_Mechanism                : Node_Id;
-         Arg_Result_Mechanism         : Node_Id := Empty;
-         Arg_First_Optional_Parameter : Node_Id := Empty);
+         Arg_Result_Mechanism         : Node_Id := Empty);
       --  Common processing for all extended Import and Export pragmas applying
       --  to subprograms. The caller omits any arguments that do not apply to
       --  the pragma in question (for example, Arg_Result_Type can be non-Empty
@@ -3471,14 +3466,14 @@ package body Sem_Prag is
               and then Is_Private_Descendant (Pack_Id)
             then
                --  A variable or state abstraction which is part of the
-               --  visible state of a private child unit (or a public
-               --  descendant thereof) shall have its Part_Of indicator
-               --  specified; the Part_Of indicator shall denote a state
-               --  abstraction declared by either the parent unit of the
-               --  private unit or by a public descendant of that parent unit.
+               --  visible state of a private child unit (or one of its public
+               --  descendants) must have its Part_Of indicator specified. The
+               --  Part_Of indicator must denote a state abstraction declared
+               --  by either the parent unit of the private unit or by a public
+               --  descendant of that parent unit.
 
-               --  Find nearest nearest private ancestor (which can be the
-               --  current unit itself).
+               --  Find nearest private ancestor (which can be the current unit
+               --  itself).
 
                Parent_Unit := Pack_Id;
                while Present (Parent_Unit) loop
@@ -7311,8 +7306,7 @@ package body Sem_Prag is
          Arg_Parameter_Types          : Node_Id;
          Arg_Result_Type              : Node_Id := Empty;
          Arg_Mechanism                : Node_Id;
-         Arg_Result_Mechanism         : Node_Id := Empty;
-         Arg_First_Optional_Parameter : Node_Id := Empty)
+         Arg_Result_Mechanism         : Node_Id := Empty)
       is
          Ent       : Entity_Id;
          Def_Id    : Entity_Id;
@@ -7320,7 +7314,6 @@ package body Sem_Prag is
          Formal    : Entity_Id;
          Ambiguous : Boolean;
          Match     : Boolean;
-         Dval      : Node_Id;
 
          function Same_Base_Type
           (Ptype  : Node_Id;
@@ -7701,63 +7694,6 @@ package body Sem_Prag is
                end if;
             end;
          end if;
-
-         --  Process First_Optional_Parameter argument if present. We have
-         --  already checked that this is only allowed for the Import case.
-
-         if Present (Arg_First_Optional_Parameter) then
-            if Nkind (Arg_First_Optional_Parameter) /= N_Identifier then
-               Error_Pragma_Arg
-                 ("first optional parameter must be formal parameter name",
-                  Arg_First_Optional_Parameter);
-            end if;
-
-            Formal := First_Formal (Ent);
-            loop
-               if No (Formal) then
-                  Error_Pragma_Arg
-                    ("specified formal parameter& not found",
-                     Arg_First_Optional_Parameter);
-               end if;
-
-               exit when Chars (Formal) =
-                         Chars (Arg_First_Optional_Parameter);
-
-               Next_Formal (Formal);
-            end loop;
-
-            Set_First_Optional_Parameter (Ent, Formal);
-
-            --  Check specified and all remaining formals have right form
-
-            while Present (Formal) loop
-               if Ekind (Formal) /= E_In_Parameter then
-                  Error_Msg_NE
-                    ("optional formal& is not of mode in!",
-                     Arg_First_Optional_Parameter, Formal);
-
-               else
-                  Dval := Default_Value (Formal);
-
-                  if No (Dval) then
-                     Error_Msg_NE
-                       ("optional formal& does not have default value!",
-                        Arg_First_Optional_Parameter, Formal);
-
-                  elsif Compile_Time_Known_Value_Or_Aggr (Dval) then
-                     null;
-
-                  else
-                     Error_Msg_FE
-                       ("default value for optional formal& is non-static!",
-                        Arg_First_Optional_Parameter, Formal);
-                  end if;
-               end if;
-
-               Set_Is_Optional_Parameter (Formal);
-               Next_Formal (Formal);
-            end loop;
-         end if;
       end Process_Extended_Import_Export_Subprogram_Pragma;
 
       --------------------------
@@ -7904,8 +7840,13 @@ package body Sem_Prag is
             --  the code generator making an implicit initialization explicit.
 
             elsif Present (Expression (Parent (Def_Id)))
-              and then Comes_From_Source (Expression (Parent (Def_Id)))
+              and then Comes_From_Source
+                         (Original_Node (Expression (Parent (Def_Id))))
             then
+               --  Set imported flag to prevent cascaded errors
+
+               Set_Is_Imported (Def_Id);
+
                Error_Msg_Sloc := Sloc (Def_Id);
                Error_Pragma_Arg
                  ("no initialization allowed for declaration of& #",
@@ -7913,7 +7854,13 @@ package body Sem_Prag is
                   Arg2);
 
             else
-               Set_Imported (Def_Id);
+               --  If the pragma comes from an aspect specification the
+               --  Is_Imported flag has already been set.
+
+               if not From_Aspect_Specification (N) then
+                  Set_Imported (Def_Id);
+               end if;
+
                Process_Interface_Name (Def_Id, Arg3, Arg4);
 
                --  Note that we do not set Is_Public here. That's because we
@@ -7988,7 +7935,12 @@ package body Sem_Prag is
                   exit;
 
                else
-                  Set_Imported (Def_Id);
+                  --  If the pragma comes from an aspect specification the
+                  --  Is_Imported flag has already been set.
+
+                  if not From_Aspect_Specification (N) then
+                     Set_Imported (Def_Id);
+                  end if;
 
                   --  Reject an Import applied to an abstract subprogram
 
@@ -8833,55 +8785,6 @@ package body Sem_Prag is
             Id := Chars (Arg);
             Expr := Get_Pragma_Arg (Arg);
 
-            --  Special handling for No_Elaboration_Code
-
-            if Nkind (Expr) = N_Identifier
-              and then Chars (Expr) = Name_No_Elaboration_Code
-            then
-               if No_Elab_Code (Current_Sem_Unit) < No_Elab_Code then
-                  Set_No_Elab_Code (Current_Sem_Unit, No_Elab_Code);
-               end if;
-            end if;
-
-            --  Special handling for No_Elaboration_Code_All
-
-            if Nkind (Expr) = N_Identifier
-              and then Chars (Expr) = Name_No_Elaboration_Code_All
-            then
-               --  Must appear within a spec
-
-               if not Nkind_In (Unit (Cunit (Current_Sem_Unit)),
-                                N_Package_Declaration,
-                                N_Subprogram_Declaration)
-               then
-                  Error_Msg_Name_1 := Id;
-                  Error_Msg_N
-                    ("restriction% can appear only in package or "
-                     & "subprogram spec", Arg);
-               end if;
-
-               --  Set special value in unit table
-
-               declare
-                  New_Val : No_Elab_Code_T;
-
-               begin
-                  if Warn then
-                     New_Val := No_Elab_Code_All_Warn;
-                  else
-                     New_Val := No_Elab_Code_All;
-                  end if;
-
-                  if No_Elab_Code (Current_Sem_Unit) < New_Val then
-                     Set_No_Elab_Code (Current_Sem_Unit, New_Val);
-                  end if;
-               end;
-
-               --  Note that in the code below, Process_Restriction_Synonym
-               --  will treat No_Elaboration_Code_All like No_Elaboration_Code.
-
-            end if;
-
             --  Case of no restriction identifier present
 
             if Id = No_Name then
@@ -8961,10 +8864,10 @@ package body Sem_Prag is
                        ("\unless also specified in body or spec", N);
                      return;
 
-                  --  If we have a No_Elaboration_Code pragma that we
-                  --  accept, then it needs to be added to the configuration
-                  --  restrcition set so that we get proper application to
-                  --  other units in the main extended source as required.
+                  --  If we accept a No_Elaboration_Code restriction, then it
+                  --  needs to be added to the configuration restriction set so
+                  --  that we get proper application to other units in the main
+                  --  extended source as required.
 
                   else
                      Add_To_Config_Boolean_Restrictions (No_Elaboration_Code);
@@ -9373,9 +9276,9 @@ package body Sem_Prag is
                if Warn_On_Export_Import
 
                  --  Only do this for something that was in the source. Not
-                 --  clear if this can be False now (there used for sure to
-                 --  be cases on VMS where it was False), but anyway the test
-                 --  is harmless if not needed, so it is retained.
+                 --  clear if this can be False now (there used for sure to be
+                 --  cases on some systems where it was False), but anyway the
+                 --  test is harmless if not needed, so it is retained.
 
                  and then Comes_From_Source (Arg)
                then
@@ -10853,10 +10756,9 @@ package body Sem_Prag is
             Check_Arg_Count (0);
 
             --  If Address is a private type, then set the flag to allow
-            --  integer address values. If Address is not private, then
-            --  this pragma has no purpose, so it is simply ignored. Not
-            --  clear if there are any such targets now (VMS used to be
-            --  one such, but leave test in for the future anyway).
+            --  integer address values. If Address is not private, then this
+            --  pragma has no purpose, so it is simply ignored. Not clear if
+            --  there are any such targets now.
 
             if Opt.Address_Is_Private then
                Opt.Allow_Integer_Address := True;
@@ -10981,20 +10883,17 @@ package body Sem_Prag is
               Pragma_Assume         |
               Pragma_Loop_Invariant =>
          Assert : declare
-            Expr : Node_Id;
-            Newa : List_Id;
-
-            Has_Loop_Entry : Boolean;
-            --  Set True by
-
-            function Contains_Loop_Entry return Boolean;
-            --  Tests if Expr contains a Loop_Entry attribute reference
+            function Contains_Loop_Entry (Expr : Node_Id) return Boolean;
+            --  Determine whether expression Expr contains a Loop_Entry
+            --  attribute reference.
 
             -------------------------
             -- Contains_Loop_Entry --
             -------------------------
 
-            function Contains_Loop_Entry return Boolean is
+            function Contains_Loop_Entry (Expr : Node_Id) return Boolean is
+               Has_Loop_Entry : Boolean := False;
+
                function Process (N : Node_Id) return Traverse_Result;
                --  Process function for traversal to look for Loop_Entry
 
@@ -11019,10 +10918,14 @@ package body Sem_Prag is
             --  Start of processing for Contains_Loop_Entry
 
             begin
-               Has_Loop_Entry := False;
                Traverse (Expr);
                return Has_Loop_Entry;
             end Contains_Loop_Entry;
+
+            --  Local variables
+
+            Expr : Node_Id;
+            Newa : List_Id;
 
          --  Start of processing for Assert
 
@@ -11044,17 +10947,19 @@ package body Sem_Prag is
             Check_Optional_Identifier (Arg1, Name_Check);
             Expr := Get_Pragma_Arg (Arg1);
 
-            --  Special processing for Loop_Invariant or for other cases if
-            --  a Loop_Entry attribute is present.
+            --  Special processing for Loop_Invariant, Loop_Variant or for
+            --  other cases where a Loop_Entry attribute is present. If the
+            --  assertion pragma contains attribute Loop_Entry, ensure that
+            --  the related pragma is within a loop.
 
             if Prag_Id = Pragma_Loop_Invariant
-              or else Contains_Loop_Entry
+              or else Prag_Id = Pragma_Loop_Variant
+              or else Contains_Loop_Entry (Expr)
             then
-               --  Check restricted placement, must be within a loop
-
                Check_Loop_Pragma_Placement;
 
-               --  Do preanalyze to deal with embedded Loop_Entry attribute
+               --  Perform preanalysis to deal with embedded Loop_Entry
+               --  attributes.
 
                Preanalyze_Assert_Expression (Expression (Arg1), Any_Boolean);
             end if;
@@ -13596,9 +13501,6 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Export_Function => Export_Function : declare
             Args  : Args_List (1 .. 6);
@@ -13660,9 +13562,6 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Export_Object => Export_Object : declare
             Args  : Args_List (1 .. 3);
@@ -13716,9 +13615,6 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Export_Procedure => Export_Procedure : declare
             Args  : Args_List (1 .. 4);
@@ -13794,9 +13690,6 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Export_Valued_Procedure =>
          Export_Valued_Procedure : declare
@@ -14163,10 +14056,8 @@ package body Sem_Prag is
 
          --  pragma Ident (static_string_EXPRESSION)
 
-         --  Note: pragma Comment shares this processing. Pragma Comment is
-         --  identical to Ident, except that the restriction of the argument to
-         --  31 characters and the placement restrictions are not enforced for
-         --  pragma Comment.
+         --  Note: pragma Comment shares this processing. Pragma Ident is
+         --  identical in effect to pragma Commment.
 
          when Pragma_Ident | Pragma_Comment => Ident : declare
             Str : Node_Id;
@@ -14177,13 +14068,6 @@ package body Sem_Prag is
             Check_No_Identifiers;
             Check_Arg_Is_OK_Static_Expression (Arg1, Standard_String);
             Store_Note (N);
-
-            --  For pragma Ident, preserve DEC compatibility by requiring the
-            --  pragma to appear in a declarative part or package spec.
-
-            if Prag_Id = Pragma_Ident then
-               Check_Is_In_Decl_Part_Or_Package_Spec;
-            end if;
 
             Str := Expr_Value_S (Get_Pragma_Arg (Arg1));
 
@@ -14208,15 +14092,10 @@ package body Sem_Prag is
 
                   if Present (CS) then
 
-                     --  For Ident, we do not permit multiple instances
+                     --  If we have multiple instances, concatenate them, but
+                     --  not in ASIS, where we want the original tree.
 
-                     if Prag_Id = Pragma_Ident then
-                        Error_Pragma ("duplicate% pragma not permitted");
-
-                     --  For Comment, we concatenate the string, unless we want
-                     --  to preserve the tree structure for ASIS.
-
-                     elsif not ASIS_Mode then
+                     if not ASIS_Mode then
                         Start_String (Strval (CS));
                         Store_String_Char (' ');
                         Store_String_Chars (Strval (Str));
@@ -14233,15 +14112,6 @@ package body Sem_Prag is
 
                elsif Nkind (GP) = N_Subunit then
                   null;
-
-               --  Otherwise we have a misplaced pragma Ident, but we ignore
-               --  this if we are in an instantiation, since it comes from
-               --  a generic, and has no relevance to the instantiation.
-
-               elsif Prag_Id = Pragma_Ident then
-                  if Instantiation_Location (Loc) = No_Location then
-                     Error_Pragma ("pragma% only allowed at outer level");
-                  end if;
                end if;
             end;
          end Ident;
@@ -14430,8 +14300,7 @@ package body Sem_Prag is
          --     [, [Parameter_Types          =>] (PARAMETER_TYPES)]
          --     [, [Result_Type              =>] SUBTYPE_MARK]
          --     [, [Mechanism                =>] MECHANISM]
-         --     [, [Result_Mechanism         =>] MECHANISM_NAME]
-         --     [, [First_Optional_Parameter =>] IDENTIFIER]);
+         --     [, [Result_Mechanism         =>] MECHANISM_NAME]);
 
          --  EXTERNAL_SYMBOL ::=
          --    IDENTIFIER
@@ -14455,20 +14324,16 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Import_Function => Import_Function : declare
-            Args  : Args_List (1 .. 7);
-            Names : constant Name_List (1 .. 7) := (
+            Args  : Args_List (1 .. 6);
+            Names : constant Name_List (1 .. 6) := (
                       Name_Internal,
                       Name_External,
                       Name_Parameter_Types,
                       Name_Result_Type,
                       Name_Mechanism,
-                      Name_Result_Mechanism,
-                      Name_First_Optional_Parameter);
+                      Name_Result_Mechanism);
 
             Internal                 : Node_Id renames Args (1);
             External                 : Node_Id renames Args (2);
@@ -14476,7 +14341,6 @@ package body Sem_Prag is
             Result_Type              : Node_Id renames Args (4);
             Mechanism                : Node_Id renames Args (5);
             Result_Mechanism         : Node_Id renames Args (6);
-            First_Optional_Parameter : Node_Id renames Args (7);
 
          begin
             GNAT_Pragma;
@@ -14487,8 +14351,7 @@ package body Sem_Prag is
               Arg_Parameter_Types          => Parameter_Types,
               Arg_Result_Type              => Result_Type,
               Arg_Mechanism                => Mechanism,
-              Arg_Result_Mechanism         => Result_Mechanism,
-              Arg_First_Optional_Parameter => First_Optional_Parameter);
+              Arg_Result_Mechanism         => Result_Mechanism);
          end Import_Function;
 
          -------------------
@@ -14532,8 +14395,7 @@ package body Sem_Prag is
          --        [Internal                 =>] LOCAL_NAME
          --     [, [External                 =>] EXTERNAL_SYMBOL]
          --     [, [Parameter_Types          =>] (PARAMETER_TYPES)]
-         --     [, [Mechanism                =>] MECHANISM]
-         --     [, [First_Optional_Parameter =>] IDENTIFIER]);
+         --     [, [Mechanism                =>] MECHANISM]);
 
          --  EXTERNAL_SYMBOL ::=
          --    IDENTIFIER
@@ -14557,24 +14419,19 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Import_Procedure => Import_Procedure : declare
-            Args  : Args_List (1 .. 5);
-            Names : constant Name_List (1 .. 5) := (
+            Args  : Args_List (1 .. 4);
+            Names : constant Name_List (1 .. 4) := (
                       Name_Internal,
                       Name_External,
                       Name_Parameter_Types,
-                      Name_Mechanism,
-                      Name_First_Optional_Parameter);
+                      Name_Mechanism);
 
             Internal                 : Node_Id renames Args (1);
             External                 : Node_Id renames Args (2);
             Parameter_Types          : Node_Id renames Args (3);
             Mechanism                : Node_Id renames Args (4);
-            First_Optional_Parameter : Node_Id renames Args (5);
 
          begin
             GNAT_Pragma;
@@ -14583,8 +14440,7 @@ package body Sem_Prag is
               Arg_Internal                 => Internal,
               Arg_External                 => External,
               Arg_Parameter_Types          => Parameter_Types,
-              Arg_Mechanism                => Mechanism,
-              Arg_First_Optional_Parameter => First_Optional_Parameter);
+              Arg_Mechanism                => Mechanism);
          end Import_Procedure;
 
          -----------------------------
@@ -14595,8 +14451,7 @@ package body Sem_Prag is
          --        [Internal                 =>] LOCAL_NAME
          --     [, [External                 =>] EXTERNAL_SYMBOL]
          --     [, [Parameter_Types          =>] (PARAMETER_TYPES)]
-         --     [, [Mechanism                =>] MECHANISM]
-         --     [, [First_Optional_Parameter =>] IDENTIFIER]);
+         --     [, [Mechanism                =>] MECHANISM]);
 
          --  EXTERNAL_SYMBOL ::=
          --    IDENTIFIER
@@ -14620,25 +14475,20 @@ package body Sem_Prag is
          --  MECHANISM_NAME ::=
          --    Value
          --  | Reference
-         --  | Descriptor [([Class =>] CLASS_NAME)]
-
-         --  CLASS_NAME ::= ubs | ubsb | uba | s | sb | a | nca
 
          when Pragma_Import_Valued_Procedure =>
          Import_Valued_Procedure : declare
-            Args  : Args_List (1 .. 5);
-            Names : constant Name_List (1 .. 5) := (
+            Args  : Args_List (1 .. 4);
+            Names : constant Name_List (1 .. 4) := (
                       Name_Internal,
                       Name_External,
                       Name_Parameter_Types,
-                      Name_Mechanism,
-                      Name_First_Optional_Parameter);
+                      Name_Mechanism);
 
             Internal                 : Node_Id renames Args (1);
             External                 : Node_Id renames Args (2);
             Parameter_Types          : Node_Id renames Args (3);
             Mechanism                : Node_Id renames Args (4);
-            First_Optional_Parameter : Node_Id renames Args (5);
 
          begin
             GNAT_Pragma;
@@ -14647,8 +14497,7 @@ package body Sem_Prag is
               Arg_Internal                 => Internal,
               Arg_External                 => External,
               Arg_Parameter_Types          => Parameter_Types,
-              Arg_Mechanism                => Mechanism,
-              Arg_First_Optional_Parameter => First_Optional_Parameter);
+              Arg_Mechanism                => Mechanism);
          end Import_Valued_Procedure;
 
          -----------------
@@ -16465,6 +16314,51 @@ package body Sem_Prag is
             GNAT_Pragma;
             Pragma_Misplaced;
 
+         -----------------------------
+         -- No_Elaboration_Code_All --
+         -----------------------------
+
+         --  pragma No_Elaboration_Code_All;
+
+         when Pragma_No_Elaboration_Code_All => NECA : declare
+         begin
+            GNAT_Pragma;
+            Check_Valid_Library_Unit_Pragma;
+
+            if Nkind (N) = N_Null_Statement then
+               return;
+            end if;
+
+            --  Must appear for a spec
+
+            if not Nkind_In (Unit (Cunit (Current_Sem_Unit)),
+                             N_Package_Declaration,
+                             N_Subprogram_Declaration)
+            then
+               Error_Pragma
+                 (Fix_Error
+                    ("pragma% can only occur for package "
+                     & "or subprogram spec"));
+            end if;
+
+            --  Set flag in unit table
+
+            Set_No_Elab_Code_All (Current_Sem_Unit);
+
+            --  Set restriction No_Elaboration_Code, including adding it to the
+            --  set of configuration restrictions so it will apply to all units
+            --  in the extended main source.
+
+            Set_Restriction (No_Elaboration_Code, N);
+            Add_To_Config_Boolean_Restrictions (No_Elaboration_Code);
+
+            --  If in main extended unit, activate transitive with test
+
+            if In_Extended_Main_Source_Unit (N) then
+               Opt.No_Elab_Code_All_Pragma := N;
+            end if;
+         end NECA;
+
          ---------------
          -- No_Inline --
          ---------------
@@ -17879,7 +17773,7 @@ package body Sem_Prag is
 
                Preanalyze_Spec_Expression (Arg, RTE (RE_Any_Priority));
 
-               if not Is_Static_Expression (Arg) then
+               if not Is_OK_Static_Expression (Arg) then
                   Check_Restriction (Static_Priorities, Arg);
                end if;
 
@@ -18979,11 +18873,12 @@ package body Sem_Prag is
 
          --  pragma Short_Descriptors;
 
+         --  Recognize and validate, but otherwise ignore
+
          when Pragma_Short_Descriptors =>
             GNAT_Pragma;
             Check_Arg_Count (0);
             Check_Valid_Configuration_Pragma;
-            Short_Descriptors := True;
 
          ------------------------------
          -- Simple_Storage_Pool_Type --
@@ -20894,6 +20789,8 @@ package body Sem_Prag is
          ----------------------
          -- Warning_As_Error --
          ----------------------
+
+         --  pragma Warning_As_Error (static_string_EXPRESSION);
 
          when Pragma_Warning_As_Error =>
             GNAT_Pragma;
@@ -24973,6 +24870,7 @@ package body Sem_Prag is
       Pragma_Memory_Size                    => -1,
       Pragma_No_Return                      =>  0,
       Pragma_No_Body                        =>  0,
+      Pragma_No_Elaboration_Code_All        => -1,
       Pragma_No_Inline                      =>  0,
       Pragma_No_Run_Time                    => -1,
       Pragma_No_Strict_Aliasing             => -1,
@@ -25266,6 +25164,9 @@ package body Sem_Prag is
             return Has_Unconstrained_Component (Typ);
          end if;
 
+      elsif Is_Private_Type (Typ) and then Has_Discriminants (Typ) then
+         return True;
+
       else
          return False;
       end if;
@@ -25486,7 +25387,7 @@ package body Sem_Prag is
                   Set_Body_References (State_Id, New_Elmt_List);
                end if;
 
-               Append_Elmt (Ref, Body_References (State_Id));
+               Append_Elmt (Ref, To => Body_References (State_Id));
                exit;
             end if;
          end if;

@@ -32,7 +32,6 @@ with Debug;    use Debug;
 with Elists;
 with Errout;   use Errout;
 with Exp_CG;
-with Exp_Ch6;  use Exp_Ch6;
 with Fmap;
 with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
@@ -476,11 +475,6 @@ procedure Gnat1drv is
          Ttypes.Bytes_Big_Endian := not Ttypes.Bytes_Big_Endian;
       end if;
 
-      --  Temporarily set True_VMS_Target to OpenVMS_On_Target. This is just
-      --  temporary, we no longer deal with the debug flag -gnatdm here.
-
-      Opt.True_VMS_Target := Targparm.OpenVMS_On_Target;
-
       --  Activate front end layout if debug flag -gnatdF is set
 
       if Debug_Flag_FF then
@@ -608,13 +602,16 @@ procedure Gnat1drv is
 
         and then not GNATprove_Mode
 
-        --  No back end inlining if front end inlining explicitly enabled?
+        --  No back end inlining if front end inlining explicitly enabled.
+        --  Done to minimize the output differences to customers still using
+        --  this deprecated switch; in addition, this behavior reduces the
+        --  output differences in old tests.
 
         and then not Front_End_Inlining
 
-        --  For now, we only enable back end inlining if debug flag .z is set
+        --  Back end inlining is disabled if debug flag .z is set
 
-        and then Debug_Flag_Dot_Z;
+        and then not Debug_Flag_Dot_Z;
 
       --  Output warning if -gnateE specified and cannot be supported
 
@@ -869,53 +866,64 @@ begin
 
       Opt.Compilation_Time := System.OS_Lib.Current_Time_String;
 
-      --  Acquire target parameters from system.ads (source of package System)
+      --  Get the target parameters only when -gnats is not used, to avoid
+      --  failing when there is no default runtime.
 
-      Targparm_Acquire : declare
-         use Sinput;
+      if Operating_Mode /= Check_Syntax then
 
-         S : Source_File_Index;
-         N : File_Name_Type;
+         --  Acquire target parameters from system.ads (package System source)
 
-      begin
-         Name_Buffer (1 .. 10) := "system.ads";
-         Name_Len := 10;
-         N := Name_Find;
-         S := Load_Source_File (N);
+         Targparm_Acquire : declare
+            use Sinput;
 
-         if S = No_Source_File then
-            Write_Line
-              ("fatal error, run-time library not installed correctly");
-            Write_Line ("cannot locate file system.ads");
-            raise Unrecoverable_Error;
+            S : Source_File_Index;
+            N : File_Name_Type;
 
-         --  Remember source index of system.ads (which was read successfully)
+         begin
+            Name_Buffer (1 .. 10) := "system.ads";
+            Name_Len := 10;
+            N := Name_Find;
+            S := Load_Source_File (N);
 
-         else
-            System_Source_File_Index := S;
-         end if;
+            --  Failed to read system.ads, fatal error
 
-         Targparm.Get_Target_Parameters
-           (System_Text  => Source_Text  (S),
-            Source_First => Source_First (S),
-            Source_Last  => Source_Last  (S),
-            Make_Id      => Tbuild.Make_Id'Access,
-            Make_SC      => Tbuild.Make_SC'Access,
-            Set_RND      => Tbuild.Set_RND'Access);
+            if S = No_Source_File then
+               Write_Line
+                 ("fatal error, run-time library not installed correctly");
+               Write_Line ("cannot locate file system.ads");
+               raise Unrecoverable_Error;
 
-         --  Acquire configuration pragma information from Targparm
+            --  Read system.ads successfully, remember its source index
 
-         Restrict.Restrictions := Targparm.Restrictions_On_Target;
-      end Targparm_Acquire;
+            else
+               System_Source_File_Index := S;
+            end if;
+
+            Targparm.Get_Target_Parameters
+              (System_Text  => Source_Text  (S),
+               Source_First => Source_First (S),
+               Source_Last  => Source_Last  (S),
+               Make_Id      => Tbuild.Make_Id'Access,
+               Make_SC      => Tbuild.Make_SC'Access,
+               Set_RND      => Tbuild.Set_RND'Access);
+
+            --  Acquire configuration pragma information from Targparm
+
+            Restrict.Restrictions := Targparm.Restrictions_On_Target;
+         end Targparm_Acquire;
+      end if;
 
       --  Perform various adjustments and settings of global switches
 
       Adjust_Global_Switches;
 
       --  Output copyright notice if full list mode unless we have a list
-      --  file, in which case we defer this so that it is output in the file
+      --  file, in which case we defer this so that it is output in the file.
 
       if (Verbose_Mode or else (Full_List and then Full_List_File_Name = null))
+
+        --  Debug flag gnatd7 suppresses this copyright notice
+
         and then not Debug_Flag_7
       then
          Write_Eol;
@@ -1235,6 +1243,19 @@ begin
 
       Prepcomp.Add_Dependencies;
 
+      --  In gnatprove mode we're writing the ALI much earlier than usual
+      --  as flow analysis needs the file present in order to append its
+      --  own globals to it.
+
+      if GNATprove_Mode then
+
+         --  Note: In GNATprove mode, an "object" file is always generated as
+         --  the result of calling gnat1 or gnat2why, although this is not the
+         --  same as the object file produced for compilation.
+
+         Write_ALI (Object => True);
+      end if;
+
       --  Back end needs to explicitly unlock tables it needs to touch
 
       Atree.Lock;
@@ -1276,7 +1297,7 @@ begin
       Errout.Finalize (Last_Call => True);
       Errout.Output_Messages;
       List_Rep_Info (Ttypes.Bytes_Big_Endian);
-      List_Inlining_Info;
+      Inline.List_Inlining_Info;
 
       --  Only write the library if the backend did not generate any error
       --  messages. Otherwise signal errors to the driver program so that
@@ -1287,12 +1308,9 @@ begin
          Exit_Program (E_Errors);
       end if;
 
-      --  In GNATprove mode, an "object" file is always generated as the
-      --  result of calling gnat1 or gnat2why, although this is not the
-      --  same as the object file produced for compilation.
-
-      Write_ALI (Object => (Back_End_Mode = Generate_Object
-                             or else GNATprove_Mode));
+      if not GNATprove_Mode then
+         Write_ALI (Object => (Back_End_Mode = Generate_Object));
+      end if;
 
       if not Compilation_Errors then
 

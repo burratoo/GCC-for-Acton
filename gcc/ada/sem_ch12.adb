@@ -30,6 +30,7 @@ with Elists;   use Elists;
 with Errout;   use Errout;
 with Expander; use Expander;
 with Exp_Disp; use Exp_Disp;
+with Exp_Util; use Exp_Util;
 with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
 with Freeze;   use Freeze;
@@ -1137,6 +1138,13 @@ package body Sem_Ch12 is
             end if;
          end if;
 
+         --  Propagate visible entity to operator node, either from a
+         --  given actual or from a default.
+
+         if Is_Entity_Name (Actual) and then Nkind (Expr) in N_Op then
+            Set_Entity (Expr, Entity (Actual));
+         end if;
+
          Decl :=
            Make_Expression_Function (Loc,
              Specification => Spec,
@@ -1662,14 +1670,28 @@ package body Sem_Ch12 is
 
                   else
                      if GNATprove_Mode
-                        and then Ekind (Defining_Entity (Analyzed_Formal))
-                          = E_Function
+                       and then
+                         Present
+                           (Get_First_Parent_With_Ext_Axioms_For_Entity
+                              (Defining_Entity (Analyzed_Formal)))
+                       and then Ekind (Defining_Entity (Analyzed_Formal)) =
+                                                                    E_Function
                      then
-
                         --  If actual is an entity (function or operator),
                         --  build wrapper for it.
 
-                        if Present (Match) and then Is_Entity_Name (Match) then
+                        if Present (Match)
+                          and then Nkind (Match) = N_Operator_Symbol
+                        then
+                           --  If the name is a default, find its visible
+                           --  entity at the point of instantiation.
+
+                           if Is_Entity_Name (Match)
+                             and then No (Entity (Match))
+                           then
+                              Find_Direct_Name (Match);
+                           end if;
+
                            Append_To (Assoc,
                              Build_Wrapper
                                (Defining_Entity (Analyzed_Formal), Match));
@@ -1677,9 +1699,8 @@ package body Sem_Ch12 is
                         --  Ditto if formal is an operator with a default.
 
                         elsif Box_Present (Formal)
-                           and then Nkind (Defining_Entity (Analyzed_Formal))
-                             = N_Defining_Operator_Symbol
-
+                           and then Nkind (Defining_Entity (Analyzed_Formal)) =
+                                                    N_Defining_Operator_Symbol
                         then
                            Append_To (Assoc,
                              Build_Wrapper
@@ -1734,9 +1755,7 @@ package body Sem_Ch12 is
                   --  If this is a nested generic, preserve default for later
                   --  instantiations.
 
-                  if No (Match)
-                    and then Box_Present (Formal)
-                  then
+                  if No (Match) and then Box_Present (Formal) then
                      Append_Elmt
                        (Defining_Unit_Name (Specification (Last (Assoc))),
                         Default_Actuals);
@@ -8902,12 +8921,7 @@ package body Sem_Ch12 is
            and then Remove_Suffix (Prim_A, 'P') = Chars (Prim_G)
          then
             Set_Chars (Prim_A, Chars (Prim_G));
-
-            if List = No_Elist then
-               List := New_Elmt_List;
-            end if;
-
-            Append_Elmt (Prim_A, List);
+            Append_New_Elmt (Prim_A, To => List);
          end if;
 
          Next_Elmt (Prim_A_Elmt);
@@ -10380,8 +10394,7 @@ package body Sem_Ch12 is
             --  to be compiled with checks off.
 
             --  Note that we do NOT apply this criterion to children of GNAT
-            --  (or on VMS, children of DEC). The latter units must suppress
-            --  checks explicitly if this is needed.
+            --  The latter units must suppress checks explicitly if needed.
 
             if Is_Predefined_File_Name
                  (Unit_File_Name (Get_Source_Unit (Gen_Decl)))
@@ -10810,6 +10823,13 @@ package body Sem_Ch12 is
       Loc        : Source_Ptr;
       Subt       : Entity_Id;
 
+      procedure Diagnose_Predicated_Actual;
+      --  There are a number of constructs in which a discrete type with
+      --  predicates is illegal, e.g. as an index in an array type declaration.
+      --  If a generic type is used is such a construct in a generic package
+      --  declaration, it carries the flag No_Predicate_On_Actual. it is part
+      --  of the generic contract that the actual cannot have predicates.
+
       procedure Validate_Array_Type_Instance;
       procedure Validate_Access_Subprogram_Instance;
       procedure Validate_Access_Type_Instance;
@@ -10826,6 +10846,29 @@ package body Sem_Ch12 is
       function Subtypes_Match (Gen_T, Act_T : Entity_Id) return Boolean;
       --  Check that base types are the same and that the subtypes match
       --  statically. Used in several of the above.
+
+      ---------------------------------
+      --  Diagnose_Predicated_Actual --
+      ---------------------------------
+
+      procedure Diagnose_Predicated_Actual is
+      begin
+         if No_Predicate_On_Actual (A_Gen_T)
+           and then Has_Predicates (Act_T)
+         then
+            Error_Msg_NE
+              ("actual for& cannot be a type with predicate",
+                 Instantiation_Node, A_Gen_T);
+
+         elsif No_Dynamic_Predicate_On_Actual (A_Gen_T)
+           and then Has_Predicates (Act_T)
+           and then not Has_Static_Predicate_Aspect (Act_T)
+         then
+            Error_Msg_NE
+              ("actual for& cannot be a type with a dynamic predicate",
+                 Instantiation_Node, A_Gen_T);
+         end if;
+      end Diagnose_Predicated_Actual;
 
       --------------------
       -- Subtypes_Match --
@@ -11365,7 +11408,7 @@ package body Sem_Ch12 is
                  ("actual for & cannot be a class-wide type", Actual, Gen_T);
                Abandon_Instantiation (Actual);
 
-            --  Otherwise, the formal and actual shall have the same number
+            --  Otherwise, the formal and actual must have the same number
             --  of discriminants and each discriminant of the actual must
             --  correspond to a discriminant of the formal.
 
@@ -11995,6 +12038,8 @@ package body Sem_Ch12 is
                   Abandon_Instantiation (Actual);
                end if;
 
+               Diagnose_Predicated_Actual;
+
             when N_Formal_Signed_Integer_Type_Definition =>
                if not Is_Signed_Integer_Type (Act_T) then
                   Error_Msg_NE
@@ -12003,6 +12048,8 @@ package body Sem_Ch12 is
                   Abandon_Instantiation (Actual);
                end if;
 
+               Diagnose_Predicated_Actual;
+
             when N_Formal_Modular_Type_Definition =>
                if not Is_Modular_Integer_Type (Act_T) then
                   Error_Msg_NE
@@ -12010,6 +12057,8 @@ package body Sem_Ch12 is
                        Actual, Gen_T);
                   Abandon_Instantiation (Actual);
                end if;
+
+               Diagnose_Predicated_Actual;
 
             when N_Formal_Floating_Point_Definition =>
                if not Is_Floating_Point_Type (Act_T) then

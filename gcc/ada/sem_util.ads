@@ -319,12 +319,6 @@ package Sem_Util is
    --  and the context is external to the protected operation, to warn against
    --  a possible unlocked access to data.
 
-   procedure Check_VMS (Construct : Node_Id);
-   --  Check that this the target is OpenVMS, and if so, return with no effect,
-   --  otherwise post an error noting this can only be used with OpenVMS ports.
-   --  The argument is the construct in question and is used to post the error
-   --  message.
-
    procedure Collect_Interfaces
      (T               : Entity_Id;
       Ifaces_List     : out Elist_Id;
@@ -838,6 +832,13 @@ package Sem_Util is
    function Get_Name_From_CTC_Pragma (N : Node_Id) return String_Id;
    --  Return the Name component of Test_Case pragma N
    --  Bad name now that this no longer applies to Contract_Case ???
+
+   function Get_Parent_Entity (Unit : Node_Id) return Entity_Id;
+   --  Get defining entity of parent unit of a child unit. In most cases this
+   --  is the defining entity of the unit, but for a child instance whose
+   --  parent needs a body for inlining, the instantiation node of the parent
+   --  has not yet been rewritten as a package declaration, and the entity has
+   --  to be retrieved from the Instance_Spec of the unit.
 
    function Get_Pragma_Id (N : Node_Id) return Pragma_Id;
    pragma Inline (Get_Pragma_Id);
@@ -1364,10 +1365,6 @@ package Sem_Util is
 
    function Is_Variable_Size_Record (E : Entity_Id) return Boolean;
    --  Returns true if E has variable size components
-
-   function Is_VMS_Operator (Op : Entity_Id) return Boolean;
-   --  Determine whether an operator is one of the intrinsics defined
-   --  in the DEC system extension.
 
    function Is_Variable
      (N                 : Node_Id;

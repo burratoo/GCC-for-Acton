@@ -459,14 +459,14 @@ package body Exp_Attr is
             Append_To (Alt_List,
               Make_Case_Statement_Alternative (Loc,
                 Discrete_Choices => New_Copy_List (Discrete_Choices (Variant)),
-                Statements =>
+                Statements       =>
                   Make_VS_Case (E, Component_List (Variant), Discrs)));
             Next_Non_Pragma (Variant);
          end loop;
 
          Append_To (Result,
            Make_Case_Statement (Loc,
-             Expression =>
+             Expression   =>
                Make_Selected_Component (Loc,
                  Prefix        => Make_Identifier (Loc, Name_X),
                  Selector_Name => New_Copy (Name (Variant_Part (CL)))),
@@ -4073,10 +4073,13 @@ package body Exp_Attr is
       -------------
 
       --  Transforms 'Machine into a call to the floating-point attribute
-      --  function Machine in Fat_xxx (where xxx is the root type)
+      --  function Machine in Fat_xxx (where xxx is the root type).
+      --  Expansion is avoided for cases the back end can handle directly.
 
       when Attribute_Machine =>
-         Expand_Fpt_Attribute_R (N);
+         if not Is_Inline_Floating_Point_Attribute (N) then
+            Expand_Fpt_Attribute_R (N);
+         end if;
 
       ----------------------
       -- Machine_Rounding --
@@ -4340,10 +4343,13 @@ package body Exp_Attr is
       -----------
 
       --  Transforms 'Model into a call to the floating-point attribute
-      --  function Model in Fat_xxx (where xxx is the root type)
+      --  function Model in Fat_xxx (where xxx is the root type).
+      --  Expansion is avoided for cases the back end can handle directly.
 
       when Attribute_Model =>
-         Expand_Fpt_Attribute_R (N);
+         if not Is_Inline_Floating_Point_Attribute (N) then
+            Expand_Fpt_Attribute_R (N);
+         end if;
 
       -----------------
       -- Object_Size --
@@ -5416,9 +5422,12 @@ package body Exp_Attr is
 
       --  Transforms 'Rounding into a call to the floating-point attribute
       --  function Rounding in Fat_xxx (where xxx is the root type)
+      --  Expansion is avoided for cases the back end can handle directly.
 
       when Attribute_Rounding =>
-         Expand_Fpt_Attribute_R (N);
+         if not Is_Inline_Floating_Point_Attribute (N) then
+            Expand_Fpt_Attribute_R (N);
+         end if;
 
       -------------
       -- Scaling --
@@ -7950,17 +7959,44 @@ package body Exp_Attr is
    function Is_Inline_Floating_Point_Attribute (N : Node_Id) return Boolean is
       Id : constant Attribute_Id := Get_Attribute_Id (Attribute_Name (N));
 
+      function Is_GCC_Target return Boolean;
+      --  Return True if we are using a GCC target/back-end
+      --  ??? Note: the implementation is kludgy/fragile
+
+      -------------------
+      -- Is_GCC_Target --
+      -------------------
+
+      function Is_GCC_Target return Boolean is
+      begin
+         return VM_Target = No_VM and then not CodePeer_Mode
+           and then not AAMP_On_Target;
+      end Is_GCC_Target;
+
+   --  Start of processing for Exp_Attr
+
    begin
-      if Nkind (Parent (N)) /= N_Type_Conversion
+      --  Machine and Model can be expanded by the GCC backend only
+
+      if Id = Attribute_Machine or else Id = Attribute_Model then
+         return Is_GCC_Target;
+
+      --  Remaining cases handled by all back ends are Rounding and Truncation
+      --  when appearing as the operand of a conversion to some integer type.
+
+      elsif Nkind (Parent (N)) /= N_Type_Conversion
         or else not Is_Integer_Type (Etype (Parent (N)))
       then
          return False;
       end if;
 
-      --  Should also support 'Machine_Rounding and 'Unbiased_Rounding, but
-      --  required back end support has not been implemented yet ???
+      --  Here we are in the integer conversion context
 
-      return Id = Attribute_Truncation;
+      --  Very probably we should also recognize the cases of Machine_Rounding
+      --  and unbiased rounding in this conversion context, but the back end is
+      --  not yet prepared to handle these cases ???
+
+      return Id = Attribute_Rounding or else Id = Attribute_Truncation;
    end Is_Inline_Floating_Point_Attribute;
 
 end Exp_Attr;

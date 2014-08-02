@@ -91,7 +91,7 @@ package body Lib.Writ is
          Main_CPU          => Default_Main_CPU,
          Main_Stack_Size   => Default_Main_Stack_Size,
          Munit_Index       => 0,
-         No_Elab_Code      => None,
+         No_Elab_Code_All  => False,
          Serial_Number     => 0,
          Version           => 0,
          Error_Location    => No_Location,
@@ -150,7 +150,7 @@ package body Lib.Writ is
         Main_CPU          => Default_Main_CPU,
         Main_Stack_Size   => Default_Main_Stack_Size,
         Munit_Index       => 0,
-        No_Elab_Code      => None,
+        No_Elab_Code_All  => False,
         Serial_Number     => 0,
         Version           => 0,
         Error_Location    => No_Location,
@@ -1138,20 +1138,6 @@ package body Lib.Writ is
 
       if Opt.Detect_Blocking then
          Write_Info_Str (" DB");
-      end if;
-
-      if Opt.Float_Format /= ' ' then
-         Write_Info_Str (" F");
-
-         if Opt.Float_Format = 'I' then
-            Write_Info_Char ('I');
-
-         elsif Opt.Float_Format_Long = 'D' then
-            Write_Info_Char ('D');
-
-         else
-            Write_Info_Char ('G');
-         end if;
       end if;
 
       if Tasking_Used
