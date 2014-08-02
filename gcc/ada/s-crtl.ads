@@ -117,8 +117,7 @@ package System.CRTL is
    function fopen
      (filename : chars;
       mode     : chars;
-      encoding : Filename_Encoding := Unspecified;
-      vms_form : chars := System.Null_Address) return FILEs;
+      encoding : Filename_Encoding := Unspecified) return FILEs;
    pragma Import (C, fopen, "__gnat_fopen");
 
    function fputc (C : int; stream : FILEs) return int;
@@ -137,8 +136,7 @@ package System.CRTL is
      (filename : chars;
       mode     : chars;
       stream   : FILEs;
-      encoding : Filename_Encoding := Unspecified;
-      vms_form : chars := System.Null_Address) return FILEs;
+      encoding : Filename_Encoding := Unspecified) return FILEs;
    pragma Import (C, freopen, "__gnat_freopen");
 
    function fseek
@@ -224,7 +222,7 @@ package System.CRTL is
    pragma Import (C, unlink, "__gnat_unlink");
 
    function open (filename : chars; oflag : int) return int;
-   pragma Import (C, open, "open");
+   pragma Import (C, open, "__gnat_open");
 
    function close (fd : int) return int;
    pragma Import (C, close, "close");

@@ -116,7 +116,7 @@ package body Debug is
    --  d.w  Do not check for infinite loops
    --  d.x  No exception handlers
    --  d.y
-   --  d.z  Enable new support for backend inlining
+   --  d.z  Restore previous support for frontend handling of Inline_Always
 
    --  d.A  Read/write Aspect_Specifications hash table to tree
    --  d.B
@@ -143,7 +143,7 @@ package body Debug is
    --  d.W  Print out debugging information for Walk_Library_Items
    --  d.X  Old treatment of indexing aspects
    --  d.Y
-   --  d.Z
+   --  d.Z  Do not enable expansion in configurable run-time mode
 
    --  d1   Error msgs have node numbers where possible
    --  d2   Eliminate error flags in verbose form error messages
@@ -582,16 +582,12 @@ package body Debug is
    --       fully compiled and analyzed, they just get eliminated from the
    --       code generation step.
 
-   --  d.z  Enable back end inlining on targets that have the GCC backend (ie.
-   --       all targets except AAMP, .NET and JVM). This switch has no effect
-   --       under GNATprove to avoid confusing the formal verification output,
-   --       and it has no effect if the sources are compiled with frontend
-   --       inlining (ie. -gnatN). This switch is used to evaluate the impact
-   --       of back end inlining since the GCC backend has now more support for
-   --       inlining than before, and hence most of the inlinings that are
-   --       currently handled by the frontend can be done by the backend with
-   --       the extra benefit of supporting cases which are currently rejected
-   --       by GNAT.
+   --  d.z  Restore previous front-end support for Inline_Always. In default
+   --       mode, for targets that use the GCC back end (i.e. currently all
+   --       targets except AAMP, .NET, JVM, and GNATprove), Inline_Always is
+   --       handled by the back end. Use of this switch restores the previous
+   --       handling of Inline_Always by the front end on such targets. For the
+   --       targets that do not use the GCC back end, this switch is ignored.
 
    --  d.A  There seems to be a problem with ASIS if we activate the circuit
    --       for reading and writing the aspect specification hash table, so
@@ -689,6 +685,12 @@ package body Debug is
    --       was inherited from the aprent type. This non-standard extension
    --       is preserved temporarily for use by the modelling project under
    --       debug flag d.X.
+
+   --  d.Z  Normally we always enable expansion in configurable run-time mode
+   --       to make sure we get error messages about unsupported features even
+   --       when compiling in -gnatc mode. But expansion is turned off in this
+   --       case if debug flag -gnatd.Z is used. This is to deal with the case
+   --       where we discover difficulties in this new processing.
 
    --  d1   Error messages have node numbers where possible. Normally error
    --       messages have only source locations. This option is useful when
@@ -792,7 +794,9 @@ package body Debug is
 
    --  dn  Do not delete temporary files created by gnatmake at the end
    --      of execution, such as temporary config pragma files, mapping
-   --      files or project path files.
+   --      files or project path files. This debug switch is equivalent to
+   --      the standard switch --keep-temp-files. We retain the debug switch
+   --      for back compatibility with past usage.
 
    --  dp  Prints the Q used by routine Make.Compile_Sources every time
    --      we go around the main compile loop of Make.Compile_Sources
@@ -818,7 +822,9 @@ package body Debug is
 
    --  dn  Do not delete temporary files created by gprbuild at the end
    --      of execution, such as temporary config pragma files, mapping
-   --      files or project path files.
+   --      files or project path files. This debug switch is equivalent to
+   --      the standard switch --keep-temp-files. We retain the debug switch
+   --      for back compatibility with past usage.
 
    --  dt  When a time stamp mismatch has been found for an ALI file,
    --      display the source file name, the time stamp expected and

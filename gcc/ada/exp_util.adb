@@ -1791,11 +1791,12 @@ package body Exp_Util is
    -----------------------
 
    function Duplicate_Subexpr
-     (Exp      : Node_Id;
-      Name_Req : Boolean := False) return Node_Id
+     (Exp          : Node_Id;
+      Name_Req     : Boolean := False;
+      Renaming_Req : Boolean := False) return Node_Id
    is
    begin
-      Remove_Side_Effects (Exp, Name_Req);
+      Remove_Side_Effects (Exp, Name_Req, Renaming_Req);
       return New_Copy_Tree (Exp);
    end Duplicate_Subexpr;
 
@@ -1804,12 +1805,14 @@ package body Exp_Util is
    ---------------------------------
 
    function Duplicate_Subexpr_No_Checks
-     (Exp      : Node_Id;
-      Name_Req : Boolean := False) return Node_Id
+     (Exp          : Node_Id;
+      Name_Req     : Boolean := False;
+      Renaming_Req : Boolean := False) return Node_Id
    is
       New_Exp : Node_Id;
+
    begin
-      Remove_Side_Effects (Exp, Name_Req);
+      Remove_Side_Effects (Exp, Name_Req, Renaming_Req);
       New_Exp := New_Copy_Tree (Exp);
       Remove_Checks (New_Exp);
       return New_Exp;
@@ -1820,12 +1823,14 @@ package body Exp_Util is
    -----------------------------------
 
    function Duplicate_Subexpr_Move_Checks
-     (Exp      : Node_Id;
-      Name_Req : Boolean := False) return Node_Id
+     (Exp          : Node_Id;
+      Name_Req     : Boolean := False;
+      Renaming_Req : Boolean := False) return Node_Id
    is
       New_Exp : Node_Id;
+
    begin
-      Remove_Side_Effects (Exp, Name_Req);
+      Remove_Side_Effects (Exp, Name_Req, Renaming_Req);
       New_Exp := New_Copy_Tree (Exp);
       Remove_Checks (Exp);
       return New_Exp;
@@ -3228,11 +3233,11 @@ package body Exp_Util is
       end;
    end Get_Current_Value_Condition;
 
-   --------------------------------------------------------------
-   -- Get_First_Parent_With_External_Axiomatization_For_Entity --
-   --------------------------------------------------------------
+   -------------------------------------------------
+   -- Get_First_Parent_With_Ext_Axioms_For_Entity --
+   -------------------------------------------------
 
-   function Get_First_Parent_With_External_Axiomatization_For_Entity
+   function Get_First_Parent_With_Ext_Axioms_For_Entity
      (E : Entity_Id) return Entity_Id is
 
       Decl : Node_Id;
@@ -3259,13 +3264,13 @@ package body Exp_Util is
       elsif Ekind (E) = E_Package
         and then Present (Generic_Parent (Decl))
       then
-         return Get_First_Parent_With_External_Axiomatization_For_Entity
+         return Get_First_Parent_With_Ext_Axioms_For_Entity
            (Generic_Parent (Decl));
 
          --  Otherwise, look at E's scope instead if present
 
       elsif Present (Scope (E)) then
-         return Get_First_Parent_With_External_Axiomatization_For_Entity
+         return Get_First_Parent_With_Ext_Axioms_For_Entity
              (Scope (E));
 
          --  Else there is no such axiomatized package
@@ -3273,7 +3278,7 @@ package body Exp_Util is
       else
          return Empty;
       end if;
-   end Get_First_Parent_With_External_Axiomatization_For_Entity;
+   end Get_First_Parent_With_Ext_Axioms_For_Entity;
 
    ---------------------
    -- Get_Stream_Size --
@@ -7101,6 +7106,7 @@ package body Exp_Util is
    procedure Remove_Side_Effects
      (Exp          : Node_Id;
       Name_Req     : Boolean := False;
+      Renaming_Req : Boolean := False;
       Variable_Ref : Boolean := False)
    is
       Loc          : constant Source_Ptr      := Sloc (Exp);
@@ -7186,14 +7192,30 @@ package body Exp_Util is
             Set_Analyzed (Prefix (Exp), False);
          end if;
 
-         E :=
-           Make_Object_Declaration (Loc,
-             Defining_Identifier => Def_Id,
-             Object_Definition   => New_Occurrence_Of (Exp_Type, Loc),
-             Constant_Present    => True,
-             Expression          => Relocate_Node (Exp));
+         --  Generate:
+         --    Rnn : Exp_Type renames Expr;
 
-         Set_Assignment_OK (E);
+         if Renaming_Req then
+            E :=
+              Make_Object_Renaming_Declaration (Loc,
+                Defining_Identifier => Def_Id,
+                Subtype_Mark        => New_Occurrence_Of (Exp_Type, Loc),
+                Name                => Relocate_Node (Exp));
+
+         --  Generate:
+         --    Rnn : constant Exp_Type := Expr;
+
+         else
+            E :=
+              Make_Object_Declaration (Loc,
+                Defining_Identifier => Def_Id,
+                Object_Definition   => New_Occurrence_Of (Exp_Type, Loc),
+                Constant_Present    => True,
+                Expression          => Relocate_Node (Exp));
+
+            Set_Assignment_OK (E);
+         end if;
+
          Insert_Action (Exp, E);
 
       --  If the expression has the form v.all then we can just capture the

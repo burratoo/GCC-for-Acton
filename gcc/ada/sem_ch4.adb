@@ -1363,6 +1363,9 @@ package body Sem_Ch4 is
       Others_Present : Boolean;
       --  Indicates if Others was present
 
+      Wrong_Alt : Node_Id;
+      --  For error reporting
+
    --  Start of processing for Analyze_Case_Expression
 
    begin
@@ -1415,6 +1418,9 @@ package body Sem_Ch4 is
 
                if No (Alt) then
                   Add_One_Interp (N, It.Typ, It.Typ);
+
+               else
+                  Wrong_Alt := Alt;
                end if;
 
                Get_Next_Interp (I, It);
@@ -1435,9 +1441,18 @@ package body Sem_Ch4 is
       if Exp_Btype = Any_Discrete or else Exp_Btype = Any_Type then
          return;
 
+      --  Special casee message for character literal
+
       elsif Exp_Btype = Any_Character then
          Error_Msg_N
            ("character literal as case expression is ambiguous", Expr);
+         return;
+      end if;
+
+      if Etype (N) = Any_Type and then Present (Wrong_Alt) then
+         Error_Msg_N
+           ("type incompatible with that of previous alternatives",
+            Expression (Wrong_Alt));
          return;
       end if;
 
@@ -3187,10 +3202,9 @@ package body Sem_Ch4 is
             then
                --  The actual can be compatible with the formal, but we must
                --  also check that the context is not an address type that is
-               --  visibly an integer type, as is the case in VMS_64. In this
-               --  case the use of literals is illegal, except in the body of
-               --  descendents of system, where arithmetic operations on
-               --  address are of course used.
+               --  visibly an integer type. In this case the use of literals is
+               --  illegal, except in the body of descendents of system, where
+               --  arithmetic operations on address are of course used.
 
                if Has_Compatible_Type (Actual, Etype (Formal))
                  and then
@@ -4647,6 +4661,7 @@ package body Sem_Ch4 is
                end loop;
 
                if Present (Par) and then Is_Generic_Actual_Type (Par) then
+
                   --  Now look for component in ancestor types
 
                   Par := Generic_Parent_Type (Declaration_Node (Par));
@@ -4656,6 +4671,14 @@ package body Sem_Ch4 is
                        or else Par = Etype (Par);
                      Par := Etype (Par);
                   end loop;
+
+               --  In ASIS mode the generic parent type may be absent. Examine
+               --  the parent type directly for a component that may have been
+               --  visible in a parent generic unit.
+
+               elsif Is_Derived_Type (Prefix_Type) then
+                  Par := Etype (Prefix_Type);
+                  Find_Component_In_Instance (Par);
                end if;
             end;
 
@@ -4665,6 +4688,7 @@ package body Sem_Ch4 is
             if No (Entity (Sel)) then
                raise Program_Error;
             end if;
+
             return;
 
          --  Component not found, specialize error message when appropriate
@@ -6807,9 +6831,8 @@ package body Sem_Ch4 is
             --  Remove interpretations that treat literals as addresses. This
             --  is never appropriate, even when Address is defined as a visible
             --  Integer type. The reason is that we would really prefer Address
-            --  to behave as a private type, even in this case, which is there
-            --  only to accommodate oddities of VMS address sizes. If Address
-            --  is a visible integer type, we get lots of overload ambiguities.
+            --  to behave as a private type, even in this case. If Address is a
+            --  visible integer type, we get lots of overload ambiguities.
 
             if Nkind (N) in N_Binary_Op then
                declare

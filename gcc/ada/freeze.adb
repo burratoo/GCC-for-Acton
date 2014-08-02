@@ -1256,12 +1256,19 @@ package body Freeze is
 
       function Find_Constant (Nod : Node_Id) return Traverse_Result is
       begin
+         --  When a constant is initialized with the result of a dispatching
+         --  call, the constant declaration is rewritten as a renaming of the
+         --  displaced function result. This scenario is not a premature use of
+         --  a constant even though the Has_Completion flag is not set.
+
          if Is_Entity_Name (Nod)
            and then Present (Entity (Nod))
            and then Ekind (Entity (Nod)) = E_Constant
+           and then Scope (Entity (Nod)) = Current_Scope
+           and then Nkind (Declaration_Node (Entity (Nod))) =
+                                                         N_Object_Declaration
            and then not Is_Imported (Entity (Nod))
            and then not Has_Completion (Entity (Nod))
-           and then Scope (Entity (Nod)) = Current_Scope
          then
             Error_Msg_NE
               ("premature use of& in call or instance", N, Entity (Nod));
@@ -2667,10 +2674,10 @@ package body Freeze is
       ------------------------
 
       procedure Freeze_Record_Type (Rec : Entity_Id) is
+         ADC  : Node_Id;
          Comp : Entity_Id;
          IR   : Node_Id;
          Prev : Entity_Id;
-         ADC  : Node_Id;
 
          Junk : Boolean;
          pragma Warnings (Off, Junk);
@@ -3123,18 +3130,56 @@ package body Freeze is
             then
                Check_Itype (Etype (Comp));
 
+            --  Freeze the designated type when initializing a component with
+            --  an aggregate in case the aggregate contains allocators.
+
+            --     type T is ...;
+            --     type T_Ptr is access all T;
+            --     type T_Array is array ... of T_Ptr;
+
+            --     type Rec is record
+            --        Comp : T_Array := (others => ...);
+            --     end record;
+
             elsif Is_Array_Type (Etype (Comp))
               and then Is_Access_Type (Component_Type (Etype (Comp)))
-              and then Present (Parent (Comp))
-              and then Nkind (Parent (Comp)) = N_Component_Declaration
-              and then Present (Expression (Parent (Comp)))
-              and then Nkind (Expression (Parent (Comp))) = N_Aggregate
-              and then Is_Fully_Defined
-                         (Designated_Type (Component_Type (Etype (Comp))))
             then
-               Freeze_And_Append
-                 (Designated_Type
-                    (Component_Type (Etype (Comp))), N, Result);
+               declare
+                  Comp_Par  : constant Node_Id   := Parent (Comp);
+                  Desig_Typ : constant Entity_Id :=
+                                Designated_Type
+                                  (Component_Type (Etype (Comp)));
+
+               begin
+                  --  The only case when this sort of freezing is not done is
+                  --  when the designated type is class-wide and the root type
+                  --  is the record owning the component. This scenario results
+                  --  in a circularity because the class-wide type requires
+                  --  primitives that have not been created yet as the root
+                  --  type is in the process of being frozen.
+
+                  --     type Rec is tagged;
+                  --     type Rec_Ptr is access all Rec'Class;
+                  --     type Rec_Array is array ... of Rec_Ptr;
+
+                  --     type Rec is record
+                  --        Comp : Rec_Array := (others => ...);
+                  --     end record;
+
+                  if Is_Class_Wide_Type (Desig_Typ)
+                    and then Root_Type (Desig_Typ) = Rec
+                  then
+                     null;
+
+                  elsif Is_Fully_Defined (Desig_Typ)
+                    and then Present (Comp_Par)
+                    and then Nkind (Comp_Par) = N_Component_Declaration
+                    and then Present (Expression (Comp_Par))
+                    and then Nkind (Expression (Comp_Par)) = N_Aggregate
+                  then
+                     Freeze_And_Append (Desig_Typ, N, Result);
+                  end if;
+               end;
             end if;
 
             Prev := Comp;
@@ -3656,8 +3701,7 @@ package body Freeze is
 
             --  Acquire copy of Inline pragma
 
-            Iprag :=
-              Copy_Separate_Tree (Import_Pragma (E));
+            Iprag := Copy_Separate_Tree (Import_Pragma (E));
 
             --  Fix up spec to be not imported any more
 
@@ -4932,7 +4976,7 @@ package body Freeze is
          --  view, we can retrieve the full view, but not the reverse).
          --  However, in order to freeze correctly, we need to freeze the full
          --  view. If we are freezing at the end of a scope (or within the
-         --  scope of the private type), the partial and full views will have
+         --  scope) of the private type, the partial and full views will have
          --  been swapped, the full view appears first in the entity chain and
          --  the swapping mechanism ensures that the pointers are properly set
          --  (on scope exit).
@@ -4941,6 +4985,11 @@ package body Freeze is
          --  freezing from another scope), we freeze the full view, and then
          --  set the pointers appropriately since we cannot rely on swapping to
          --  fix things up (subtypes in an outer scope might not get swapped).
+
+         --  If the full view is itself private, the above requirements apply
+         --  to the underlying full view instead of the full view. But there is
+         --  no swapping mechanism for the underlying full view so we need to
+         --  set the pointers appropriately in both cases.
 
          elsif Is_Incomplete_Or_Private_Type (E)
            and then not Is_Generic_Type (E)
@@ -4980,27 +5029,43 @@ package body Freeze is
                if Is_Frozen (Full_View (E)) then
                   Set_Has_Delayed_Freeze (E, False);
                   Set_Freeze_Node (E, Empty);
-                  Check_Debug_Info_Needed (E);
 
                --  Otherwise freeze full view and patch the pointers so that
-               --  the freeze node will elaborate both views in the back-end.
+               --  the freeze node will elaborate both views in the back end.
+               --  However, if full view is itself private, freeze underlying
+               --  full view instead and patch the pointers so that the freeze
+               --  node will elaborate the three views in the back end.
 
                else
                   declare
-                     Full : constant Entity_Id := Full_View (E);
+                     Full : Entity_Id := Full_View (E);
 
                   begin
                      if Is_Private_Type (Full)
                        and then Present (Underlying_Full_View (Full))
                      then
-                        Freeze_And_Append
-                          (Underlying_Full_View (Full), N, Result);
+                        Full := Underlying_Full_View (Full);
                      end if;
 
                      Freeze_And_Append (Full, N, Result);
 
-                     if Has_Delayed_Freeze (E) then
+                     if Full /= Full_View (E)
+                       and then Has_Delayed_Freeze (Full_View (E))
+                     then
                         F_Node := Freeze_Node (Full);
+
+                        if Present (F_Node) then
+                           Set_Freeze_Node (Full_View (E), F_Node);
+                           Set_Entity (F_Node, Full_View (E));
+
+                        else
+                           Set_Has_Delayed_Freeze (Full_View (E), False);
+                           Set_Freeze_Node (Full_View (E), Empty);
+                        end if;
+                     end if;
+
+                     if Has_Delayed_Freeze (E) then
+                        F_Node := Freeze_Node (Full_View (E));
 
                         if Present (F_Node) then
                            Set_Freeze_Node (E, F_Node);
@@ -5015,9 +5080,9 @@ package body Freeze is
                         end if;
                      end if;
                   end;
-
-                  Check_Debug_Info_Needed (E);
                end if;
+
+               Check_Debug_Info_Needed (E);
 
                --  AI-117 requires that the convention of a partial view be the
                --  same as the convention of the full view. Note that this is a
@@ -5042,6 +5107,35 @@ package body Freeze is
                   Set_Size_Info (E, Full_View (E));
                   Set_RM_Size   (E, RM_Size (Full_View (E)));
                end if;
+
+               return Result;
+
+            --  Case of underlying full view present
+
+            elsif Is_Private_Type (E)
+              and then Present (Underlying_Full_View (E))
+            then
+               if not Is_Frozen (Underlying_Full_View (E)) then
+                  Freeze_And_Append (Underlying_Full_View (E), N, Result);
+               end if;
+
+               --  Patch the pointers so that the freeze node will elaborate
+               --  both views in the back end.
+
+               if Has_Delayed_Freeze (E) then
+                  F_Node := Freeze_Node (Underlying_Full_View (E));
+
+                  if Present (F_Node) then
+                     Set_Freeze_Node (E, F_Node);
+                     Set_Entity (F_Node, E);
+
+                  else
+                     Set_Has_Delayed_Freeze (E, False);
+                     Set_Freeze_Node (E, Empty);
+                  end if;
+               end if;
+
+               Check_Debug_Info_Needed (E);
 
                return Result;
 
@@ -7038,11 +7132,7 @@ package body Freeze is
       else
          Set_Mechanisms (E);
 
-         --  For foreign conventions, warn about return of an
-         --  unconstrained array.
-
-         --  Note: we *do* allow a return by descriptor for the VMS case,
-         --  though here there is probably more to be done ???
+         --  For foreign conventions, warn about return of unconstrained array
 
          if Ekind (E) = E_Function then
             Retype := Underlying_Type (Etype (E));
@@ -7064,11 +7154,6 @@ package body Freeze is
 
             elsif Is_Array_Type (Retype)
               and then not Is_Constrained (Retype)
-
-              --  Exclude cases where descriptor mechanism is set, since the
-              --  VMS descriptor mechanisms allow such unconstrained returns.
-
-              and then Mechanism (E) not in Descriptor_Codes
 
                --  Check appropriate warning is enabled (should we check for
                --  Warnings (Off) on specific entities here, probably so???)
@@ -7100,39 +7185,6 @@ package body Freeze is
                   Error_Msg_N
                     ("?x?parameter cannot be defaulted in non-Ada call",
                      Default_Value (F));
-               end if;
-
-               Next_Formal (F);
-            end loop;
-         end if;
-      end if;
-
-      --  For VMS, descriptor mechanisms for parameters are allowed only for
-      --  imported/exported subprograms. Moreover, the NCA descriptor is not
-      --  allowed for parameters of exported subprograms.
-
-      if OpenVMS_On_Target then
-         if Is_Exported (E) then
-            F := First_Formal (E);
-            while Present (F) loop
-               if Mechanism (F) = By_Descriptor_NCA then
-                  Error_Msg_N
-                    ("'N'C'A' descriptor for parameter not permitted", F);
-                  Error_Msg_N
-                    ("\can only be used for imported subprogram", F);
-               end if;
-
-               Next_Formal (F);
-            end loop;
-
-         elsif not Is_Imported (E) then
-            F := First_Formal (E);
-            while Present (F) loop
-               if Mechanism (F) in Descriptor_Codes then
-                  Error_Msg_N
-                    ("descriptor mechanism for parameter not permitted", F);
-                  Error_Msg_N
-                    ("\can only be used for imported/exported subprogram", F);
                end if;
 
                Next_Formal (F);
@@ -7275,9 +7327,8 @@ package body Freeze is
               or else Nkind_In (Dcopy, N_Expanded_Name,
                                        N_Integer_Literal,
                                        N_Character_Literal,
-                                       N_String_Literal)
-              or else (Nkind (Dcopy) = N_Real_Literal
-                        and then not Vax_Float (Etype (Dcopy)))
+                                       N_String_Literal,
+                                       N_Real_Literal)
               or else (Nkind (Dcopy) = N_Attribute_Reference
                         and then Attribute_Name (Dcopy) = Name_Null_Parameter)
               or else Known_Null (Dcopy)

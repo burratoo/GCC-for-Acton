@@ -1148,13 +1148,6 @@ package Einfo is
 --       Note one obscure case: for pragma Default_Storage_Pool (null), the
 --       Etype of the N_Null node is Empty.
 
---    Exception_Code (Uint22)
---       Defined in exception entities. Set to zero unless either an
---       Import_Exception or Export_Exception pragma applies to the
---       pragma and specifies a Code value. See description of these
---       pragmas for details. Note that this field is relevant only if
---       Is_VMS_Exception is set.
-
 --    Extra_Formal (Node15)
 --       Defined in formal parameters in the non-generic case. Certain
 --       parameters require extra implicit information to be passed (e.g. the
@@ -1284,13 +1277,6 @@ package Einfo is
 --       Empty, since there are no enumeration literal lists in these cases.
 --       Note that this field is set in enumeration subtypes, but it still
 --       points to the first literal of the base type in this case.
-
---    First_Optional_Parameter (Node14)
---       Defined in (non-generic) function and procedure entities. Set to a
---       non-null value only if a pragma Import_Function, Import_Procedure
---       or Import_Valued_Procedure specifies a First_Optional_Parameter
---       argument, in which case this field points to the parameter entity
---       corresponding to the specified parameter.
 
 --    First_Private_Entity (Node16)
 --       Defined in all entities containing private parts (packages, protected
@@ -1813,14 +1799,12 @@ package Einfo is
 --       is defined for the type.
 
 --    Has_Private_Ancestor (Flag151)
---       Applies to untagged derived types and to type extensions. True when
---       some ancestor is derived from a private type, making some components
---       invisible and aggregates illegal. Used to check the legality of
---       selected components and aggregates. The flag is set at the point of
---       derivation. The legality of an aggregate of a type with a private
---       ancestor must be checked because it also depends on the visibility
---       at the point the aggregate is resolved. See sem_aggr.adb. This is
---       part of AI05-0115.
+--       Applies to type extensions. True if some ancestor is derived from a
+--       private type, making some components invisible and aggregates illegal.
+--       This flag is set at the point of derivation. The legality of the
+--       aggregate must be rechecked because it also depends on the visibility
+--       at the point the aggregate is resolved. See sem_aggr.adb. This is part
+--       of AI05-0115.
 
 --    Has_Private_Declaration (Flag155)
 --       Defined in all entities. Set if it is the defining entity of a private
@@ -2146,13 +2130,6 @@ package Einfo is
 --       carry the keyword aliased, and on record components that have the
 --       keyword. For Ada 2012, also applies to formal parameters.
 
---    Is_AST_Entry (Flag132)
---       Defined in entry entities. Set if a valid pragma AST_Entry applies
---       to the entry. This flag can only be set in OpenVMS versions of GNAT.
---       Note: we also allow the flag to appear in entry families, but given
---       the current implementation of the pragma AST_Entry, this flag will
---       always be False in entry families.
-
 --    Is_Atomic (Flag85)
 --       Defined in all type entities, and also in constants, components and
 --       variables. Set if a pragma Atomic or Shared applies to the entity.
@@ -2342,7 +2319,7 @@ package Einfo is
 --       Defined in all entities. Set if the entity is exported. For now we
 --       only allow the export of constants, exceptions, functions, procedures
 --       and variables, but that may well change later on. Exceptions can only
---       be exported in the OpenVMS and Java VM implementations of GNAT.
+--       be exported in the Java VM implementation of GNAT.
 
 --    Is_External_State (synthesized)
 --       Applies to all entities, true for abstract states that are subject to
@@ -2443,6 +2420,12 @@ package Einfo is
 --       child unit, and when compiling a private child unit (see Install_
 --       Private_Declaration in sem_ch7).
 
+--    Is_Hidden_Non_Overridden_Subpgm (Flag2)
+--       Defined in all entities. Set for implicitly declared subprograms
+--       that require overriding or are null procedures, and are hidden by
+--       a non-fully conformant homograph with the same characteristics
+--       (Ada RM 8.3 12.3/2).
+
 --    Is_Hidden_Open_Scope (Flag171)
 --       Defined in all entities. Set for a scope that contains the
 --       instantiation of a child unit, and whose entities are not visible
@@ -2461,9 +2444,8 @@ package Einfo is
 --    Is_Imported (Flag24)
 --       Defined in all entities. Set if the entity is imported. For now we
 --       only allow the import of exceptions, functions, procedures, packages.
---       and variables. Exceptions can only be imported in the OpenVMS and
---       Java VM implementations of GNAT. Packages and types can only be
---       imported in the Java VM implementation.
+--       and variables. Exceptions, packages and types can only be imported in
+--       the Java VM implementation.
 
 --    Is_Incomplete_Or_Private_Type (synthesized)
 --       Applies to all entities, true for private and incomplete types
@@ -2710,11 +2692,6 @@ package Einfo is
 --       only OUT parameter for this formal part. If there is more than one
 --       out parameter, or if there is some other IN OUT parameter then this
 --       flag is not set in any of them. Used in generation of warnings.
-
---    Is_Optional_Parameter (Flag134)
---       Defined in parameter entities. Set if the parameter is specified as
---       optional by use of a First_Optional_Parameter argument to one of the
---       extended Import pragmas. Can only be set for OpenVMS versions of GNAT.
 
 --    Is_Ordinary_Fixed_Point_Type (synthesized)
 --       Applies to all entities, true for ordinary fixed point types and
@@ -3060,12 +3037,6 @@ package Einfo is
 --       a separate flag must be used to indicate whether the names are visible
 --       by selected notation, or not.
 
---    Is_VMS_Exception (Flag133)
---       Defined in all entities. Set only for exception entities where the
---       exception was specified in an Import_Exception or Export_Exception
---       pragma with the VMS option for Form. See description of these pragmas
---       for details. This flag can only be set in OpenVMS versions of GNAT.
-
 --    Is_Volatile (Flag16)
 --       Defined in all type entities, and also in constants, components and
 --       variables. Set if a pragma Volatile applies to the entity. Also set
@@ -3367,12 +3338,22 @@ package Einfo is
 --       interpreted as true. Currently this is set for derived Boolean
 --       types which have a convention of C, C++ or Fortran.
 
+--    No_Dynamic_Predicate_On_Actual (Flag276)
+--       Defined in discrete types. Set for generic formal types that are used
+--       in loops and quantified expressions. The corresponing actual cannot
+--       have dynamic predicates.
+
 --    No_Pool_Assigned (Flag131) [root type only]
 --       Defined in access types. Set if a storage size clause applies to the
 --       variable with a static expression value of zero. This flag is used to
 --       generate errors if any attempt is made to allocate or free an instance
 --       of such an access type. This is set only in the root type, since
 --       derived types must have the same pool.
+
+--    No_Predicate_On_Actual (Flag275)
+--       Defined in discrete types. Set for generic formal types that are used
+--       in the spec of a generic package, in constructs that forbid discrete
+--       types with predicates.
 
 --    No_Return (Flag113)
 --       Defined in all entities. Always false except in the case of procedures
@@ -5193,7 +5174,6 @@ package Einfo is
    --    Is_Trivial_Subprogram               (Flag235)
    --    Is_Unchecked_Union                  (Flag117)
    --    Is_Visible_Formal                   (Flag206)
-   --    Is_VMS_Exception                    (Flag133)
    --    Kill_Elaboration_Checks             (Flag32)
    --    Kill_Range_Checks                   (Flag33)
    --    Low_Bound_Tested                    (Flag205)
@@ -5552,7 +5532,6 @@ package Einfo is
    --    Contract                            (Node34)
    --    Default_Expressions_Processed       (Flag108)
    --    Entry_Accepted                      (Flag152)
-   --    Is_AST_Entry                        (Flag132)  (for entry only)
    --    Needs_No_Actuals                    (Flag22)
    --    Sec_Stack_Needed_For_Return         (Flag167)
    --    Uses_Sec_Stack                      (Flag95)
@@ -5588,6 +5567,8 @@ package Einfo is
    --    Has_Enumeration_Rep_Clause          (Flag66)
    --    Has_Pragma_Ordered                  (Flag198)  (base type only)
    --    Nonzero_Is_True                     (Flag162)  (base type only)
+   --    No_Predicate_On_Actual              (Flag275)
+   --    No_Dynamic_Predicate_On_Actual      (Flag276)
    --    Type_Low_Bound                      (synth)
    --    Type_High_Bound                     (synth)
    --    (plus type attributes)
@@ -5598,9 +5579,7 @@ package Einfo is
    --    Renamed_Entity                      (Node18)
    --    Register_Exception_Call             (Node20)
    --    Interface_Name                      (Node21)
-   --    Exception_Code                      (Uint22)
    --    Discard_Names                       (Flag88)
-   --    Is_VMS_Exception                    (Flag133)
    --    Is_Raised                           (Flag224)
 
    --  E_Exception_Type
@@ -5627,7 +5606,6 @@ package Einfo is
    --    Safe_Last_Value                     (synth)
    --    Type_Low_Bound                      (synth)
    --    Type_High_Bound                     (synth)
-   --    Vax_Float                           (synth)
    --    (plus type attributes)
 
    --  E_Function
@@ -5638,7 +5616,6 @@ package Einfo is
    --    Protected_Body_Subprogram           (Node11)
    --    Next_Inlined_Subprogram             (Node12)
    --    Elaboration_Entity                  (Node13)   (not implicit /=)
-   --    First_Optional_Parameter            (Node14)   (non-generic case only)
    --    DT_Position                         (Uint15)
    --    DTC_Entity                          (Node16)
    --    First_Entity                        (Node17)
@@ -5684,6 +5661,7 @@ package Einfo is
    --    Is_Discriminant_Check_Function      (Flag264)
    --    Is_Eliminated                       (Flag124)
    --    Is_Generic_Actual_Subprogram        (Flag274)  (non-generic case only)
+   --    Is_Hidden_Non_Overridden_Subpgm     (Flag2)    (non-generic case only)
    --    Is_Inlined_Always                   (Flag1)    (non-generic case only)
    --    Is_Instantiated                     (Flag126)  (generic case only)
    --    Is_Intrinsic_Subprogram             (Flag64)
@@ -5765,7 +5743,6 @@ package Einfo is
    --    Has_Initial_Value                   (Flag219)
    --    Is_Controlling_Formal               (Flag97)
    --    Is_Only_Out_Parameter               (Flag226)
-   --    Is_Optional_Parameter               (Flag134)
    --    Low_Bound_Tested                    (Flag205)
    --    Is_Return_Object                    (Flag209)
    --    Parameter_Mode                      (synth)
@@ -5804,6 +5781,8 @@ package Einfo is
    --    Non_Binary_Modulus                  (Flag58)   (base type only)
    --    Has_Biased_Representation           (Flag139)
    --    Has_Shift_Operator                  (Flag267)  (base type only)
+   --    No_Predicate_On_Actual              (Flag275)
+   --    No_Dynamic_Predicate_On_Actual      (Flag276)
    --    Type_Low_Bound                      (synth)
    --    Type_High_Bound                     (synth)
    --    (plus type attributes)
@@ -5936,7 +5915,6 @@ package Einfo is
    --    Protected_Body_Subprogram           (Node11)
    --    Next_Inlined_Subprogram             (Node12)
    --    Elaboration_Entity                  (Node13)
-   --    First_Optional_Parameter            (Node14)   (non-generic case only)
    --    DT_Position                         (Uint15)
    --    DTC_Entity                          (Node16)
    --    First_Entity                        (Node17)
@@ -5976,9 +5954,10 @@ package Einfo is
    --    Is_Called                           (Flag102)  (non-generic case only)
    --    Is_Constructor                      (Flag76)
    --    Is_Eliminated                       (Flag124)
+   --    Is_Generic_Actual_Subprogram        (Flag274)  (non-generic case only)
+   --    Is_Hidden_Non_Overridden_Subpgm     (Flag2)    (non-generic case only)
    --    Is_Inlined_Always                   (Flag1)    (non-generic case only)
    --    Is_Instantiated                     (Flag126)  (generic case only)
-   --    Is_Generic_Actual_Subprogram        (Flag274)  (non-generic case only)
    --    Is_Interrupt_Handler                (Flag89)
    --    Is_Intrinsic_Subprogram             (Flag64)
    --    Is_Invariant_Procedure              (Flag257)  (non-generic case only)
@@ -6106,6 +6085,8 @@ package Einfo is
    --    Static_Discrete_Predicate           (List25)
    --    Has_Biased_Representation           (Flag139)
    --    Has_Shift_Operator                  (Flag267)  (base type only)
+   --    No_Predicate_On_Actual              (Flag275)
+   --    No_Dynamic_Predicate_On_Actual      (Flag276)
    --    Type_Low_Bound                      (synth)
    --    Type_High_Bound                     (synth)
    --    (plus type attributes)
@@ -6532,7 +6513,6 @@ package Einfo is
    function Enumeration_Rep_Expr                (Id : E) return N;
    function Equivalent_Type                     (Id : E) return E;
    function Esize                               (Id : E) return U;
-   function Exception_Code                      (Id : E) return U;
    function Extra_Accessibility                 (Id : E) return E;
    function Extra_Accessibility_Of_Result       (Id : E) return E;
    function Extra_Constrained                   (Id : E) return E;
@@ -6545,7 +6525,6 @@ package Einfo is
    function First_Exit_Statement                (Id : E) return N;
    function First_Index                         (Id : E) return N;
    function First_Literal                       (Id : E) return E;
-   function First_Optional_Parameter            (Id : E) return E;
    function First_Private_Entity                (Id : E) return E;
    function First_Rep_Item                      (Id : E) return N;
    function Float_Rep                           (Id : E) return F;
@@ -6654,7 +6633,6 @@ package Einfo is
    function Interface_Alias                     (Id : E) return E;
    function Interface_Name                      (Id : E) return N;
    function Interfaces                          (Id : E) return L;
-   function Is_AST_Entry                        (Id : E) return B;
    function Is_Abstract_Subprogram              (Id : E) return B;
    function Is_Abstract_Type                    (Id : E) return B;
    function Is_Access_Constant                  (Id : E) return B;
@@ -6690,6 +6668,7 @@ package Einfo is
    function Is_Frozen                           (Id : E) return B;
    function Is_Generic_Instance                 (Id : E) return B;
    function Is_Hidden                           (Id : E) return B;
+   function Is_Hidden_Non_Overridden_Subpgm     (Id : E) return B;
    function Is_Hidden_Open_Scope                (Id : E) return B;
    function Is_Immediately_Visible              (Id : E) return B;
    function Is_Implementation_Defined           (Id : E) return B;
@@ -6715,7 +6694,6 @@ package Einfo is
    function Is_Null_Init_Proc                   (Id : E) return B;
    function Is_Obsolescent                      (Id : E) return B;
    function Is_Only_Out_Parameter               (Id : E) return B;
-   function Is_Optional_Parameter               (Id : E) return B;
    function Is_Package_Body_Entity              (Id : E) return B;
    function Is_Packed                           (Id : E) return B;
    function Is_Packed_Array_Impl_Type           (Id : E) return B;
@@ -6749,7 +6727,6 @@ package Einfo is
    function Is_Unchecked_Union                  (Id : E) return B;
    function Is_Underlying_Record_View           (Id : E) return B;
    function Is_Unsigned_Type                    (Id : E) return B;
-   function Is_VMS_Exception                    (Id : E) return B;
    function Is_Valued_Procedure                 (Id : E) return B;
    function Is_Visible_Formal                   (Id : E) return B;
    function Is_Visible_Lib_Unit                 (Id : E) return B;
@@ -6778,7 +6755,9 @@ package Einfo is
    function Needs_No_Actuals                    (Id : E) return B;
    function Never_Set_In_Source                 (Id : E) return B;
    function Next_Inlined_Subprogram             (Id : E) return E;
+   function No_Dynamic_Predicate_On_Actual      (Id : E) return B;
    function No_Pool_Assigned                    (Id : E) return B;
+   function No_Predicate_On_Actual              (Id : E) return B;
    function No_Return                           (Id : E) return B;
    function No_Strict_Aliasing                  (Id : E) return B;
    function Non_Binary_Modulus                  (Id : E) return B;
@@ -6874,7 +6853,6 @@ package Einfo is
    function Used_As_Generic_Actual              (Id : E) return B;
    function Uses_Lock_Free                      (Id : E) return B;
    function Uses_Sec_Stack                      (Id : E) return B;
-   function Vax_Float                           (Id : E) return B;
    function Warnings_Off                        (Id : E) return B;
    function Warnings_Off_Used                   (Id : E) return B;
    function Warnings_Off_Used_Unmodified        (Id : E) return B;
@@ -7168,7 +7146,6 @@ package Einfo is
    procedure Set_Enumeration_Rep_Expr            (Id : E; V : N);
    procedure Set_Equivalent_Type                 (Id : E; V : E);
    procedure Set_Esize                           (Id : E; V : U);
-   procedure Set_Exception_Code                  (Id : E; V : U);
    procedure Set_Extra_Accessibility             (Id : E; V : E);
    procedure Set_Extra_Accessibility_Of_Result   (Id : E; V : E);
    procedure Set_Extra_Constrained               (Id : E; V : E);
@@ -7181,7 +7158,6 @@ package Einfo is
    procedure Set_First_Exit_Statement            (Id : E; V : N);
    procedure Set_First_Index                     (Id : E; V : N);
    procedure Set_First_Literal                   (Id : E; V : E);
-   procedure Set_First_Optional_Parameter        (Id : E; V : E);
    procedure Set_First_Private_Entity            (Id : E; V : E);
    procedure Set_First_Rep_Item                  (Id : E; V : N);
    procedure Set_Float_Rep                       (Id : E; V : F);
@@ -7289,7 +7265,6 @@ package Einfo is
    procedure Set_Interface_Alias                 (Id : E; V : E);
    procedure Set_Interface_Name                  (Id : E; V : N);
    procedure Set_Interfaces                      (Id : E; V : L);
-   procedure Set_Is_AST_Entry                    (Id : E; V : B := True);
    procedure Set_Is_Abstract_Subprogram          (Id : E; V : B := True);
    procedure Set_Is_Abstract_Type                (Id : E; V : B := True);
    procedure Set_Is_Access_Constant              (Id : E; V : B := True);
@@ -7330,6 +7305,7 @@ package Einfo is
    procedure Set_Is_Generic_Instance             (Id : E; V : B := True);
    procedure Set_Is_Generic_Type                 (Id : E; V : B := True);
    procedure Set_Is_Hidden                       (Id : E; V : B := True);
+   procedure Set_Is_Hidden_Non_Overridden_Subpgm (Id : E; V : B := True);
    procedure Set_Is_Hidden_Open_Scope            (Id : E; V : B := True);
    procedure Set_Is_Immediately_Visible          (Id : E; V : B := True);
    procedure Set_Is_Implementation_Defined       (Id : E; V : B := True);
@@ -7356,7 +7332,6 @@ package Einfo is
    procedure Set_Is_Null_Init_Proc               (Id : E; V : B := True);
    procedure Set_Is_Obsolescent                  (Id : E; V : B := True);
    procedure Set_Is_Only_Out_Parameter           (Id : E; V : B := True);
-   procedure Set_Is_Optional_Parameter           (Id : E; V : B := True);
    procedure Set_Is_Package_Body_Entity          (Id : E; V : B := True);
    procedure Set_Is_Packed                       (Id : E; V : B := True);
    procedure Set_Is_Packed_Array_Impl_Type       (Id : E; V : B := True);
@@ -7390,7 +7365,6 @@ package Einfo is
    procedure Set_Is_Unchecked_Union              (Id : E; V : B := True);
    procedure Set_Is_Underlying_Record_View       (Id : E; V : B := True);
    procedure Set_Is_Unsigned_Type                (Id : E; V : B := True);
-   procedure Set_Is_VMS_Exception                (Id : E; V : B := True);
    procedure Set_Is_Valued_Procedure             (Id : E; V : B := True);
    procedure Set_Is_Visible_Formal               (Id : E; V : B := True);
    procedure Set_Is_Visible_Lib_Unit             (Id : E; V : B := True);
@@ -7419,7 +7393,9 @@ package Einfo is
    procedure Set_Needs_No_Actuals                (Id : E; V : B := True);
    procedure Set_Never_Set_In_Source             (Id : E; V : B := True);
    procedure Set_Next_Inlined_Subprogram         (Id : E; V : E);
+   procedure Set_No_Dynamic_Predicate_On_Actual  (Id : E; V : B := True);
    procedure Set_No_Pool_Assigned                (Id : E; V : B := True);
+   procedure Set_No_Predicate_On_Actual          (Id : E; V : B := True);
    procedure Set_No_Return                       (Id : E; V : B := True);
    procedure Set_No_Strict_Aliasing              (Id : E; V : B := True);
    procedure Set_Non_Binary_Modulus              (Id : E; V : B := True);
@@ -7918,7 +7894,6 @@ package Einfo is
    pragma Inline (Enumeration_Rep_Expr);
    pragma Inline (Equivalent_Type);
    pragma Inline (Esize);
-   pragma Inline (Exception_Code);
    pragma Inline (Extra_Accessibility);
    pragma Inline (Extra_Accessibility_Of_Result);
    pragma Inline (Extra_Constrained);
@@ -7930,7 +7905,6 @@ package Einfo is
    pragma Inline (First_Exit_Statement);
    pragma Inline (First_Index);
    pragma Inline (First_Literal);
-   pragma Inline (First_Optional_Parameter);
    pragma Inline (First_Private_Entity);
    pragma Inline (First_Rep_Item);
    pragma Inline (Freeze_Node);
@@ -8036,7 +8010,6 @@ package Einfo is
    pragma Inline (Interface_Alias);
    pragma Inline (Interface_Name);
    pragma Inline (Interfaces);
-   pragma Inline (Is_AST_Entry);
    pragma Inline (Is_Abstract_Subprogram);
    pragma Inline (Is_Abstract_Type);
    pragma Inline (Is_Access_Constant);
@@ -8100,6 +8073,7 @@ package Einfo is
    pragma Inline (Is_Generic_Type);
    pragma Inline (Is_Generic_Unit);
    pragma Inline (Is_Hidden);
+   pragma Inline (Is_Hidden_Non_Overridden_Subpgm);
    pragma Inline (Is_Hidden_Open_Scope);
    pragma Inline (Is_Immediately_Visible);
    pragma Inline (Is_Implementation_Defined);
@@ -8133,7 +8107,6 @@ package Einfo is
    pragma Inline (Is_Object);
    pragma Inline (Is_Obsolescent);
    pragma Inline (Is_Only_Out_Parameter);
-   pragma Inline (Is_Optional_Parameter);
    pragma Inline (Is_Ordinary_Fixed_Point_Type);
    pragma Inline (Is_Overloadable);
    pragma Inline (Is_Package_Body_Entity);
@@ -8178,7 +8151,6 @@ package Einfo is
    pragma Inline (Is_Unchecked_Union);
    pragma Inline (Is_Underlying_Record_View);
    pragma Inline (Is_Unsigned_Type);
-   pragma Inline (Is_VMS_Exception);
    pragma Inline (Is_Valued_Procedure);
    pragma Inline (Is_Visible_Formal);
    pragma Inline (Is_Visible_Lib_Unit);
@@ -8208,7 +8180,9 @@ package Einfo is
    pragma Inline (Next_Index);
    pragma Inline (Next_Inlined_Subprogram);
    pragma Inline (Next_Literal);
+   pragma Inline (No_Dynamic_Predicate_On_Actual);
    pragma Inline (No_Pool_Assigned);
+   pragma Inline (No_Predicate_On_Actual);
    pragma Inline (No_Return);
    pragma Inline (No_Strict_Aliasing);
    pragma Inline (Non_Binary_Modulus);
@@ -8400,7 +8374,6 @@ package Einfo is
    pragma Inline (Set_Enumeration_Rep_Expr);
    pragma Inline (Set_Equivalent_Type);
    pragma Inline (Set_Esize);
-   pragma Inline (Set_Exception_Code);
    pragma Inline (Set_Extra_Accessibility);
    pragma Inline (Set_Extra_Accessibility_Of_Result);
    pragma Inline (Set_Extra_Constrained);
@@ -8412,7 +8385,6 @@ package Einfo is
    pragma Inline (Set_First_Exit_Statement);
    pragma Inline (Set_First_Index);
    pragma Inline (Set_First_Literal);
-   pragma Inline (Set_First_Optional_Parameter);
    pragma Inline (Set_First_Private_Entity);
    pragma Inline (Set_First_Rep_Item);
    pragma Inline (Set_Freeze_Node);
@@ -8518,7 +8490,6 @@ package Einfo is
    pragma Inline (Set_Interface_Alias);
    pragma Inline (Set_Interface_Name);
    pragma Inline (Set_Interfaces);
-   pragma Inline (Set_Is_AST_Entry);
    pragma Inline (Set_Is_Abstract_Subprogram);
    pragma Inline (Set_Is_Abstract_Type);
    pragma Inline (Set_Is_Access_Constant);
@@ -8559,6 +8530,7 @@ package Einfo is
    pragma Inline (Set_Is_Generic_Instance);
    pragma Inline (Set_Is_Generic_Type);
    pragma Inline (Set_Is_Hidden);
+   pragma Inline (Set_Is_Hidden_Non_Overridden_Subpgm);
    pragma Inline (Set_Is_Hidden_Open_Scope);
    pragma Inline (Set_Is_Immediately_Visible);
    pragma Inline (Set_Is_Implementation_Defined);
@@ -8585,7 +8557,6 @@ package Einfo is
    pragma Inline (Set_Is_Null_Init_Proc);
    pragma Inline (Set_Is_Obsolescent);
    pragma Inline (Set_Is_Only_Out_Parameter);
-   pragma Inline (Set_Is_Optional_Parameter);
    pragma Inline (Set_Is_Package_Body_Entity);
    pragma Inline (Set_Is_Packed);
    pragma Inline (Set_Is_Packed_Array_Impl_Type);
@@ -8619,7 +8590,6 @@ package Einfo is
    pragma Inline (Set_Is_Unchecked_Union);
    pragma Inline (Set_Is_Underlying_Record_View);
    pragma Inline (Set_Is_Unsigned_Type);
-   pragma Inline (Set_Is_VMS_Exception);
    pragma Inline (Set_Is_Valued_Procedure);
    pragma Inline (Set_Is_Visible_Formal);
    pragma Inline (Set_Is_Visible_Lib_Unit);
@@ -8648,7 +8618,9 @@ package Einfo is
    pragma Inline (Set_Needs_No_Actuals);
    pragma Inline (Set_Never_Set_In_Source);
    pragma Inline (Set_Next_Inlined_Subprogram);
+   pragma Inline (Set_No_Dynamic_Predicate_On_Actual);
    pragma Inline (Set_No_Pool_Assigned);
+   pragma Inline (Set_No_Predicate_On_Actual);
    pragma Inline (Set_No_Return);
    pragma Inline (Set_No_Strict_Aliasing);
    pragma Inline (Set_Non_Binary_Modulus);

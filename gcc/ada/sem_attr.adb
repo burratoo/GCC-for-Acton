@@ -2983,9 +2983,7 @@ package body Sem_Attr is
             --  because it was valid in the generic unit. Ditto if this is
             --  an inlining of a function declared in an instance.
 
-            if In_Instance
-              or else In_Inlined_Body
-            then
+            if In_Instance or else In_Inlined_Body then
                return;
 
             --  For sure OK if we have a real private type itself, but must
@@ -3130,12 +3128,10 @@ package body Sem_Attr is
                   --  The prefix denotes either the task type, or else a
                   --  single task whose task type is being analyzed.
 
-                  if (Is_Type (Tsk)
-                      and then Tsk = S)
-
+                  if (Is_Type (Tsk) and then Tsk = S)
                     or else (not Is_Type (Tsk)
-                      and then Etype (Tsk) = S
-                      and then not (Comes_From_Source (S)))
+                              and then Etype (Tsk) = S
+                              and then not (Comes_From_Source (S)))
                   then
                      null;
                   else
@@ -3166,7 +3162,6 @@ package body Sem_Attr is
 
             begin
                Get_First_Interp (P, Index, It);
-
                while Present (It.Nam) loop
                   if It.Nam = Ent then
                      null;
@@ -3241,9 +3236,7 @@ package body Sem_Attr is
       when Attribute_Descriptor_Size =>
          Check_E0;
 
-         if not Is_Entity_Name (P)
-           or else not Is_Type (Entity (P))
-         then
+         if not Is_Entity_Name (P) or else not Is_Type (Entity (P)) then
             Error_Attr_P ("prefix of attribute % must denote a type");
          end if;
 
@@ -3547,8 +3540,8 @@ package body Sem_Attr is
          if Etype (P) =  Standard_Exception_Type then
             Set_Etype (N, RTE (RE_Exception_Id));
 
-         --  Ada 2005 (AI-345): Attribute 'Identity may be applied to
-         --  task interface class-wide types.
+         --  Ada 2005 (AI-345): Attribute 'Identity may be applied to task
+         --  interface class-wide types.
 
          elsif Is_Task_Type (Etype (P))
            or else (Is_Access_Type (Etype (P))
@@ -4034,24 +4027,24 @@ package body Sem_Attr is
            and then Entity (Identifier (Enclosing_Loop)) /= Loop_Id
          then
             Error_Attr_P
-              ("prefix of attribute % that applies to "
-               & "outer loop must denote an entity");
+              ("prefix of attribute % that applies to outer loop must denote "
+               & "an entity");
 
          elsif Is_Potentially_Unevaluated (P) then
             Uneval_Old_Msg;
          end if;
 
-         --  Finally, if the Loop_Entry attribute appears within a pragma
-         --  that is ignored, we replace P'Loop_Entity by P to avoid useless
-         --  generation of the loop entity variable. Note that in this case
-         --  the expression won't be executed anyway, and this substitution
-         --  keeps types happy!
-
-         --  We should really do this in the expander, but it's easier here
+         --  Replace the Loop_Entry attribute reference by its prefix if the
+         --  related pragma is ignored. This transformation is OK with respect
+         --  to typing because Loop_Entry's type is that of its prefix. This
+         --  early transformation also avoids the generation of a useless loop
+         --  entry constant.
 
          if Is_Ignored (Enclosing_Pragma) then
             Rewrite (N, Relocate_Node (P));
          end if;
+
+         Preanalyze_And_Resolve (P);
       end Loop_Entry;
 
       -------------
@@ -6264,11 +6257,7 @@ package body Sem_Attr is
                   --  Mark this component as processed
 
                   else
-                     if No (Comps) then
-                        Comps := New_Elmt_List;
-                     end if;
-
-                     Append_Elmt (Comp_Or_Discr, Comps);
+                     Append_New_Elmt (Comp_Or_Discr, Comps);
                   end if;
                end if;
 
@@ -6787,9 +6776,6 @@ package body Sem_Attr is
       --  Computes the Fore value for the current attribute prefix, which is
       --  known to be a static fixed-point type. Used by Fore and Width.
 
-      function Is_VAX_Float (Typ : Entity_Id) return Boolean;
-      --  Determine whether Typ denotes a VAX floating point type
-
       function Mantissa return Uint;
       --  Returns the Mantissa value for the prefix type
 
@@ -6920,16 +6906,6 @@ package body Sem_Attr is
 
          return R;
       end Fore_Value;
-
-      ------------------
-      -- Is_VAX_Float --
-      ------------------
-
-      function Is_VAX_Float (Typ : Entity_Id) return Boolean is
-         pragma Unreferenced (Typ);
-      begin
-         return False;
-      end Is_VAX_Float;
 
       --------------
       -- Mantissa --
@@ -7953,16 +7929,6 @@ package body Sem_Attr is
                Fold_Uint  (N, Expr_Value (Lo_Bound), Static);
             end if;
 
-         --  Replace VAX Float_Type'First with a reference to the temporary
-         --  which represents the low bound of the type. This transformation
-         --  is needed since the back end cannot evaluate 'First on VAX.
-
-         elsif Is_VAX_Float (P_Type)
-           and then Nkind (Lo_Bound) = N_Identifier
-         then
-            Rewrite (N, New_Occurrence_Of (Entity (Lo_Bound), Sloc (N)));
-            Analyze (N);
-
          else
             Check_Concurrent_Discriminant (Lo_Bound);
          end if;
@@ -8205,16 +8171,6 @@ package body Sem_Attr is
             else
                Fold_Uint  (N, Expr_Value (Hi_Bound), Static);
             end if;
-
-         --  Replace VAX Float_Type'Last with a reference to the temporary
-         --  which represents the high bound of the type. This transformation
-         --  is needed since the back end cannot evaluate 'Last on VAX.
-
-         elsif Is_VAX_Float (P_Type)
-           and then Nkind (Hi_Bound) = N_Identifier
-         then
-            Rewrite (N, New_Occurrence_Of (Entity (Hi_Bound), Sloc (N)));
-            Analyze (N);
 
          else
             Check_Concurrent_Discriminant (Hi_Bound);

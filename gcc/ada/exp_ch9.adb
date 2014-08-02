@@ -2425,7 +2425,7 @@ package body Exp_Ch9 is
 
          --  If an inherited subprogram is implemented by a protected procedure
          --  or an entry, then the first parameter of the inherited subprogram
-         --  shall be of mode OUT or IN OUT, or access-to-variable parameter.
+         --  must be of mode OUT or IN OUT, or access-to-variable parameter.
 
          if Ekind (Iface_Op) = E_Procedure
            and then Present (Parameter_Specifications (Iface_Op_Spec))
@@ -2497,10 +2497,12 @@ package body Exp_Ch9 is
               Make_Parameter_Specification (Loc,
                 Defining_Identifier =>
                   Make_Defining_Identifier (Loc,
-                    Chars          => Chars (Defining_Identifier (Formal))),
-                    In_Present     => In_Present  (Formal),
-                    Out_Present    => Out_Present (Formal),
-                    Parameter_Type => Param_Type));
+                    Chars                  => Chars
+                                             (Defining_Identifier (Formal))),
+                    In_Present             => In_Present  (Formal),
+                    Out_Present            => Out_Present (Formal),
+                    Null_Exclusion_Present => Null_Exclusion_Present (Formal),
+                    Parameter_Type         => Param_Type));
 
             Next (Formal);
          end loop;
@@ -8929,7 +8931,7 @@ package body Exp_Ch9 is
 
          function Non_Static_Bound (Bound : Node_Id) return Boolean is
          begin
-            if Is_Static_Expression (Bound) then
+            if Is_OK_Static_Expression (Bound) then
                return False;
 
             elsif Is_Entity_Name (Bound)
@@ -10624,14 +10626,13 @@ package body Exp_Ch9 is
          Params : constant List_Id := New_List;
 
       begin
-         Append (
+         Append_To (Params,
            Make_Attribute_Reference (Loc,
              Prefix         => New_Occurrence_Of (Qnam, Loc),
-             Attribute_Name => Name_Unchecked_Access),
-           Params);
-         Append (Select_Mode,                  Params);
-         Append (New_Occurrence_Of (Ann, Loc),  Params);
-         Append (New_Occurrence_Of (Xnam, Loc), Params);
+             Attribute_Name => Name_Unchecked_Access));
+         Append_To (Params, Select_Mode);
+         Append_To (Params, New_Occurrence_Of (Ann, Loc));
+         Append_To (Params, New_Occurrence_Of (Xnam, Loc));
 
          return
            Make_Procedure_Call_Statement (Loc,
@@ -11351,6 +11352,7 @@ package body Exp_Ch9 is
             Append (Cases, Stats);
          end;
       end if;
+
       Append (End_Lab, Stats);
 
       --  Replace accept statement with appropriate block

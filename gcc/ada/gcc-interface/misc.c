@@ -407,10 +407,8 @@ gnat_init_gcc_fp (void)
     flag_signed_zeros = 0;
 
   /* Assume that FP operations can trap if S'Machine_Overflow is true,
-     but don't override the user if not.
-
-     ??? Alpha/VMS enables FP traps without declaring it.  */
-  if (Machine_Overflows_On_Target || TARGET_ABI_OPEN_VMS)
+     but don't override the user if not.  */
+  if (Machine_Overflows_On_Target)
     flag_trapping_math = 1;
   else if (!global_options_set.x_flag_trapping_math)
     flag_trapping_math = 0;
@@ -469,8 +467,6 @@ gnat_print_type (FILE *file, tree node, int indent)
       else if (TYPE_HAS_ACTUAL_BOUNDS_P (node))
 	print_node (file, "actual bounds", TYPE_ACTUAL_BOUNDS (node),
 		    indent + 4);
-      else if (TYPE_VAX_FLOATING_POINT_P (node))
-	;
       else
 	print_node (file, "index type", TYPE_INDEX_TYPE (node), indent + 4);
 
@@ -717,6 +713,9 @@ enumerate_modes (void (*f) (const char *, int, int, int, int, int, int, int))
     = { "float", "double", "long double" };
   int iloop;
 
+  /* We are going to compute it below.  */
+  fp_arith_may_widen = false;
+
   for (iloop = 0; iloop < NUM_MACHINE_MODES; iloop++)
     {
       enum machine_mode i = (enum machine_mode) iloop;
@@ -765,6 +764,15 @@ enumerate_modes (void (*f) (const char *, int, int, int, int, int, int, int))
 	  /* ??? Cope with the ghost XFmode of the ARM port.  */
 	  if (!fmt)
 	    continue;
+
+	  /* Be conservative and consider that floating-point arithmetics may
+	     use wider intermediate results as soon as there is an extended
+	     Motorola or Intel mode supported by the machine.  */
+	  if (fmt == &ieee_extended_motorola_format
+	      || fmt == &ieee_extended_intel_96_format
+	      || fmt == &ieee_extended_intel_96_round_53_format
+	      || fmt == &ieee_extended_intel_128_format)
+	    fp_arith_may_widen = true;
 
 	  if (fmt->b == 2)
 	    digs = (fmt->p - 1) * 1233 / 4096; /* scale by log (2) */

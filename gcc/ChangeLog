@@ -1,3 +1,90 @@
+2014-08-01  Alan Lawrence  <alan.lawrence@arm.com>
+
+	* config/aarch64/aarch64-simd-builtins.def (dup_lane, get_lane): Delete.
+
+2014-08-01  Jiong Wang <jiong.wang@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_classify_address): Accept all offset
+	for frame access when strict_p is false.
+
+2014-08-01  Renlin Li <renlin.li@arm.com>
+2014-08-01  Jiong Wang <jiong.wang@arm.com>
+
+	* config/aarch64/aarch64.c (offset_7bit_signed_scaled_p): Rename to
+	aarch64_offset_7bit_signed_scaled_p, remove static and use it.
+	* config/aarch64/aarch64-protos.h (aarch64_offset_7bit_signed_scaled_p):
+	Declaration.
+	* config/aarch64/predicates.md (aarch64_mem_pair_offset): Define new
+	predicate.
+	* config/aarch64/aarch64.md (loadwb_pair, storewb_pair): Use
+	aarch64_mem_pair_offset.
+
+2014-08-01  Jiong Wang <jiong.wang@arm.com>
+
+	* config/aarch64/aarch64.md (loadwb_pair<GPI:mode>_<P:mode>): Fix
+	offset.
+	(loadwb_pair<GPI:mode>_<P:mode>): Likewise.
+	* config/aarch64/aarch64.c (aarch64_gen_loadwb_pair): Likewise.
+
+2014-08-01  Matthew Fortune  <matthew.fortune@imgtec.com>
+
+	* config/mips/mips.h (REGISTER_PREFIX): Define macro.
+
+2014-08-01  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	PR regression/61510
+	* cgraphunit.c (analyze_functions): Use get_create rather than get
+	for decls which are clones of abstract functions.
+
+2014-08-01  Martin Liska  <mliska@suse.cz>
+
+	* gimple-iterator.h (gsi_next_nonvirtual_phi): New function.
+	* ipa-prop.h (count_formal_params): Global function created from static.
+	* ipa-prop.c (count_formal_params): Likewise.
+	* ipa-utils.c (ipa_merge_profiles): Be more tolerant if we merge
+	profiles for semantically equivalent functions.
+	* passes.c (do_per_function): If we load body of a function
+	during WPA, this condition should behave same.
+	* varpool.c (ctor_for_folding): More tolerant assert for variable
+	aliases created during WPA.
+
+2014-08-01  Martin Liska  <mliska@suse.cz>
+
+	* doc/invoke.texi (Options That Control Optimization): Documentation
+	for -foptimize-strlen introduced. Optimization levels default options
+	fixed.
+
+2014-08-01  Jakub Jelinek  <jakub@redhat.com>
+
+	* opts.c (common_handle_option): Handle -fsanitize=alignment.
+	* ubsan.h (enum ubsan_null_ckind): Add UBSAN_CTOR_CALL.
+	(ubsan_expand_bounds_ifn, ubsan_expand_null_ifn): Change return
+	type to bool.
+	* stor-layout.h (min_align_of_type): New prototype.
+	* asan.c (pass_sanopt::execute): Don't perform gsi_next if
+	ubsan_expand* told us not to do it.  Remove the extra gsi_end_p
+	check.
+	* ubsan.c: Include builtins.h.
+	(ubsan_expand_bounds_ifn): Change return type to bool,
+	always return true.
+	(ubsan_expand_null_ifn): Change return type to bool, change
+	argument to gimple_stmt_iterator *.  Handle both null and alignment
+	sanitization, take type from ckind argument's type rather than
+	first argument.
+	(instrument_member_call): Removed.
+	(instrument_mem_ref): Remove t argument, add mem and base arguments.
+	Handle both null and alignment sanitization, don't say whole
+	struct access is member access.  Build 3 argument IFN_UBSAN_NULL
+	call instead of 2 argument.
+	(instrument_null): Adjust instrument_mem_ref caller.  Don't
+	instrument calls here.
+	(pass_ubsan::gate, pass_ubsan::execute): Handle SANITIZE_ALIGNMENT
+	like SANITIZE_NULL.
+	* stor-layout.c (min_align_of_type): New function.
+	* flag-types.h (enum sanitize_code): Add SANITIZE_ALIGNMENT.
+	Or it into SANITIZE_UNDEFINED.
+	* doc/invoke.texi (-fsanitize=alignment): Document.
+
 2014-07-31  Andi Kleen  <ak@linux.intel.com>
 
 	* tree-ssa-tail-merge.c (same_succ_hash): Convert to inchash.

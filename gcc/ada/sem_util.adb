@@ -781,15 +781,63 @@ package body Sem_Util is
       Typ            : Entity_Id;
       Suggest_Static : Boolean := False)
    is
+      Gen            : Entity_Id;
+
    begin
-      if Has_Predicates (Typ) then
+      --  Avoid cascaded errors
+
+      if Error_Posted (N) then
+         return;
+      end if;
+
+      if Inside_A_Generic then
+         Gen := Current_Scope;
+         while Present (Gen) and then  Ekind (Gen) /= E_Generic_Package loop
+            Gen := Scope (Gen);
+         end loop;
+
+         if No (Gen) then
+            return;
+         end if;
+
+         if Is_Generic_Formal (Typ)
+           and then Is_Discrete_Type (Typ)
+         then
+            Set_No_Predicate_On_Actual (Typ);
+         end if;
+
+      elsif Has_Predicates (Typ) then
          if Is_Generic_Actual_Type (Typ) then
-            Error_Msg_Warn := SPARK_Mode /= On;
-            Error_Msg_FE (Msg & "<<", N, Typ);
-            Error_Msg_F ("\Program_Error [<<", N);
-            Insert_Action (N,
-              Make_Raise_Program_Error (Sloc (N),
-                Reason => PE_Bad_Predicated_Generic_Type));
+
+            --  The restriction on loop parameters is only that the type
+            --  should have no dynamic predicates.
+
+            if Nkind (Parent (N)) = N_Loop_Parameter_Specification
+              and then not Has_Dynamic_Predicate_Aspect (Typ)
+              and then Is_OK_Static_Subtype (Typ)
+            then
+               return;
+            end if;
+
+            Gen := Current_Scope;
+            while not Is_Generic_Instance (Gen) loop
+               Gen := Scope (Gen);
+            end loop;
+
+            pragma Assert (Present (Gen));
+
+            if Ekind (Gen) = E_Package and then In_Package_Body (Gen) then
+               Error_Msg_Warn := SPARK_Mode /= On;
+               Error_Msg_FE (Msg & "<<", N, Typ);
+               Error_Msg_F ("\Program_Error [<<", N);
+
+               Insert_Action (N,
+                 Make_Raise_Program_Error (Sloc (N),
+                   Reason => PE_Bad_Predicated_Generic_Type));
+
+            else
+               Error_Msg_FE (Msg & "<<", N, Typ);
+            end if;
 
          else
             Error_Msg_FE (Msg, N, Typ);
@@ -1834,11 +1882,7 @@ package body Sem_Util is
                      return Abandon;
                   end if;
 
-                  if Writable_Actuals_List = No_Elist then
-                     Writable_Actuals_List := New_Elmt_List;
-                  end if;
-
-                  Append_Elmt (N, Writable_Actuals_List);
+                  Append_New_Elmt (N, To => Writable_Actuals_List);
 
                else
                   if Identifiers_List = No_Elist then
@@ -2985,18 +3029,6 @@ package body Sem_Util is
          end if;
       end if;
    end Check_Unprotected_Access;
-
-   ---------------
-   -- Check_VMS --
-   ---------------
-
-   procedure Check_VMS (Construct : Node_Id) is
-   begin
-      if not OpenVMS_On_Target then
-         Error_Msg_N
-           ("this construct is allowed only in Open'V'M'S", Construct);
-      end if;
-   end Check_VMS;
 
    ------------------------
    -- Collect_Interfaces --
@@ -6099,9 +6131,7 @@ package body Sem_Util is
             declare
                Comp : constant Entity_Id := Defining_Identifier (Comp_Item);
             begin
-               if not Is_Tag (Comp)
-                 and then Chars (Comp) /= Name_uParent
-               then
+               if not Is_Tag (Comp) and then Chars (Comp) /= Name_uParent then
                   Append_Elmt (Comp, Into);
                end if;
             end;
@@ -6761,6 +6791,23 @@ package body Sem_Util is
       return Strval (Expr_Value_S (Arg));
    end Get_Name_From_CTC_Pragma;
 
+   -----------------------
+   -- Get_Parent_Entity --
+   -----------------------
+
+   function Get_Parent_Entity (Unit : Node_Id) return Entity_Id is
+   begin
+      if Nkind (Unit) = N_Package_Body
+        and then Nkind (Original_Node (Unit)) = N_Package_Instantiation
+      then
+         return Defining_Entity
+                  (Specification (Instance_Spec (Original_Node (Unit))));
+      elsif Nkind (Unit) = N_Package_Instantiation then
+         return Defining_Entity (Specification (Instance_Spec (Unit)));
+      else
+         return Defining_Entity (Unit);
+      end if;
+   end Get_Parent_Entity;
    -------------------
    -- Get_Pragma_Id --
    -------------------
@@ -7381,9 +7428,7 @@ package body Sem_Util is
 
    function Has_Denormals (E : Entity_Id) return Boolean is
    begin
-      return Is_Floating_Point_Type (E)
-        and then Denorm_On_Target
-        and then not Vax_Float (E);
+      return Is_Floating_Point_Type (E) and then Denorm_On_Target;
    end Has_Denormals;
 
    -------------------------------------------
@@ -8340,9 +8385,7 @@ package body Sem_Util is
 
    function Has_Signed_Zeros (E : Entity_Id) return Boolean is
    begin
-      return Is_Floating_Point_Type (E)
-        and then Signed_Zeros_On_Target
-        and then not Vax_Float (E);
+      return Is_Floating_Point_Type (E) and then Signed_Zeros_On_Target;
    end Has_Signed_Zeros;
 
    -----------------------------
@@ -11767,25 +11810,6 @@ package body Sem_Util is
 
       return False;
    end Is_Variable_Size_Record;
-
-   ---------------------
-   -- Is_VMS_Operator --
-   ---------------------
-
-   function Is_VMS_Operator (Op : Entity_Id) return Boolean is
-   begin
-      --  The VMS operators are declared in a child of System that is loaded
-      --  through pragma Extend_System. In some rare cases a program is run
-      --  with this extension but without indicating that the target is VMS.
-
-      return Ekind (Op) = E_Function
-        and then Is_Intrinsic_Subprogram (Op)
-        and then
-          ((Present_System_Aux and then Scope (Op) = System_Aux_Id)
-             or else
-              (True_VMS_Target
-                and then Scope (Scope (Op)) = RTU_Entity (System)));
-   end Is_VMS_Operator;
 
    -----------------
    -- Is_Variable --
