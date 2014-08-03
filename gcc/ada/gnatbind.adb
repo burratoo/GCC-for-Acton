@@ -557,7 +557,7 @@ procedure Gnatbind is
 
       --  Add the Task_Dispatching_Policy if it exists. Otherwise it will be
       --  set to No_Name.
-      Policy := Task_Dispatching_Policy;
+      Policy := Task_Dispatching_Policy_Specified;
 
       --  We add FIFO_Within_Priorities since it is the default case
       --  if the programmer does not specify a policy for every priority or

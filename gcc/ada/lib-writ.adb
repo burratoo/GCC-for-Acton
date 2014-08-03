@@ -1140,9 +1140,7 @@ package body Lib.Writ is
          Write_Info_Str (" DB");
       end if;
 
-      if Tasking_Used
-        and then not Is_Predefined_File_Name (Unit_File_Name (Main_Unit))
-      then
+      if not Is_Predefined_File_Name (Unit_File_Name (Main_Unit)) then
          if Locking_Policy /= ' ' then
             Write_Info_Str  (" L");
             Write_Info_Char (Locking_Policy);
