@@ -431,6 +431,7 @@ package Rtsfind is
       --  Children of Oak
 
       Oak_Agent,
+      Oak_Brokers,
       Oak_Indices,
       Oak_Memory,
       Oak_Message,
@@ -439,8 +440,11 @@ package Rtsfind is
 
       --  Children of Oak.Agent
 
-      Oak_Agent_Protected_Objects,
       Oak_Agent_Tasks,
+
+      --  Children of Oak.Brokers
+
+      Oak_Brokers_Protected_Objects,
 
       --  Children of Oak.Memory
 
@@ -560,8 +564,12 @@ package Rtsfind is
    --  Range of values of children of Oak
 
    subtype Oak_Agent_Child is Oak_Child
-      range Oak_Agent_Protected_Objects .. Oak_Agent_Tasks;
+      range Oak_Agent_Tasks .. Oak_Agent_Tasks;
    --  Range of values of children of Oak.Agent
+
+   subtype Oak_Brokers_Child is Oak_Child
+      range Oak_Brokers_Protected_Objects .. Oak_Brokers_Protected_Objects;
+   --  Range of values of children of Oak.Brokers
 
    subtype Oak_Memory_Child is Oak_Child
       range Oak_Memory_Call_Stack .. Oak_Memory_Call_Stack;
@@ -1842,7 +1850,6 @@ package Rtsfind is
 
      RE_No_Agent,                        -- Oak.Agent
      RE_Oak_Agent_Id,                    -- Oak.Agent
-     RE_Protected_Id,                    -- Oak.Agent
      RE_Scheduler_Id_With_No,            -- Oak.Agent
      RE_Task_Id,                         -- Oak.Agent
      RE_Task_List,                       -- Oak.Agent
@@ -1851,7 +1858,9 @@ package Rtsfind is
      RE_New_Task_Agent,                  -- Oak.Agent.Tasks
      RE_Unspecified_Priority,            -- Oak.Agent.Tasks
 
-     RE_New_Protected_Agent,             -- Oak.Agent.Protected_Objects
+     RE_Protected_Id,                    -- Oak.Brokers
+
+     RE_New_Protected_Agent,             -- Oak.Brokers.Protected_Objects
 
      RE_Action_Index,                    -- Oak.Indices
      RE_Protected_Entry_Index,           -- Oak.Indices
@@ -3161,12 +3170,13 @@ package Rtsfind is
 
      RE_No_Agent                         => Oak_Agent,
      RE_Oak_Agent_Id                     => Oak_Agent,
-     RE_Protected_Id                     => Oak_Agent,
      RE_Scheduler_Id_With_No             => Oak_Agent,
      RE_Task_Id                          => Oak_Agent,
      RE_Task_List                        => Oak_Agent,
 
-     RE_New_Protected_Agent              => Oak_Agent_Protected_Objects,
+     RE_Protected_Id                     => Oak_Brokers,
+
+     RE_New_Protected_Agent              => Oak_Brokers_Protected_Objects,
 
      RE_Activation_Chain_Access          => Oak_Agent_Tasks,
      RE_New_Task_Agent                   => Oak_Agent_Tasks,

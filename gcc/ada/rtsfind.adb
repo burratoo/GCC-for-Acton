@@ -529,6 +529,10 @@ package body Rtsfind is
             Name_Buffer (10) := '.';
          end if;
 
+         if U_Id in Oak_Brokers_Child then
+            Name_Buffer (12) := '.';
+         end if;
+
          if U_Id in Oak_Memory_Child then
             Name_Buffer (11) := '.';
          end if;
