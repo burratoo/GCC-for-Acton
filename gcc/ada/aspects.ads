@@ -93,6 +93,7 @@ package Aspects is
       Aspect_Deadline_Handler,              -- Acton
       Aspect_Deadline_Response,             -- Acton
       Aspect_Default_Component_Value,
+      Aspect_Default_Initial_Condition,     -- GNAT
       Aspect_Default_Iterator,
       Aspect_Default_Value,
       Aspect_Depends,                       -- GNAT
@@ -117,6 +118,7 @@ package Aspects is
       Aspect_Linker_Section,                -- GNAT
       Aspect_Machine_Radix,
       Aspect_Object_Size,                   -- GNAT
+      Aspect_Obsolescent,                   -- GNAT
       Aspect_Output,
       Aspect_Part_Of,                       -- GNAT
       Aspect_Post,
@@ -336,6 +338,7 @@ package Aspects is
       Aspect_Deadline_Handler        => Expression,
       Aspect_Deadline_Response       => Expression,
       Aspect_Default_Component_Value => Expression,
+      Aspect_Default_Initial_Condition => Optional_Expression,
       Aspect_Default_Iterator        => Name,
       Aspect_Default_Value           => Expression,
       Aspect_Depends                 => Expression,
@@ -360,6 +363,7 @@ package Aspects is
       Aspect_Linker_Section          => Expression,
       Aspect_Machine_Radix           => Expression,
       Aspect_Object_Size             => Expression,
+      Aspect_Obsolescent             => Optional_Expression,
       Aspect_Output                  => Name,
       Aspect_Part_Of                 => Expression,
       Aspect_Post                    => Expression,
@@ -393,8 +397,8 @@ package Aspects is
       Aspect_Warnings                => Name,
       Aspect_Write                   => Name,
 
-      Boolean_Aspects                => Optional_Expression,
-      Library_Unit_Aspects           => Optional_Expression);
+      Boolean_Aspects                  => Optional_Expression,
+      Library_Unit_Aspects             => Optional_Expression);
 
    -----------------------------------------
    -- Table Linking Names and Aspect_Id's --
@@ -428,9 +432,10 @@ package Aspects is
       Aspect_Cycle_Phase                  => Name_Cycle_Phase,
       Aspect_Deadline_Handler             => Name_Deadline_Handler,
       Aspect_Deadline_Response            => Name_Deadline_Response,
+      Aspect_Default_Component_Value      => Name_Default_Component_Value,
+      Aspect_Default_Initial_Condition    => Name_Default_Initial_Condition,
       Aspect_Default_Iterator             => Name_Default_Iterator,
       Aspect_Default_Value                => Name_Default_Value,
-      Aspect_Default_Component_Value      => Name_Default_Component_Value,
       Aspect_Depends                      => Name_Depends,
       Aspect_Dimension                    => Name_Dimension,
       Aspect_Dimension_System             => Name_Dimension_System,
@@ -469,6 +474,7 @@ package Aspects is
       Aspect_No_Elaboration_Code_All      => Name_No_Elaboration_Code_All,
       Aspect_No_Return                    => Name_No_Return,
       Aspect_Object_Size                  => Name_Object_Size,
+      Aspect_Obsolescent                  => Name_Obsolescent,
       Aspect_Output                       => Name_Output,
       Aspect_Pack                         => Name_Pack,
       Aspect_Part_Of                      => Name_Part_Of,
@@ -724,6 +730,7 @@ package Aspects is
       Aspect_Async_Writers                => Never_Delay,
       Aspect_Contract_Cases               => Never_Delay,
       Aspect_Convention                   => Never_Delay,
+      Aspect_Default_Initial_Condition    => Never_Delay,
       Aspect_Depends                      => Never_Delay,
       Aspect_Dimension                    => Never_Delay,
       Aspect_Dimension_System             => Never_Delay,
@@ -733,6 +740,7 @@ package Aspects is
       Aspect_Initial_Condition            => Never_Delay,
       Aspect_Initializes                  => Never_Delay,
       Aspect_No_Elaboration_Code_All      => Never_Delay,
+      Aspect_Obsolescent                  => Never_Delay,
       Aspect_Part_Of                      => Never_Delay,
       Aspect_Refined_Depends              => Never_Delay,
       Aspect_Refined_Global               => Never_Delay,

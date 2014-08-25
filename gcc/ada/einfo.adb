@@ -269,6 +269,7 @@ package body Einfo is
 
    --    Is_Inlined_Always               Flag1
    --    Is_Hidden_Non_Overridden_Subpgm Flag2
+   --    Has_Default_Init_Cond           Flag3
    --    Is_Frozen                       Flag4
    --    Has_Discriminants               Flag5
    --    Is_Dispatching_Operation        Flag6
@@ -410,6 +411,9 @@ package body Einfo is
    --    Is_Generic_Instance             Flag130
 
    --    No_Pool_Assigned                Flag131
+   --    Is_Default_Init_Cond_Procedure  Flag132
+   --    Has_Inherited_Default_Init_Cond Flag133
+   --    Returns_Limited_View            Flag134
    --    Has_Aliased_Components          Flag135
    --    No_Strict_Aliasing              Flag136
    --    Is_Machine_Code_Subprogram      Flag137
@@ -562,17 +566,11 @@ package body Einfo is
 
    --    (Has_Protected)                 Flag271
    --    (SSO_Set_Low_By_Default)        Flag272
-   --    (SSO_Set_Low_By_Default)        Flag273
+   --    (SSO_Set_High_By_Default)       Flag273
 
    --    Is_Generic_Actual_Subprogram    Flag274
    --    No_Predicate_On_Actual          Flag275
    --    No_Dynamic_Predicate_On_Actual  Flag276
-
-   --    (unused)                        Flag3
-
-   --    (unused)                        Flag132
-   --    (unused)                        Flag133
-   --    (unused)                        Flag134
 
    --    (unused)                        Flag275
    --    (unused)                        Flag276
@@ -1394,6 +1392,11 @@ package body Einfo is
       return Flag39 (Base_Type (Id));
    end Has_Default_Aspect;
 
+   function Has_Default_Init_Cond (Id : E) return B is
+   begin
+      return Flag3 (Id);
+   end Has_Default_Init_Cond;
+
    function Has_Delayed_Aspects (Id : E) return B is
    begin
       pragma Assert (Nkind (Id) in N_Entity);
@@ -1477,6 +1480,12 @@ package body Einfo is
       pragma Assert (Is_Type (Id));
       return Flag248 (Id);
    end Has_Inheritable_Invariants;
+
+   function Has_Inherited_Default_Init_Cond (Id : E) return B is
+   begin
+      pragma Assert (Is_Type (Id));
+      return Flag133 (Id);
+   end Has_Inherited_Default_Init_Cond;
 
    function Has_Initial_Value (Id : E) return B is
    begin
@@ -1975,6 +1984,12 @@ package body Einfo is
       return Flag74 (Id);
    end Is_CPP_Class;
 
+   function Is_Default_Init_Cond_Procedure (Id : E) return B is
+   begin
+      pragma Assert (Ekind_In (Id, E_Function, E_Procedure));
+      return Flag132 (Id);
+   end Is_Default_Init_Cond_Procedure;
+
    function Is_Descendent_Of_Address (Id : E) return B is
    begin
       return Flag223 (Id);
@@ -2137,7 +2152,7 @@ package body Einfo is
 
    function Is_Invariant_Procedure (Id : E) return B is
    begin
-      pragma Assert (Ekind (Id) = E_Function or else Ekind (Id) = E_Procedure);
+      pragma Assert (Ekind_In (Id, E_Function, E_Procedure));
       return Flag257 (Id);
    end Is_Invariant_Procedure;
 
@@ -2276,7 +2291,7 @@ package body Einfo is
 
    function Is_Processed_Transient (Id : E) return B is
    begin
-      pragma Assert (Ekind_In (Id, E_Constant, E_Variable));
+      pragma Assert (Ekind_In (Id, E_Constant, E_Loop_Parameter, E_Variable));
       return Flag252 (Id);
    end Is_Processed_Transient;
 
@@ -2848,6 +2863,12 @@ package body Einfo is
    begin
       return Flag90 (Id);
    end Returns_By_Ref;
+
+   function Returns_Limited_View (Id : E) return B is
+   begin
+      pragma Assert (Ekind (Id) = E_Function);
+      return Flag134 (Id);
+   end Returns_Limited_View;
 
    function Reverse_Bit_Order (Id : E) return B is
    begin
@@ -4142,6 +4163,12 @@ package body Einfo is
       Set_Flag39 (Id, V);
    end Set_Has_Default_Aspect;
 
+   procedure Set_Has_Default_Init_Cond (Id : E; V : B := True) is
+   begin
+      pragma Assert (Is_Type (Id));
+      Set_Flag3 (Id, V);
+   end Set_Has_Default_Init_Cond;
+
    procedure Set_Has_Delayed_Aspects (Id : E; V : B := True) is
    begin
       pragma Assert (Nkind (Id) in N_Entity);
@@ -4227,6 +4254,12 @@ package body Einfo is
       pragma Assert (Is_Type (Id));
       Set_Flag248 (Id, V);
    end Set_Has_Inheritable_Invariants;
+
+   procedure Set_Has_Inherited_Default_Init_Cond (Id : E; V : B := True) is
+   begin
+      pragma Assert (Is_Type (Id));
+      Set_Flag133 (Id, V);
+   end Set_Has_Inherited_Default_Init_Cond;
 
    procedure Set_Has_Initial_Value (Id : E; V : B := True) is
    begin
@@ -4750,6 +4783,12 @@ package body Einfo is
       Set_Flag74 (Id, V);
    end Set_Is_CPP_Class;
 
+   procedure Set_Is_Default_Init_Cond_Procedure (Id : E; V : B := True) is
+   begin
+      pragma Assert (Ekind (Id) = E_Procedure);
+      Set_Flag132 (Id, V);
+   end Set_Is_Default_Init_Cond_Procedure;
+
    procedure Set_Is_Descendent_Of_Address (Id : E; V : B := True) is
    begin
       pragma Assert (Is_Type (Id));
@@ -4922,7 +4961,7 @@ package body Einfo is
 
    procedure Set_Is_Invariant_Procedure (Id : E; V : B := True) is
    begin
-      pragma Assert (Ekind (Id) = E_Function or else Ekind (Id) = E_Procedure);
+      pragma Assert (Ekind (Id) = E_Procedure);
       Set_Flag257 (Id, V);
    end Set_Is_Invariant_Procedure;
 
@@ -5064,7 +5103,7 @@ package body Einfo is
 
    procedure Set_Is_Processed_Transient (Id : E; V : B := True) is
    begin
-      pragma Assert (Ekind_In (Id, E_Constant, E_Variable));
+      pragma Assert (Ekind_In (Id, E_Constant, E_Loop_Parameter, E_Variable));
       Set_Flag252 (Id, V);
    end Set_Is_Processed_Transient;
 
@@ -5656,6 +5695,12 @@ package body Einfo is
    begin
       Set_Flag90 (Id, V);
    end Set_Returns_By_Ref;
+
+   procedure Set_Returns_Limited_View (Id : E; V : B := True) is
+   begin
+      pragma Assert (Ekind (Id) = E_Function);
+      Set_Flag134 (Id, V);
+   end Set_Returns_Limited_View;
 
    procedure Set_Reverse_Bit_Order (Id : E; V : B := True) is
    begin
@@ -6412,6 +6457,31 @@ package body Einfo is
          end if;
       end loop;
    end Declaration_Node;
+
+   ---------------------------------
+   -- Default_Init_Cond_Procedure --
+   ---------------------------------
+
+   function Default_Init_Cond_Procedure (Id : E) return E is
+      S : Entity_Id;
+
+   begin
+      pragma Assert
+        (Is_Type (Id)
+           and then (Has_Default_Init_Cond (Id)
+                       or Has_Inherited_Default_Init_Cond (Id)));
+
+      S := Subprograms_For_Type (Id);
+      while Present (S) loop
+         if Is_Default_Init_Cond_Procedure (S) then
+            return S;
+         end if;
+
+         S := Subprograms_For_Type (S);
+      end loop;
+
+      return Empty;
+   end Default_Init_Cond_Procedure;
 
    ---------------------
    -- Designated_Type --
@@ -7197,6 +7267,29 @@ package body Einfo is
       end if;
    end Is_Standard_Character_Type;
 
+   -----------------------------
+   -- Is_Standard_String_Type --
+   -----------------------------
+
+   function Is_Standard_String_Type (Id : E) return B is
+   begin
+      if Is_Type (Id) then
+         declare
+            R : constant Entity_Id := Root_Type (Id);
+         begin
+            return
+              R = Standard_String
+                or else
+              R = Standard_Wide_String
+                or else
+              R = Standard_Wide_Wide_String;
+         end;
+
+      else
+         return False;
+      end if;
+   end Is_Standard_String_Type;
+
    --------------------
    -- Is_String_Type --
    --------------------
@@ -7840,7 +7933,6 @@ package body Einfo is
              (Num   => Significand * 2 ** (Exponent mod 4),
               Den   => -Exponent / 4,
               Rbase => 16);
-
       else
          return
            UR_From_Components
@@ -7915,6 +8007,34 @@ package body Einfo is
             Set_Flag129 (Id, True);
       end case;
    end Set_Component_Alignment;
+
+   -------------------------------------
+   -- Set_Default_Init_Cond_Procedure --
+   -------------------------------------
+
+   procedure Set_Default_Init_Cond_Procedure (Id : E; V : E) is
+      S : Entity_Id;
+
+   begin
+      pragma Assert
+        (Is_Type (Id) and then (Has_Default_Init_Cond           (Id)
+                                  or
+                                Has_Inherited_Default_Init_Cond (Id)));
+
+      S := Subprograms_For_Type (Id);
+      Set_Subprograms_For_Type (Id, V);
+      Set_Subprograms_For_Type (V, S);
+
+      --  Check for a duplicate procedure
+
+      while Present (S) loop
+         if Is_Default_Init_Cond_Procedure (S) then
+            raise Program_Error;
+         end if;
+
+         S := Subprograms_For_Type (S);
+      end loop;
+   end Set_Default_Init_Cond_Procedure;
 
    -----------------------------
    -- Set_Invariant_Procedure --
@@ -8256,6 +8376,7 @@ package body Einfo is
       W ("Has_Convention_Pragma",           Flag119 (Id));
       W ("Has_Cyclic_Section",              Flag286 (Id));
       W ("Has_Default_Aspect",              Flag39  (Id));
+      W ("Has_Default_Init_Cond",           Flag3   (Id));
       W ("Has_Delayed_Aspects",             Flag200 (Id));
       W ("Has_Delayed_Freeze",              Flag18  (Id));
       W ("Has_Delayed_Rep_Aspects",         Flag261 (Id));
@@ -8271,6 +8392,7 @@ package body Einfo is
       W ("Has_Implicit_Dereference",        Flag251 (Id));
       W ("Has_Independent_Components",      Flag34  (Id));
       W ("Has_Inheritable_Invariants",      Flag248 (Id));
+      W ("Has_Inherited_Default_Init_Cond", Flag133 (Id));
       W ("Has_Initial_Value",               Flag219 (Id));
       W ("Has_Invariants",                  Flag232 (Id));
       W ("Has_Loop_Entry_Attributes",       Flag260 (Id));
@@ -8331,8 +8453,7 @@ package body Einfo is
       W ("In_Private_Part",                 Flag45  (Id));
       W ("In_Use",                          Flag8   (Id));
       W ("Is_Abstract_Subprogram",          Flag19  (Id));
-      W ("Is_Abstract_Type",                Flag146  (Id));
-      W ("Is_Local_Anonymous_Access",       Flag194 (Id));
+      W ("Is_Abstract_Type",                Flag146 (Id));
       W ("Is_Access_Constant",              Flag69  (Id));
       W ("Is_Ada_2005_Only",                Flag185 (Id));
       W ("Is_Ada_2012_Only",                Flag199 (Id));
@@ -8354,6 +8475,7 @@ package body Einfo is
       W ("Is_Constructor",                  Flag76  (Id));
       W ("Is_Controlled",                   Flag42  (Id));
       W ("Is_Controlling_Formal",           Flag97  (Id));
+      W ("Is_Default_Init_Cond_Procedure",  Flag132 (Id));
       W ("Is_Descendent_Of_Address",        Flag223 (Id));
       W ("Is_Discrim_SO_Function",          Flag176 (Id));
       W ("Is_Discriminant_Check_Function",  Flag264 (Id));
@@ -8392,6 +8514,7 @@ package body Einfo is
       W ("Is_Limited_Composite",            Flag106 (Id));
       W ("Is_Limited_Interface",            Flag197 (Id));
       W ("Is_Limited_Record",               Flag25  (Id));
+      W ("Is_Local_Anonymous_Access",       Flag194 (Id));
       W ("Is_Machine_Code_Subprogram",      Flag137 (Id));
       W ("Is_Non_Static_Subtype",           Flag109 (Id));
       W ("Is_Null_Init_Proc",               Flag178 (Id));
@@ -8467,6 +8590,7 @@ package body Einfo is
       W ("Requires_Overriding",             Flag213 (Id));
       W ("Return_Present",                  Flag54  (Id));
       W ("Returns_By_Ref",                  Flag90  (Id));
+      W ("Returns_Limited_View",            Flag134 (Id));
       W ("Reverse_Bit_Order",               Flag164 (Id));
       W ("Reverse_Storage_Order",           Flag93  (Id));
       W ("Sec_Stack_Needed_For_Return",     Flag167 (Id));

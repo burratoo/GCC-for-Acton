@@ -649,6 +649,20 @@ package Opt is
    --  GNAT
    --  Disable generation of ALI file
 
+   Follow_Links_For_Files : Boolean := False;
+   --  PROJECT MANAGER
+   --  Set to True (-eL) to process the project files in trusted mode. If
+   --  Follow_Links is False, it is assumed that the project doesn't contain
+   --  any file duplicated through symbolic links (although the latter are
+   --  still valid if they point to a file which is outside of the project),
+   --  and that no directory has a name which is a valid source name.
+
+   Follow_Links_For_Dirs : Boolean := False;
+   --  PROJECT MANAGER
+   --  Set to True if directories can be links in this project, and therefore
+   --  additional system calls must be performed to ensure that we always see
+   --  the same full name for each directory.
+
    Force_Checking_Of_Elaboration_Flags : Boolean := False;
    --  GNATBIND
    --  True if binding with forced checking of the elaboration flags
@@ -657,6 +671,13 @@ package Opt is
    Force_Compilations : Boolean := False;
    --  GNATMAKE, GPRMAKE, GPRBUILD
    --  Set to force recompilations even when the objects are up-to-date.
+
+   Front_End_Inlining : Boolean := False;
+   --  GNAT
+   --  Set True to activate inlining by front-end expansion (even on GCC
+   --  targets, where inlining is normally handled by the back end). Set by
+   --  the flag -gnatN (which is now considered obsolescent, since the GCC
+   --  back end can do a better job of inlining than the front end these days.
 
    Full_Path_Name_For_Brief_Errors : Boolean := False;
    --  PROJECT MANAGER
@@ -684,6 +705,10 @@ package Opt is
    --  GNAT
    --  True when switch -gnateG is used. When True, create in a file
    --  <source>.prep, if the source is preprocessed.
+
+   Generate_SCIL : Boolean := False;
+   --  GNAT
+   --  Set True to activate SCIL code generation.
 
    Generate_SCO : Boolean := False;
    --  GNAT
@@ -728,6 +753,12 @@ package Opt is
    --  coding in the source program. This variable is initialized to the
    --  default value appropriate to the system (in Osint.Initialize), and then
    --  reset if a command line switch is used to change the setting.
+
+   Ignore_Pragma_SPARK_Mode : Boolean := False;
+   --  GNAT
+   --  Set True to ignore the semantics and effects of pragma SPARK_Mode when
+   --  the pragma appears inside an instance whose enclosing context is subject
+   --  to SPARK_Mode "off".
 
    Ignore_Rep_Clauses : Boolean := False;
    --  GNAT
@@ -799,10 +830,6 @@ package Opt is
    --  then elaboration flag checks are to be generated in the binder
    --  generated file.
 
-   Generate_SCIL : Boolean := False;
-   --  GNAT
-   --  Set True to activate SCIL code generation.
-
    Global_Start_Phase : Int := -1;
    --  GNAT, GNATBIND
    --  Set to -1 for the default case where no pragma Global_Start_Phase is
@@ -811,27 +838,6 @@ package Opt is
    Invalid_Value_Used : Boolean := False;
    --  GNAT
    --  Set True if a valid Invalid_Value attribute is encountered
-
-   Follow_Links_For_Files : Boolean := False;
-   --  PROJECT MANAGER
-   --  Set to True (-eL) to process the project files in trusted mode. If
-   --  Follow_Links is False, it is assumed that the project doesn't contain
-   --  any file duplicated through symbolic links (although the latter are
-   --  still valid if they point to a file which is outside of the project),
-   --  and that no directory has a name which is a valid source name.
-
-   Follow_Links_For_Dirs : Boolean := False;
-   --  PROJECT MANAGER
-   --  Set to True if directories can be links in this project, and therefore
-   --  additional system calls must be performed to ensure that we always see
-   --  the same full name for each directory.
-
-   Front_End_Inlining : Boolean := False;
-   --  GNAT
-   --  Set True to activate inlining by front-end expansion (even on GCC
-   --  targets, where inlining is normally handled by the back end). Set by
-   --  the flag -gnatN (which is now considered obsolescent, since the GCC
-   --  back end can do a better job of inlining than the front end these days.
 
    Inline_Processing_Required : Boolean := False;
    --  GNAT
