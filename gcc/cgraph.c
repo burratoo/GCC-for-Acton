@@ -34,6 +34,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-inline.h"
 #include "langhooks.h"
 #include "hashtab.h"
+#include "hash-set.h"
 #include "toplev.h"
 #include "flags.h"
 #include "debug.h"
@@ -941,7 +942,8 @@ cgraph_allocate_init_indirect_info (void)
 
 struct cgraph_edge *
 cgraph_node::create_indirect_edge (gimple call_stmt, int ecf_flags,
-				   gcov_type count, int freq)
+				   gcov_type count, int freq,
+				   bool compute_indirect_info)
 {
   struct cgraph_edge *edge = cgraph_node::create_edge (this, NULL, call_stmt,
 						       count, freq, true);
@@ -953,7 +955,8 @@ cgraph_node::create_indirect_edge (gimple call_stmt, int ecf_flags,
   edge->indirect_info->ecf_flags = ecf_flags;
 
   /* Record polymorphic call info.  */
-  if (call_stmt
+  if (compute_indirect_info
+      && call_stmt
       && (target = gimple_call_fn (call_stmt))
       && virtual_method_call_p (target))
     {
@@ -2876,7 +2879,7 @@ cgraph_node::verify_node (void)
     {
       if (this_cfun->cfg)
 	{
-	  pointer_set_t *stmts = pointer_set_create ();
+	  hash_set<gimple> stmts;
 	  int i;
 	  struct ipa_ref *ref = NULL;
 
@@ -2886,13 +2889,13 @@ cgraph_node::verify_node (void)
 	    {
 	      for (gsi = gsi_start_phis (this_block);
 		   !gsi_end_p (gsi); gsi_next (&gsi))
-		pointer_set_insert (stmts, gsi_stmt (gsi));
+		stmts.add (gsi_stmt (gsi));
 	      for (gsi = gsi_start_bb (this_block);
 		   !gsi_end_p (gsi);
 		   gsi_next (&gsi))
 		{
 		  gimple stmt = gsi_stmt (gsi);
-		  pointer_set_insert (stmts, stmt);
+		  stmts.add (stmt);
 		  if (is_gimple_call (stmt))
 		    {
 		      struct cgraph_edge *e = get_edge (stmt);
@@ -2936,13 +2939,12 @@ cgraph_node::verify_node (void)
 		}
 	      }
 	    for (i = 0; iterate_reference (i, ref); i++)
-	      if (ref->stmt && !pointer_set_contains (stmts, ref->stmt))
+	      if (ref->stmt && !stmts.contains (ref->stmt))
 		{
 		  error ("reference to dead statement");
 		  cgraph_debug_gimple_stmt (this_cfun, ref->stmt);
 		  error_found = true;
 		}
-	    pointer_set_destroy (stmts);
 	}
       else
 	/* No CFG available?!  */
@@ -3000,11 +3002,11 @@ cgraph_node::verify_cgraph_nodes (void)
 cgraph_node *
 cgraph_node::function_symbol (enum availability *availability)
 {
-  cgraph_node *node = NULL;
+  cgraph_node *node = this;
 
   do
     {
-      node = ultimate_alias_target (availability);
+      node = node->ultimate_alias_target (availability);
       if (node->thunk.thunk_p)
 	{
 	  node = node->callees->callee;

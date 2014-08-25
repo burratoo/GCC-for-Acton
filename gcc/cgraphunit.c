@@ -215,7 +215,7 @@ along with GCC; see the file COPYING3.  If not see
 /* Queue of cgraph nodes scheduled to be added into cgraph.  This is a
    secondary queue used during optimization to accommodate passes that
    may generate new functions that need to be optimized and expanded.  */
-cgraph_node_set cgraph_new_nodes;
+vec<cgraph_node *> cgraph_new_nodes;
 
 static void expand_all_functions (void);
 static void mark_functions_to_output (void);
@@ -300,17 +300,16 @@ void
 cgraph_process_new_functions (void)
 {
   tree fndecl;
-  struct cgraph_node *node;
-  cgraph_node_set_iterator csi;
 
-  if (!cgraph_new_nodes)
+  if (!cgraph_new_nodes.exists ())
     return;
+
   handle_alias_pairs ();
   /*  Note that this queue may grow as its being processed, as the new
       functions may generate new ones.  */
-  for (csi = csi_start (cgraph_new_nodes); !csi_end_p (csi); csi_next (&csi))
+  for (unsigned i = 0; i < cgraph_new_nodes.length (); i++)
     {
-      node = csi_node (csi);
+      cgraph_node *node = cgraph_new_nodes[i];
       fndecl = node->decl;
       switch (cgraph_state)
 	{
@@ -357,8 +356,8 @@ cgraph_process_new_functions (void)
 	  break;
 	}
     }
-  free_cgraph_node_set (cgraph_new_nodes);
-  cgraph_new_nodes = NULL;
+
+  cgraph_new_nodes.release ();
 }
 
 /* As an GCC extension we allow redefinition of the function.  The
@@ -501,9 +500,7 @@ cgraph_node::add_new_function (tree fndecl, bool lowered)
 	node = cgraph_node::get_create (fndecl);
 	if (lowered)
 	  node->lowered = true;
-	if (!cgraph_new_nodes)
-	  cgraph_new_nodes = cgraph_node_set_new ();
-	cgraph_node_set_add (cgraph_new_nodes, node);
+	cgraph_new_nodes.safe_push (node);
         break;
 
       case CGRAPH_STATE_IPA:
@@ -529,9 +526,7 @@ cgraph_node::add_new_function (tree fndecl, bool lowered)
 	  }
 	if (lowered)
 	  node->lowered = true;
-	if (!cgraph_new_nodes)
-	  cgraph_new_nodes = cgraph_node_set_new ();
-	cgraph_node_set_add (cgraph_new_nodes, node);
+	cgraph_new_nodes.safe_push (node);
         break;
 
       case CGRAPH_STATE_FINISHED:
@@ -845,7 +840,7 @@ varpool_node::finalize_decl (tree decl)
    avoid udplicate work.  */
 
 static void
-walk_polymorphic_call_targets (pointer_set_t *reachable_call_targets,
+walk_polymorphic_call_targets (hash_set<void *> *reachable_call_targets,
 			       struct cgraph_edge *edge)
 {
   unsigned int i;
@@ -855,8 +850,7 @@ walk_polymorphic_call_targets (pointer_set_t *reachable_call_targets,
     = possible_polymorphic_call_targets
 	(edge, &final, &cache_token);
 
-  if (!pointer_set_insert (reachable_call_targets,
-			   cache_token))
+  if (!reachable_call_targets->add (cache_token))
     {
       if (cgraph_dump_file)
 	dump_possible_polymorphic_call_targets 
@@ -936,7 +930,7 @@ analyze_functions (void)
   struct cgraph_node *first_handled = first_analyzed;
   static varpool_node *first_analyzed_var;
   varpool_node *first_handled_var = first_analyzed_var;
-  struct pointer_set_t *reachable_call_targets = pointer_set_create ();
+  hash_set<void *> reachable_call_targets;
 
   symtab_node *node;
   symtab_node *next;
@@ -1035,7 +1029,7 @@ analyze_functions (void)
 		    {
 		      next = edge->next_callee;
 		      if (edge->indirect_info->polymorphic)
-			walk_polymorphic_call_targets (reachable_call_targets,
+			walk_polymorphic_call_targets (&reachable_call_targets,
 						       edge);
 		    }
 		}
@@ -1123,7 +1117,6 @@ analyze_functions (void)
       symtab_node::dump_table (cgraph_dump_file);
     }
   bitmap_obstack_release (NULL);
-  pointer_set_destroy (reachable_call_targets);
   ggc_collect ();
   /* Initialize assembler name hash, in particular we want to trigger C++
      mangling and same body alias creation before we free DECL_ARGUMENTS
@@ -1178,7 +1171,7 @@ handle_alias_pairs (void)
 	  /* We use local aliases for C++ thunks to force the tailcall
 	     to bind locally.  This is a hack - to keep it working do
 	     the following (which is not strictly correct).  */
-	  && (! TREE_CODE (target_node->decl) == FUNCTION_DECL
+	  && (TREE_CODE (target_node->decl) != FUNCTION_DECL
 	      || ! DECL_VIRTUAL_P (target_node->decl))
 	  && ! lookup_attribute ("weakref", DECL_ATTRIBUTES (p->decl)))
 	{
@@ -2054,10 +2047,8 @@ ipa_passes (void)
 	return;
     }
 
-  /* We never run removal of unreachable nodes after early passes.  This is
-     because TODO is run before the subpasses.  It is important to remove
-     the unreachable functions to save works at IPA level and to get LTO
-     symbol tables right.  */
+  /* This extra symtab_remove_unreachable_nodes pass tends to catch some
+     devirtualization and other changes where removal iterate.  */
   symtab_remove_unreachable_nodes (true, cgraph_dump_file);
 
   /* If pass_all_early_optimizations was not scheduled, the state of
@@ -2191,7 +2182,8 @@ compile (void)
     }
 
   /* This pass remove bodies of extern inline functions we never inlined.
-     Do this later so other IPA passes see what is really going on.  */
+     Do this later so other IPA passes see what is really going on.
+     FIXME: This should be run just after inlining by pasmanager.  */
   symtab_remove_unreachable_nodes (false, dump_file);
   cgraph_global_info_ready = true;
   if (cgraph_dump_file)
@@ -2217,10 +2209,6 @@ compile (void)
   cgraph_materialize_all_clones ();
   bitmap_obstack_initialize (NULL);
   execute_ipa_pass_list (g->get_passes ()->all_late_ipa_passes);
-  symtab_remove_unreachable_nodes (true, dump_file);
-#ifdef ENABLE_CHECKING
-  symtab_node::verify_symtab_nodes ();
-#endif
   bitmap_obstack_release (NULL);
   mark_functions_to_output ();
 

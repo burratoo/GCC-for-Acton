@@ -52,7 +52,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "basic-block.h"
 #include "bitmap.h"
-#include "pointer-set.h"
 #include "tree-ssa-alias.h"
 #include "internal-fn.h"
 #include "gimple-expr.h"
@@ -5143,7 +5142,7 @@ struct free_lang_data_d
   vec<tree> worklist;
 
   /* Set of traversed objects.  Used to avoid duplicate visits.  */
-  struct pointer_set_t *pset;
+  hash_set<tree> *pset;
 
   /* Array of symbols to process with free_lang_data_in_decl.  */
   vec<tree> decls;
@@ -5208,7 +5207,7 @@ add_tree_to_fld_list (tree t, struct free_lang_data_d *fld)
 static inline void
 fld_worklist_push (tree t, struct free_lang_data_d *fld)
 {
-  if (t && !is_lang_specific (t) && !pointer_set_contains (fld->pset, t))
+  if (t && !is_lang_specific (t) && !fld->pset->contains (t))
     fld->worklist.safe_push ((t));
 }
 
@@ -5374,7 +5373,7 @@ find_decls_types (tree t, struct free_lang_data_d *fld)
 {
   while (1)
     {
-      if (!pointer_set_contains (fld->pset, t))
+      if (!fld->pset->contains (t))
 	walk_tree (&t, find_decls_types_r, fld, fld->pset);
       if (fld->worklist.is_empty ())
 	break;
@@ -5584,7 +5583,7 @@ free_lang_data_in_cgraph (void)
   alias_pair *p;
 
   /* Initialize sets and arrays to store referenced decls and types.  */
-  fld.pset = pointer_set_create ();
+  fld.pset = new hash_set<tree>;
   fld.worklist.create (0);
   fld.decls.create (100);
   fld.types.create (100);
@@ -5614,7 +5613,7 @@ free_lang_data_in_cgraph (void)
   FOR_EACH_VEC_ELT (fld.types, i, t)
     free_lang_data_in_type (t);
 
-  pointer_set_destroy (fld.pset);
+  delete fld.pset;
   fld.worklist.release ();
   fld.decls.release ();
   fld.types.release ();
@@ -6764,44 +6763,6 @@ type_hash_hash (const void *item)
   return ((const struct type_hash *) item)->hash;
 }
 
-/* Look in the type hash table for a type isomorphic to TYPE.
-   If one is found, return it.  Otherwise return 0.  */
-
-static tree
-type_hash_lookup (hashval_t hashcode, tree type)
-{
-  struct type_hash *h, in;
-
-  /* The TYPE_ALIGN field of a type is set by layout_type(), so we
-     must call that routine before comparing TYPE_ALIGNs.  */
-  layout_type (type);
-
-  in.hash = hashcode;
-  in.type = type;
-
-  h = (struct type_hash *) htab_find_with_hash (type_hash_table, &in,
-						hashcode);
-  if (h)
-    return h->type;
-  return NULL_TREE;
-}
-
-/* Add an entry to the type-hash-table
-   for a type TYPE whose hash code is HASHCODE.  */
-
-static void
-type_hash_add (hashval_t hashcode, tree type)
-{
-  struct type_hash *h;
-  void **loc;
-
-  h = ggc_alloc<type_hash> ();
-  h->hash = hashcode;
-  h->type = type;
-  loc = htab_find_slot_with_hash (type_hash_table, h, hashcode, INSERT);
-  *loc = (void *)h;
-}
-
 /* Given TYPE, and HASHCODE its hash code, return the canonical
    object for an identical type if one already exists.
    Otherwise, return TYPE, and record it as the canonical object.
@@ -6814,17 +6775,25 @@ type_hash_add (hashval_t hashcode, tree type)
 tree
 type_hash_canon (unsigned int hashcode, tree type)
 {
-  tree t1;
+  type_hash in;
+  void **loc;
 
   /* The hash table only contains main variants, so ensure that's what we're
      being passed.  */
   gcc_assert (TYPE_MAIN_VARIANT (type) == type);
 
-  /* See if the type is in the hash table already.  If so, return it.
-     Otherwise, add the type.  */
-  t1 = type_hash_lookup (hashcode, type);
-  if (t1 != 0)
+  /* The TYPE_ALIGN field of a type is set by layout_type(), so we
+     must call that routine before comparing TYPE_ALIGNs.  */
+  layout_type (type);
+
+  in.hash = hashcode;
+  in.type = type;
+
+  loc = htab_find_slot_with_hash (type_hash_table, &in, hashcode, INSERT);
+  if (*loc)
     {
+      tree t1 = ((type_hash *) *loc)->type;
+      gcc_assert (TYPE_MAIN_VARIANT (t1) == t1);
       if (GATHER_STATISTICS)
 	{
 	  tree_code_counts[(int) TREE_CODE (type)]--;
@@ -6835,7 +6804,13 @@ type_hash_canon (unsigned int hashcode, tree type)
     }
   else
     {
-      type_hash_add (hashcode, type);
+      struct type_hash *h;
+
+      h = ggc_alloc<type_hash> ();
+      h->hash = hashcode;
+      h->type = type;
+      *loc = (void *)h;
+
       return type;
     }
 }
@@ -9723,9 +9698,9 @@ build_common_tree_nodes (bool signed_char, bool short_double)
   integer_ptr_type_node = build_pointer_type (integer_type_node);
 
   /* Fixed size integer types.  */
-  uint16_type_node = build_nonstandard_integer_type (16, true);
-  uint32_type_node = build_nonstandard_integer_type (32, true);
-  uint64_type_node = build_nonstandard_integer_type (64, true);
+  uint16_type_node = make_or_reuse_type (16, 1);
+  uint32_type_node = make_or_reuse_type (32, 1);
+  uint64_type_node = make_or_reuse_type (64, 1);
 
   /* Decimal float types. */
   dfloat32_type_node = make_node (REAL_TYPE);
@@ -9870,8 +9845,9 @@ local_define_builtin (const char *name, tree type, enum built_in_function code,
 }
 
 /* Call this function after instantiating all builtins that the language
-   front end cares about.  This will build the rest of the builtins that
-   are relied upon by the tree optimizers and the middle-end.  */
+   front end cares about.  This will build the rest of the builtins
+   and internal functions that are relied upon by the tree optimizers and
+   the middle-end.  */
 
 void
 build_common_builtin_nodes (void)
@@ -10104,6 +10080,8 @@ build_common_builtin_nodes (void)
 			      ECF_CONST | ECF_NOTHROW | ECF_LEAF);
       }
   }
+
+  init_internal_fns ();
 }
 
 /* HACK.  GROSS.  This is absolutely disgusting.  I wish there was a
@@ -10824,7 +10802,7 @@ num_ending_zeros (const_tree x)
 
 static tree
 walk_type_fields (tree type, walk_tree_fn func, void *data,
-		  struct pointer_set_t *pset, walk_tree_lh lh)
+		  hash_set<tree> *pset, walk_tree_lh lh)
 {
   tree result = NULL_TREE;
 
@@ -10906,7 +10884,7 @@ walk_type_fields (tree type, walk_tree_fn func, void *data,
 
 tree
 walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
-	     struct pointer_set_t *pset, walk_tree_lh lh)
+	     hash_set<tree> *pset, walk_tree_lh lh)
 {
   enum tree_code code;
   int walk_subtrees;
@@ -10927,7 +10905,7 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 
   /* Don't walk the same tree twice, if the user has requested
      that we avoid doing so.  */
-  if (pset && pointer_set_insert (pset, *tp))
+  if (pset && pset->add (*tp))
     return NULL_TREE;
 
   /* Call the function.  */
@@ -11242,11 +11220,9 @@ walk_tree_without_duplicates_1 (tree *tp, walk_tree_fn func, void *data,
 				walk_tree_lh lh)
 {
   tree result;
-  struct pointer_set_t *pset;
 
-  pset = pointer_set_create ();
-  result = walk_tree_1 (tp, func, data, pset, lh);
-  pointer_set_destroy (pset);
+  hash_set<tree> pset;
+  result = walk_tree_1 (tp, func, data, &pset, lh);
   return result;
 }
 
