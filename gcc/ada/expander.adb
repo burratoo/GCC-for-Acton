@@ -210,6 +210,9 @@ package body Expander is
                when N_Exit_Statement =>
                   Expand_N_Exit_Statement (N);
 
+               when N_Expanded_Name =>
+                  Expand_N_Expanded_Name (N);
+
                when N_Explicit_Dereference =>
                   Expand_N_Explicit_Dereference (N);
 
