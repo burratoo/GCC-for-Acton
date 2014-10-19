@@ -420,9 +420,9 @@ AC_ARG_ENABLE(libada,
 [AS_HELP_STRING([--enable-libada], [build libada directory])],
 ENABLE_LIBADA=$enableval,
 ENABLE_LIBADA=yes)
-if test "${ENABLE_LIBADA}" != "yes" ; then
-  noconfigdirs="$noconfigdirs gnattools"
-fi
+#if test "${ENABLE_LIBADA}" != "yes" ; then
+#  noconfigdirs="$noconfigdirs gnattools"
+#fi
 
 AC_ARG_ENABLE(libssp,
 [AS_HELP_STRING([--enable-libssp], [build libssp directory])],

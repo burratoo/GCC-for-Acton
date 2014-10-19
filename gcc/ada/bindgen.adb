@@ -1675,7 +1675,7 @@ package body Bindgen is
             WBI ("         (Oak.Project_Support_Package." &
                  "Main_Task_Call_Stack_Size,");
          else
-            Set_String ("         ");
+            Set_String ("         (");
             Set_Int (ALIs.Table (ALIs.First).Main_Stack_Size);
             Set_String (", ");
             Write_Statement_Buffer;

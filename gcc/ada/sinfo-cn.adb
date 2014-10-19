@@ -72,7 +72,6 @@ package body Sinfo.CN is
    procedure Change_Cycle_To_Handle_Statement_Sequence (N : in out Node_Id) is
    begin
       Set_Nkind (N, N_Handled_Sequence_Of_Statements);
-      N := Extend_Node (N);
    end Change_Cycle_To_Handle_Statement_Sequence;
 
    ----------------------------------------------

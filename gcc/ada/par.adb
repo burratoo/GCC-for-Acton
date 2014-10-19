@@ -395,9 +395,9 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    end record;
    pragma Pack (SS_Rec);
 
-   SS_Cytm_Extm_Sreq : constant SS_Rec := SS_Rec'(T, F, F, F, F, T, F, F, F);
+   SS_Cytm_Extm_Sreq : constant SS_Rec := SS_Rec'(T, F, F, T, F, T, F, F, F);
    SS_Cytm_Sreq_Whtm : constant SS_Rec := SS_Rec'(T, F, F, F, F, F, F, T, F);
-   SS_Cytm_Sreq      : constant SS_Rec := SS_Rec'(T, F, F, T, F, T, F, F, F);
+   SS_Cytm_Sreq      : constant SS_Rec := SS_Rec'(T, F, F, F, F, T, F, F, F);
    SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(F, T, T, F, F, T, F, F, F);
    SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, T, F, F);
    SS_Eltm           : constant SS_Rec := SS_Rec'(F, F, T, F, F, F, F, F, F);
