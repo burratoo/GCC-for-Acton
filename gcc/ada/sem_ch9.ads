@@ -32,6 +32,7 @@ package Sem_Ch9  is
    procedure Analyze_Accept_Statement                   (N : Node_Id);
    procedure Analyze_Asynchronous_Select                (N : Node_Id);
    procedure Analyze_Conditional_Entry_Call             (N : Node_Id);
+   procedure Analyze_Cycle_Statement_Sequence           (N : Node_Id);
    procedure Analyze_Delay_Alternative                  (N : Node_Id);
    procedure Analyze_Delay_Relative                     (N : Node_Id);
    procedure Analyze_Delay_Until                        (N : Node_Id);

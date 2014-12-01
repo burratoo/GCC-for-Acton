@@ -172,6 +172,9 @@ package body Sem is
          when N_Conditional_Entry_Call =>
             Analyze_Conditional_Entry_Call (N);
 
+         when N_Cycle_Sequence_Of_Statements =>
+            Analyze_Cycle_Statement_Sequence (N);
+
          when N_Delay_Alternative =>
             Analyze_Delay_Alternative (N);
 
@@ -651,7 +654,6 @@ package body Sem is
            N_Component_List                         |
            N_Constrained_Array_Definition           |
            N_Contract                               |
-           N_Cycle_Sequence_Of_Statements           |
            N_Decimal_Fixed_Point_Definition         |
            N_Defining_Character_Literal             |
            N_Defining_Identifier                    |

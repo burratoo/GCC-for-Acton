@@ -441,6 +441,9 @@ package body Expander is
                when N_Task_Body =>
                   Expand_N_Task_Body (N);
 
+               when N_Task_Body_Statement_Sequence =>
+                  Expand_N_Task_Body_Statement_Sequence (N);
+
                when N_Task_Type_Declaration =>
                   Expand_N_Task_Type_Declaration (N);
 

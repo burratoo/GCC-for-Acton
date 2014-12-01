@@ -235,16 +235,17 @@ package Exp_Ch9 is
    --  now, within the context of the protected object, to resolve calls to
    --  other protected functions.
 
-   procedure Expand_N_Abort_Statement            (N : Node_Id);
-   procedure Expand_N_Accept_Statement           (N : Node_Id);
-   procedure Expand_N_Asynchronous_Select        (N : Node_Id);
-   procedure Expand_N_Conditional_Entry_Call     (N : Node_Id);
-   procedure Expand_N_Delay_Relative_Statement   (N : Node_Id);
-   procedure Expand_N_Delay_Until_Statement      (N : Node_Id);
-   procedure Expand_N_Entry_Body                 (N : Node_Id);
-   procedure Expand_N_Entry_Call_Statement       (N : Node_Id);
-   procedure Expand_N_Entry_Declaration          (N : Node_Id);
-   procedure Expand_N_Protected_Body             (N : Node_Id);
+   procedure Expand_N_Abort_Statement              (N : Node_Id);
+   procedure Expand_N_Accept_Statement             (N : Node_Id);
+   procedure Expand_N_Asynchronous_Select          (N : Node_Id);
+   procedure Expand_N_Conditional_Entry_Call       (N : Node_Id);
+   procedure Expand_N_Task_Body_Statement_Sequence (N : Node_Id);
+   procedure Expand_N_Delay_Relative_Statement     (N : Node_Id);
+   procedure Expand_N_Delay_Until_Statement        (N : Node_Id);
+   procedure Expand_N_Entry_Body                   (N : Node_Id);
+   procedure Expand_N_Entry_Call_Statement         (N : Node_Id);
+   procedure Expand_N_Entry_Declaration            (N : Node_Id);
+   procedure Expand_N_Protected_Body               (N : Node_Id);
 
    procedure Expand_N_Protected_Type_Declaration (N : Node_Id);
    --  Expands protected type declarations. This results, among other things,
@@ -270,11 +271,6 @@ package Exp_Ch9 is
    --  Expand_Protected_Body_Declarations and Expand_N_Protected_Body for full
    --  details of the nature and use of these declarations. The second argument
    --  is the entity for the corresponding protected type declaration.
-
-   procedure Expand_Task_Body_Sequence_Of_Statements (N : Node_Id);
-   --  Expands a task body's sequence of statements to incorporate a task's
-   --  cycle sequence of statements into the task's existing handled sequence
-   --  of statements.
 
    function External_Subprogram (E : Entity_Id) return Entity_Id;
    --  return the external version of a protected operation, which locks

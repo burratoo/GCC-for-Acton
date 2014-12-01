@@ -302,6 +302,7 @@ package body Sinfo is
       (N : Node_Id) return Node_Id is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       return Node1 (N);
    end At_End_Proc;
@@ -3521,6 +3522,7 @@ package body Sinfo is
       (N : Node_Id; Val : Node_Id) is
    begin
       pragma Assert (False
+        or else NT (N).Nkind = N_Cycle_Sequence_Of_Statements
         or else NT (N).Nkind = N_Handled_Sequence_Of_Statements);
       Set_Node1 (N, Val);
    end Set_At_End_Proc;

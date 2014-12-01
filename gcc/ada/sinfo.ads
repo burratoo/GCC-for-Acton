@@ -5653,6 +5653,7 @@ package Sinfo is
       --  Sloc points to first token of first statement
       --  Statements (List3)
       --  Exception_Handlers (List5) (set to No_List if none present)
+      --  At_End_Proc (Node1) (set to Empty if no clean up procedure)
       --  First_Real_Statement (Node2-Sem)
 
       -------------------------------------
@@ -12041,7 +12042,7 @@ package Sinfo is
         5 => True),   --  Exception_Handlers (List5)
 
      N_Cycle_Sequence_Of_Statements =>
-       (1 => False,   --  unused
+       (1 => True,    --  At_End_Proc (Node1)
         2 => False,   --  First_Real_Statement (Node2-Sem)
         3 => True,    --  Statements (List3)
         4 => False,   --  unused

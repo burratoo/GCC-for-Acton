@@ -29,6 +29,7 @@ with Checks;   use Checks;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Errout;   use Errout;
+with Expander; use Expander;
 with Exp_Ch9;  use Exp_Ch9;
 with Elists;   use Elists;
 with Freeze;   use Freeze;
@@ -1086,6 +1087,18 @@ package body Sem_Ch9 is
       end if;
    end Analyze_Conditional_Entry_Call;
 
+   --------------------------------------
+   -- Analyze_Cycle_Statement_Sequence --
+   --------------------------------------
+
+   procedure Analyze_Cycle_Statement_Sequence (N : Node_Id) is
+   begin
+      --  N_Cycle_Sequence_Of_Statements is effectively an
+      --  N_Handled_Sequence_Of_Statements by another name
+
+      Analyze_Handled_Statements (N);
+   end Analyze_Cycle_Statement_Sequence;
+
    --------------------------------
    -- Analyze_Delay_Alternative  --
    --------------------------------
@@ -1350,14 +1363,15 @@ package body Sem_Ch9 is
       --  parameters in the spec to the corresponding entities in the body,
       --  since we want the warnings on the body entities. Note that with the
       --  Acton changes these flags are taken from the protected formal version
-      --  of the parameters as in Acton entries treated more or less as
-      --  protected procedures, i.e. they have a protected and non-protected
-      --  procedure pair. This causes the expansion of the entry bodies to
-      --  affect the non-protected subprogram's parameters and not the entry's.
-      --  By not handling this it makes the following checks fail. Note that we
-      --  do not have to transfer Referenced_As_LHS, since that flag can only
-      --  be set for simple variables, but we include Has_Pragma_Unreferenced,
-      --  which may have been specified for a formal in the body.
+      --  of the parameters when the expander is active as in Acton entries
+      --  transformed into protected procedures, i.e. they have a protected and
+      --  non-protected procedure pair. This causes the expansion of the entry
+      --  bodies to affect the non-protected subprogram's parameters and not
+      --  the entry's. By not handling this it makes the following checks fail.
+      --  Note that we do not have to transfer Referenced_As_LHS, since that
+      --  flag can only be set for simple variables, but we include
+      --  Has_Pragma_Unreferenced, which may have been specified for a formal
+      --  in the body.
 
       --  At the same time, we set the flags on the spec entities to suppress
       --  any warnings on the spec formals, since we also scan the spec.
@@ -1366,8 +1380,9 @@ package body Sem_Ch9 is
       --  formals (see exp_ch9.Add_Formal_Renamings).
 
       declare
-         E1 : Entity_Id;
-         E2 : Entity_Id;
+         E1    : Entity_Id;
+         E1_PF : Entity_Id;
+         E2    : Entity_Id;
 
       begin
          E1 := First_Entity (Entry_Name);
@@ -1385,13 +1400,19 @@ package body Sem_Ch9 is
                goto Continue;
             end if;
 
+            if Expander_Active then
+               E1_PF := Protected_Formal (E1);
+            else
+               E1_PF := E1;
+            end if;
+
             if Ekind (E1) = E_Out_Parameter then
                Set_Never_Set_In_Source
-                 (E2, Never_Set_In_Source (Protected_Formal (E1)));
+                 (E2, Never_Set_In_Source (E1_PF));
                Set_Never_Set_In_Source (E1, False);
             end if;
 
-            Set_Referenced (E2, Referenced (Protected_Formal (E1)));
+            Set_Referenced (E2, Referenced (E1_PF));
             Set_Referenced (E1);
             Set_Has_Pragma_Unreferenced (E2, Has_Pragma_Unreferenced (E1));
             Set_Entry_Component (E2, Entry_Component (E1));
@@ -2722,7 +2743,7 @@ package body Sem_Ch9 is
       Body_Id : constant Entity_Id := Defining_Identifier (N);
       Decls   : constant List_Id   := Declarations (N);
       TBSS    : constant Node_Id   := Task_Body_Statement_Sequence (N);
-      HSS     : Node_Id            := Handled_Statement_Sequence (TBSS);
+      HSS     : constant Node_Id   := Handled_Statement_Sequence (TBSS);
       Last_E  : Entity_Id;
 
       Spec_Id : Entity_Id;
@@ -2833,17 +2854,39 @@ package body Sem_Ch9 is
          end;
       end if;
 
-      --  At this point the cycle sequence of statements are expanded and
-      --  incorporated into the task body's handled sequence of statements.
-      --  So in effect the following procedure actually reduces the
-      --  task body statement sequence node. Note that the expansion may
-      --  provide a new Handled Statement Sequence
-
-      Expand_Task_Body_Sequence_Of_Statements (TBSS);
-      HSS := Handled_Statement_Sequence (TBSS);
-
       --  Now go ahead and complete analysis of the task body
-      Analyze (HSS);
+      --  ?? Move this analysis to an N_Task_Body_Statement_Sequence analyser
+      --  procedure?
+
+      if Present (Cycle_Statement_Sequence (TBSS)) then
+         --  Record in the task's entity that the task has a cylic section
+         Set_Has_Cyclic_Section (Spec_Id);
+      end if;
+
+      --  The processing of the N_Task_Body_Statement_Sequence requires
+      --  both its child nodes to be analyzed before the expansion process
+      --  assembles both nodes into a single handled statement sequence which
+      --  can be then expanded. This requires modification to GNAT's usual
+      --  approach where it would otherwise analyze-resolve-expand one node
+      --  before the other which causes problems when combining the two
+      --  expanded nodes later on. One approach around this would be two
+      --  pre-analyze both nodes here and preform the actual analyze-with-
+      --  expansion later after both nodes have been combined. The problem
+      --  with this approach is that it requires the task body to be passed
+      --  over twice and that GNAT has issues re-analyzing some statement nodes
+      --  (e.g. entry calls) which assume the analyzer runs over them once.
+      --  Instead two different paths are provided below depending on whether
+      --  the expander is active.
+
+      if Expander_Active then
+         Expand (TBSS);
+      else
+         Analyze (Handled_Statement_Sequence (TBSS));
+         Analyze (Cycle_Statement_Sequence (TBSS));
+      end if;
+
+      Set_Analyzed (TBSS);
+
       Check_Completion (Body_Id);
       Check_References (Body_Id);
       Check_References (Spec_Id);
