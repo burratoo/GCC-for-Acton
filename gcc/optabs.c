@@ -6128,10 +6128,6 @@ build_libfunc_function (const char *name)
   TREE_PUBLIC (decl) = 1;
   gcc_assert (DECL_ASSEMBLER_NAME (decl));
 
-  /* Zap the nonsensical SYMBOL_REF_DECL for this.  What we're left with
-     are the flags assigned by targetm.encode_section_info.  */
-  SET_SYMBOL_REF_DECL (XEXP (DECL_RTL (decl), 0), NULL);
-
   return decl;
 }
 
@@ -6273,10 +6269,8 @@ init_optabs (void)
 		       "cabs");
 
   abort_libfunc = init_one_libfunc ("abort");
-  memcpy_libfunc = init_one_libfunc ("memcpy");
   memmove_libfunc = init_one_libfunc ("memmove");
   memcmp_libfunc = init_one_libfunc ("memcmp");
-  memset_libfunc = init_one_libfunc ("memset");
   setbits_libfunc = init_one_libfunc ("__setbits");
 
 #ifndef DONT_USE_BUILTIN_SETJMP

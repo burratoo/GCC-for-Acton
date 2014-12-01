@@ -428,7 +428,7 @@ public:
   int order;
 
   /* Declaration representing the symbol.  */
-  tree decl;
+  tree decl; 
 
   /* Linked list of symbol table entries starting with symtab_nodes.  */
   symtab_node *next;
@@ -721,6 +721,34 @@ enum cgraph_inline_failed_type_t
 };
 
 struct cgraph_edge;
+
+/* Information about the function that is computed by various parts of
+   the compiler.  Available only for functions that have been already
+   assembled and if -fcallgraph-info was specified.  */
+
+struct GTY((chain_next ("%h.next"))) cgraph_final_edge
+{
+  location_t location;
+  struct cgraph_node *caller;
+  struct cgraph_node *callee;
+  struct cgraph_final_edge *next;
+};
+
+struct GTY((chain_next ("%h.next"))) cgraph_dynamic_alloc
+{
+  location_t location;
+  const char *name;
+  struct cgraph_dynamic_alloc *next;
+};
+
+struct GTY(()) cgraph_final_info
+{
+  struct cgraph_final_edge *calls;
+  int stack_usage_kind;
+  HOST_WIDE_INT stack_usage;
+  struct cgraph_dynamic_alloc *dynamic_allocs;
+  bool called;
+};
 
 /* The cgraph data structure.
    Each function decl has assigned cgraph_node listing callees and callers.  */
@@ -1043,6 +1071,9 @@ public:
   /* Dump the callgraph to file F.  */
   static void dump_cgraph (FILE *f);
 
+  /* Dump the final callgraph to file F in VCG format */
+  static void dump_cgraph_final_vcg (FILE *f);
+
   /* Dump the call graph to stderr.  */
   static inline void debug_cgraph (void)
   {
@@ -1163,6 +1194,8 @@ public:
   struct cgraph_clone_info clone;
   struct cgraph_thunk_info thunk;
 
+  struct cgraph_final_info *final;
+
   /* Expected number of executions: calculated in profile.c.  */
   gcov_type count;
   /* How to scale counts at materialization time; used to merge
@@ -1200,6 +1233,10 @@ public:
   /* True if this decl calls a COMDAT-local function.  This is set up in
      compute_inline_parameters and inline_call.  */
   unsigned calls_comdat_local : 1;
+  
+private:
+  void dump_cgraph_final_node_vcg (FILE*);
+  inline bool external_node_needed_p (void);
 };
 
 /* A cgraph node set is a collection of cgraph nodes.  A cgraph node
@@ -1527,9 +1564,12 @@ void cgraph_remove_edge (struct cgraph_edge *);
 
 void cgraph_set_call_stmt (struct cgraph_edge *, gimple, bool update_speculative = true);
 void cgraph_update_edges_for_call_stmt (gimple, tree, gimple);
+void cgraph_final_record_call (tree, tree, location_t);
+void cgraph_final_record_dynamic_alloc (tree, tree);
 struct cgraph_local_info *cgraph_local_info (tree);
 struct cgraph_global_info *cgraph_global_info (tree);
 struct cgraph_rtl_info *cgraph_rtl_info (tree);
+struct cgraph_final_info *get_cgraph_final_info (tree);
 void cgraph_call_edge_duplication_hooks (struct cgraph_edge *,
 				         struct cgraph_edge *);
 

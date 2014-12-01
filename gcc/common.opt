@@ -923,6 +923,14 @@ fbtr-bb-exclusive
 Common Report Var(flag_btr_bb_exclusive) Optimization
 Restrict target load migration not to re-use registers in any basic block
 
+fcallgraph-info
+Common Report RejectNegative Var(flag_callgraph_info) Init(NO_CALLGRAPH_INFO);
+Output callgraph information on a per-file basis
+
+fcallgraph-info=
+Common Report RejectNegative Joined
+Output callgraph information on a per-file basis with decorations
+
 fcall-saved-
 Common Joined RejectNegative Var(common_deferred_options) Defer
 -fcall-saved-<register>	Mark <register> as being preserved across functions

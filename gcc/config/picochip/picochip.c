@@ -62,7 +62,7 @@ along with GCC; see the file COPYING3.  If not, see
 #include "optabs.h"		/* For GEN_FCN */
 #include "basic-block.h"	/* UPDATE_LIFE_GLOBAL* for picochip_reorg. */
 #include "timevar.h"		/* For TV_SCHED2, in picochip_reorg. */
-#include "libfuncs.h"		/* For memcpy_libfuncs, etc. */
+#include "libfuncs.h"		/* For set_optab_libfunc. */
 #include "df.h"			/* For df_regs_ever_live_df_regs_ever_live_pp, etc. */
 #include "dbxout.h"
 #include "builtins.h"

@@ -12642,11 +12642,9 @@ set_builtin_user_assembler_name (tree decl, const char *asmspec)
     {
     case BUILT_IN_MEMCPY:
       init_block_move_fn (asmspec);
-      memcpy_libfunc = set_user_assembler_libfunc ("memcpy", asmspec);
       break;
     case BUILT_IN_MEMSET:
       init_block_clear_fn (asmspec);
-      memset_libfunc = set_user_assembler_libfunc ("memset", asmspec);
       break;
     case BUILT_IN_MEMMOVE:
       memmove_libfunc = set_user_assembler_libfunc ("memmove", asmspec);

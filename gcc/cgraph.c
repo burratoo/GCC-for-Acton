@@ -55,7 +55,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa.h"
 #include "value-prof.h"
 #include "except.h"
+#include "expr.h"
 #include "diagnostic-core.h"
+#include "output.h"
 #include "rtl.h"
 #include "ipa-utils.h"
 #include "lto-streamer.h"
@@ -523,6 +525,8 @@ cgraph_node::create_empty (void)
   node->type = SYMTAB_FUNCTION;
   node->frequency = NODE_FREQUENCY_NORMAL;
   node->count_materialization_scale = REG_BR_PROB_BASE;
+  if (flag_callgraph_info)
+    node->final = ggc_cleared_alloc<cgraph_final_info> ();
   cgraph_n_nodes++;
   return node;
 }
@@ -1886,6 +1890,57 @@ cgraph_global_info (tree decl)
   return &node->global;
 }
 
+/* Create edge from CALLER to CALLEE in the final cgraph.  */
+
+static struct cgraph_final_edge *
+final_create_edge (struct cgraph_node *caller, struct cgraph_node *callee,
+		   location_t location)
+{
+  struct cgraph_final_edge *e = ggc_cleared_alloc<cgraph_final_edge> ();
+  e->location = location;
+  e->caller = caller;
+  e->callee = callee;
+  e->next = caller->final->calls;
+  caller->final->calls = e;
+  return e;
+}
+
+/* Record call from SOURCE to DEST in the final cgraph.  */
+
+void
+cgraph_final_record_call (tree source, tree dest, location_t location)
+{
+  struct cgraph_node *callee;
+
+  if (dest)
+    {
+      callee = cgraph_node::get_create (dest);
+      callee->final->called = true;
+    }
+  else
+    callee = NULL;
+
+  (void) final_create_edge (cgraph_node::get (source), callee, location);
+}
+
+/* Record a dynamically-allocated DECL in the final cgraph of FNDECL.  */
+
+void
+cgraph_final_record_dynamic_alloc (tree fndecl, tree decl)
+{
+  const char *dot;
+  struct cgraph_final_info *cfi = get_cgraph_final_info (fndecl);
+  struct cgraph_dynamic_alloc *cda = ggc_cleared_alloc<cgraph_dynamic_alloc> ();
+  cda->location = DECL_SOURCE_LOCATION (decl);
+  cda->name = lang_hooks.decl_printable_name (decl, 2);
+  dot = strrchr (cda->name, '.');
+  if (dot)
+    cda->name = dot + 1;
+  cda->name = ggc_strdup (cda->name);
+  cda->next = cfi->dynamic_allocs;
+  cfi->dynamic_allocs = cda;
+}
+
 /* Return local info for the compiled function.  */
 
 struct cgraph_rtl_info *
@@ -1900,6 +1955,21 @@ cgraph_rtl_info (tree decl)
 	  && !TREE_ASM_WRITTEN (node->decl)))
     return NULL;
   return &node->rtl;
+}
+
+/* Return final info for the compiled function.  */
+
+struct cgraph_final_info *
+get_cgraph_final_info (tree decl)
+{
+  struct cgraph_node *node;
+  
+  gcc_assert (TREE_CODE (decl) == FUNCTION_DECL);
+  node = cgraph_node::get (decl);
+  if (decl != current_function_decl
+      && !TREE_ASM_WRITTEN (node->decl))
+    return NULL;
+  return node->final;
 }
 
 /* Return a string describing the failure REASON.  */
@@ -2091,6 +2161,177 @@ cgraph_node::dump_cgraph (FILE *f)
   fprintf (f, "callgraph:\n\n");
   FOR_EACH_FUNCTION (node)
     node->dump (f);
+}
+
+/* Dump placeholder node for indirect calls in VCG format.  */
+
+#define INDIRECT_CALL_NAME  "__indirect_call"
+
+static void
+dump_cgraph_final_indirect_call_node_vcg (FILE *f)
+{
+  static bool emitted = false;
+  if (emitted)
+    return;
+
+  fputs ("node: { title: \"", f);
+  fputs (INDIRECT_CALL_NAME, f);
+  fputs ("\" label: \"", f);
+  fputs ("Indirect Call Placeholder", f);
+  fputs ("\" shape : ellipse }\n", f);
+  emitted = true;
+}
+
+/* Dump final cgraph edge in VCG format.  */
+
+static void
+dump_cgraph_final_edge_vcg (FILE *f, struct cgraph_final_edge *edge)
+{
+  fputs ("edge: { sourcename: \"", f);
+  print_decl_identifier (f, edge->caller->decl, PRINT_DECL_UNIQUE_NAME);
+  fputs ("\" targetname: \"", f);
+  if (edge->callee)
+    print_decl_identifier (f, edge->callee->decl, PRINT_DECL_UNIQUE_NAME);
+  else
+    fputs (INDIRECT_CALL_NAME, f);
+  if (edge->location != UNKNOWN_LOCATION)
+    {
+      expanded_location loc;
+      fputs ("\" label: \"", f);
+      loc = expand_location (edge->location);
+      fprintf (f, "%s:%d:%d", loc.file, loc.line, loc.column);
+    }
+  fputs ("\" }\n", f);
+
+  if (!edge->callee)
+    dump_cgraph_final_indirect_call_node_vcg (f);
+}
+
+/* Dump final cgraph node in VCG format.  */
+
+void
+cgraph_node::dump_cgraph_final_node_vcg (FILE *f)
+{
+  struct cgraph_final_edge *edge;
+
+  fputs ("node: { title: \"", f);
+  print_decl_identifier (f, decl, PRINT_DECL_UNIQUE_NAME);
+  fputs ("\" label: \"", f);
+  print_decl_identifier (f, decl, PRINT_DECL_NAME);
+  fputs ("\\n", f);
+  print_decl_identifier (f, decl, PRINT_DECL_ORIGIN);
+
+  if (DECL_EXTERNAL (decl))
+    {
+      fputs ("\" shape : ellipse }\n", f);
+      return;
+    }
+
+  if (flag_callgraph_info & CALLGRAPH_INFO_STACK_USAGE)
+    {
+      if (final->stack_usage)
+	fprintf (f, "\\n"HOST_WIDE_INT_PRINT_DEC" bytes (%s)",
+		 final->stack_usage,
+		 stack_usage_qual[final->stack_usage_kind]);
+      else
+	fputs ("\\n0 bytes", f);
+    }
+
+  if (flag_callgraph_info & CALLGRAPH_INFO_DYNAMIC_ALLOC)
+    {
+      if (final->dynamic_allocs)
+	{
+	  struct cgraph_dynamic_alloc *cda, *next;
+	  unsigned int count = 1;
+
+	  /* Reverse the linked list and count members.  */
+	  cda = final->dynamic_allocs;
+	  next = cda->next;
+	  cda->next = NULL;
+	  while (next)
+	    {
+	      struct cgraph_dynamic_alloc *tmp = next;
+	      next = next->next;
+	      tmp->next = cda;
+	      cda = tmp;
+	      count++;
+	    }
+	  final->dynamic_allocs = cda;
+
+	  fprintf (f, "\\n%d dynamic objects", count);
+
+	  for (cda = final->dynamic_allocs; cda; cda = cda->next)
+	    {
+	      expanded_location loc = expand_location (cda->location);
+	      fprintf (f, "\\n %s", cda->name);
+	      fprintf (f, " %s:%d:%d", loc.file, loc.line, loc.column);
+	    }
+	}
+      else
+	fputs ("\\n0 dynamic objects", f);
+    }
+
+  fputs ("\" }\n", f);
+
+  for (edge = final->calls; edge; edge = edge->next)
+    dump_cgraph_final_edge_vcg (f, edge);
+}
+
+/* Return true if NODE is needed in the final callgraph.  */
+
+inline bool
+cgraph_node::external_node_needed_p (void)
+{
+  static bool memcpy_node_seen = false;
+  static bool memset_node_seen = false;
+
+  /* External node that are eventually not called are not needed.  */
+  if (!final->called)
+    return false;
+
+  /* Take care of not emitting the MEMCPY node twice because of the
+     late creation of a clone by the RTL expander.  */
+  if ((DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL
+       && DECL_FUNCTION_CODE (decl) == BUILT_IN_MEMCPY)
+      || decl == block_move_fn)
+    {
+      if (memcpy_node_seen)
+	return false;
+      else
+	memcpy_node_seen = true;
+    }
+
+  /* Likewise for the MEMSET node.  */
+  if ((DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL
+       && DECL_FUNCTION_CODE (decl) == BUILT_IN_MEMSET)
+      || decl == block_clear_fn)
+    {
+      if (memset_node_seen)
+	return false;
+      else
+	memset_node_seen = true;
+    }
+
+  return true;
+}
+
+/* Dump the final cgraph in VCG format.  */
+
+void
+cgraph_node::dump_cgraph_final_vcg (FILE *f)
+{
+  struct cgraph_node *node;
+
+  /* Write the file header.  */
+  fprintf (f, "graph: { title: \"%s\"\n", main_input_filename);
+
+  /* Output only nodes that have been written in the final code.  */
+  FOR_EACH_FUNCTION (node)
+    if ((DECL_EXTERNAL (node->decl) && node->external_node_needed_p ())
+	|| TREE_ASM_WRITTEN (node->decl))
+      node->dump_cgraph_final_node_vcg (f);
+
+  fputs ("}\n", f);
 }
 
 /* Return true when the DECL can possibly be inlined.  */

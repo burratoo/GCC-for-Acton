@@ -337,7 +337,7 @@ Objective-C and Objective-C++ Dialects}.
 -feliminate-unused-debug-symbols -femit-class-debug-always @gol
 -fenable-@var{kind}-@var{pass} @gol
 -fenable-@var{kind}-@var{pass}=@var{range-list} @gol
--fdebug-types-section -fmem-report-wpa @gol
+-fcallgraph-info@r{[}=su,da@r{]}  -fdebug-types-section -fmem-report-wpa @gol
 -fmem-report -fpre-ipa-mem-report -fpost-ipa-mem-report -fprofile-arcs @gol
 -fopt-info @gol
 -fopt-info-@var{options}@r{[}=@var{file}@r{]} @gol
@@ -5831,6 +5831,18 @@ the second field is an upper bound of the total amount of stack used by
 the function.  If it is not present, the amount of these adjustments is
 not bounded at compile time and the second field only represents the
 bounded part.
+
+@item -fcallgraph-info
+@itemx -fcallgraph-info=@var{MARKERS}
+@opindex fcallgraph-info
+Makes the compiler output callgraph information for the program, on a
+per-file basis.  The information is generated in the common VCG format.
+It can be decorated with additional, per-node and/or per-edge information,
+if a list of comma-separated markers is additionally specified.  When the
+@code{su} marker is specified, the callgraph is decorated with stack usage
+information; it is equivalent to @option{-fstack-usage}.  When the @code{da}
+marker is specified, the callgraph is decorated with information about
+dynamically allocated objects.
 
 @item -fprofile-arcs
 @opindex fprofile-arcs

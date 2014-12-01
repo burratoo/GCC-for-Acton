@@ -1327,6 +1327,9 @@ gimplify_vla_decl (tree decl, gimple_seq *seq_p)
   /* Indicate that we need to restore the stack level when the
      enclosing BIND_EXPR is exited.  */
   gimplify_ctxp->save_stack = true;
+  
+  if (flag_callgraph_info & CALLGRAPH_INFO_DYNAMIC_ALLOC)
+    cgraph_final_record_dynamic_alloc (current_function_decl, decl);
 }
 
 /* A helper function to be called via walk_tree.  Mark all labels under *TP
