@@ -2882,7 +2882,10 @@ package body Sem_Ch9 is
          Expand (TBSS);
       else
          Analyze (Handled_Statement_Sequence (TBSS));
-         Analyze (Cycle_Statement_Sequence (TBSS));
+
+         if Present (Cycle_Statement_Sequence (TBSS)) then
+            Analyze (Cycle_Statement_Sequence (TBSS));
+         end if;
       end if;
 
       Set_Analyzed (TBSS);
