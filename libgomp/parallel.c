@@ -1,7 +1,8 @@
-/* Copyright (C) 2005-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2005-2016 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
-   This file is part of the GNU OpenMP Library (libgomp).
+   This file is part of the GNU Offloading and Multi Processing Library
+   (libgomp).
 
    Libgomp is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -84,7 +85,7 @@ gomp_resolve_num_threads (unsigned specified, unsigned count)
      nested parallel, so there is just one thread in the
      contention group as well, no need to handle it atomically.  */
   pool = thr->thread_pool;
-  if (thr->ts.team == NULL)
+  if (thr->ts.team == NULL || pool == NULL)
     {
       num_threads = max_num_threads;
       if (num_threads > icv->thread_limit_var)

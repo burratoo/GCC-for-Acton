@@ -1,5 +1,4 @@
 /* PR tree-optimization/57741 */
-/* { dg-do run } */
 /* { dg-require-effective-target vect_float } */
 /* { dg-additional-options "-ffast-math" } */
 
@@ -42,4 +41,3 @@ main ()
 }
 
 /* { dg-final { scan-tree-dump-times "vectorized 2 loop" 1 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */

@@ -14,8 +14,22 @@ import (
 
 // This file implements encryption and decryption using PKCS#1 v1.5 padding.
 
+// PKCS1v15DecrypterOpts is for passing options to PKCS#1 v1.5 decryption using
+// the crypto.Decrypter interface.
+type PKCS1v15DecryptOptions struct {
+	// SessionKeyLen is the length of the session key that is being
+	// decrypted. If not zero, then a padding error during decryption will
+	// cause a random plaintext of this length to be returned rather than
+	// an error. These alternatives happen in constant time.
+	SessionKeyLen int
+}
+
 // EncryptPKCS1v15 encrypts the given message with RSA and the padding scheme from PKCS#1 v1.5.
 // The message must be no longer than the length of the public modulus minus 11 bytes.
+//
+// The rand parameter is used as a source of entropy to ensure that encrypting
+// the same message twice doesn't result in the same ciphertext.
+//
 // WARNING: use of this function to encrypt plaintexts other than session keys
 // is dangerous. Use RSA OAEP in new protocols.
 func EncryptPKCS1v15(rand io.Reader, pub *PublicKey, msg []byte) (out []byte, err error) {
@@ -49,15 +63,24 @@ func EncryptPKCS1v15(rand io.Reader, pub *PublicKey, msg []byte) (out []byte, er
 
 // DecryptPKCS1v15 decrypts a plaintext using RSA and the padding scheme from PKCS#1 v1.5.
 // If rand != nil, it uses RSA blinding to avoid timing side-channel attacks.
+//
+// Note that whether this function returns an error or not discloses secret
+// information. If an attacker can cause this function to run repeatedly and
+// learn whether each instance returned an error then they can decrypt and
+// forge signatures as if they had the private key. See
+// DecryptPKCS1v15SessionKey for a way of solving this problem.
 func DecryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (out []byte, err error) {
 	if err := checkPub(&priv.PublicKey); err != nil {
 		return nil, err
 	}
-	valid, out, err := decryptPKCS1v15(rand, priv, ciphertext)
-	if err == nil && valid == 0 {
-		err = ErrDecryption
+	valid, out, index, err := decryptPKCS1v15(rand, priv, ciphertext)
+	if err != nil {
+		return
 	}
-
+	if valid == 0 {
+		return nil, ErrDecryption
+	}
+	out = out[index:]
 	return
 }
 
@@ -74,27 +97,44 @@ func DecryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (out [
 // See ``Chosen Ciphertext Attacks Against Protocols Based on the RSA
 // Encryption Standard PKCS #1'', Daniel Bleichenbacher, Advances in Cryptology
 // (Crypto '98).
+//
+// Note that if the session key is too small then it may be possible for an
+// attacker to brute-force it. If they can do that then they can learn whether
+// a random value was used (because it'll be different for the same ciphertext)
+// and thus whether the padding was correct. This defeats the point of this
+// function. Using at least a 16-byte key will protect against this attack.
 func DecryptPKCS1v15SessionKey(rand io.Reader, priv *PrivateKey, ciphertext []byte, key []byte) (err error) {
 	if err := checkPub(&priv.PublicKey); err != nil {
 		return err
 	}
 	k := (priv.N.BitLen() + 7) / 8
 	if k-(len(key)+3+8) < 0 {
-		err = ErrDecryption
-		return
+		return ErrDecryption
 	}
 
-	valid, msg, err := decryptPKCS1v15(rand, priv, ciphertext)
+	valid, em, index, err := decryptPKCS1v15(rand, priv, ciphertext)
 	if err != nil {
 		return
 	}
 
-	valid &= subtle.ConstantTimeEq(int32(len(msg)), int32(len(key)))
-	subtle.ConstantTimeCopy(valid, key, msg)
+	if len(em) != k {
+		// This should be impossible because decryptPKCS1v15 always
+		// returns the full slice.
+		return ErrDecryption
+	}
+
+	valid &= subtle.ConstantTimeEq(int32(len(em)-index), int32(len(key)))
+	subtle.ConstantTimeCopy(valid, key, em[len(em)-len(key):])
 	return
 }
 
-func decryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (valid int, msg []byte, err error) {
+// decryptPKCS1v15 decrypts ciphertext using priv and blinds the operation if
+// rand is not nil. It returns one or zero in valid that indicates whether the
+// plaintext was correctly structured. In either case, the plaintext is
+// returned in em so that it may be read independently of whether it was valid
+// in order to maintain constant memory access patterns. If the plaintext was
+// valid then index contains the index of the original message in em.
+func decryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (valid int, em []byte, index int, err error) {
 	k := (priv.N.BitLen() + 7) / 8
 	if k < 11 {
 		err = ErrDecryption
@@ -107,7 +147,7 @@ func decryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (valid
 		return
 	}
 
-	em := leftPad(m.Bytes(), k)
+	em = leftPad(m.Bytes(), k)
 	firstByteIsZero := subtle.ConstantTimeByteEq(em[0], 0)
 	secondByteIsTwo := subtle.ConstantTimeByteEq(em[1], 2)
 
@@ -115,8 +155,7 @@ func decryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (valid
 	// octets, followed by a 0, followed by the message.
 	//   lookingForIndex: 1 iff we are still looking for the zero.
 	//   index: the offset of the first zero byte.
-	var lookingForIndex, index int
-	lookingForIndex = 1
+	lookingForIndex := 1
 
 	for i := 2; i < len(em); i++ {
 		equals0 := subtle.ConstantTimeByteEq(em[i], 0)
@@ -129,8 +168,8 @@ func decryptPKCS1v15(rand io.Reader, priv *PrivateKey, ciphertext []byte) (valid
 	validPS := subtle.ConstantTimeLessOrEq(2+8, index)
 
 	valid = firstByteIsZero & secondByteIsTwo & (^lookingForIndex & 1) & validPS
-	msg = em[index+1:]
-	return
+	index = subtle.ConstantTimeSelect(valid, index+1, 0)
+	return valid, em, index, nil
 }
 
 // nonZeroRandomBytes fills the given slice with non-zero random octets.
@@ -178,6 +217,13 @@ var hashPrefixes = map[crypto.Hash][]byte{
 // Note that hashed must be the result of hashing the input message using the
 // given hash function. If hash is zero, hashed is signed directly. This isn't
 // advisable except for interoperability.
+//
+// If rand is not nil then RSA blinding will be used to avoid timing side-channel attacks.
+//
+// This function is deterministic. Thus, if the set of possible messages is
+// small, an attacker may be able to build a map from messages to signatures
+// and identify the signed messages. As ever, signatures provide authenticity,
+// not confidentiality.
 func SignPKCS1v15(rand io.Reader, priv *PrivateKey, hash crypto.Hash, hashed []byte) (s []byte, err error) {
 	hashLen, prefix, err := pkcs1v15HashInfo(hash, len(hashed))
 	if err != nil {
@@ -200,7 +246,7 @@ func SignPKCS1v15(rand io.Reader, priv *PrivateKey, hash crypto.Hash, hashed []b
 	copy(em[k-hashLen:k], hashed)
 
 	m := new(big.Int).SetBytes(em)
-	c, err := decrypt(rand, priv, m)
+	c, err := decryptAndCheck(rand, priv, m)
 	if err != nil {
 		return
 	}

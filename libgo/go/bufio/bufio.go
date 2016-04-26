@@ -30,8 +30,8 @@ var (
 // Reader implements buffering for an io.Reader object.
 type Reader struct {
 	buf          []byte
-	rd           io.Reader
-	r, w         int
+	rd           io.Reader // reader provided by the client
+	r, w         int       // buf read and write positions
 	err          error
 	lastByte     int
 	lastRuneSize int
@@ -131,23 +131,55 @@ func (b *Reader) Peek(n int) ([]byte, error) {
 	for b.w-b.r < n && b.err == nil {
 		b.fill() // b.w-b.r < len(b.buf) => buffer is not full
 	}
-	m := b.w - b.r
-	if m > n {
-		m = n
-	}
+
 	var err error
-	if m < n {
+	if avail := b.w - b.r; avail < n {
+		// not enough data in buffer
+		n = avail
 		err = b.readErr()
 		if err == nil {
 			err = ErrBufferFull
 		}
 	}
-	return b.buf[b.r : b.r+m], err
+	return b.buf[b.r : b.r+n], err
+}
+
+// Discard skips the next n bytes, returning the number of bytes discarded.
+//
+// If Discard skips fewer than n bytes, it also returns an error.
+// If 0 <= n <= b.Buffered(), Discard is guaranteed to succeed without
+// reading from the underlying io.Reader.
+func (b *Reader) Discard(n int) (discarded int, err error) {
+	if n < 0 {
+		return 0, ErrNegativeCount
+	}
+	if n == 0 {
+		return
+	}
+	remain := n
+	for {
+		skip := b.Buffered()
+		if skip == 0 {
+			b.fill()
+			skip = b.Buffered()
+		}
+		if skip > remain {
+			skip = remain
+		}
+		b.r += skip
+		remain -= skip
+		if remain == 0 {
+			return n, nil
+		}
+		if b.err != nil {
+			return n - remain, b.readErr()
+		}
+	}
 }
 
 // Read reads data into p.
 // It returns the number of bytes read into p.
-// It calls Read at most once on the underlying Reader,
+// The bytes are taken from at most one Read on the underlying Reader,
 // hence n may be less than len(p).
 // At EOF, the count will be zero and err will be io.EOF.
 func (b *Reader) Read(p []byte) (n int, err error) {
@@ -173,15 +205,13 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 			return n, b.readErr()
 		}
 		b.fill() // buffer is empty
-		if b.w == b.r {
+		if b.r == b.w {
 			return 0, b.readErr()
 		}
 	}
 
-	if n > b.w-b.r {
-		n = b.w - b.r
-	}
-	copy(p[0:n], b.buf[b.r:])
+	// copy as much as we can
+	n = copy(p, b.buf[b.r:b.w])
 	b.r += n
 	b.lastByte = int(b.buf[b.r-1])
 	b.lastRuneSize = -1
@@ -288,7 +318,7 @@ func (b *Reader) ReadSlice(delim byte) (line []byte, err error) {
 		}
 
 		// Buffer full?
-		if n := b.Buffered(); n >= len(b.buf) {
+		if b.Buffered() >= len(b.buf) {
 			b.r = b.w
 			line = b.buf
 			err = ErrBufferFull
@@ -301,6 +331,7 @@ func (b *Reader) ReadSlice(delim byte) (line []byte, err error) {
 	// Handle last byte, if any.
 	if i := len(line) - 1; i >= 0 {
 		b.lastByte = int(line[i])
+		b.lastRuneSize = -1
 	}
 
 	return
@@ -369,7 +400,6 @@ func (b *Reader) ReadBytes(delim byte) (line []byte, err error) {
 	// accumulating full buffers.
 	var frag []byte
 	var full [][]byte
-	err = nil
 
 	for {
 		var e error
@@ -458,11 +488,13 @@ func (b *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	return n, b.readErr()
 }
 
+var errNegativeWrite = errors.New("bufio: writer returned negative count from Write")
+
 // writeBuf writes the Reader's buffer to the writer.
 func (b *Reader) writeBuf(w io.Writer) (int64, error) {
 	n, err := w.Write(b.buf[b.r:b.w])
-	if n < b.r-b.w {
-		panic(errors.New("bufio: writer did not write all data"))
+	if n < 0 {
+		panic(errNegativeWrite)
 	}
 	b.r += n
 	return int64(n), err

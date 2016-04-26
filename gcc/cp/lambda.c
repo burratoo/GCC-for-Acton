@@ -3,7 +3,7 @@
    building RTL.  These routines are used both during actual parsing
    and during the instantiation of template functions.
 
-   Copyright (C) 1998-2014 Free Software Foundation, Inc.
+   Copyright (C) 1998-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -24,13 +24,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tree.h"
+#include "cp-tree.h"
 #include "stringpool.h"
 #include "cgraph.h"
 #include "tree-iterator.h"
-#include "cp-tree.h"
 #include "toplev.h"
-#include "vec.h"
+#include "gimplify.h"
 
 /* Constructor for a lambda expression.  */
 
@@ -171,7 +170,7 @@ lambda_return_type (tree expr)
       || BRACE_ENCLOSED_INITIALIZER_P (expr))
     {
       cxx_incomplete_type_error (expr, TREE_TYPE (expr));
-      return void_type_node;
+      return error_mark_node;
     }
   gcc_checking_assert (!type_dependent_expression_p (expr));
   return cv_unqualified (type_decays_to (unlowered_expr_type (expr)));
@@ -209,15 +208,8 @@ tree
 lambda_capture_field_type (tree expr, bool explicit_init_p)
 {
   tree type;
-  if (explicit_init_p)
-    {
-      type = make_auto ();
-      type = do_auto_deduction (type, expr, type);
-    }
-  else
-    type = non_reference (unlowered_expr_type (expr));
-  if (type_dependent_expression_p (expr)
-      && !is_this_parameter (tree_strip_nop_conversions (expr)))
+  bool is_this = is_this_parameter (tree_strip_nop_conversions (expr));
+  if (!is_this && type_dependent_expression_p (expr))
     {
       type = cxx_make_type (DECLTYPE_TYPE);
       DECLTYPE_TYPE_EXPR (type) = expr;
@@ -225,6 +217,13 @@ lambda_capture_field_type (tree expr, bool explicit_init_p)
       DECLTYPE_FOR_INIT_CAPTURE (type) = explicit_init_p;
       SET_TYPE_STRUCTURAL_EQUALITY (type);
     }
+  else if (!is_this && explicit_init_p)
+    {
+      type = make_auto ();
+      type = do_auto_deduction (type, expr, type);
+    }
+  else
+    type = non_reference (unlowered_expr_type (expr));
   return type;
 }
 
@@ -472,9 +471,10 @@ add_capture (tree lambda, tree id, tree orig_init, bool by_reference_p,
 					  NULL_TREE, array_type_nelts (type));
       type = vla_capture_type (type);
     }
-  else if (variably_modified_type_p (type, NULL_TREE))
+  else if (!dependent_type_p (type)
+	   && variably_modified_type_p (type, NULL_TREE))
     {
-      error ("capture of variable-size type %qT that is not a C++14 array "
+      error ("capture of variable-size type %qT that is not an N3639 array "
 	     "of runtime bound", type);
       if (TREE_CODE (type) == ARRAY_TYPE
 	  && variably_modified_type_p (TREE_TYPE (type), NULL_TREE))
@@ -488,7 +488,7 @@ add_capture (tree lambda, tree id, tree orig_init, bool by_reference_p,
       if (by_reference_p)
 	{
 	  type = build_reference_type (type);
-	  if (!real_lvalue_p (initializer))
+	  if (!dependent_type_p (type) && !real_lvalue_p (initializer))
 	    error ("cannot capture %qE by reference", initializer);
 	}
       else
@@ -628,7 +628,7 @@ add_default_capture (tree lambda_stack, tree id, tree initializer)
 
 /* Return the capture pertaining to a use of 'this' in LAMBDA, in the
    form of an INDIRECT_REF, possibly adding it through default
-   capturing, if ADD_CAPTURE_P is false.  */
+   capturing, if ADD_CAPTURE_P is true.  */
 
 tree
 lambda_expr_this_capture (tree lambda, bool add_capture_p)
@@ -637,17 +637,9 @@ lambda_expr_this_capture (tree lambda, bool add_capture_p)
 
   tree this_capture = LAMBDA_EXPR_THIS_CAPTURE (lambda);
 
-  /* In unevaluated context this isn't an odr-use, so just return the
-     nearest 'this'.  */
+  /* In unevaluated context this isn't an odr-use, so don't capture.  */
   if (cp_unevaluated_operand)
-    {
-      /* In an NSDMI the fake 'this' pointer that we're using for
-	 parsing is in scope_chain.  */
-      if (LAMBDA_EXPR_EXTRA_SCOPE (lambda)
-	  && TREE_CODE (LAMBDA_EXPR_EXTRA_SCOPE (lambda)) == FIELD_DECL)
-	return scope_chain->x_current_class_ptr;
-      return lookup_name (this_identifier);
-    }
+    add_capture_p = false;
 
   /* Try to default capture 'this' if we can.  */
   if (!this_capture
@@ -722,10 +714,17 @@ lambda_expr_this_capture (tree lambda, bool add_capture_p)
         }
     }
 
-  if (!this_capture)
+  if (cp_unevaluated_operand)
+    result = this_capture;
+  else if (!this_capture)
     {
-      error ("%<this%> was not captured for this lambda function");
-      result = error_mark_node;
+      if (add_capture_p)
+	{
+	  error ("%<this%> was not captured for this lambda function");
+	  result = error_mark_node;
+	}
+      else
+	result = NULL_TREE;
     }
   else
     {
@@ -768,11 +767,23 @@ maybe_resolve_dummy (tree object, bool add_capture_p)
       /* In a lambda, need to go through 'this' capture.  */
       tree lam = CLASSTYPE_LAMBDA_EXPR (current_class_type);
       tree cap = lambda_expr_this_capture (lam, add_capture_p);
-      object = build_x_indirect_ref (EXPR_LOCATION (object), cap,
-				     RO_NULL, tf_warning_or_error);
+      if (cap && cap != error_mark_node)
+	object = build_x_indirect_ref (EXPR_LOCATION (object), cap,
+				       RO_NULL, tf_warning_or_error);
     }
 
   return object;
+}
+
+/* Returns the innermost non-lambda function.  */
+
+tree
+current_nonlambda_function (void)
+{
+  tree fn = current_function_decl;
+  while (fn && LAMBDA_FUNCTION_P (fn))
+    fn = decl_function_context (fn);
+  return fn;
 }
 
 /* Returns the method basetype of the innermost non-lambda function, or
@@ -801,6 +812,30 @@ nonlambda_method_basetype (void)
   return TYPE_METHOD_BASETYPE (TREE_TYPE (fn));
 }
 
+/* Like current_scope, but looking through lambdas.  */
+
+tree
+current_nonlambda_scope (void)
+{
+  tree scope = current_scope ();
+  for (;;)
+    {
+      if (TREE_CODE (scope) == FUNCTION_DECL
+	  && LAMBDA_FUNCTION_P (scope))
+	{
+	  scope = CP_TYPE_CONTEXT (DECL_CONTEXT (scope));
+	  continue;
+	}
+      else if (LAMBDA_TYPE_P (scope))
+	{
+	  scope = CP_TYPE_CONTEXT (scope);
+	  continue;
+	}
+      break;
+    }
+  return scope;
+}
+
 /* Helper function for maybe_add_lambda_conv_op; build a CALL_EXPR with
    indicated FN and NARGS, but do not initialize the return type or any of the
    argument slots.  */
@@ -817,13 +852,23 @@ prepare_op_call (tree fn, int nargs)
   return t;
 }
 
+/* Return true iff CALLOP is the op() for a generic lambda.  */
+
+bool
+generic_lambda_fn_p (tree callop)
+{
+  return (LAMBDA_FUNCTION_P (callop)
+	  && DECL_TEMPLATE_INFO (callop)
+	  && PRIMARY_TEMPLATE_P (DECL_TI_TEMPLATE (callop)));
+}
+
 /* If the closure TYPE has a static op(), also add a conversion to function
    pointer.  */
 
 void
 maybe_add_lambda_conv_op (tree type)
 {
-  bool nested = (current_function_decl != NULL_TREE);
+  bool nested = (cfun != NULL);
   bool nested_def = decl_function_context (TYPE_MAIN_DECL (type));
   tree callop = lambda_function (type);
 
@@ -833,9 +878,7 @@ maybe_add_lambda_conv_op (tree type)
   if (processing_template_decl)
     return;
 
-  bool const generic_lambda_p
-    = (DECL_TEMPLATE_INFO (callop)
-    && DECL_TEMPLATE_RESULT (DECL_TI_TEMPLATE (callop)) == callop);
+  bool const generic_lambda_p = generic_lambda_fn_p (callop);
 
   if (!generic_lambda_p && DECL_INITIAL (callop) == NULL_TREE)
     {
@@ -855,7 +898,8 @@ maybe_add_lambda_conv_op (tree type)
 
   vec<tree, va_gc> *direct_argvec = 0;
   tree decltype_call = 0, call = 0;
-  tree fn_result = TREE_TYPE (TREE_TYPE (callop));
+  tree optype = TREE_TYPE (callop);
+  tree fn_result = TREE_TYPE (optype);
 
   if (generic_lambda_p)
     {
@@ -909,21 +953,18 @@ maybe_add_lambda_conv_op (tree type)
 
 	if (generic_lambda_p)
 	  {
-	    if (DECL_PACK_P (tgt))
-	      {
-		tree a = make_pack_expansion (tgt);
-		if (decltype_call)
-		  CALL_EXPR_ARG (decltype_call, ix) = copy_node (a);
-		PACK_EXPANSION_LOCAL_P (a) = true;
-		CALL_EXPR_ARG (call, ix) = a;
-	      }
-	    else
-	      {
-		tree a = convert_from_reference (tgt);
-		CALL_EXPR_ARG (call, ix) = a;
-		if (decltype_call)
-		  CALL_EXPR_ARG (decltype_call, ix) = copy_node (a);
-	      }
+	    ++processing_template_decl;
+	    tree a = forward_parm (tgt);
+	    --processing_template_decl;
+
+	    CALL_EXPR_ARG (call, ix) = a;
+	    if (decltype_call)
+	      CALL_EXPR_ARG (decltype_call, ix) = unshare_expr (a);
+
+	    if (PACK_EXPANSION_P (a))
+	      /* Set this after unsharing so it's not in decltype_call.  */
+	      PACK_EXPANSION_LOCAL_P (a) = true;
+
 	    ++ix;
 	  }
 	else
@@ -953,6 +994,8 @@ maybe_add_lambda_conv_op (tree type)
   CALL_FROM_THUNK_P (call) = 1;
 
   tree stattype = build_function_type (fn_result, FUNCTION_ARG_CHAIN (callop));
+  stattype = (cp_build_type_attribute_variant
+	      (stattype, TYPE_ATTRIBUTES (optype)));
 
   /* First build up the conversion op.  */
 
@@ -963,11 +1006,7 @@ maybe_add_lambda_conv_op (tree type)
   tree convfn = build_lang_decl (FUNCTION_DECL, name, fntype);
   tree fn = convfn;
   DECL_SOURCE_LOCATION (fn) = DECL_SOURCE_LOCATION (callop);
-
-  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn
-      && DECL_ALIGN (fn) < 2 * BITS_PER_UNIT)
-    DECL_ALIGN (fn) = 2 * BITS_PER_UNIT;
-
+  SET_DECL_ALIGN (fn, MINIMUM_METHOD_BOUNDARY);
   SET_OVERLOADED_OPERATOR_CODE (fn, TYPE_EXPR);
   grokclassfn (type, fn, NO_SPECIAL);
   set_linkage_according_to_type (type, fn);
@@ -999,9 +1038,6 @@ maybe_add_lambda_conv_op (tree type)
   tree statfn = build_lang_decl (FUNCTION_DECL, name, stattype);
   fn = statfn;
   DECL_SOURCE_LOCATION (fn) = DECL_SOURCE_LOCATION (callop);
-  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_pfn
-      && DECL_ALIGN (fn) < 2 * BITS_PER_UNIT)
-    DECL_ALIGN (fn) = 2 * BITS_PER_UNIT;
   grokclassfn (type, fn, NO_SPECIAL);
   set_linkage_according_to_type (type, fn);
   rest_of_decl_compilation (fn, toplevel_bindings_p (), at_eof);
@@ -1022,6 +1058,15 @@ maybe_add_lambda_conv_op (tree type)
 
   if (generic_lambda_p)
     fn = add_inherited_template_parms (fn, DECL_TI_TEMPLATE (callop));
+
+  if (flag_sanitize & SANITIZE_NULL)
+    {
+      /* Don't UBsan this function; we're deliberately calling op() with a null
+	 object argument.  */
+      tree attrs = build_tree_list (get_identifier ("no_sanitize_undefined"),
+				    NULL_TREE);
+      cplus_decl_attributes (&fn, attrs, 0);
+    }
 
   add_method (type, fn, NULL_TREE);
 

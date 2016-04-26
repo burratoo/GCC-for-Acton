@@ -1,5 +1,5 @@
 # -*- shell-script -*-
-#  Copyright (C) 2012-2014 Free Software Foundation, Inc.
+#  Copyright (C) 2012-2016 Free Software Foundation, Inc.
 #  Contributed by Richard Henderson <rth@redhat.com>.
 #
 #  This file is part of the GNU Atomic Library (libatomic).
@@ -37,10 +37,15 @@ case "${target_cpu}" in
 
   arm*)
 	ARCH=arm
-	# ??? Detect when -march=armv7 is already enabled.
-	try_ifunc=yes
-	;;
-
+	case "${target}" in
+            arm*-*-freebsd*)
+                ;;
+            *)
+                # ??? Detect when -march=armv7 is already enabled.
+                try_ifunc=yes
+                ;;
+        esac
+        ;;
   sparc)
 	case " ${CC} ${CFLAGS} " in
 	  *" -m64 "*)
@@ -76,14 +81,8 @@ case "${target_cpu}" in
 	try_ifunc=yes
 	;;
   x86_64)
-	case " ${CC} ${CFLAGS} " in
-	  *" -m32 "*)
-	    XCFLAGS="${XCFLAGS} -march=i486 -mtune=generic"
-	    XCFLAGS="${XCFLAGS} -fomit-frame-pointer"
-	    ;;
-	  *)
-	    ;;
-	esac
+	# x86_64 compiler passes -march=x86_64 by default when building
+	# 32bit target libraries.
 	ARCH=x86
 	# ??? Detect when -mcx16 is already enabled.
 	try_ifunc=yes
@@ -105,7 +104,7 @@ case "${target}" in
 	;;
 
   *-*-linux* | *-*-gnu* | *-*-k*bsd*-gnu \
-  | *-*-netbsd* | *-*-freebsd* | *-*-openbsd* \
+  | *-*-netbsd* | *-*-freebsd* | *-*-openbsd* | *-*-dragonfly* \
   | *-*-solaris2* | *-*-sysv4* | *-*-irix6* | *-*-osf* | *-*-hpux11* \
   | *-*-darwin* | *-*-aix* | *-*-cygwin*)
 	# POSIX system.  The OS is supported.

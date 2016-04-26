@@ -170,7 +170,7 @@ var xmlInput = []string{
 func TestRawToken(t *testing.T) {
 	d := NewDecoder(strings.NewReader(testInput))
 	d.Entity = testEntity
-	testRawToken(t, d, rawTokens)
+	testRawToken(t, d, testInput, rawTokens)
 }
 
 const nonStrictInput = `
@@ -225,7 +225,7 @@ var nonStrictTokens = []Token{
 func TestNonStrictRawToken(t *testing.T) {
 	d := NewDecoder(strings.NewReader(nonStrictInput))
 	d.Strict = false
-	testRawToken(t, d, nonStrictTokens)
+	testRawToken(t, d, nonStrictInput, nonStrictTokens)
 }
 
 type downCaser struct {
@@ -254,7 +254,7 @@ func TestRawTokenAltEncoding(t *testing.T) {
 		}
 		return &downCaser{t, input.(io.ByteReader)}, nil
 	}
-	testRawToken(t, d, rawTokensAltEncoding)
+	testRawToken(t, d, testInputAltEncoding, rawTokensAltEncoding)
 }
 
 func TestRawTokenAltEncodingNoConverter(t *testing.T) {
@@ -280,9 +280,12 @@ func TestRawTokenAltEncodingNoConverter(t *testing.T) {
 	}
 }
 
-func testRawToken(t *testing.T, d *Decoder, rawTokens []Token) {
+func testRawToken(t *testing.T, d *Decoder, raw string, rawTokens []Token) {
+	lastEnd := int64(0)
 	for i, want := range rawTokens {
+		start := d.InputOffset()
 		have, err := d.RawToken()
+		end := d.InputOffset()
 		if err != nil {
 			t.Fatalf("token %d: unexpected error: %s", i, err)
 		}
@@ -300,6 +303,26 @@ func testRawToken(t *testing.T, d *Decoder, rawTokens []Token) {
 			}
 			t.Errorf("token %d = %s, want %s", i, shave, swant)
 		}
+
+		// Check that InputOffset returned actual token.
+		switch {
+		case start < lastEnd:
+			t.Errorf("token %d: position [%d,%d) for %T is before previous token", i, start, end, have)
+		case start >= end:
+			// Special case: EndElement can be synthesized.
+			if start == end && end == lastEnd {
+				break
+			}
+			t.Errorf("token %d: position [%d,%d) for %T is empty", i, start, end, have)
+		case end > int64(len(raw)):
+			t.Errorf("token %d: position [%d,%d) for %T extends beyond input", i, start, end, have)
+		default:
+			text := raw[start:end]
+			if strings.ContainsAny(text, "<>") && (!strings.HasPrefix(text, "<") || !strings.HasSuffix(text, ">")) {
+				t.Errorf("token %d: misaligned raw token %#q for %T", i, text, have)
+			}
+		}
+		lastEnd = end
 	}
 }
 
@@ -634,20 +657,23 @@ type procInstEncodingTest struct {
 }
 
 var procInstTests = []struct {
-	input, expect string
+	input  string
+	expect [2]string
 }{
-	{`version="1.0" encoding="utf-8"`, "utf-8"},
-	{`version="1.0" encoding='utf-8'`, "utf-8"},
-	{`version="1.0" encoding='utf-8' `, "utf-8"},
-	{`version="1.0" encoding=utf-8`, ""},
-	{`encoding="FOO" `, "FOO"},
+	{`version="1.0" encoding="utf-8"`, [2]string{"1.0", "utf-8"}},
+	{`version="1.0" encoding='utf-8'`, [2]string{"1.0", "utf-8"}},
+	{`version="1.0" encoding='utf-8' `, [2]string{"1.0", "utf-8"}},
+	{`version="1.0" encoding=utf-8`, [2]string{"1.0", ""}},
+	{`encoding="FOO" `, [2]string{"", "FOO"}},
 }
 
 func TestProcInstEncoding(t *testing.T) {
 	for _, test := range procInstTests {
-		got := procInstEncoding(test.input)
-		if got != test.expect {
-			t.Errorf("procInstEncoding(%q) = %q; want %q", test.input, got, test.expect)
+		if got := procInst("version", test.input); got != test.expect[0] {
+			t.Errorf("procInst(version, %q) = %q; want %q", test.input, got, test.expect[0])
+		}
+		if got := procInst("encoding", test.input); got != test.expect[1] {
+			t.Errorf("procInst(encoding, %q) = %q; want %q", test.input, got, test.expect[1])
 		}
 	}
 }
@@ -722,5 +748,58 @@ func TestIssue5880(t *testing.T) {
 	}
 	if !utf8.Valid(data) {
 		t.Errorf("Marshal generated invalid UTF-8: %x", data)
+	}
+}
+
+func TestIssue11405(t *testing.T) {
+	testCases := []string{
+		"<root>",
+		"<root><foo>",
+		"<root><foo></foo>",
+	}
+	for _, tc := range testCases {
+		d := NewDecoder(strings.NewReader(tc))
+		var err error
+		for {
+			_, err = d.Token()
+			if err != nil {
+				break
+			}
+		}
+		if _, ok := err.(*SyntaxError); !ok {
+			t.Errorf("%s: Token: Got error %v, want SyntaxError", tc, err)
+		}
+	}
+}
+
+func TestIssue12417(t *testing.T) {
+	testCases := []struct {
+		s  string
+		ok bool
+	}{
+		{`<?xml encoding="UtF-8" version="1.0"?><root/>`, true},
+		{`<?xml encoding="UTF-8" version="1.0"?><root/>`, true},
+		{`<?xml encoding="utf-8" version="1.0"?><root/>`, true},
+		{`<?xml encoding="uuu-9" version="1.0"?><root/>`, false},
+	}
+	for _, tc := range testCases {
+		d := NewDecoder(strings.NewReader(tc.s))
+		var err error
+		for {
+			_, err = d.Token()
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				break
+			}
+		}
+		if err != nil && tc.ok {
+			t.Errorf("%q: Encoding charset: expected no error, got %s", tc.s, err)
+			continue
+		}
+		if err == nil && !tc.ok {
+			t.Errorf("%q: Encoding charset: expected error, got nil", tc.s)
+		}
 	}
 }

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -25,11 +25,13 @@
 
 with Atree;    use Atree;
 with Einfo;    use Einfo;
+with Exp_Ch5;  use Exp_Ch5;
 with Exp_Dbug; use Exp_Dbug;
 with Exp_Util; use Exp_Util;
 with Sem_Res;  use Sem_Res;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
+with Tbuild;   use Tbuild;
 
 package body Exp_SPARK is
 
@@ -60,10 +62,13 @@ package body Exp_SPARK is
          --  user interaction. The verification back-end already takes care
          --  of qualifying names when needed.
 
-         when N_Block_Statement     |
-              N_Package_Body        |
-              N_Package_Declaration |
-              N_Subprogram_Body     =>
+         when N_Block_Statement            |
+              N_Entry_Declaration          |
+              N_Package_Body               |
+              N_Package_Declaration        |
+              N_Protected_Type_Declaration |
+              N_Subprogram_Body            |
+              N_Task_Type_Declaration      =>
             Qualify_Entity_Names (N);
 
          when N_Expanded_Name |
@@ -72,6 +77,26 @@ package body Exp_SPARK is
 
          when N_Object_Renaming_Declaration =>
             Expand_SPARK_N_Object_Renaming_Declaration (N);
+
+         --  Loop iterations over arrays need to be expanded, to avoid getting
+         --  two names referring to the same object in memory (the array and
+         --  the iterator) in GNATprove, especially since both can be written
+         --  (thus possibly leading to interferences due to aliasing). No such
+         --  problem arises with quantified expressions over arrays, which are
+         --  dealt with specially in GNATprove.
+
+         when N_Loop_Statement =>
+            declare
+               Scheme : constant Node_Id := Iteration_Scheme (N);
+            begin
+               if Present (Scheme)
+                 and then Present (Iterator_Specification (Scheme))
+                 and then
+                   Is_Iterator_Over_Array (Iterator_Specification (Scheme))
+               then
+                  Expand_Iterator_Loop_Over_Array (N);
+               end if;
+            end;
 
          --  In SPARK mode, no other constructs require expansion
 
@@ -96,16 +121,35 @@ package body Exp_SPARK is
    -------------------------------
 
    procedure Expand_Potential_Renaming (N : Node_Id) is
-      E : constant Entity_Id := Entity (N);
-      T : constant Entity_Id := Etype (N);
+      Id     : constant Entity_Id  := Entity (N);
+      Loc    : constant Source_Ptr := Sloc (N);
+      Typ    : constant Entity_Id  := Etype (N);
+      Ren_Id : Node_Id;
 
    begin
       --  Replace a reference to a renaming with the actual renamed object
 
-      if Ekind (E) in Object_Kind and then Present (Renamed_Object (E)) then
-         Rewrite (N, New_Copy_Tree (Renamed_Object (E)));
-         Reset_Analyzed_Flags (N);
-         Analyze_And_Resolve (N, T);
+      if Ekind (Id) in Object_Kind then
+         Ren_Id := Renamed_Object (Id);
+
+         if Present (Ren_Id) then
+
+            --  The renamed object is an entity when instantiating generics
+            --  or inlining bodies. In this case the renaming is part of the
+            --  mapping "prologue" which links actuals to formals.
+
+            if Nkind (Ren_Id) in N_Entity then
+               Rewrite (N, New_Occurrence_Of (Ren_Id, Loc));
+
+            --  Otherwise the renamed object denotes a name
+
+            else
+               Rewrite (N, New_Copy_Tree (Ren_Id));
+               Reset_Analyzed_Flags (N);
+            end if;
+
+            Analyze_And_Resolve (N, Typ);
+         end if;
       end if;
    end Expand_Potential_Renaming;
 

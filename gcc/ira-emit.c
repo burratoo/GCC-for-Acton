@@ -1,5 +1,5 @@
 /* Integrated Register Allocator.  Changing code and generating moves.
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -68,22 +68,20 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "regs.h"
+#include "backend.h"
 #include "rtl.h"
-#include "tm_p.h"
-#include "target.h"
-#include "flags.h"
-#include "obstack.h"
-#include "bitmap.h"
-#include "hard-reg-set.h"
-#include "basic-block.h"
-#include "expr.h"
-#include "recog.h"
-#include "params.h"
-#include "reload.h"
+#include "tree.h"
+#include "predict.h"
 #include "df.h"
+#include "insn-config.h"
+#include "regs.h"
+#include "ira.h"
 #include "ira-int.h"
+#include "cfgrtl.h"
+#include "cfgbuild.h"
+#include "expr.h"
+#include "reload.h"
+#include "cfgloop.h"
 
 
 /* Data used to emit live range split insns and to flattening IR.  */
@@ -298,6 +296,15 @@ change_regs (rtx *loc)
 	    result = change_regs (&XVECEXP (*loc, i, j)) || result;
 	}
     }
+  return result;
+}
+
+static bool
+change_regs_in_insn (rtx_insn **insn_ptr)
+{
+  rtx rtx = *insn_ptr;
+  bool result = change_regs (&rtx);
+  *insn_ptr = as_a <rtx_insn *> (rtx);
   return result;
 }
 
@@ -557,7 +564,8 @@ change_loop (ira_loop_tree_node_t node)
   int regno;
   bool used_p;
   ira_allocno_t allocno, parent_allocno, *map;
-  rtx insn, original_reg;
+  rtx_insn *insn;
+  rtx original_reg;
   enum reg_class aclass, pclass;
   ira_loop_tree_node_t parent;
 
@@ -568,7 +576,7 @@ change_loop (ira_loop_tree_node_t node)
       if (node->bb != NULL)
 	{
 	  FOR_BB_INSNS (node->bb, insn)
-	    if (INSN_P (insn) && change_regs (&insn))
+	    if (INSN_P (insn) && change_regs_in_insn (&insn))
 	      {
 		df_insn_rescan (insn);
 		df_notes_rescan (insn);
@@ -610,7 +618,10 @@ change_loop (ira_loop_tree_node_t node)
 		  /* don't create copies because reload can spill an
 		     allocno set by copy although the allocno will not
 		     get memory slot.  */
-		  || ira_equiv_no_lvalue_p (regno)))
+		  || ira_equiv_no_lvalue_p (regno)
+		  || (pic_offset_table_rtx != NULL
+		      && (ALLOCNO_REGNO (allocno)
+			  == (int) REGNO (pic_offset_table_rtx)))))
 	    continue;
 	  original_reg = allocno_emit_reg (allocno);
 	  if (parent_allocno == NULL
@@ -764,7 +775,7 @@ modify_move_list (move_t list)
 
   if (list == NULL)
     return NULL;
-  /* Creat move deps.  */
+  /* Create move deps.  */
   curr_tick++;
   for (move = list; move != NULL; move = move->next)
     {
@@ -799,7 +810,7 @@ modify_move_list (move_t list)
 	  move->deps_num = n;
 	}
     }
-  /* Toplogical sorting:  */
+  /* Topological sorting:  */
   move_vec.truncate (0);
   for (move = list; move != NULL; move = move->next)
     traverse_moves (move);
@@ -900,7 +911,7 @@ emit_move_list (move_t list, int freq)
   int to_regno, from_regno, cost, regno;
   rtx_insn *result, *insn;
   rtx set;
-  enum machine_mode mode;
+  machine_mode mode;
   enum reg_class aclass;
 
   grow_reg_equivs ();

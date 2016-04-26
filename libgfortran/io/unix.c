@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Andy Vaught
    F2003 I/O support contributed by Jerry DeLisle
 
@@ -101,18 +101,13 @@ id_from_fd (const int fd)
 }
 
 #endif /* HAVE_WORKING_STAT */
+
+
+/* On mingw, we don't use umask in tempfile_open(), because it
+   doesn't support the user/group/other-based permissions.  */
+#undef HAVE_UMASK
+
 #endif /* __MINGW32__ */
-
-
-/* min macro that evaluates its arguments only once.  */
-#ifdef min
-#undef min
-#endif
-
-#define min(a,b)		\
-  ({ typeof (a) _a = (a);	\
-    typeof (b) _b = (b);	\
-    _a < _b ? _a : _b; })
 
 
 /* These flags aren't defined on all targets (mingw32), so provide them
@@ -494,7 +489,13 @@ buf_read (unix_stream * s, void * buf, ssize_t nbyte)
   /* Is the data we want in the buffer?  */
   if (s->logical_offset + nbyte <= s->buffer_offset + s->active
       && s->buffer_offset <= s->logical_offset)
-    memcpy (buf, s->buffer + (s->logical_offset - s->buffer_offset), nbyte);
+    {
+      /* When nbyte == 0, buf can be NULL which would lead to undefined
+	 behavior if we called memcpy().  */
+      if (nbyte != 0)
+	memcpy (buf, s->buffer + (s->logical_offset - s->buffer_offset),
+		nbyte);
+    }
   else
     {
       /* First copy the active bytes if applicable, then read the rest
@@ -523,16 +524,26 @@ buf_read (unix_stream * s, void * buf, ssize_t nbyte)
       if (to_read <= BUFFER_SIZE/2)
         {
           did_read = raw_read (s, s->buffer, BUFFER_SIZE);
-          s->physical_offset += did_read;
-          s->active = did_read;
-          did_read = (did_read > to_read) ? to_read : did_read;
-          memcpy (p, s->buffer, did_read);
+	  if (likely (did_read >= 0))
+	    {
+	      s->physical_offset += did_read;
+	      s->active = did_read;
+	      did_read = (did_read > to_read) ? to_read : did_read;
+	      memcpy (p, s->buffer, did_read);
+	    }
+	  else
+	    return did_read;
         }
       else
         {
           did_read = raw_read (s, p, to_read);
-          s->physical_offset += did_read;
-          s->active = 0;
+	  if (likely (did_read >= 0))
+	    {
+	      s->physical_offset += did_read;
+	      s->active = 0;
+	    }
+	  else
+	    return did_read;
         }
       nbyte = did_read + nread;
     }
@@ -1353,7 +1364,7 @@ regular_file2 (const char *path, st_parameter_open *opp, unit_flags *flags)
       flags->action = ACTION_READWRITE;
       return fd;
     }
-  if (errno != EACCES && errno != EROFS)
+  if (errno != EACCES && errno != EPERM && errno != EROFS)
      return fd;
 
   /* retry for read-only access */
@@ -1369,7 +1380,7 @@ regular_file2 (const char *path, st_parameter_open *opp, unit_flags *flags)
       return fd;		/* success */
     }
   
-  if (errno != EACCES && errno != ENOENT)
+  if (errno != EACCES && errno != EPERM && errno != ENOENT)
     return fd;			/* failure */
 
   /* retry for write-only access */
@@ -1525,11 +1536,10 @@ compare_file_filename (gfc_unit *u, const char *name, int len)
       goto done;
     }
 # endif
-
-  if (len != u->file_len)
-    ret = 0;
+  if (u->filename)
+    ret = (strcmp(path, u->filename) == 0);
   else
-    ret = (memcmp(path, u->file, len) == 0);
+    ret = 0;
 #endif
  done:
   free (path);
@@ -1541,8 +1551,8 @@ compare_file_filename (gfc_unit *u, const char *name, int len)
 # define FIND_FILE0_DECL struct stat *st
 # define FIND_FILE0_ARGS st
 #else
-# define FIND_FILE0_DECL uint64_t id, const char *file, gfc_charlen_type file_len
-# define FIND_FILE0_ARGS id, file, file_len
+# define FIND_FILE0_DECL uint64_t id, const char *path
+# define FIND_FILE0_ARGS id, path
 #endif
 
 /* find_file0()-- Recursive work function for find_file() */
@@ -1574,7 +1584,7 @@ find_file0 (gfc_unit *u, FIND_FILE0_DECL)
     }
   else
 # endif
-    if (compare_string (u->file_len, u->file, file_len, file) == 0)
+    if (u->filename && strcmp (u->filename, path) == 0)
       return u;
 #endif
 
@@ -1709,19 +1719,6 @@ flush_all_units (void)
 	}
     }
   while (1);
-}
-
-
-/* delete_file()-- Given a unit structure, delete the file associated
- * with the unit.  Returns nonzero if something went wrong. */
-
-int
-delete_file (gfc_unit * u)
-{
-  char *path = fc_strdup (u->file, u->file_len);
-  int err = unlink (path);
-  free (path);
-  return err;
 }
 
 

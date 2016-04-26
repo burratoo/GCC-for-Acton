@@ -48,6 +48,8 @@ varpool_externally_visible_p (struct varpool_node *vnode,
   return 0;
 }
 
+unsigned char pointer_set_contains (struct pointer_set_t *, struct varpool_node *);
+
 unsigned int
 function_and_variable_visibility (unsigned char whole_program)
 {
@@ -61,4 +63,3 @@ function_and_variable_visibility (unsigned char whole_program)
 }
 
 /* { dg-final { scan-tree-dump-not "& 255" "forwprop1"} } */
-/* { dg-final { cleanup-tree-dump "forwprop1" } } */

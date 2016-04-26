@@ -1,6 +1,6 @@
 /* Insert USEs in instructions that require mode switching.
    This should probably be merged into mode-switching.c .
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Embecosm on behalf of Adapteva, Inc.
 
 This file is part of GCC.
@@ -22,16 +22,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "rtl.h"
-#include "function.h"
+#include "df.h"
+#include "tm_p.h"
 #include "emit-rtl.h"
 #include "tree-pass.h"
 #include "insn-attr.h"
-#include "insn-config.h"
-#include "recog.h"
-#include "tm_p.h"
-#include "df.h"
 
 #ifndef TARGET_INSERT_MODE_SWITCH_USE
 #define TARGET_INSERT_MODE_SWITCH_USE NULL
@@ -43,13 +40,13 @@ insert_uses (void)
   static const int num_modes[] = NUM_MODES_FOR_MODE_SWITCHING;
 #define N_ENTITIES ARRAY_SIZE (num_modes)
   int e;
-  void (*target_insert_mode_switch_use) (rtx insn, int, int)
+  void (*target_insert_mode_switch_use) (rtx_insn *insn, int, int)
     = TARGET_INSERT_MODE_SWITCH_USE;
 
   for (e = N_ENTITIES - 1; e >= 0; e--)
     {
       int no_mode = num_modes[e];
-      rtx insn;
+      rtx_insn *insn;
       int mode;
 
       if (!OPTIMIZE_MODE_SWITCHING (e))

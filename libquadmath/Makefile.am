@@ -57,7 +57,7 @@ libquadmath_la_SOURCES = \
   math/erfq.c math/logq.c math/sqrtq.c math/expm1q.c math/lroundq.c \
   math/tanhq.c math/expq.c math/modfq.c math/tanq.c math/fabsq.c \
   math/nanq.c math/tgammaq.c math/finiteq.c math/nextafterq.c \
-  math/truncq.c math/floorq.c math/powq.c math/fmaq.c \
+  math/truncq.c math/floorq.c math/powq.c math/fmaq.c math/logbq.c \
   math/cacoshq.c math/cacosq.c math/casinhq.c math/casinq.c \
   math/catanhq.c math/catanq.c math/cimagq.c math/conjq.c math/cprojq.c \
   math/crealq.c math/fdimq.c math/fmaxq.c math/fminq.c math/ilogbq.c \
@@ -160,7 +160,13 @@ TEXINFO_TEX   = ../gcc/doc/include/texinfo.tex
 
 # Defines info, dvi, pdf and html targets
 MAKEINFOFLAGS = -I $(srcdir)/../gcc/doc/include
+
+if BUILD_LIBQUADMATH
 info_TEXINFOS = libquadmath.texi
+else
+info_TEXINFOS = 
+endif
+
 libquadmath_TEXINFOS = libquadmath-vers.texi
 
 libquadmath-vers.texi:

@@ -4,10 +4,10 @@
 
 #include <arm_neon.h>
 
-#define force_simd(V1)   asm volatile (""	\
-          : "=w"(V1)				\
-          : "w"(V1)				\
-          : /* No clobbers */)
+#define force_simd(V1) asm volatile ("mov %d0, %1.d[0]" \
+         : "=w"(V1)                                     \
+         : "w"(V1)                                      \
+         : /* No clobbers */)
 
 extern void abort (void);
 
@@ -338,6 +338,5 @@ main ()
 
 /* Asm check for vdupd_lane_f64, vdupd_lane_s64, vdupd_lane_u64.  */
 /* Attempts to make the compiler generate vdupd are not practical.  */
-/* { dg-final { scan-assembler-not "dup\\td\[0-9\]+, v\[0-9\]+\.d\\\[0\\\]" } }
+/* { dg-final { scan-assembler-not "dup\\td\[0-9\]+, v\[0-9\]+\.d\\\[0\\\]" } } */
 
-/* { dg-final { cleanup-saved-temps } } */

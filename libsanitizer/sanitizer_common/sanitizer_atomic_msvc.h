@@ -19,6 +19,15 @@ extern "C" void _mm_mfence();
 #pragma intrinsic(_mm_mfence)
 extern "C" void _mm_pause();
 #pragma intrinsic(_mm_pause)
+extern "C" char _InterlockedExchange8(   // NOLINT
+    char volatile *Addend, char Value);  // NOLINT
+#pragma intrinsic(_InterlockedExchange8)
+extern "C" short _InterlockedExchange16(   // NOLINT
+    short volatile *Addend, short Value);  // NOLINT
+#pragma intrinsic(_InterlockedExchange16)
+extern "C" long _InterlockedExchange(    // NOLINT
+    long volatile *Addend, long Value);  // NOLINT
+#pragma intrinsic(_InterlockedExchange)
 extern "C" long _InterlockedExchangeAdd(  // NOLINT
     long volatile * Addend, long Value);  // NOLINT
 #pragma intrinsic(_InterlockedExchangeAdd)
@@ -31,33 +40,20 @@ long long _InterlockedCompareExchange64(  // NOLINT
     long long volatile *Destination,              // NOLINT
     long long Exchange, long long Comparand);     // NOLINT
 #pragma intrinsic(_InterlockedCompareExchange64)
-
-#ifdef _WIN64
-extern "C" long long _InterlockedExchangeAdd64(     // NOLINT
-    long long volatile * Addend, long long Value);  // NOLINT
-#pragma intrinsic(_InterlockedExchangeAdd64)
 extern "C" void *_InterlockedCompareExchangePointer(
     void *volatile *Destination,
     void *Exchange, void *Comparand);
 #pragma intrinsic(_InterlockedCompareExchangePointer)
-#else
-// There's no _InterlockedCompareExchangePointer intrinsic on x86,
-// so call _InterlockedCompareExchange instead.
 extern "C"
 long __cdecl _InterlockedCompareExchange(  // NOLINT
     long volatile *Destination,            // NOLINT
     long Exchange, long Comparand);        // NOLINT
 #pragma intrinsic(_InterlockedCompareExchange)
 
-inline static void *_InterlockedCompareExchangePointer(
-    void *volatile *Destination,
-    void *Exchange, void *Comparand) {
-  return reinterpret_cast<void*>(
-      _InterlockedCompareExchange(
-          reinterpret_cast<long volatile*>(Destination),  // NOLINT
-          reinterpret_cast<long>(Exchange),               // NOLINT
-          reinterpret_cast<long>(Comparand)));            // NOLINT
-}
+#ifdef _WIN64
+extern "C" long long _InterlockedExchangeAdd64(     // NOLINT
+    long long volatile * Addend, long long Value);  // NOLINT
+#pragma intrinsic(_InterlockedExchangeAdd64)
 #endif
 
 namespace __sanitizer {
@@ -156,27 +152,24 @@ INLINE u8 atomic_exchange(volatile atomic_uint8_t *a,
     u8 v, memory_order mo) {
   (void)mo;
   DCHECK(!((uptr)a % sizeof(*a)));
-  __asm {
-    mov eax, a
-    mov cl, v
-    xchg [eax], cl  // NOLINT
-    mov v, cl
-  }
-  return v;
+  return (u8)_InterlockedExchange8((volatile char*)&a->val_dont_use, v);
 }
 
 INLINE u16 atomic_exchange(volatile atomic_uint16_t *a,
     u16 v, memory_order mo) {
   (void)mo;
   DCHECK(!((uptr)a % sizeof(*a)));
-  __asm {
-    mov eax, a
-    mov cx, v
-    xchg [eax], cx  // NOLINT
-    mov v, cx
-  }
-  return v;
+  return (u16)_InterlockedExchange16((volatile short*)&a->val_dont_use, v);
 }
+
+INLINE u32 atomic_exchange(volatile atomic_uint32_t *a,
+    u32 v, memory_order mo) {
+  (void)mo;
+  DCHECK(!((uptr)a % sizeof(*a)));
+  return (u32)_InterlockedExchange((volatile long*)&a->val_dont_use, v);
+}
+
+#ifndef _WIN64
 
 INLINE bool atomic_compare_exchange_strong(volatile atomic_uint8_t *a,
                                            u8 *cmp,
@@ -198,6 +191,8 @@ INLINE bool atomic_compare_exchange_strong(volatile atomic_uint8_t *a,
   *cmp = prev;
   return false;
 }
+
+#endif
 
 INLINE bool atomic_compare_exchange_strong(volatile atomic_uintptr_t *a,
                                            uptr *cmp,

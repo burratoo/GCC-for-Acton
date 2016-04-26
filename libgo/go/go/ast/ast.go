@@ -486,7 +486,7 @@ func (x *MapType) End() token.Pos       { return x.Value.End() }
 func (x *ChanType) End() token.Pos      { return x.Value.End() }
 
 // exprNode() ensures that only expression/type nodes can be
-// assigned to an ExprNode.
+// assigned to an Expr.
 //
 func (*BadExpr) exprNode()        {}
 func (*Ident) exprNode()          {}
@@ -562,10 +562,11 @@ type (
 
 	// An EmptyStmt node represents an empty statement.
 	// The "position" of the empty statement is the position
-	// of the immediately preceding semicolon.
+	// of the immediately following (explicit or implicit) semicolon.
 	//
 	EmptyStmt struct {
-		Semicolon token.Pos // position of preceding ";"
+		Semicolon token.Pos // position of following ";"
+		Implicit  bool      // if set, ";" was omitted in the source
 	}
 
 	// A LabeledStmt node represents a labeled statement.
@@ -699,9 +700,9 @@ type (
 	// A RangeStmt represents a for statement with a range clause.
 	RangeStmt struct {
 		For        token.Pos   // position of "for" keyword
-		Key, Value Expr        // Value may be nil
-		TokPos     token.Pos   // position of Tok
-		Tok        token.Token // ASSIGN, DEFINE
+		Key, Value Expr        // Key, Value may be nil
+		TokPos     token.Pos   // position of Tok; invalid if Key == nil
+		Tok        token.Token // ILLEGAL if Key == nil, ASSIGN, DEFINE
 		X          Expr        // value to range over
 		Body       *BlockStmt
 	}
@@ -734,6 +735,9 @@ func (s *RangeStmt) Pos() token.Pos      { return s.For }
 func (s *BadStmt) End() token.Pos  { return s.To }
 func (s *DeclStmt) End() token.Pos { return s.Decl.End() }
 func (s *EmptyStmt) End() token.Pos {
+	if s.Implicit {
+		return s.Semicolon
+	}
 	return s.Semicolon + 1 /* len(";") */
 }
 func (s *LabeledStmt) End() token.Pos { return s.Stmt.End() }
@@ -783,7 +787,7 @@ func (s *ForStmt) End() token.Pos    { return s.Body.End() }
 func (s *RangeStmt) End() token.Pos  { return s.Body.End() }
 
 // stmtNode() ensures that only statement nodes can be
-// assigned to a StmtNode.
+// assigned to a Stmt.
 //
 func (*BadStmt) stmtNode()        {}
 func (*DeclStmt) stmtNode()       {}
@@ -947,7 +951,7 @@ func (d *FuncDecl) End() token.Pos {
 }
 
 // declNode() ensures that only declaration nodes can be
-// assigned to a DeclNode.
+// assigned to a Decl.
 //
 func (*BadDecl) declNode()  {}
 func (*GenDecl) declNode()  {}

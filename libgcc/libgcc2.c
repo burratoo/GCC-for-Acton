@@ -1,6 +1,6 @@
 /* More subroutines needed by GCC output code on some machines.  */
 /* Compile this one with gcc.  */
-/* Copyright (C) 1989-2014 Free Software Foundation, Inc.
+/* Copyright (C) 1989-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -160,7 +160,7 @@ __mulvSI3 (Wtype a, Wtype b)
 }
 #ifdef COMPAT_SIMODE_TRAPPING_ARITHMETIC
 #undef WORD_SIZE
-#define WORD_SIZE (sizeof (SItype) * BITS_PER_UNIT)
+#define WORD_SIZE (sizeof (SItype) * __CHAR_BIT__)
 SItype
 __mulvsi3 (SItype a, SItype b)
 {
@@ -820,16 +820,16 @@ const UQItype __popcount_tab[256] =
 #endif
 
 #if defined(L_popcountsi2) || defined(L_popcountdi2)
-#define POPCOUNTCST2(x) (((UWtype) x << BITS_PER_UNIT) | x)
-#define POPCOUNTCST4(x) (((UWtype) x << (2 * BITS_PER_UNIT)) | x)
-#define POPCOUNTCST8(x) (((UWtype) x << (4 * BITS_PER_UNIT)) | x)
-#if W_TYPE_SIZE == BITS_PER_UNIT
+#define POPCOUNTCST2(x) (((UWtype) x << __CHAR_BIT__) | x)
+#define POPCOUNTCST4(x) (((UWtype) x << (2 * __CHAR_BIT__)) | x)
+#define POPCOUNTCST8(x) (((UWtype) x << (4 * __CHAR_BIT__)) | x)
+#if W_TYPE_SIZE == __CHAR_BIT__
 #define POPCOUNTCST(x) x
-#elif W_TYPE_SIZE == 2 * BITS_PER_UNIT
+#elif W_TYPE_SIZE == 2 * __CHAR_BIT__
 #define POPCOUNTCST(x) POPCOUNTCST2 (x)
-#elif W_TYPE_SIZE == 4 * BITS_PER_UNIT
+#elif W_TYPE_SIZE == 4 * __CHAR_BIT__
 #define POPCOUNTCST(x) POPCOUNTCST4 (POPCOUNTCST2 (x))
-#elif W_TYPE_SIZE == 8 * BITS_PER_UNIT
+#elif W_TYPE_SIZE == 8 * __CHAR_BIT__
 #define POPCOUNTCST(x) POPCOUNTCST8 (POPCOUNTCST4 (POPCOUNTCST2 (x)))
 #endif
 #endif
@@ -842,11 +842,11 @@ __popcountSI2 (UWtype x)
   /* Force table lookup on targets like AVR and RL78 which only
      pretend they have LIBGCC2_UNITS_PER_WORD 4, but actually
      have 1, and other small word targets.  */
-#if __SIZEOF_INT__ > 2 && defined (POPCOUNTCST) && BITS_PER_UNIT == 8
+#if __SIZEOF_INT__ > 2 && defined (POPCOUNTCST) && __CHAR_BIT__ == 8
   x = x - ((x >> 1) & POPCOUNTCST (0x55));
   x = (x & POPCOUNTCST (0x33)) + ((x >> 2) & POPCOUNTCST (0x33));
   x = (x + (x >> 4)) & POPCOUNTCST (0x0F);
-  return (x * POPCOUNTCST (0x01)) >> (W_TYPE_SIZE - BITS_PER_UNIT);
+  return (x * POPCOUNTCST (0x01)) >> (W_TYPE_SIZE - __CHAR_BIT__);
 #else
   int i, ret = 0;
 
@@ -866,7 +866,7 @@ __popcountDI2 (UDWtype x)
   /* Force table lookup on targets like AVR and RL78 which only
      pretend they have LIBGCC2_UNITS_PER_WORD 4, but actually
      have 1, and other small word targets.  */
-#if __SIZEOF_INT__ > 2 && defined (POPCOUNTCST) && BITS_PER_UNIT == 8
+#if __SIZEOF_INT__ > 2 && defined (POPCOUNTCST) && __CHAR_BIT__ == 8
   const DWunion uu = {.ll = x};
   UWtype x1 = uu.s.low, x2 = uu.s.high;
   x1 = x1 - ((x1 >> 1) & POPCOUNTCST (0x55));
@@ -876,7 +876,7 @@ __popcountDI2 (UDWtype x)
   x1 = (x1 + (x1 >> 4)) & POPCOUNTCST (0x0F);
   x2 = (x2 + (x2 >> 4)) & POPCOUNTCST (0x0F);
   x1 += x2;
-  return (x1 * POPCOUNTCST (0x01)) >> (W_TYPE_SIZE - BITS_PER_UNIT);
+  return (x1 * POPCOUNTCST (0x01)) >> (W_TYPE_SIZE - __CHAR_BIT__);
 #else
   int i, ret = 0;
 
@@ -1506,7 +1506,7 @@ __fixsfdi (SFtype a)
 XFtype
 __floatdixf (DWtype u)
 {
-#if W_TYPE_SIZE > XF_SIZE
+#if W_TYPE_SIZE > __LIBGCC_XF_MANT_DIG__
 # error
 #endif
   XFtype d = (Wtype) (u >> W_TYPE_SIZE);
@@ -1520,7 +1520,7 @@ __floatdixf (DWtype u)
 XFtype
 __floatundixf (UDWtype u)
 {
-#if W_TYPE_SIZE > XF_SIZE
+#if W_TYPE_SIZE > __LIBGCC_XF_MANT_DIG__
 # error
 #endif
   XFtype d = (UWtype) (u >> W_TYPE_SIZE);
@@ -1534,7 +1534,7 @@ __floatundixf (UDWtype u)
 TFtype
 __floatditf (DWtype u)
 {
-#if W_TYPE_SIZE > TF_SIZE
+#if W_TYPE_SIZE > __LIBGCC_TF_MANT_DIG__
 # error
 #endif
   TFtype d = (Wtype) (u >> W_TYPE_SIZE);
@@ -1548,7 +1548,7 @@ __floatditf (DWtype u)
 TFtype
 __floatunditf (UDWtype u)
 {
-#if W_TYPE_SIZE > TF_SIZE
+#if W_TYPE_SIZE > __LIBGCC_TF_MANT_DIG__
 # error
 #endif
   TFtype d = (UWtype) (u >> W_TYPE_SIZE);
@@ -1568,11 +1568,11 @@ __floatunditf (UDWtype u)
 #if defined(L_floatdisf)
 #define FUNC __floatdisf
 #define FSTYPE SFtype
-#define FSSIZE SF_SIZE
+#define FSSIZE __LIBGCC_SF_MANT_DIG__
 #else
 #define FUNC __floatdidf
 #define FSTYPE DFtype
-#define FSSIZE DF_SIZE
+#define FSSIZE __LIBGCC_DF_MANT_DIG__
 #endif
 
 FSTYPE
@@ -1584,18 +1584,18 @@ FUNC (DWtype u)
   f *= Wtype_MAXp1_F;
   f += (UWtype)u;
   return f;
-#elif (LIBGCC2_HAS_DF_MODE && F_MODE_OK (DF_SIZE))	\
-     || (LIBGCC2_HAS_XF_MODE && F_MODE_OK (XF_SIZE))	\
-     || (LIBGCC2_HAS_TF_MODE && F_MODE_OK (TF_SIZE))
+#elif (LIBGCC2_HAS_DF_MODE && F_MODE_OK (__LIBGCC_DF_MANT_DIG__))	\
+     || (LIBGCC2_HAS_XF_MODE && F_MODE_OK (__LIBGCC_XF_MANT_DIG__))	\
+     || (LIBGCC2_HAS_TF_MODE && F_MODE_OK (__LIBGCC_TF_MANT_DIG__))
 
-#if (LIBGCC2_HAS_DF_MODE && F_MODE_OK (DF_SIZE))
-# define FSIZE DF_SIZE
+#if (LIBGCC2_HAS_DF_MODE && F_MODE_OK (__LIBGCC_DF_MANT_DIG__))
+# define FSIZE __LIBGCC_DF_MANT_DIG__
 # define FTYPE DFtype
-#elif (LIBGCC2_HAS_XF_MODE && F_MODE_OK (XF_SIZE))
-# define FSIZE XF_SIZE
+#elif (LIBGCC2_HAS_XF_MODE && F_MODE_OK (__LIBGCC_XF_MANT_DIG__))
+# define FSIZE __LIBGCC_XF_MANT_DIG__
 # define FTYPE XFtype
-#elif (LIBGCC2_HAS_TF_MODE && F_MODE_OK (TF_SIZE))
-# define FSIZE TF_SIZE
+#elif (LIBGCC2_HAS_TF_MODE && F_MODE_OK (__LIBGCC_TF_MANT_DIG__))
+# define FSIZE __LIBGCC_TF_MANT_DIG__
 # define FTYPE TFtype
 #else
 # error
@@ -1684,11 +1684,11 @@ FUNC (DWtype u)
 #if defined(L_floatundisf)
 #define FUNC __floatundisf
 #define FSTYPE SFtype
-#define FSSIZE SF_SIZE
+#define FSSIZE __LIBGCC_SF_MANT_DIG__
 #else
 #define FUNC __floatundidf
 #define FSTYPE DFtype
-#define FSSIZE DF_SIZE
+#define FSSIZE __LIBGCC_DF_MANT_DIG__
 #endif
 
 FSTYPE
@@ -1700,18 +1700,18 @@ FUNC (UDWtype u)
   f *= Wtype_MAXp1_F;
   f += (UWtype)u;
   return f;
-#elif (LIBGCC2_HAS_DF_MODE && F_MODE_OK (DF_SIZE))	\
-     || (LIBGCC2_HAS_XF_MODE && F_MODE_OK (XF_SIZE))	\
-     || (LIBGCC2_HAS_TF_MODE && F_MODE_OK (TF_SIZE))
+#elif (LIBGCC2_HAS_DF_MODE && F_MODE_OK (__LIBGCC_DF_MANT_DIG__))	\
+     || (LIBGCC2_HAS_XF_MODE && F_MODE_OK (__LIBGCC_XF_MANT_DIG__))	\
+     || (LIBGCC2_HAS_TF_MODE && F_MODE_OK (__LIBGCC_TF_MANT_DIG__))
 
-#if (LIBGCC2_HAS_DF_MODE && F_MODE_OK (DF_SIZE))
-# define FSIZE DF_SIZE
+#if (LIBGCC2_HAS_DF_MODE && F_MODE_OK (__LIBGCC_DF_MANT_DIG__))
+# define FSIZE __LIBGCC_DF_MANT_DIG__
 # define FTYPE DFtype
-#elif (LIBGCC2_HAS_XF_MODE && F_MODE_OK (XF_SIZE))
-# define FSIZE XF_SIZE
+#elif (LIBGCC2_HAS_XF_MODE && F_MODE_OK (__LIBGCC_XF_MANT_DIG__))
+# define FSIZE __LIBGCC_XF_MANT_DIG__
 # define FTYPE XFtype
-#elif (LIBGCC2_HAS_TF_MODE && F_MODE_OK (TF_SIZE))
-# define FSIZE TF_SIZE
+#elif (LIBGCC2_HAS_TF_MODE && F_MODE_OK (__LIBGCC_TF_MANT_DIG__))
+# define FSIZE __LIBGCC_TF_MANT_DIG__
 # define FTYPE TFtype
 #else
 # error
@@ -1865,35 +1865,26 @@ NAME (TYPE x, int m)
 # define MTYPE	SFtype
 # define CTYPE	SCtype
 # define MODE	sc
-# define CEXT	f
-# define NOTRUNC __FLT_EVAL_METHOD__ == 0
+# define CEXT	__LIBGCC_SF_FUNC_EXT__
+# define NOTRUNC __LIBGCC_SF_EXCESS_PRECISION__
 #elif defined(L_muldc3) || defined(L_divdc3)
 # define MTYPE	DFtype
 # define CTYPE	DCtype
 # define MODE	dc
-# if LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 64
-#  define CEXT	l
-#  define NOTRUNC 1
-# else
-#  define CEXT
-#  define NOTRUNC __FLT_EVAL_METHOD__ == 0 || __FLT_EVAL_METHOD__ == 1
-# endif
+# define CEXT	__LIBGCC_DF_FUNC_EXT__
+# define NOTRUNC __LIBGCC_DF_EXCESS_PRECISION__
 #elif defined(L_mulxc3) || defined(L_divxc3)
 # define MTYPE	XFtype
 # define CTYPE	XCtype
 # define MODE	xc
-# define CEXT	l
-# define NOTRUNC 1
+# define CEXT	__LIBGCC_XF_FUNC_EXT__
+# define NOTRUNC __LIBGCC_XF_EXCESS_PRECISION__
 #elif defined(L_multc3) || defined(L_divtc3)
 # define MTYPE	TFtype
 # define CTYPE	TCtype
 # define MODE	tc
-# if LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 128
-#  define CEXT l
-# else
-#  define CEXT LIBGCC2_TF_CEXT
-# endif
-# define NOTRUNC 1
+# define CEXT	__LIBGCC_TF_FUNC_EXT__
+# define NOTRUNC __LIBGCC_TF_EXCESS_PRECISION__
 #else
 # error
 #endif
@@ -2209,7 +2200,8 @@ TRANSFER_FROM_TRAMPOLINE
 #define SYMBOL__MAIN __main
 #endif
 
-#if defined (INIT_SECTION_ASM_OP) || defined (INIT_ARRAY_SECTION_ASM_OP)
+#if defined (__LIBGCC_INIT_SECTION_ASM_OP__) \
+    || defined (__LIBGCC_INIT_ARRAY_SECTION_ASM_OP__)
 #undef HAS_INIT_SECTION
 #define HAS_INIT_SECTION
 #endif
@@ -2217,9 +2209,14 @@ TRANSFER_FROM_TRAMPOLINE
 #if !defined (HAS_INIT_SECTION) || !defined (OBJECT_FORMAT_ELF)
 
 /* Some ELF crosses use crtstuff.c to provide __CTOR_LIST__, but use this
-   code to run constructors.  In that case, we need to handle EH here, too.  */
+   code to run constructors.  In that case, we need to handle EH here, too.
+   But MINGW32 is special because it handles CRTSTUFF and EH on its own.  */
 
-#ifdef EH_FRAME_SECTION_NAME
+#ifdef __MINGW32__
+#undef __LIBGCC_EH_FRAME_SECTION_NAME__
+#endif
+
+#ifdef __LIBGCC_EH_FRAME_SECTION_NAME__
 #include "unwind-dw2-fde.h"
 extern unsigned char __EH_FRAME_BEGIN__[];
 #endif
@@ -2239,7 +2236,7 @@ __do_global_dtors (void)
       (*(p-1)) ();
     }
 #endif
-#if defined (EH_FRAME_SECTION_NAME) && !defined (HAS_INIT_SECTION)
+#if defined (__LIBGCC_EH_FRAME_SECTION_NAME__) && !defined (HAS_INIT_SECTION)
   {
     static int completed = 0;
     if (! completed)
@@ -2258,7 +2255,7 @@ __do_global_dtors (void)
 void
 __do_global_ctors (void)
 {
-#ifdef EH_FRAME_SECTION_NAME
+#ifdef __LIBGCC_EH_FRAME_SECTION_NAME__
   {
     static struct object object;
     __register_frame_info (__EH_FRAME_BEGIN__, &object);
@@ -2312,7 +2309,8 @@ SYMBOL__MAIN (void)
    must be in the bss/common section.
 
    Long term no port should use those extensions.  But many still do.  */
-#if !defined(INIT_SECTION_ASM_OP) && !defined(CTOR_LISTS_DEFINED_EXTERNALLY)
+#if !defined(__LIBGCC_INIT_SECTION_ASM_OP__) \
+    && !defined(CTOR_LISTS_DEFINED_EXTERNALLY)
 #if defined (TARGET_ASM_CONSTRUCTOR) || defined (USE_COLLECT2)
 func_ptr __CTOR_LIST__[2] = {0, 0};
 func_ptr __DTOR_LIST__[2] = {0, 0};
@@ -2320,6 +2318,6 @@ func_ptr __DTOR_LIST__[2] = {0, 0};
 func_ptr __CTOR_LIST__[2];
 func_ptr __DTOR_LIST__[2];
 #endif
-#endif /* no INIT_SECTION_ASM_OP and not CTOR_LISTS_DEFINED_EXTERNALLY */
+#endif /* no __LIBGCC_INIT_SECTION_ASM_OP__ and not CTOR_LISTS_DEFINED_EXTERNALLY */
 #endif /* L_ctors */
 #endif /* LIBGCC2_UNITS_PER_WORD <= MIN_UNITS_PER_WORD */

@@ -11,18 +11,7 @@
 // By default, a Scanner skips white space and Go comments and recognizes all
 // literals as defined by the Go language specification.  It may be
 // customized to recognize only a subset of those literals and to recognize
-// different white space characters.
-//
-// Basic usage pattern:
-//
-//	var s scanner.Scanner
-//	s.Init(src)
-//	tok := s.Scan()
-//	for tok != scanner.EOF {
-//		// do something with tok
-//		tok = s.Scan()
-//	}
-//
+// different identifier and white space characters.
 package scanner
 
 import (
@@ -34,8 +23,6 @@ import (
 	"unicode/utf8"
 )
 
-// TODO(gri): Consider changing this to use the new (token) Position package.
-
 // A source position is represented by a Position value.
 // A position is valid if Line > 0.
 type Position struct {
@@ -45,7 +32,7 @@ type Position struct {
 	Column   int    // column number, starting at 1 (character count per line)
 }
 
-// IsValid returns true if the position is valid.
+// IsValid reports whether the position is valid.
 func (pos *Position) IsValid() bool { return pos.Line > 0 }
 
 func (pos Position) String() string {
@@ -68,6 +55,12 @@ func (pos Position) String() string {
 //
 //	ScanIdents | ScanInts | SkipComments
 //
+// With the exceptions of comments, which are skipped if SkipComments is
+// set, unrecognized tokens are not ignored. Instead, the scanner simply
+// returns the respective individual characters (or possibly sub-tokens).
+// For instance, if the mode is ScanIdents (not ScanStrings), the string
+// "foo" is scanned as the token sequence '"' Ident '"'.
+//
 const (
 	ScanIdents     = 1 << -Ident
 	ScanInts       = 1 << -Int
@@ -80,7 +73,7 @@ const (
 	GoTokens       = ScanIdents | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | SkipComments
 )
 
-// The result of Scan is one of the following tokens or a Unicode character.
+// The result of Scan is one of these tokens or a Unicode character.
 const (
 	EOF = -(iota + 1)
 	Ident
@@ -164,6 +157,13 @@ type Scanner struct {
 	// for values ch > ' '). The field may be changed at any time.
 	Whitespace uint64
 
+	// IsIdentRune is a predicate controlling the characters accepted
+	// as the ith rune in an identifier. The set of valid characters
+	// must not intersect with the set of white space characters.
+	// If no IsIdentRune function is set, regular Go identifiers are
+	// accepted instead. The field may be changed at any time.
+	IsIdentRune func(ch rune, i int) bool
+
 	// Start position of most recently scanned token; set by Scan.
 	// Calling Init or Next invalidates the position (Line == 0).
 	// The Filename field is always left untouched by the Scanner.
@@ -197,7 +197,7 @@ func (s *Scanner) Init(src io.Reader) *Scanner {
 	s.tokPos = -1
 
 	// initialize one character look-ahead
-	s.ch = -1 // no char read yet
+	s.ch = -2 // no char read yet, not EOF
 
 	// initialize public fields
 	s.Error = nil
@@ -303,7 +303,9 @@ func (s *Scanner) Next() rune {
 	s.tokPos = -1 // don't collect token text
 	s.Line = 0    // invalidate token position
 	ch := s.Peek()
-	s.ch = s.next()
+	if ch != EOF {
+		s.ch = s.next()
+	}
 	return ch
 }
 
@@ -311,7 +313,7 @@ func (s *Scanner) Next() rune {
 // the scanner. It returns EOF if the scanner's position is at the last
 // character of the source.
 func (s *Scanner) Peek() rune {
-	if s.ch < 0 {
+	if s.ch == -2 {
 		// this code is only run for the very first character
 		s.ch = s.next()
 		if s.ch == '\uFEFF' {
@@ -334,9 +336,17 @@ func (s *Scanner) error(msg string) {
 	fmt.Fprintf(os.Stderr, "%s: %s\n", pos, msg)
 }
 
+func (s *Scanner) isIdentRune(ch rune, i int) bool {
+	if s.IsIdentRune != nil {
+		return s.IsIdentRune(ch, i)
+	}
+	return ch == '_' || unicode.IsLetter(ch) || unicode.IsDigit(ch) && i > 0
+}
+
 func (s *Scanner) scanIdentifier() rune {
-	ch := s.next() // read character after first '_' or letter
-	for ch == '_' || unicode.IsLetter(ch) || unicode.IsDigit(ch) {
+	// we know the zero'th rune is OK; start scanning at the next one
+	ch := s.next()
+	for i := 1; s.isIdentRune(ch, i); i++ {
 		ch = s.next()
 	}
 	return ch
@@ -563,7 +573,7 @@ redo:
 	// determine token value
 	tok := ch
 	switch {
-	case unicode.IsLetter(ch) || ch == '_':
+	case s.isIdentRune(ch, 0):
 		if s.Mode&ScanIdents != 0 {
 			tok = Ident
 			ch = s.scanIdentifier()
@@ -578,6 +588,8 @@ redo:
 		}
 	default:
 		switch ch {
+		case EOF:
+			break
 		case '"':
 			if s.Mode&ScanStrings != 0 {
 				s.scanString('"')

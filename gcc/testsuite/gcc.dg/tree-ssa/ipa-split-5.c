@@ -24,6 +24,7 @@ struct a split_me (int a)
     }
 }
 int val;
+void
 test()
 {
   split_me (val);
@@ -32,6 +33,4 @@ test()
   split_me (val);
 }
 /* { dg-final { scan-tree-dump-times "Splitting function" 1 "fnsplit"} } */
-/* { dg-final { cleanup-tree-dump "fnsplit" } } */
 /* { dg-final { scan-tree-dump "part" "optimized"} } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

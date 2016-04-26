@@ -11,7 +11,7 @@ AC_INIT(package-unused, version-unused,, libgo)
 AC_CONFIG_SRCDIR(Makefile.am)
 AC_CONFIG_HEADER(config.h)
 
-libtool_VERSION=6:0:0
+libtool_VERSION=9:0:0
 AC_SUBST(libtool_VERSION)
 
 AM_ENABLE_MULTILIB(, ..)
@@ -194,6 +194,9 @@ is_m68k=no
 mips_abi=unknown
 is_ppc=no
 is_ppc64=no
+is_ppc64le=no
+is_s390=no
+is_s390x=no
 is_sparc=no
 is_sparc64=no
 is_x86_64=no
@@ -264,11 +267,30 @@ changequote([,])dnl
 #ifdef _ARCH_PPC64
 #error 64-bit
 #endif],
-[is_ppc=yes], [is_ppc64=yes])
+[is_ppc=yes],
+    [AC_COMPILE_IFELSE([
+#if defined(_BIG_ENDIAN) || defined(__BIG_ENDIAN__)
+#error 64be
+#endif],
+[is_ppc64le=yes],[is_ppc64=yes])])
     if test "$is_ppc" = "yes"; then
       GOARCH=ppc
-    else
+    elif test "$is_ppc64" = "yes"; then
       GOARCH=ppc64
+    else
+      GOARCH=ppc64le
+    fi
+    ;;
+  s390*-*-*)
+    AC_COMPILE_IFELSE([
+#if defined(__s390x__)
+#error 64-bit
+#endif],
+[is_s390=yes], [is_s390x=yes])
+    if test "$is_s390" = "yes"; then
+      GOARCH=s390
+    else
+      GOARCH=s390x
     fi
     ;;
   sparc*-*-*)
@@ -294,8 +316,12 @@ AM_CONDITIONAL(LIBGO_IS_MIPSO32, test $mips_abi = o32)
 AM_CONDITIONAL(LIBGO_IS_MIPSN32, test $mips_abi = n32)
 AM_CONDITIONAL(LIBGO_IS_MIPSN64, test $mips_abi = n64)
 AM_CONDITIONAL(LIBGO_IS_MIPSO64, test $mips_abi = o64)
+AM_CONDITIONAL(LIBGO_IS_MIPS64, test $mips_abi = n64 -o $mips_abi = o64)
 AM_CONDITIONAL(LIBGO_IS_PPC, test $is_ppc = yes)
 AM_CONDITIONAL(LIBGO_IS_PPC64, test $is_ppc64 = yes)
+AM_CONDITIONAL(LIBGO_IS_PPC64LE, test $is_ppc64le = yes)
+AM_CONDITIONAL(LIBGO_IS_S390, test $is_s390 = yes)
+AM_CONDITIONAL(LIBGO_IS_S390X, test $is_s390x = yes)
 AM_CONDITIONAL(LIBGO_IS_SPARC, test $is_sparc = yes)
 AM_CONDITIONAL(LIBGO_IS_SPARC64, test $is_sparc64 = yes)
 AM_CONDITIONAL(LIBGO_IS_X86_64, test $is_x86_64 = yes)
@@ -306,17 +332,17 @@ GO_LIBCALL_OS_FILE=
 GO_LIBCALL_OS_ARCH_FILE=
 GO_SYSCALL_OS_FILE=
 GO_SYSCALL_OS_ARCH_FILE=
-if test -f ${srcdir}/go/syscall/libcall_${GOOS}.go; then
-  GO_LIBCALL_OS_FILE=go/syscall/libcall_${GOOS}.go
+if test -f "${srcdir}/go/syscall/libcall_${GOOS}.go"; then
+  GO_LIBCALL_OS_FILE="go/syscall/libcall_${GOOS}.go"
 fi
-if test -f ${srcdir}/go/syscall/libcall_${GOOS}_${GOARCH}.go; then
-  GO_LIBCALL_OS_ARCH_FILE=go/syscall/libcall_${GOOS}_${GOARCH}.go
+if test -f "${srcdir}/go/syscall/libcall_${GOOS}_${GOARCH}.go"; then
+  GO_LIBCALL_OS_ARCH_FILE="go/syscall/libcall_${GOOS}_${GOARCH}.go"
 fi
-if test -f ${srcdir}/go/syscall/syscall_${GOOS}.go; then
-  GO_SYSCALL_OS_FILE=go/syscall/syscall_${GOOS}.go
+if test -f "${srcdir}/go/syscall/syscall_${GOOS}.go"; then
+  GO_SYSCALL_OS_FILE="go/syscall/syscall_${GOOS}.go"
 fi
-if test -f ${srcdir}/go/syscall/syscall_${GOOS}_${GOARCH}.go; then
-  GO_SYSCALL_OS_ARCH_FILE=go/syscall/syscall_${GOOS}_${GOARCH}.go
+if test -f "${srcdir}/go/syscall/syscall_${GOOS}_${GOARCH}.go"; then
+  GO_SYSCALL_OS_ARCH_FILE="go/syscall/syscall_${GOOS}_${GOARCH}.go"
 fi
 AC_SUBST(GO_LIBCALL_OS_FILE)
 AC_SUBST(GO_LIBCALL_OS_ARCH_FILE)
@@ -349,7 +375,29 @@ AC_COMPILE_IFELSE([[int i;]],
 [libgo_cv_c_split_stack_supported=yes],
 [libgo_cv_c_split_stack_supported=no])
 CFLAGS=$CFLAGS_hold])
-if test "$libgo_cv_c_split_stack_supported" = yes; then
+
+dnl Make sure the linker permits -fsplit-stack.  Old versions of gold will
+dnl reject split-stack code calling non-split-stack code on targets
+dnl they don't support.
+AC_CACHE_CHECK([whether linker supports split/non-split linked together],
+[libgo_cv_c_linker_split_non_split],
+[cat > conftest1.c << EOF
+extern void f();
+int main() { f(); return 0; }
+EOF
+cat > conftest2.c << EOF
+void f() {}
+EOF
+$CC -c -fsplit-stack $CFLAGS $CPPFLAGS conftest1.c
+$CC -c $CFLAGS $CPPFLAGS conftest2.c
+if $CC -o conftest conftest1.$ac_objext conftest2.$ac_objext; then
+  libgo_cv_c_linker_split_non_split=yes
+else
+  libgo_cv_c_linker_split_non_split=no
+fi
+rm -f conftest1.* conftest2.* conftest])
+
+if test "$libgo_cv_c_split_stack_supported" = yes -a "$libgo_cv_c_linker_split_non_split" = yes; then
   SPLIT_STACK=-fsplit-stack
   AC_DEFINE(USING_SPLIT_STACK, 1,
 		[Define if the compiler supports -fsplit-stack])
@@ -358,13 +406,24 @@ else
 fi
 AC_SUBST(SPLIT_STACK)
 AM_CONDITIONAL(USING_SPLIT_STACK,
-	test "$libgo_cv_c_split_stack_supported" = yes)
+	test "$libgo_cv_c_split_stack_supported" = yes -a "$libgo_cv_c_linker_split_non_split" = yes)
+
+dnl If the compiler supports split-stack but the linker does not, then
+dnl we need to explicitly disable split-stack for Go.
+if test "$libgo_cv_c_split_stack_supported" = yes -a "$libgo_cv_c_linker_split_non_split" = no; then
+  GO_SPLIT_STACK=-fno-split-stack
+else
+  GO_SPLIT_STACK=
+fi
+AC_SUBST(GO_SPLIT_STACK)
 
 dnl Check whether the linker does stack munging when calling from
 dnl split-stack into non-split-stack code.  We check this by looking
 dnl at the --help output.  FIXME: This is only half right: it's
 dnl possible for the linker to support this for some targets but not
 dnl others.
+dnl This is slightly different from the above check, which is whether
+dnl the linker permits the call at all.
 AC_CACHE_CHECK([whether linker supports split stack],
 [libgo_cv_c_linker_supports_split_stack],
 [libgo_cv_c_linker_supports_split_stack=no
@@ -375,6 +434,14 @@ if test "$libgo_cv_c_linker_supports_split_stack" = yes; then
   AC_DEFINE(LINKER_SUPPORTS_SPLIT_STACK, 1,
 	    [Define if the linker support split stack adjustments])
 fi
+
+AC_CACHE_CHECK([whether compiler is llgo],
+[libgo_cv_c_goc_is_llgo],
+[libgo_cv_c_goc_is_llgo=no
+if $GOC -dumpversion 2>/dev/null | grep llgo >/dev/null 2>&1; then
+  libgo_cv_c_goc_is_llgo=yes
+fi])
+AM_CONDITIONAL(GOC_IS_LLGO, test "$libgo_cv_c_goc_is_llgo" = yes)
 
 dnl Test for the -lm library.
 MATH_LIBS=
@@ -407,6 +474,9 @@ AC_CACHE_CHECK([for socket libraries], libgo_cv_lib_sockets,
 		 [AC_CHECK_LIB(nsl, main,
 		 	[libgo_cv_lib_sockets="$libgo_cv_lib_sockets -lnsl"])])
    unset ac_cv_func_gethostbyname
+   AC_CHECK_FUNC(sendfile, ,
+		 [AC_CHECK_LIB(sendfile, main,
+		 	[libgo_cv_lib_sockets="$libgo_cv_lib_sockets -lsendfile"])])
    LIBS=$libgo_old_libs
 ])
 NET_LIBS="$libgo_cv_lib_sockets"
@@ -432,63 +502,14 @@ PTHREAD_LIBS=
 AC_CHECK_LIB([pthread], [pthread_create], PTHREAD_LIBS=-lpthread)
 AC_SUBST(PTHREAD_LIBS)
 
-dnl Test if -lrt is required for sched_yield and/or nanosleep.
+dnl Test if -lrt is required for sched_yield or nanosleep or clock_gettime.
 AC_SEARCH_LIBS([sched_yield], [rt])
 AC_SEARCH_LIBS([nanosleep], [rt])
+AC_SEARCH_LIBS([clock_gettime], [rt])
 
 AC_C_BIGENDIAN
 
 GCC_CHECK_UNWIND_GETIPINFO
-
-AC_ARG_ENABLE(sjlj-exceptions,
-  AC_HELP_STRING([--enable-sjlj-exceptions],
-		 [force use of builtin_setjmp for exceptions]),
-  [case "$enableval" in
-   yes|no|auto) ;;
-   *) AC_MSG_ERROR([unknown argument to --enable-sjlj-exceptions]) ;;
-   esac],
-  [enable_sjlj_exceptions=auto])
-
-AC_CACHE_CHECK([whether to use setjmp/longjmp exceptions],
-[libgo_cv_lib_sjlj_exceptions],
-[AC_LANG_CONFTEST(
-  [AC_LANG_SOURCE([
-void bar ();
-void clean (int *);
-void foo ()
-{
-  int i __attribute__ ((cleanup (clean)));
-  bar();
-}
-])])
-CFLAGS_hold=$CFLAGS
-CFLAGS="--save-temps -fexceptions"
-libgo_cv_lib_sjlj_exceptions=unknown
-AS_IF([ac_fn_c_try_compile],
-  [if grep _Unwind_SjLj_Resume conftest.s >/dev/null 2>&1; then
-    libgo_cv_lib_sjlj_exceptions=yes
-  elif grep _Unwind_Resume conftest.s >/dev/null 2>&1; then
-    libgo_cv_lib_sjlj_exceptions=no
-  fi])
-CFLAGS=$CFLAGS_hold
-rm -f conftest*
-])
-
-if test "$enable_sjlj_exceptions" = "auto"; then
-  enable_sjlj_exceptions=$libgo_cv_lib_sjlj_exceptions
-fi
-
-case $enable_sjlj_exceptions in
-yes)
-  AC_DEFINE(LIBGO_SJLJ_EXCEPTIONS, 1,
-	[Define if the C++ compiler is configured for setjmp/longjmp exceptions.])
-  ;;
-no)
-  ;;
-*)
-  AC_MSG_ERROR([unable to detect exception model])
-  ;;
-esac
 
 AC_CHECK_HEADERS(sched.h sys/file.h sys/mman.h syscall.h sys/epoll.h sys/inotify.h sys/ptrace.h sys/syscall.h sys/user.h sys/utsname.h sys/select.h sys/socket.h net/if.h net/if_arp.h net/route.h netpacket/packet.h sys/prctl.h sys/mount.h sys/vfs.h sys/statfs.h sys/timex.h sys/sysinfo.h utime.h linux/ether.h linux/fs.h linux/reboot.h netinet/icmp6.h netinet/in_syst.h netinet/ip.h netinet/ip_mroute.h netinet/if_ether.h)
 
@@ -518,7 +539,7 @@ fi
 
 AM_CONDITIONAL(HAVE_SYS_MMAN_H, test "$ac_cv_header_sys_mman_h" = yes)
 
-AC_CHECK_FUNCS(strerror_r strsignal wait4 mincore setenv dl_iterate_phdr)
+AC_CHECK_FUNCS(strerror_r strsignal wait4 mincore setenv unsetenv dl_iterate_phdr)
 AM_CONDITIONAL(HAVE_STRERROR_R, test "$ac_cv_func_strerror_r" = yes)
 AM_CONDITIONAL(HAVE_WAIT4, test "$ac_cv_func_wait4" = yes)
 
@@ -662,6 +683,12 @@ AC_CACHE_CHECK([epoll_event data.fd offset],
 STRUCT_EPOLL_EVENT_FD_OFFSET=${libgo_cv_c_epoll_event_fd_offset}
 AC_SUBST(STRUCT_EPOLL_EVENT_FD_OFFSET)
 
+dnl Check if <sys/stat.h> uses timespec_t for st_?tim members.  Introduced
+dnl in Solaris 12 for XPG7 compatibility.
+AC_EGREP_HEADER([timespec_t.*st_atim], [sys/stat.h],
+		[have_stat_timespec=yes], [have_stat_timespec=no])
+AM_CONDITIONAL(HAVE_STAT_TIMESPEC, test $have_stat_timespec = yes)
+
 dnl See if struct exception is defined in <math.h>.
 AC_CHECK_TYPE([struct exception],
 [libgo_has_struct_exception=yes],
@@ -785,14 +812,28 @@ else
 	    [Define to the flags needed for the .section .eh_frame directive.])
 fi
 
+AC_CACHE_CHECK([if compiler supports -Qunused-arguments],
+[libgo_cv_c_unused_arguments],
+[CFLAGS_hold=$CFLAGS
+CFLAGS="$CFLAGS -Qunused-arguments"
+AC_COMPILE_IFELSE([[int i;]],
+[libgo_cv_c_unused_arguments=yes],
+[libgo_cv_c_unused_arguments=no])
+CFLAGS=$CFLAGS_hold])
+
 AC_CACHE_CHECK([if assembler supports GNU comdat group syntax],
 libgo_cv_as_comdat_gnu, [
 echo '.section .text,"axG",@progbits,.foo,comdat' > conftest.s
+CFLAGS_hold=$CFLAGS
+if test "$libgo_cv_c_unused_arguments" = yes; then
+  CFLAGS="$CFLAGS -Qunused-arguments"
+fi
 if $CC $CFLAGS -c conftest.s > /dev/null 2>&1; then
   libgo_cv_as_comdat_gnu=yes
 else
   libgo_cv_as_comdat_gnu=no
 fi
+CFLAGS=$CFLAGS_hold
 ])
 if test "x$libgo_cv_as_comdat_gnu" = xyes; then
   AC_DEFINE(HAVE_AS_COMDAT_GAS, 1,
@@ -803,9 +844,14 @@ AC_CACHE_CHECK([assembler supports pc related relocs],
 libgo_cv_as_x86_pcrel, [
 libgo_cv_as_x86_pcrel=yes
 echo '.text; foo: nop; .data; .long foo-.; .text' > conftest.s
+CFLAGS_hold=$CFLAGS
+if test "$libgo_cv_c_unused_arguments" = yes; then
+  CFLAGS="$CFLAGS -Qunused-arguments"
+fi
 if $CC $CFLAGS -c conftest.s 2>&1 | $EGREP -i 'illegal|warning' > /dev/null; then
     libgo_cv_as_x86_pcrel=no
 fi
+CFLAGS=$CFLAGS_hold
 ])
 if test "x$libgo_cv_as_x86_pcrel" = xyes; then
   AC_DEFINE(HAVE_AS_X86_PCREL, 1,
@@ -816,9 +862,14 @@ AC_CACHE_CHECK([assembler supports unwind section type],
 libgo_cv_as_x86_64_unwind_section_type, [
 libgo_cv_as_x86_64_unwind_section_type=yes
 echo '.section .eh_frame,"a",@unwind' > conftest.s
+CFLAGS_hold=$CFLAGS
+if test "$libgo_cv_c_unused_arguments" = yes; then
+  CFLAGS="$CFLAGS -Qunused-arguments"
+fi
 if $CC $CFLAGS -c conftest.s 2>&1 | grep -i warning > /dev/null; then
     libgo_cv_as_x86_64_unwind_section_type=no
 fi
+CFLAGS=$CFLAGS_hold
 ])
 if test "x$libgo_cv_as_x86_64_unwind_section_type" = xyes; then
   AC_DEFINE(HAVE_AS_X86_64_UNWIND_SECTION_TYPE, 1,

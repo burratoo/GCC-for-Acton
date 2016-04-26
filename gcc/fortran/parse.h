@@ -1,5 +1,5 @@
 /* Parser header
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Steven Bosscher
 
 This file is part of GCC.
@@ -23,15 +23,14 @@ along with GCC; see the file COPYING3.  If not see
 #define GFC_PARSE_H
 
 /* Enum for what the compiler is currently doing.  */
-typedef enum
+enum gfc_compile_state
 {
-  COMP_NONE, COMP_PROGRAM, COMP_MODULE, COMP_SUBROUTINE, COMP_FUNCTION,
-  COMP_BLOCK_DATA, COMP_INTERFACE, COMP_DERIVED, COMP_DERIVED_CONTAINS,
-  COMP_BLOCK, COMP_ASSOCIATE, COMP_IF,
+  COMP_NONE, COMP_PROGRAM, COMP_MODULE, COMP_SUBMODULE, COMP_SUBROUTINE,
+  COMP_FUNCTION, COMP_BLOCK_DATA, COMP_INTERFACE, COMP_DERIVED,
+  COMP_DERIVED_CONTAINS, COMP_BLOCK, COMP_ASSOCIATE, COMP_IF,
   COMP_DO, COMP_SELECT, COMP_FORALL, COMP_WHERE, COMP_CONTAINS, COMP_ENUM,
   COMP_SELECT_TYPE, COMP_OMP_STRUCTURED_BLOCK, COMP_CRITICAL, COMP_DO_CONCURRENT
-}
-gfc_compile_state;
+};
 
 /* Stack element for the current compilation state.  These structures
    are allocated as automatic variables.  */
@@ -49,6 +48,7 @@ typedef struct gfc_state_data
   union
   {
     gfc_st_label *end_do_label;
+    gfc_oacc_declare *oacc_declare_clauses;
   }
   ext;
 }
@@ -68,4 +68,5 @@ match gfc_match_enumerator_def (void);
 void gfc_free_enum_history (void);
 extern bool gfc_matching_function;
 match gfc_match_prefix (gfc_typespec *);
+bool is_oacc (gfc_state_data *);
 #endif  /* GFC_PARSE_H  */

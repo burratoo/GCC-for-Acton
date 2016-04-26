@@ -1,5 +1,5 @@
 /* Mode switching cleanup pass for the EPIPHANY cpu.
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Embecosm on behalf of Adapteva, Inc.
 
 This file is part of GCC.
@@ -21,20 +21,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "machmode.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "tm_p.h"
-#include "vec.h"
-#include "sbitmap.h"
-#include "basic-block.h"
-#include "df.h"
+#include "backend.h"
 #include "rtl.h"
+#include "df.h"
+#include "tm_p.h"
 #include "insn-config.h"
-#include "insn-codes.h"
 #include "emit-rtl.h"
 #include "recog.h"
-#include "function.h"
+#include "cfgrtl.h"
 #include "insn-attr-common.h"
 #include "tree-pass.h"
 
@@ -77,7 +71,8 @@ unsigned
 pass_resolve_sw_modes::execute (function *fun)
 {
   basic_block bb;
-  rtx insn, src;
+  rtx_insn *insn;
+  rtx src;
   vec<basic_block> todo;
   sbitmap pushed;
   bool need_commit = false;
@@ -155,7 +150,7 @@ pass_resolve_sw_modes::execute (function *fun)
       FOR_EACH_EDGE (e, ei, bb->succs)
 	{
 	  basic_block succ = e->dest;
-	  rtx seq;
+	  rtx_insn *seq;
 
 	  if (!REGNO_REG_SET_P (DF_LIVE_IN (succ), jilted_reg))
 	    continue;

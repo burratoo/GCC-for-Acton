@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -38,6 +38,48 @@ package body Opt is
    SU : constant := Storage_Unit;
    --  Shorthand for System.Storage_Unit
 
+   -------------------------
+   -- Back_End_Exceptions --
+   -------------------------
+
+   function Back_End_Exceptions return Boolean is
+   begin
+      return
+        Exception_Mechanism = Back_End_SJLJ
+          or else
+        Exception_Mechanism = Back_End_ZCX;
+   end Back_End_Exceptions;
+
+   -------------------------
+   -- Front_End_Exceptions --
+   -------------------------
+
+   function Front_End_Exceptions return Boolean is
+   begin
+      return Exception_Mechanism = Front_End_SJLJ;
+   end Front_End_Exceptions;
+
+   --------------------
+   -- SJLJ_Exceptions --
+   --------------------
+
+   function SJLJ_Exceptions return Boolean is
+   begin
+      return
+        Exception_Mechanism = Back_End_SJLJ
+          or else
+        Exception_Mechanism = Front_End_SJLJ;
+   end SJLJ_Exceptions;
+
+   --------------------
+   -- ZCX_Exceptions --
+   --------------------
+
+   function ZCX_Exceptions return Boolean is
+   begin
+      return Exception_Mechanism = Back_End_ZCX;
+   end ZCX_Exceptions;
+
    ----------------------------------
    -- Register_Opt_Config_Switches --
    ----------------------------------
@@ -63,6 +105,7 @@ package body Opt is
       Optimize_Alignment_Config             := Optimize_Alignment;
       Persistent_BSS_Mode_Config            := Persistent_BSS_Mode;
       Polling_Required_Config               := Polling_Required;
+      Prefix_Exception_Messages_Config      := Prefix_Exception_Messages;
       SPARK_Mode_Config                     := SPARK_Mode;
       SPARK_Mode_Pragma_Config              := SPARK_Mode_Pragma;
       Uneval_Old_Config                     := Uneval_Old;
@@ -102,6 +145,7 @@ package body Opt is
       Optimize_Alignment_Local       := Save.Optimize_Alignment_Local;
       Persistent_BSS_Mode            := Save.Persistent_BSS_Mode;
       Polling_Required               := Save.Polling_Required;
+      Prefix_Exception_Messages      := Save.Prefix_Exception_Messages;
       SPARK_Mode                     := Save.SPARK_Mode;
       SPARK_Mode_Pragma              := Save.SPARK_Mode_Pragma;
       Uneval_Old                     := Save.Uneval_Old;
@@ -142,6 +186,7 @@ package body Opt is
       Save.Optimize_Alignment_Local       := Optimize_Alignment_Local;
       Save.Persistent_BSS_Mode            := Persistent_BSS_Mode;
       Save.Polling_Required               := Polling_Required;
+      Save.Prefix_Exception_Messages      := Prefix_Exception_Messages;
       Save.SPARK_Mode                     := SPARK_Mode;
       Save.SPARK_Mode_Pragma              := SPARK_Mode_Pragma;
       Save.Uneval_Old                     := Uneval_Old;
@@ -168,12 +213,14 @@ package body Opt is
 
          Ada_Version                 := Ada_Version_Runtime;
          Ada_Version_Pragma          := Empty;
+         Default_SSO                 := ' ';
          Dynamic_Elaboration_Checks  := False;
          Extensions_Allowed          := True;
          External_Name_Exp_Casing    := As_Is;
          External_Name_Imp_Casing    := Lowercase;
          Optimize_Alignment          := 'O';
          Persistent_BSS_Mode         := False;
+         Prefix_Exception_Messages   := True;
          Uneval_Old                  := 'E';
          Use_VADS_Size               := False;
          Optimize_Alignment_Local    := True;
@@ -182,19 +229,23 @@ package body Opt is
          --  we do not expect to get any warnings from compiling such a unit.
 
          --  For an internal unit, assertions/debug pragmas are off unless this
-         --  is the main unit and they were explicitly enabled. We also make
-         --  sure we do not assume that values are necessarily valid and that
-         --  SPARK_Mode is set to its configuration value.
+         --  is the main unit and they were explicitly enabled, or unless the
+         --  main unit was compiled in GNAT mode. We also make sure we do not
+         --  assume that values are necessarily valid and that SPARK_Mode is
+         --  set to its configuration value.
 
          if Main_Unit then
             Assertions_Enabled       := Assertions_Enabled_Config;
             Assume_No_Invalid_Values := Assume_No_Invalid_Values_Config;
             Check_Policy_List        := Check_Policy_List_Config;
-            Default_SSO              := Default_SSO_Config;
             SPARK_Mode               := SPARK_Mode_Config;
             SPARK_Mode_Pragma        := SPARK_Mode_Pragma_Config;
          else
-            Assertions_Enabled       := False;
+            if GNAT_Mode_Config then
+               Assertions_Enabled    := Assertions_Enabled_Config;
+            else
+               Assertions_Enabled    := False;
+            end if;
             Assume_No_Invalid_Values := False;
             Check_Policy_List        := Empty;
             SPARK_Mode               := None;
@@ -221,6 +272,7 @@ package body Opt is
          Optimize_Alignment          := Optimize_Alignment_Config;
          Optimize_Alignment_Local    := False;
          Persistent_BSS_Mode         := Persistent_BSS_Mode_Config;
+         Prefix_Exception_Messages   := Prefix_Exception_Messages_Config;
          SPARK_Mode                  := SPARK_Mode_Config;
          SPARK_Mode_Pragma           := SPARK_Mode_Pragma_Config;
          Uneval_Old                  := Uneval_Old_Config;
@@ -235,6 +287,8 @@ package body Opt is
 
          Init_Or_Norm_Scalars := Initialize_Scalars or Normalize_Scalars;
       end if;
+
+      --  Values set for all units
 
       Default_Pool                   := Default_Pool_Config;
       Exception_Locations_Suppressed := Exception_Locations_Suppressed_Config;

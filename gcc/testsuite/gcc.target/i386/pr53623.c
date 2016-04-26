@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-typedef (*inst_t)(int64_t rdi, int64_t rsi, int64_t rdx);
+typedef int (*inst_t)(int64_t rdi, int64_t rsi, int64_t rdx);
 
 int16_t code[256];
 inst_t dispatch[256];
@@ -21,5 +21,4 @@ int main(void) {
 }
 
 /* { dg-final { scan-rtl-dump "copy needed" "ree" } } */
-/* { dg-final { cleanup-rtl-dump "ree" } } */
 

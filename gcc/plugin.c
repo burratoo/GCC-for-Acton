@@ -1,5 +1,5 @@
 /* Support for GCC plugin mechanism.
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -23,13 +23,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "hash-table.h"
-#include "diagnostic-core.h"
-#include "tree.h"
+#include "options.h"
 #include "tree-pass.h"
+#include "diagnostic-core.h"
+#include "flags.h"
 #include "intl.h"
 #include "plugin.h"
-#include "ggc.h"
 
 #ifdef ENABLE_PLUGIN
 #include "plugin-version.h"
@@ -53,18 +52,16 @@ const char **plugin_event_name = plugin_event_name_init;
 
 /* Event hashtable helpers.  */
 
-struct event_hasher : typed_noop_remove <const char *>
+struct event_hasher : nofree_ptr_hash <const char *>
 {
-  typedef const char *value_type;
-  typedef const char *compare_type;
-  static inline hashval_t hash (const value_type *);
-  static inline bool equal (const value_type *, const compare_type *);
+  static inline hashval_t hash (const char **);
+  static inline bool equal (const char **, const char **);
 };
 
 /* Helper function for the event hash table that hashes the entry V.  */
 
 inline hashval_t
-event_hasher::hash (const value_type *v)
+event_hasher::hash (const char **v)
 {
   return htab_hash_string (*v);
 }
@@ -73,7 +70,7 @@ event_hasher::hash (const value_type *v)
    existing entry (S1) with the given string (S2).  */
 
 inline bool
-event_hasher::equal (const value_type *s1, const compare_type *s2)
+event_hasher::equal (const char **s1, const char **s2)
 {
   return !strcmp (*s1, *s2);
 }
@@ -176,7 +173,8 @@ add_new_plugin (const char* plugin_name)
 			    plugin_name, ".so", NULL);
       if (access (plugin_name, R_OK))
 	fatal_error
-	  ("inaccessible plugin file %s expanded from short plugin name %s: %m",
+	  (input_location,
+	   "inaccessible plugin file %s expanded from short plugin name %s: %m",
 	   plugin_name, base_name);
     }
   else
@@ -420,10 +418,6 @@ register_callback (const char *plugin_name,
 	gcc_assert (!callback);
         ggc_register_root_tab ((const struct ggc_root_tab*) user_data);
 	break;
-      case PLUGIN_REGISTER_GGC_CACHES:
-	gcc_assert (!callback);
-        ggc_register_cache_tab ((const struct ggc_cache_tab*) user_data);
-	break;
       case PLUGIN_EVENT_FIRST_DYNAMIC:
       default:
 	if (event < PLUGIN_EVENT_FIRST_DYNAMIC || event >= event_last)
@@ -433,6 +427,8 @@ register_callback (const char *plugin_name,
 	    return;
 	  }
       /* Fall through.  */
+      case PLUGIN_START_PARSE_FUNCTION:
+      case PLUGIN_FINISH_PARSE_FUNCTION:
       case PLUGIN_FINISH_TYPE:
       case PLUGIN_FINISH_DECL:
       case PLUGIN_START_UNIT:
@@ -511,6 +507,8 @@ invoke_plugin_callbacks_full (int event, void *gcc_data)
 	gcc_assert (event >= PLUGIN_EVENT_FIRST_DYNAMIC);
 	gcc_assert (event < event_last);
       /* Fall through.  */
+      case PLUGIN_START_PARSE_FUNCTION:
+      case PLUGIN_FINISH_PARSE_FUNCTION:
       case PLUGIN_FINISH_TYPE:
       case PLUGIN_FINISH_DECL:
       case PLUGIN_START_UNIT:
@@ -546,7 +544,6 @@ invoke_plugin_callbacks_full (int event, void *gcc_data)
 
       case PLUGIN_PASS_MANAGER_SETUP:
       case PLUGIN_REGISTER_GGC_ROOTS:
-      case PLUGIN_REGISTER_GGC_CACHES:
         gcc_assert (false);
     }
 
@@ -589,7 +586,8 @@ try_init_one_plugin (struct plugin_name_args *plugin)
 
   /* Check the plugin license.  */
   if (dlsym (dl_handle, str_license) == NULL)
-    fatal_error ("plugin %s is not licensed under a GPL-compatible license\n"
+    fatal_error (input_location,
+		 "plugin %s is not licensed under a GPL-compatible license\n"
 		 "%s", plugin->full_name, dlerror ());
 
   PTR_UNION_AS_VOID_PTR (plugin_init_union) =
@@ -887,6 +885,7 @@ const char*
 default_plugin_dir_name (void)
 {
   if (!plugindir_string)
-    fatal_error ("-iplugindir <dir> option not passed from the gcc driver");
+    fatal_error (input_location,
+		 "-iplugindir <dir> option not passed from the gcc driver");
   return plugindir_string;
 }

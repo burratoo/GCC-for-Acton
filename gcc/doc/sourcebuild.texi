@@ -1,4 +1,4 @@
-@c Copyright (C) 2002-2014 Free Software Foundation, Inc.
+@c Copyright (C) 2002-2016 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -89,7 +89,7 @@ The Go runtime library.  The bulk of this library is mirrored from the
 @uref{http://code.google.com/@/p/@/go/, master Go repository}.
 
 @item libgomp
-The GNU OpenMP runtime library.
+The GNU Offloading and Multi Processing Runtime Library.
 
 @item libiberty
 The @code{libiberty} library, used for portability and for some
@@ -1366,8 +1366,8 @@ Target supports a vector misalign access.
 @item vect_no_align
 Target does not support a vector alignment mechanism.
 
-@item vect_no_int_max
-Target does not support a vector max instruction on @code{int}.
+@item vect_no_int_min_max
+Target does not support a vector min and max instruction on @code{int}.
 
 @item vect_no_int_add
 Target does not support a vector add instruction on @code{int}.
@@ -1466,6 +1466,9 @@ Target supports conversion from @code{float} to @code{signed int}.
 
 @item vect_floatuint_cvt
 Target supports conversion from @code{float} to @code{unsigned int}.
+
+@item vect_max_reduc
+Target supports max reduction for vectors.
 @end table
 
 @subsubsection Thread Local Storage attributes
@@ -1511,6 +1514,12 @@ ARM target generates 32-bit code.
 @item arm_eabi
 ARM target adheres to the ABI for the ARM Architecture.
 
+@item arm_fp_ok
+@anchor{arm_fp_ok}
+ARM target defines @code{__ARM_FP} using @code{-mfloat-abi=softfp} or
+equivalent options.  Some multilibs may be incompatible with these
+options.
+
 @item arm_hf_eabi
 ARM target adheres to the VFP and Advanced SIMD Register Arguments
 variant of the ABI for the ARM Architecture (as selected with
@@ -1526,6 +1535,9 @@ Some multilibs may be incompatible with this option.
 
 @item arm_neon
 ARM target supports generating NEON instructions.
+
+@item arm_tune_string_ops_prefer_neon
+Test CPU tune supports inlining string operations with NEON instructions.
 
 @item arm_neon_hw
 Test system supports executing NEON instructions.
@@ -1546,7 +1558,12 @@ options.  Some multilibs may be incompatible with these options.
 @item arm_neon_fp16_ok
 @anchor{arm_neon_fp16_ok}
 ARM Target supports @code{-mfpu=neon-fp16 -mfloat-abi=softfp} or compatible
-options.  Some multilibs may be incompatible with these options.
+options, including @code{-mfp16-format=ieee} if necessary to obtain the
+@code{__fp16} type.  Some multilibs may be incompatible with these options.
+
+@item arm_neon_fp16_hw
+Test system supports executing Neon half-precision float instructions.
+(Implies previous.)
 
 @item arm_thumb1_ok
 ARM target generates Thumb-1 code for @code{-mthumb}.
@@ -1571,9 +1588,40 @@ Some multilibs may be incompatible with these options.
 ARM target supports @code{-mfpu=neon-fp-armv8 -mfloat-abi=softfp}.
 Some multilibs may be incompatible with these options.
 
+@item arm_v8_1a_neon_ok
+ARM target supports options to generate ARMv8.1 Adv.SIMD instructions.
+Some multilibs may be incompatible with these options.
+
+@item arm_v8_1a_neon_hw
+ARM target supports executing ARMv8.1 Adv.SIMD instructions.  Some
+multilibs may be incompatible with the options needed.  Implies
+arm_v8_1a_neon_ok.
+
 @item arm_prefer_ldrd_strd
 ARM target prefers @code{LDRD} and @code{STRD} instructions over
 @code{LDM} and @code{STM} instructions.
+
+@end table
+
+@subsubsection AArch64-specific attributes
+
+@table @code
+@item aarch64_asm_<ext>_ok
+AArch64 assembler supports the architecture extension @code{ext} via the
+@code{.arch_extension} pseudo-op.
+@item aarch64_tiny
+AArch64 target which generates instruction sequences for tiny memory model.
+@item aarch64_small
+AArch64 target which generates instruction sequences for small memory model.
+@item aarch64_large
+AArch64 target which generates instruction sequences for large memory model.
+@item aarch64_little_endian
+AArch64 target which generates instruction sequences for little endian.
+@item aarch64_big_endian
+AArch64 target which generates instruction sequences for big endian.
+@item aarch64_small_fpic
+Binutils installed on test system supports relocation types required by -fpic
+for AArch64 small memory model.
 
 @end table
 
@@ -1692,6 +1740,9 @@ Target supports FPU instructions.
 @item non_strict_align
 Target does not require strict alignment.
 
+@item sqrt_insn
+Target has a square root instruction that the compiler can generate.
+
 @item sse
 Target supports compiling @code{sse} instructions.
 
@@ -1717,6 +1768,9 @@ or @code{EM_SPARCV9} executables.
 
 @item vect_cmdline_needed
 Target requires a command line argument to enable a SIMD instruction set.
+
+@item pie_copyreloc
+The x86-64 target linker supports PIE with copy reloc.
 @end table
 
 @subsubsection Environment attributes
@@ -1761,6 +1815,9 @@ Target might have errors of a few ULP in string to floating-point
 conversion functions and overflow is not always detected correctly by
 those functions.
 
+@item mempcpy
+Target provides @code{mempcpy} function.
+
 @item mmap
 Target supports @code{mmap}.
 
@@ -1785,10 +1842,16 @@ time) should be run on this target.  This can be enabled by setting the
 Test system runs executables on a simulator (i.e. slowly) rather than
 hardware (i.e. fast).
 
+@item stabs
+Target supports the stabs debugging format.
+
 @item stdint_types
 Target has the basic signed and unsigned C types in @code{stdint.h}.
 This will be obsolete when GCC ensures a working @code{stdint.h} for
 all targets.
+
+@item stpcpy
+Target provides @code{stpcpy} function.
 
 @item trampolines
 Target supports trampolines.
@@ -1826,6 +1889,9 @@ Target supports Graphite optimizations.
 
 @item fixed_point
 Target supports fixed-point extension to C.
+
+@item fopenacc
+Target supports OpenACC via @option{-fopenacc}.
 
 @item fopenmp
 Target supports OpenMP via @option{-fopenmp}.
@@ -1871,6 +1937,9 @@ Target uses natural alignment (aligned to type size) for types of
 
 @item nonpic
 Target does not generate PIC by default.
+
+@item pie_enabled
+Target generates PIE by default.
 
 @item pcc_bitfield_type_matters
 Target defines @code{PCC_BITFIELD_TYPE_MATTERS}.
@@ -1918,6 +1987,9 @@ Target supports @code{wchar_t} that is compatible with @code{char16_t}.
 
 @item wchar_t_char32_t_compatible
 Target supports @code{wchar_t} that is compatible with @code{char32_t}.
+
+@item comdat_group
+Target uses comdat groups.
 @end table
 
 @subsubsection Local to tests in @code{gcc.target/i386}
@@ -1984,6 +2056,11 @@ The supported values of @var{feature} for directive @code{dg-add-options}
 are:
 
 @table @code
+@item arm_fp
+@code{__ARM_FP} definition.  Only ARM targets support this feature, and only then
+in certain modes; see the @ref{arm_fp_ok,,arm_fp_ok effective target
+keyword}.
+
 @item arm_neon
 NEON support.  Only ARM targets support this feature, and only then
 in certain modes; see the @ref{arm_neon_ok,,arm_neon_ok effective target
@@ -1992,7 +2069,7 @@ keyword}.
 @item arm_neon_fp16
 NEON and half-precision floating point support.  Only ARM targets
 support this feature, and only then in certain modes; see
-the @ref{arm_neon_ok,,arm_neon_fp16_ok effective target keyword}.
+the @ref{arm_neon_fp16_ok,,arm_neon_fp16_ok effective target keyword}.
 
 @item arm_vfp3
 arm vfp3 floating point support; see
@@ -2189,12 +2266,16 @@ Check branch and/or call counts, in addition to line counts, in
 
 @subsubsection Clean up generated test files
 
+Usually the test-framework removes files that were generated during
+testing. If a testcase, for example, uses any dumping mechanism to
+inspect a passes dump file, the testsuite recognized the dump option
+passed to the tool and schedules a final cleanup to remove these files.
+
+There are, however, following additional cleanup directives that can be
+used to annotate a testcase "manually".
 @table @code
 @item cleanup-coverage-files
 Removes coverage data files generated for this test.
-
-@item cleanup-ipa-dump @var{suffix}
-Removes IPA dump files generated for this test.
 
 @item cleanup-modules "@var{list-of-extra-modules}"
 Removes Fortran module files generated for this test, excluding the
@@ -2230,21 +2311,23 @@ end module keep2
 ! @{ dg-final @{ keep-modules "" @} @} ! keep all
 @end smallexample
 
+@item dg-keep-saved-temps "@var{list-of-suffixes-not-to-delete}"
+Whitespace separated list of suffixes that should not be deleted
+automatically in a testcase that uses @option{-save-temps}.
+@smallexample
+// @{ dg-options "-save-temps -fpch-preprocess -I." @}
+int main() @{ return 0; @}
+// @{ dg-keep-saved-temps ".s" @} ! just keep assembler file
+// @{ dg-keep-saved-temps ".s" ".i" @} ! ... and .i
+// @{ dg-keep-saved-temps ".ii" ".o" @} ! or just .ii and .o
+@end smallexample
+
 @item cleanup-profile-file
 Removes profiling files generated for this test.
 
 @item cleanup-repo-files
 Removes files generated for this test for @option{-frepo}.
 
-@item cleanup-rtl-dump @var{suffix}
-Removes RTL dump files generated for this test.
-
-@item cleanup-saved-temps
-Removes files for the current test which were kept for @option{-save-temps}.
-
-@item cleanup-tree-dump @var{suffix}
-Removes tree dump files matching @var{suffix} which were generated for
-this test.
 @end table
 
 @node Ada Tests

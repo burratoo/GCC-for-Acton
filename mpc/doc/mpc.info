@@ -1,7 +1,7 @@
-This is mpc.info, produced by makeinfo version 5.1 from mpc.texi.
+This is mpc.info, produced by makeinfo version 5.2 from mpc.texi.
 
 This manual is for GNU MPC, a library for multiple precision complex
-arithmetic, version 1.0.2 of January 2014.
+arithmetic, version 1.0.3 of February 2015.
 
    Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 2011, 2012 INRIA
@@ -23,7 +23,7 @@ GNU MPC
 *******
 
 This manual documents how to install and use the GNU Multiple Precision
-Complex Library, version 1.0.2
+Complex Library, version 1.0.3
 
 * Menu:
 
@@ -94,9 +94,9 @@ Unix utility programs.
 
    Here are the steps needed to install the library on Unix systems:
 
-  1. 'tar xzf mpc-1.0.2.tar.gz'
+  1. 'tar xzf mpc-1.0.3.tar.gz'
 
-  2. 'cd mpc-1.0.2'
+  2. 'cd mpc-1.0.3'
 
   3. './configure'
 
@@ -1771,29 +1771,29 @@ their use in free software.
 
 
 Tag Table:
-Node: Top735
-Node: Copying1442
-Node: Introduction to GNU MPC2214
-Node: Installing GNU MPC2933
-Node: Reporting Bugs8018
-Node: GNU MPC Basics9362
-Ref: return-value13039
-Node: Complex Functions14490
-Node: Initializing Complex Numbers15650
-Node: Assigning Complex Numbers18037
-Node: Converting Complex Numbers22437
-Node: String and Stream Input and Output23062
-Node: Complex Comparison29619
-Node: Projection & Decomposing30694
-Node: Basic Arithmetic32071
-Node: Power Functions and Logarithm36644
-Node: Trigonometric Functions38711
-Node: Miscellaneous Complex Functions40936
-Node: Advanced Functions43112
-Node: Internals44185
-Node: References44636
-Node: Concept Index45539
-Node: Function Index47853
-Node: GNU Free Documentation License61637
+Node: Top736
+Node: Copying1443
+Node: Introduction to GNU MPC2215
+Node: Installing GNU MPC2934
+Node: Reporting Bugs8019
+Node: GNU MPC Basics9363
+Ref: return-value13040
+Node: Complex Functions14491
+Node: Initializing Complex Numbers15651
+Node: Assigning Complex Numbers18038
+Node: Converting Complex Numbers22438
+Node: String and Stream Input and Output23063
+Node: Complex Comparison29620
+Node: Projection & Decomposing30695
+Node: Basic Arithmetic32072
+Node: Power Functions and Logarithm36645
+Node: Trigonometric Functions38712
+Node: Miscellaneous Complex Functions40937
+Node: Advanced Functions43113
+Node: Internals44186
+Node: References44637
+Node: Concept Index45540
+Node: Function Index47854
+Node: GNU Free Documentation License61638
 
 End Tag Table

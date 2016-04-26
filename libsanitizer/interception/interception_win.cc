@@ -13,23 +13,10 @@
 #ifdef _WIN32
 
 #include "interception.h"
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 namespace __interception {
-
-bool GetRealFunctionAddress(const char *func_name, uptr *func_addr) {
-  const char *DLLS[] = {
-    "msvcr80.dll",
-    "msvcr90.dll",
-    "kernel32.dll",
-    NULL
-  };
-  *func_addr = 0;
-  for (size_t i = 0; *func_addr == 0 && DLLS[i]; ++i) {
-    *func_addr = (uptr)GetProcAddress(GetModuleHandleA(DLLS[i]), func_name);
-  }
-  return (*func_addr != 0);
-}
 
 // FIXME: internal_str* and internal_mem* functions should be moved from the
 // ASan sources into interception/.
@@ -96,6 +83,7 @@ static size_t RoundUpToInstrBoundary(size_t size, char *code) {
         cursor += 2;
         continue;
       case '\xE9':  // E9 XX YY ZZ WW = jmp WWZZYYXX
+      case '\xB8':  // B8 XX YY ZZ WW = mov eax, WWZZYYXX
         cursor += 5;
         continue;
     }
@@ -108,9 +96,11 @@ static size_t RoundUpToInstrBoundary(size_t size, char *code) {
       case 0x458B:  // 8B 45 XX = mov eax, dword ptr [ebp+XXh]
       case 0x5D8B:  // 8B 5D XX = mov ebx, dword ptr [ebp+XXh]
       case 0xEC83:  // 83 EC XX = sub esp, XX
+      case 0x75FF:  // FF 75 XX = push dword ptr [ebp+XXh]
         cursor += 3;
         continue;
       case 0xC1F7:  // F7 C1 XX YY ZZ WW = test ecx, WWZZYYXX
+      case 0x25FF:  // FF 25 XX YY ZZ WW = jmp dword ptr ds:[WWZZYYXX]
         cursor += 6;
         continue;
       case 0x3D83:  // 83 3D XX YY ZZ WW TT = cmp TT, WWZZYYXX
@@ -119,6 +109,7 @@ static size_t RoundUpToInstrBoundary(size_t size, char *code) {
     }
     switch (0x00FFFFFF & *(unsigned int*)(code + cursor)) {
       case 0x24448A:  // 8A 44 24 XX = mov eal, dword ptr [esp+XXh]
+      case 0x24448B:  // 8B 44 24 XX = mov eax, dword ptr [esp+XXh]
       case 0x244C8B:  // 8B 4C 24 XX = mov ecx, dword ptr [esp+XXh]
       case 0x24548B:  // 8B 54 24 XX = mov edx, dword ptr [esp+XXh]
       case 0x24748B:  // 8B 74 24 XX = mov esi, dword ptr [esp+XXh]
@@ -131,8 +122,9 @@ static size_t RoundUpToInstrBoundary(size_t size, char *code) {
     // FIXME: Unknown instruction failures might happen when we add a new
     // interceptor or a new compiler version. In either case, they should result
     // in visible and readable error messages. However, merely calling abort()
-    // or __debugbreak() leads to an infinite recursion in CheckFailed.
+    // leads to an infinite recursion in CheckFailed.
     // Do we have a good way to abort with an error message here?
+    __debugbreak();
     return 0;
   }
 
@@ -187,6 +179,91 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func) {
     return false;  // not clear if this failure bothers us.
 
   return true;
+}
+
+static void **InterestingDLLsAvailable() {
+  const char *InterestingDLLs[] = {
+    "kernel32.dll",
+    "msvcr110.dll", // VS2012
+    "msvcr120.dll", // VS2013
+    // NTDLL should go last as it exports some functions that we should override
+    // in the CRT [presumably only used internally].
+    "ntdll.dll", NULL
+  };
+  static void *result[ARRAY_SIZE(InterestingDLLs)] = { 0 };
+  if (!result[0]) {
+    for (size_t i = 0, j = 0; InterestingDLLs[i]; ++i) {
+      if (HMODULE h = GetModuleHandleA(InterestingDLLs[i]))
+        result[j++] = (void *)h;
+    }
+  }
+  return &result[0];
+}
+
+namespace {
+// Utility for reading loaded PE images.
+template <typename T> class RVAPtr {
+ public:
+  RVAPtr(void *module, uptr rva)
+      : ptr_(reinterpret_cast<T *>(reinterpret_cast<char *>(module) + rva)) {}
+  operator T *() { return ptr_; }
+  T *operator->() { return ptr_; }
+  T *operator++() { return ++ptr_; }
+
+ private:
+  T *ptr_;
+};
+} // namespace
+
+// Internal implementation of GetProcAddress. At least since Windows 8,
+// GetProcAddress appears to initialize DLLs before returning function pointers
+// into them. This is problematic for the sanitizers, because they typically
+// want to intercept malloc *before* MSVCRT initializes. Our internal
+// implementation walks the export list manually without doing initialization.
+uptr InternalGetProcAddress(void *module, const char *func_name) {
+  // Check that the module header is full and present.
+  RVAPtr<IMAGE_DOS_HEADER> dos_stub(module, 0);
+  RVAPtr<IMAGE_NT_HEADERS> headers(module, dos_stub->e_lfanew);
+  if (!module || dos_stub->e_magic != IMAGE_DOS_SIGNATURE || // "MZ"
+      headers->Signature != IMAGE_NT_SIGNATURE ||           // "PE\0\0"
+      headers->FileHeader.SizeOfOptionalHeader <
+          sizeof(IMAGE_OPTIONAL_HEADER)) {
+    return 0;
+  }
+
+  IMAGE_DATA_DIRECTORY *export_directory =
+      &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+  RVAPtr<IMAGE_EXPORT_DIRECTORY> exports(module,
+                                         export_directory->VirtualAddress);
+  RVAPtr<DWORD> functions(module, exports->AddressOfFunctions);
+  RVAPtr<DWORD> names(module, exports->AddressOfNames);
+  RVAPtr<WORD> ordinals(module, exports->AddressOfNameOrdinals);
+
+  for (DWORD i = 0; i < exports->NumberOfNames; i++) {
+    RVAPtr<char> name(module, names[i]);
+    if (!strcmp(func_name, name)) {
+      DWORD index = ordinals[i];
+      RVAPtr<char> func(module, functions[index]);
+      return (uptr)(char *)func;
+    }
+  }
+
+  return 0;
+}
+
+static bool GetFunctionAddressInDLLs(const char *func_name, uptr *func_addr) {
+  *func_addr = 0;
+  void **DLLs = InterestingDLLsAvailable();
+  for (size_t i = 0; *func_addr == 0 && DLLs[i]; ++i)
+    *func_addr = InternalGetProcAddress(DLLs[i], func_name);
+  return (*func_addr != 0);
+}
+
+bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func) {
+  uptr orig_func;
+  if (!GetFunctionAddressInDLLs(name, &orig_func))
+    return false;
+  return OverrideFunction(orig_func, new_func, orig_old_func);
 }
 
 }  // namespace __interception

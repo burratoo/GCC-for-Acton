@@ -1,5 +1,5 @@
 /* Loop manipulation code for GNU compiler.
-   Copyright (C) 2002-2014 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,16 +20,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "rtl.h"
-#include "basic-block.h"
-#include "cfgloop.h"
 #include "tree.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
 #include "gimple.h"
+#include "cfghooks.h"
+#include "cfganal.h"
+#include "cfgloop.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
 #include "tree-ssa-loop-manip.h"
@@ -165,7 +162,7 @@ fix_loop_placement (struct loop *loop, bool *irred_invalidated)
 }
 
 /* Fix placements of basic blocks inside loop hierarchy stored in loops; i.e.
-   enforce condition condition stated in description of fix_bb_placement. We
+   enforce condition stated in description of fix_bb_placement. We
    start from basic block FROM that had some of its successors removed, so that
    his placement no longer has to be correct, and iteratively fix placement of
    its predecessors that may change if placement of FROM changed.  Also fix
@@ -572,7 +569,7 @@ scale_loop_profile (struct loop *loop, int scale, gcov_type iteration_bound)
 	}
 
       /* Roughly speaking we want to reduce the loop body profile by the
-	 the difference of loop iterations.  We however can do better if
+	 difference of loop iterations.  We however can do better if
 	 we look at the actual profile, if it is available.  */
       scale = RDIV (iteration_bound * scale, iterations);
       if (loop->header->count)
@@ -690,7 +687,7 @@ create_empty_if_region_on_edge (edge entry_edge, tree condition)
 
   basic_block cond_bb, true_bb, false_bb, join_bb;
   edge e_true, e_false, exit_edge;
-  gimple cond_stmt;
+  gcond *cond_stmt;
   tree simple_cond;
   gimple_stmt_iterator gsi;
 
@@ -776,7 +773,7 @@ create_empty_loop_on_edge (edge entry_edge,
   struct loop *loop;
   gimple_stmt_iterator gsi;
   gimple_seq stmts;
-  gimple cond_expr;
+  gcond *cond_expr;
   tree exit_test;
   edge exit_e;
   int prob;
@@ -1024,6 +1021,7 @@ copy_loop_info (struct loop *loop, struct loop *target)
   target->estimate_state = loop->estimate_state;
   target->warned_aggressive_loop_optimizations
     |= loop->warned_aggressive_loop_optimizations;
+  target->in_oacc_kernels_region = loop->in_oacc_kernels_region;
 }
 
 /* Copies copy of LOOP as subloop of TARGET loop, placing newly

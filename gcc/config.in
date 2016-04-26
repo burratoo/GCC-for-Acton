@@ -1,5 +1,11 @@
 /* config.in.  Generated from configure.ac by autoheader.  */
 
+/* Define if this compiler should be built as the offload target compiler. */
+#ifndef USED_FOR_TARGET
+#undef ACCEL_COMPILER
+#endif
+
+
 /* Define if building universal (internal helper macro) */
 #ifndef USED_FOR_TARGET
 #undef AC_APPLE_UNIVERSAL_BUILD
@@ -21,6 +27,13 @@
 /* Define as the number of bits in a byte, if `limits.h' doesn't. */
 #ifndef USED_FOR_TARGET
 #undef CHAR_BIT
+#endif
+
+
+/* Define to 1 if you want more run-time sanity checks. This one gets a grab
+   bag of miscellaneous but relatively cheap checks. */
+#ifndef USED_FOR_TARGET
+#undef CHECKING_P
 #endif
 
 
@@ -51,16 +64,15 @@
 #endif
 
 
-/* Define if you want assertions enabled. This is a cheap check. */
+/* The default for -fdiagnostics-color option */
 #ifndef USED_FOR_TARGET
-#undef ENABLE_ASSERT_CHECKING
+#undef DIAGNOSTICS_COLOR_DEFAULT
 #endif
 
 
-/* Define if you want more run-time sanity checks. This one gets a grab bag of
-   miscellaneous but relatively cheap checks. */
+/* Define if you want assertions enabled. This is a cheap check. */
 #ifndef USED_FOR_TARGET
-#undef ENABLE_CHECKING
+#undef ENABLE_ASSERT_CHECKING
 #endif
 
 
@@ -74,6 +86,19 @@
 /* Define to 1 to enable decimal float extension to C. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_DECIMAL_FLOAT
+#endif
+
+
+/* Define if your target supports default PIE and it is enabled. */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_DEFAULT_PIE
+#endif
+
+
+/* Define if your target supports default stack protector and it is enabled.
+   */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_DEFAULT_SSP
 #endif
 
 
@@ -119,6 +144,12 @@
 #endif
 
 
+/* Define this to enable support for generating HSAIL. */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_HSA
+#endif
+
+
 /* Define if gcc should always pass --build-id to linker. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_LD_BUILDID
@@ -141,6 +172,12 @@
    language is requested. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_NLS
+#endif
+
+
+/* Define this to enable support for offloading. */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_OFFLOADING
 #endif
 
 
@@ -170,8 +207,7 @@
 
 /* Define if you want all operations on trees (the basic data structure of the
    front ends) to be checked for dynamic type safety at runtime. This is
-   moderately expensive. The tree browser debugging routines will also be
-   enabled by this option. */
+   moderately expensive. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_TREE_CHECKING
 #endif
@@ -229,6 +265,24 @@
 #endif
 
 
+/* Define if your assembler supports architecture modifiers. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_ARCHITECTURE_MODIFIERS
+#endif
+
+
+/* Define if your avr assembler supports --mlink-relax option. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_AVR_MLINK_RELAX_OPTION
+#endif
+
+
+/* Define if your avr assembler supports -mrmw option. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_AVR_MRMW_OPTION
+#endif
+
+
 /* Define if your assembler supports cmpb. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_CMPB
@@ -260,6 +314,12 @@
 #endif
 
 
+/* Define if your assembler supports .module. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_DOT_MODULE
+#endif
+
+
 /* Define if your assembler supports DSPR1 mult. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_DSPR1_MULT
@@ -276,6 +336,12 @@
    preserves file table indices exactly as given. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_DWARF2_DEBUG_LINE
+#endif
+
+
+/* Define if your assembler supports the R_PPC64_ENTRY relocation. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_ENTRY_MARKERS
 #endif
 
 
@@ -454,6 +520,12 @@
 #endif
 
 
+/* Define if your assembler supports .machine and .machinemode. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_MACHINE_MACHINEMODE
+#endif
+
+
 /* Define if your assembler supports mfcr field. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_MFCRF
@@ -508,6 +580,12 @@
 #endif
 
 
+/* Define if your assembler supports POWER9 instructions. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_POWER9
+#endif
+
+
 /* Define if your assembler supports .ref */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_REF
@@ -532,6 +610,12 @@
 #endif
 
 
+/* Define if your assembler supports relocs needed by -fpic. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_SMALL_PIC_RELOCS
+#endif
+
+
 /* Define if your assembler supports SPARC4 instructions. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_SPARC4
@@ -541,12 +625,6 @@
 /* Define if your assembler and linker support GOTDATA_OP relocs. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_SPARC_GOTDATA_OP
-#endif
-
-
-/* Define to 1 if your assembler supports #nobits, 0 otherwise. */
-#ifndef USED_FOR_TARGET
-#undef HAVE_AS_SPARC_NOBITS
 #endif
 
 
@@ -561,6 +639,12 @@
    against hidden symbols. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_SPARC_UA_PCREL_HIDDEN
+#endif
+
+
+/* Define if your assembler supports .stabs. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_STABS_DIRECTIVE
 #endif
 
 
@@ -579,12 +663,6 @@
 /* Define if your assembler supports VSX instructions. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_VSX
-#endif
-
-
-/* Define to 1 if you have the `atoll' function. */
-#ifndef USED_FOR_TARGET
-#undef HAVE_ATOLL
 #endif
 
 
@@ -644,8 +722,15 @@
 #endif
 
 
-/* Define to 1 if we found a declaration for 'basename', otherwise define to
-   0. */
+/* Define to 1 if we found a declaration for 'atoll', otherwise define to 0.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_ATOLL
+#endif
+
+
+/* Define to 1 if you have the declaration of `basename(const char*)', and to
+   0 if you don't. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_DECL_BASENAME
 #endif
@@ -879,6 +964,13 @@
 #endif
 
 
+/* Define to 1 if we found a declaration for 'setenv', otherwise define to 0.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_SETENV
+#endif
+
+
 /* Define to 1 if we found a declaration for 'setrlimit', otherwise define to
    0. */
 #ifndef USED_FOR_TARGET
@@ -921,10 +1013,38 @@
 #endif
 
 
-/* Define to 1 if we found a declaration for 'strstr', otherwise define to 0.
-   */
+/* Define to 1 if you have the declaration of `strstr(const char*,const
+   char*)', and to 0 if you don't. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_DECL_STRSTR
+#endif
+
+
+/* Define to 1 if we found a declaration for 'strtol', otherwise define to 0.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_STRTOL
+#endif
+
+
+/* Define to 1 if we found a declaration for 'strtoll', otherwise define to 0.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_STRTOLL
+#endif
+
+
+/* Define to 1 if we found a declaration for 'strtoul', otherwise define to 0.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_STRTOUL
+#endif
+
+
+/* Define to 1 if we found a declaration for 'strtoull', otherwise define to
+   0. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_STRTOULL
 #endif
 
 
@@ -939,6 +1059,13 @@
    */
 #ifndef USED_FOR_TARGET
 #undef HAVE_DECL_TIMES
+#endif
+
+
+/* Define to 1 if we found a declaration for 'unsetenv', otherwise define to
+   0. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_UNSETENV
 #endif
 
 
@@ -1043,6 +1170,12 @@
 /* Define to 1 if you have the `fread_unlocked' function. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_FREAD_UNLOCKED
+#endif
+
+
+/* Define to 1 if you have the <ftw.h> header file. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_FTW_H
 #endif
 
 
@@ -1207,6 +1340,13 @@
 #endif
 
 
+/* Define if the gold linker supports split stack and is available as a
+   non-default */
+#ifndef USED_FOR_TARGET
+#undef HAVE_GOLD_NON_DEFAULT_SPLIT_STACK
+#endif
+
+
 /* Define if you have the iconv() function. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_ICONV
@@ -1219,7 +1359,8 @@
 #endif
 
 
-/* Define .init_array/.fini_array sections are available and working. */
+/* Define 0/1 if .init_array/.fini_array sections are available and working.
+   */
 #ifndef USED_FOR_TARGET
 #undef HAVE_INITFINI_ARRAY_SUPPORT
 #endif
@@ -1240,6 +1381,12 @@
 /* Define if you have a working <inttypes.h> header file. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_INTTYPES_H
+#endif
+
+
+/* Define if isl_options_set_schedule_serialize_sccs exists. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_ISL_OPTIONS_SET_SCHEDULE_SERIALIZE_SCCS
 #endif
 
 
@@ -1277,6 +1424,12 @@
    options. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_LD_AS_NEEDED
+#endif
+
+
+/* Define if your linker supports -z bndplt */
+#ifndef USED_FOR_TARGET
+#undef HAVE_LD_BNDPLT_SUPPORT
 #endif
 
 
@@ -1347,9 +1500,15 @@
 #endif
 
 
-/* Define if your linker supports -pie option. */
+/* Define if your linker supports PIE option. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_LD_PIE
+#endif
+
+
+/* Define 0/1 if your linker supports -pie option with copy reloc. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_LD_PIE_COPYRELOC
 #endif
 
 
@@ -1498,6 +1657,12 @@
 #endif
 
 
+/* Define if the system-provided CRTs are present on Solaris. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_SOLARIS_CRTS
+#endif
+
+
 /* Define to 1 if you have the <stddef.h> header file. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_STDDEF_H
@@ -1537,6 +1702,12 @@
 /* Define if <sys/times.h> defines struct tms. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_STRUCT_TMS
+#endif
+
+
+/* Define if <utility> defines std::swap. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_SWAP_IN_UTILITY
 #endif
 
 
@@ -1699,15 +1870,19 @@
 #undef HAVE_WORKING_VFORK
 #endif
 
+
+/* Define if your assembler supports AIX debug frame section label reference.
+   */
+#ifndef USED_FOR_TARGET
+#undef HAVE_XCOFF_DWARF_EXTRAS
+#endif
+
+
 /* Define if isl is in use. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_isl
 #endif
 
-/* Define if cloog is in use. */
-#ifndef USED_FOR_TARGET
-#undef HAVE_cloog
-#endif
 
 /* Define if F_SETLKW supported by fcntl. */
 #ifndef USED_FOR_TARGET
@@ -1783,6 +1958,12 @@
 #endif
 
 
+/* Define to offload targets, separated by commas. */
+#ifndef USED_FOR_TARGET
+#undef OFFLOAD_TARGETS
+#endif
+
+
 /* Define to the address where bug reports for this package should be sent. */
 #ifndef USED_FOR_TARGET
 #undef PACKAGE_BUGREPORT
@@ -1822,6 +2003,12 @@
 /* Specify plugin linker */
 #ifndef USED_FOR_TARGET
 #undef PLUGIN_LD_SUFFIX
+#endif
+
+
+/* Define to .TOC. alignment forced by your linker. */
+#ifndef USED_FOR_TARGET
+#undef POWERPC64_TOC_POINTER_ALIGNMENT
 #endif
 
 
@@ -1881,6 +2068,24 @@
 
 /* Define if your target C library provides the `dl_iterate_phdr' function. */
 #undef TARGET_DL_ITERATE_PHDR
+
+/* GNU C Library major version number used on the target, or 0. */
+#ifndef USED_FOR_TARGET
+#undef TARGET_GLIBC_MAJOR
+#endif
+
+
+/* GNU C Library minor version number used on the target, or 0. */
+#ifndef USED_FOR_TARGET
+#undef TARGET_GLIBC_MINOR
+#endif
+
+
+/* Define if your target C Library provides the AT_HWCAP value in the TCB */
+#ifndef USED_FOR_TARGET
+#undef TARGET_LIBC_PROVIDES_HWCAP_IN_TCB
+#endif
+
 
 /* Define if your target C library provides stack protector support */
 #ifndef USED_FOR_TARGET

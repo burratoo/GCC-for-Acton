@@ -234,6 +234,15 @@ func BenchmarkNewEmptyMap(b *testing.B) {
 	}
 }
 
+func BenchmarkNewSmallMap(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		m := make(map[int]int)
+		m[0] = 0
+		m[1] = 1
+	}
+}
+
 func BenchmarkMapIter(b *testing.B) {
 	m := make(map[int]bool)
 	for i := 0; i < 8; i++ {
@@ -241,7 +250,7 @@ func BenchmarkMapIter(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, _ = range m {
+		for range m {
 		}
 	}
 }
@@ -250,7 +259,7 @@ func BenchmarkMapIterEmpty(b *testing.B) {
 	m := make(map[int]bool)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, _ = range m {
+		for range m {
 		}
 	}
 }
@@ -296,5 +305,24 @@ func BenchmarkSmallKeyMap(b *testing.B) {
 	m[5] = true
 	for i := 0; i < b.N; i++ {
 		_ = m[5]
+	}
+}
+
+type ComplexAlgKey struct {
+	a, b, c int64
+	_       int
+	d       int32
+	_       int
+	e       string
+	_       int
+	f, g, h int64
+}
+
+func BenchmarkComplexAlgMap(b *testing.B) {
+	m := make(map[ComplexAlgKey]bool)
+	var k ComplexAlgKey
+	m[k] = true
+	for i := 0; i < b.N; i++ {
+		_ = m[k]
 	}
 }

@@ -1,6 +1,6 @@
 /* Process declarations and variables for the GNU compiler for the
    Java(TM) language.
-   Copyright (C) 1996-2014 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,24 +27,21 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "target.h"
+#include "function.h"
 #include "tree.h"
-#include "stor-layout.h"
 #include "stringpool.h"
-#include "varasm.h"
+#include "cgraph.h"
 #include "diagnostic-core.h"
+#include "stor-layout.h"
+#include "varasm.h"
 #include "toplev.h"
-#include "flags.h"
 #include "java-tree.h"
 #include "jcf.h"
 #include "java-except.h"
-#include "ggc.h"
-#include "cgraph.h"
-#include "tree-inline.h"
-#include "target.h"
 #include "version.h"
 #include "tree-iterator.h"
 #include "langhooks.h"
-#include "cgraph.h"
 
 #if defined (DEBUG_JAVA_BINDING_LEVELS)
 extern void indent (void);
@@ -568,7 +565,7 @@ java_init_decl_processing (void)
   global_binding_level = current_binding_level;
 
   /* Build common tree nodes, Java has an unsigned char.  */
-  build_common_tree_nodes (false, false);
+  build_common_tree_nodes (false);
 
   /* ???  Now we continue and override some of the built types again
      with Java specific types.  As the above generated types are
@@ -1846,8 +1843,8 @@ end_java_method (void)
 	 variable to the block_body */
       fbody = DECL_SAVED_TREE (fndecl);
       block_body = BIND_EXPR_BODY (fbody);
-      htab_traverse (DECL_FUNCTION_INIT_TEST_TABLE (fndecl),
-		     attach_init_test_initialization_flags, block_body);
+      hash_table<treetreehasher> *ht = DECL_FUNCTION_INIT_TEST_TABLE (fndecl);
+      ht->traverse<tree, attach_init_test_initialization_flags> (block_body);
     }
 
   finish_method (fndecl);
@@ -1890,7 +1887,7 @@ finish_method (tree fndecl)
   cfun->function_end_locus = DECL_FUNCTION_LAST_LINE (fndecl);
 
   /* Defer inlining and expansion to the cgraph optimizers.  */
-  cgraph_finalize_function (fndecl, false);
+  cgraph_node::finalize_function (fndecl, false);
 }
 
 /* We pessimistically marked all methods and fields external until we
@@ -1902,14 +1899,12 @@ java_mark_decl_local (tree decl)
 {
   DECL_EXTERNAL (decl) = 0;
 
-#ifdef ENABLE_CHECKING
   /* Double check that we didn't pass the function to the callgraph early.  */
-  if (TREE_CODE (decl) == FUNCTION_DECL)
+  if (flag_checking && TREE_CODE (decl) == FUNCTION_DECL)
     {
       struct cgraph_node *node = cgraph_node::get (decl);
       gcc_assert (!node || !node->definition);
     }
-#endif
   gcc_assert (!DECL_RTL_SET_P (decl));
 }
 
@@ -1953,11 +1948,7 @@ java_mark_class_local (tree klass)
 
   for (t = TYPE_FIELDS (klass); t ; t = DECL_CHAIN (t))
     if (FIELD_STATIC (t))
-      {
-	if (DECL_EXTERNAL (t))
-	  vec_safe_push (pending_static_fields, t);
-	java_mark_decl_local (t);
-      }
+      java_mark_decl_local (t);
 
   for (t = TYPE_METHODS (klass); t ; t = DECL_CHAIN (t))
     if (!METHOD_ABSTRACT (t))

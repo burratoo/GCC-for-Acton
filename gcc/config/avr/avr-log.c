@@ -1,5 +1,5 @@
 /* Subroutines for log output for Atmel AVR back end.
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Georg-Johann Lay (avr@gjlay.de)
 
    This file is part of GCC.
@@ -22,24 +22,20 @@
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
+#include "function.h"
 #include "rtl.h"
 #include "tree.h"
-#include "print-tree.h"
-#include "output.h"
-#include "input.h"
-#include "function.h"
-#include "tm_p.h"
 #include "tree-pass.h"	/* for current_pass */
+#include "tm_p.h"
+#include "print-tree.h"
 
 /* This file supplies some functions for AVR back-end developers
    with a printf-like interface.  The functions are called through
-   macros avr_edump or avr_fdump from avr-protos.h:
+   macros `avr_dump', `avr_edump' or `avr_fdump' from avr-protos.h:
 
-      avr_edump (const char *fmt, ...);
-
-      avr_fdump (FILE *stream, const char *fmt, ...);
-
+   avr_fdump (FILE *stream, const char *fmt, ...);
    avr_edump (fmt, ...) is a shortcut for avr_fdump (stderr, fmt, ...)
+   avr_dump (fmt, ...)  is a shortcut for avr_fdump (dump_file, fmt, ...)
 
   == known %-codes ==
 
@@ -48,7 +44,7 @@
   t: tree
   T: tree (brief)
   C: enum rtx_code
-  m: enum machine_mode
+  m: machine_mode
   R: enum reg_class
   L: insn list
   H: location_t
@@ -75,65 +71,27 @@
 /* Set according to -mlog= option.  */
 avr_log_t avr_log;
 
-/* The caller as of __FUNCTION__ */
-static const char *avr_log_caller = "?";
-
 /* The worker function implementing the %-codes */
 static void avr_log_vadump (FILE*, const char*, va_list);
 
-/* As we have no variadic macros, avr_edump maps to a call to
-   avr_log_set_caller_e which saves __FUNCTION__ to avr_log_caller and
-   returns a function pointer to avr_log_fdump_e.  avr_log_fdump_e
-   gets the printf-like arguments and calls avr_log_vadump, the
-   worker function.  avr_fdump works the same way.  */
+/* Wrapper for avr_log_vadump.  If STREAM is NULL we are called by avr_dump,
+   i.e. output to dump_file if available.  The 2nd argument is __FUNCTION__.
+   The 3rd argument is the format string. */
 
-/* Provide avr_log_fdump_e/f so that avr_log_set_caller_e/_f can return
-   their address.  */
-
-static int
-avr_log_fdump_e (const char *fmt, ...)
+int
+avr_vdump (FILE *stream, const char *caller, ...)
 {
   va_list ap;
+        
+  if (NULL == stream && dump_file)
+    stream = dump_file;
 
-  va_start (ap, fmt);
-  avr_log_vadump (stderr, fmt, ap);
-  va_end (ap);
-
-  return 1;
-}
-
-static int
-avr_log_fdump_f (FILE *stream, const char *fmt, ...)
-{
-  va_list ap;
-
-  va_start (ap, fmt);
+  va_start (ap, caller);
   if (stream)
-    avr_log_vadump (stream, fmt, ap);
+    avr_log_vadump (stream, caller, ap);
   va_end (ap);
 
   return 1;
-}
-
-/* Macros avr_edump/avr_fdump map to calls of the following two functions,
-   respectively.  You don't need to call them directly.  */
-
-int (*
-avr_log_set_caller_e (const char *caller)
-     )(const char*, ...)
-{
-  avr_log_caller = caller;
-
-  return avr_log_fdump_e;
-}
-
-int (*
-avr_log_set_caller_f (const char *caller)
-     )(FILE*, const char*, ...)
-{
-  avr_log_caller = caller;
-
-  return avr_log_fdump_f;
 }
 
 
@@ -141,9 +99,12 @@ avr_log_set_caller_f (const char *caller)
    respective print/dump function.  */
 
 static void
-avr_log_vadump (FILE *file, const char *fmt, va_list ap)
+avr_log_vadump (FILE *file, const char *caller, va_list ap)
 {
   char bs[3] = {'\\', '?', '\0'};
+
+  /* 3rd proper argument is always the format string.  */
+  const char *fmt = va_arg (ap, const char*);
 
   while (*fmt)
     {
@@ -209,7 +170,7 @@ avr_log_vadump (FILE *file, const char *fmt, va_list ap)
 
             case 'L':
               {
-                rtx insn = va_arg (ap, rtx);
+                rtx_insn *insn = safe_as_a <rtx_insn *> (va_arg (ap, rtx));
 
                 while (insn)
                   {
@@ -233,7 +194,7 @@ avr_log_vadump (FILE *file, const char *fmt, va_list ap)
               break;
 
             case 'm':
-              fputs (GET_MODE_NAME ((enum machine_mode) va_arg (ap, int)),
+              fputs (GET_MODE_NAME ((machine_mode) va_arg (ap, int)),
                      file);
               break;
 
@@ -246,7 +207,7 @@ avr_log_vadump (FILE *file, const char *fmt, va_list ap)
               break;
 
             case 'F':
-              fputs (avr_log_caller, file);
+              fputs (caller, file);
               break;
 
             case 'H':
@@ -270,7 +231,7 @@ avr_log_vadump (FILE *file, const char *fmt, va_list ap)
               /* FALLTHRU */
 
             case '?':
-              avr_log_fdump_f (file, "%F[%f:%P]");
+              avr_vdump (file, caller, "%F[%f:%P]");
               break;
 
             case 'P':
@@ -311,6 +272,9 @@ avr_log_set_avr_log (void)
 {
   bool all = TARGET_ALL_DEBUG != 0;
 
+  if (all)
+    avr_log_details = "all";
+	
   if (all || avr_log_details)
     {
       /* Adding , at beginning and end of string makes searching easier.  */

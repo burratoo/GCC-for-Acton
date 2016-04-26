@@ -13,10 +13,11 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
-	"strings"
 )
 
 var config = printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
+
+const parserMode = parser.ParseComments
 
 // Node formats node in canonical gofmt style and writes the result to dst.
 //
@@ -52,7 +53,7 @@ func Node(dst io.Writer, fset *token.FileSet, node interface{}) error {
 		if err != nil {
 			return err
 		}
-		file, err = parser.ParseFile(fset, "", buf.Bytes(), parser.ParseComments)
+		file, err = parser.ParseFile(fset, "", buf.Bytes(), parserMode)
 		if err != nil {
 			// We should never get here. If we do, provide good diagnostic.
 			return fmt.Errorf("format.Node internal error (%s)", err)
@@ -80,66 +81,18 @@ func Node(dst io.Writer, fset *token.FileSet, node interface{}) error {
 //
 func Source(src []byte) ([]byte, error) {
 	fset := token.NewFileSet()
-	node, err := parse(fset, src)
+	file, sourceAdj, indentAdj, err := parse(fset, "", src, true)
 	if err != nil {
 		return nil, err
 	}
 
-	var buf bytes.Buffer
-	if file, ok := node.(*ast.File); ok {
+	if sourceAdj == nil {
 		// Complete source file.
+		// TODO(gri) consider doing this always.
 		ast.SortImports(fset, file)
-		err := config.Fprint(&buf, fset, file)
-		if err != nil {
-			return nil, err
-		}
-
-	} else {
-		// Partial source file.
-		// Determine and prepend leading space.
-		i, j := 0, 0
-		for j < len(src) && isSpace(src[j]) {
-			if src[j] == '\n' {
-				i = j + 1 // index of last line in leading space
-			}
-			j++
-		}
-		buf.Write(src[:i])
-
-		// Determine indentation of first code line.
-		// Spaces are ignored unless there are no tabs,
-		// in which case spaces count as one tab.
-		indent := 0
-		hasSpace := false
-		for _, b := range src[i:j] {
-			switch b {
-			case ' ':
-				hasSpace = true
-			case '\t':
-				indent++
-			}
-		}
-		if indent == 0 && hasSpace {
-			indent = 1
-		}
-
-		// Format the source.
-		cfg := config
-		cfg.Indent = indent
-		err := cfg.Fprint(&buf, fset, node)
-		if err != nil {
-			return nil, err
-		}
-
-		// Determine and append trailing space.
-		i = len(src)
-		for i > 0 && isSpace(src[i-1]) {
-			i--
-		}
-		buf.Write(src[i:])
 	}
 
-	return buf.Bytes(), nil
+	return format(fset, file, sourceAdj, indentAdj, src, config)
 }
 
 func hasUnsortedImports(file *ast.File) bool {
@@ -158,42 +111,4 @@ func hasUnsortedImports(file *ast.File) bool {
 		// Ungrouped imports are sorted by default.
 	}
 	return false
-}
-
-func isSpace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
-}
-
-func parse(fset *token.FileSet, src []byte) (interface{}, error) {
-	// Try as a complete source file.
-	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
-	if err == nil {
-		return file, nil
-	}
-	// If the source is missing a package clause, try as a source fragment; otherwise fail.
-	if !strings.Contains(err.Error(), "expected 'package'") {
-		return nil, err
-	}
-
-	// Try as a declaration list by prepending a package clause in front of src.
-	// Use ';' not '\n' to keep line numbers intact.
-	psrc := append([]byte("package p;"), src...)
-	file, err = parser.ParseFile(fset, "", psrc, parser.ParseComments)
-	if err == nil {
-		return file.Decls, nil
-	}
-	// If the source is missing a declaration, try as a statement list; otherwise fail.
-	if !strings.Contains(err.Error(), "expected declaration") {
-		return nil, err
-	}
-
-	// Try as statement list by wrapping a function around src.
-	fsrc := append(append([]byte("package p; func _() {"), src...), '}')
-	file, err = parser.ParseFile(fset, "", fsrc, parser.ParseComments)
-	if err == nil {
-		return file.Decls[0].(*ast.FuncDecl).Body.List, nil
-	}
-
-	// Failed, and out of options.
-	return nil, err
 }

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2011-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 2011-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,11 +34,11 @@ with GNAT.Table;
 
 package SPARK_Xrefs is
 
-   --  SPARK cross-reference information can exist in one of two forms. In the
-   --  ALI file, it is represented using a text format that is described in
-   --  this specification.  Internally it is stored using three tables
-   --  SPARK_Xref_Table, SPARK_Scope_Table and SPARK_File_Table, which are also
-   --  defined in this unit.
+   --  SPARK cross-reference information can exist in one of two forms. In
+   --  the ALI file, it is represented using a text format that is described
+   --  in this specification. Internally it is stored using three tables
+   --  SPARK_Xref_Table, SPARK_Scope_Table and SPARK_File_Table, which are
+   --  also defined in this unit.
 
    --  Lib.Xref.SPARK_Specific is part of the compiler. It extracts SPARK
    --  cross-reference information from the complete set of cross-references
@@ -111,9 +111,10 @@ package SPARK_Xrefs is
    --      type is a single letter identifying the type of the entity, using
    --      the same code as in cross-references:
 
-   --        K = package
-   --        V = function
-   --        U = procedure
+   --        K = package (k = generic package)
+   --        V = function (v = generic function)
+   --        U = procedure (u = generic procedure)
+   --        Y = entry
 
    --      col is the column number of the scope entity
 
@@ -137,7 +138,7 @@ package SPARK_Xrefs is
    --      entity-number and identity identify a scope entity in FS lines for
    --      the file previously identified.
 
-   --    line typ col entity ref*
+   --    F line typ col entity ref*
 
    --      line is the line number of the referenced entity
 
@@ -187,15 +188,31 @@ package SPARK_Xrefs is
 
    --    Examples: ??? add examples here
 
+   --  -------------------------------
+   --  -- Generated Globals Section --
+   --  -------------------------------
+
+   --  The Generated Globals section is located at the end of the ALI file.
+
+   --  All lines introducing information related to the Generated Globals
+   --  have the string "GG" appearing in the beginning. This string ("GG")
+   --  should therefore not be used in the beginning of any line that does
+   --  not relate to Generated Globals.
+
+   --  The processing (reading and writing) of this section happens in
+   --  package Flow_Generated_Globals (from the SPARK 2014 sources), for
+   --  further information please refer there.
+
    ----------------
    -- Xref Table --
    ----------------
 
    --  The following table records SPARK cross-references
 
-   type Xref_Index is new Int;
+   type Xref_Index is new Nat;
    --  Used to index values in this table. Values start at 1 and are assigned
-   --  sequentially as entries are constructed.
+   --  sequentially as entries are constructed; value 0 is used temporarily
+   --  until a proper value is determined.
 
    type SPARK_Xref_Record is record
       Entity_Name : String_Ptr;
@@ -252,9 +269,11 @@ package SPARK_Xrefs is
    --  This table keeps track of the scopes and the corresponding starting and
    --  ending indexes (From, To) in the Xref table.
 
-   type Scope_Index is new Int;
+   type Scope_Index is new Nat;
    --  Used to index values in this table. Values start at 1 and are assigned
-   --  sequentially as entries are constructed.
+   --  sequentially as entries are constructed; value 0 indicates that no
+   --  entries have been constructed and is also used until a proper value is
+   --  determined.
 
    type SPARK_Scope_Record is record
       Scope_Name : String_Ptr;
@@ -280,8 +299,10 @@ package SPARK_Xrefs is
       Stype : Character;
       --  Indicates type of scope, using code used in ALI file:
       --    K = package
-      --    V = function
+      --    T = task
       --    U = procedure
+      --    V = function
+      --    Y = entry
 
       Col : Nat;
       --  Column number for the scope
@@ -313,9 +334,10 @@ package SPARK_Xrefs is
    --  This table keeps track of the units and the corresponding starting and
    --  ending indexes (From, To) in the Scope table.
 
-   type File_Index is new Int;
+   type File_Index is new Nat;
    --  Used to index values in this table. Values start at 1 and are assigned
-   --  sequentially as entries are constructed.
+   --  sequentially as entries are constructed; value 0 indicates that no
+   --  entries have been constructed.
 
    type SPARK_File_Record is record
       File_Name : String_Ptr;

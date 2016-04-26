@@ -1,5 +1,5 @@
 /* DWARF2 EH unwinding support for AIX.
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -64,7 +64,7 @@
 #endif
 
 /* Now on to MD_FALLBACK_FRAME_STATE_FOR.
-   32bit AIX 5.2 and 5.3 only at this stage.  */
+   32bit AIX 5.2, 5.3 and 7.1 only at this stage.  */
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -128,8 +128,9 @@ ucontext_for (struct _Unwind_Context *context)
 {
   const unsigned int * ra = context->ra;
 
-  /* AIX 5.2 and 5.3, threaded or not, share common patterns and feature
-     variants depending on the configured kernel (unix_mp or unix_64).  */
+  /* AIX 5.2, 5.3 and 7.1, threaded or not, share common patterns
+     and feature variants depending on the configured kernel (unix_mp
+     or unix_64).  */
 
   if (*(ra - 5) == 0x4c00012c     /* isync             */
       && *(ra - 4) == 0x80ec0000  /* lwz     r7,0(r12) */
@@ -149,6 +150,10 @@ ucontext_for (struct _Unwind_Context *context)
 
 	      /* AIX 5.3 */
 	    case 0x835a0570:  /* lwz r26,1392(r26) */
+	      return (ucontext_t *)(context->cfa + 0x40);
+
+	      /* AIX 7.1 */
+	    case 0x2c1a0000:  /* cmpwi   r26,0 */
 	      return (ucontext_t *)(context->cfa + 0x40);
 		
 	    default:
@@ -175,8 +180,8 @@ ucontext_for (struct _Unwind_Context *context)
 
 /* The fallback proper.  */
 
-#ifdef DWARF_ALT_FRAME_RETURN_COLUMN
-#define RETURN_COLUMN DWARF_ALT_FRAME_RETURN_COLUMN
+#ifdef __LIBGCC_DWARF_ALT_FRAME_RETURN_COLUMN__
+#define RETURN_COLUMN __LIBGCC_DWARF_ALT_FRAME_RETURN_COLUMN__
 #else
 #define RETURN_COLUMN ARG_POINTER_REGNUM
 #endif
@@ -204,17 +209,17 @@ ppc_aix_fallback_frame_state (struct _Unwind_Context *context,
 
   /* The "kernel" frame cfa is the stack pointer at the signal occurrence
      point.  */
-  new_cfa = mctx->gpr[STACK_POINTER_REGNUM];
+  new_cfa = mctx->gpr[__LIBGCC_STACK_POINTER_REGNUM__];
 
   fs->regs.cfa_how = CFA_REG_OFFSET;
-  fs->regs.cfa_reg = STACK_POINTER_REGNUM;
+  fs->regs.cfa_reg = __LIBGCC_STACK_POINTER_REGNUM__;
   fs->regs.cfa_offset = new_cfa - (long) context->cfa;
 
   /* And we state how to find the various registers it has saved with
      relative offset rules from there.  */
 
   for (i = 0; i < 32; i++)
-    if (i != STACK_POINTER_REGNUM)
+    if (i != __LIBGCC_STACK_POINTER_REGNUM__)
       REGISTER_CFA_OFFSET_FOR (fs, i, &mctx->gpr[i], new_cfa);
 
   REGISTER_CFA_OFFSET_FOR (fs, CR2_REGNO, &mctx->cr, new_cfa);

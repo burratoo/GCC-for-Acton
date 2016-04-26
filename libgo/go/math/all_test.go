@@ -234,6 +234,18 @@ var expm1 = []float64{
 	1.842068661871398836913874273e-02,
 	-8.3193870863553801814961137573e-02,
 }
+var expm1Large = []float64{
+	4.2031418113550844e+21,
+	4.0690789717473863e+33,
+	-0.9372627915981363e+00,
+	-1.0,
+	7.077694784145933e+41,
+	5.117936223839153e+12,
+	5.124137759001189e+22,
+	7.03546003972584e+11,
+	8.456921800389698e+07,
+	-1.0,
+}
 var exp2 = []float64{
 	3.1537839463286288034313104e+01,
 	2.1361549283756232296144849e+02,
@@ -447,7 +459,7 @@ var log2 = []float64{
 var modf = [][2]float64{
 	{4.0000000000000000e+00, 9.7901192488367350108546816e-01},
 	{7.0000000000000000e+00, 7.3887247457810456552351752e-01},
-	{0.0000000000000000e+00, -2.7688005719200159404635997e-01},
+	{Copysign(0, -1), -2.7688005719200159404635997e-01},
 	{-5.0000000000000000e+00, -1.060361827107492160848778e-02},
 	{9.0000000000000000e+00, 6.3629370719841737980004837e-01},
 	{2.0000000000000000e+00, 9.2637723924396464525443662e-01},
@@ -456,7 +468,19 @@ var modf = [][2]float64{
 	{1.0000000000000000e+00, 8.2530809168085506044576505e-01},
 	{-8.0000000000000000e+00, -6.8592476857560136238589621e-01},
 }
-var nextafter = []float64{
+var nextafter32 = []float32{
+	4.979012489318848e+00,
+	7.738873004913330e+00,
+	-2.768800258636475e-01,
+	-5.010602951049805e+00,
+	9.636294364929199e+00,
+	2.926377534866333e+00,
+	5.229084014892578e+00,
+	2.727940082550049e+00,
+	1.825308203697205e+00,
+	-8.685923576354980e+00,
+}
+var nextafter64 = []float64{
 	4.97901192488367438926388786e+00,
 	7.73887247457810545370193722e+00,
 	-2.7688005719200153853520874e-01,
@@ -934,15 +958,19 @@ var expSC = []float64{
 
 var vfexpm1SC = []float64{
 	Inf(-1),
+	-710,
 	Copysign(0, -1),
 	0,
+	710,
 	Inf(1),
 	NaN(),
 }
 var expm1SC = []float64{
 	-1,
+	-1,
 	Copysign(0, -1),
 	0,
+	Inf(1),
 	Inf(1),
 	NaN(),
 }
@@ -978,6 +1006,24 @@ var vffdimSC = [][2]float64{
 	{NaN(), 0},
 	{NaN(), Inf(1)},
 	{NaN(), NaN()},
+}
+var nan = Float64frombits(0xFFF8000000000000) // SSE2 DIVSD 0/0
+var vffdim2SC = [][2]float64{
+	{Inf(-1), Inf(-1)},
+	{Inf(-1), Inf(1)},
+	{Inf(-1), nan},
+	{Copysign(0, -1), Copysign(0, -1)},
+	{Copysign(0, -1), 0},
+	{0, Copysign(0, -1)},
+	{0, 0},
+	{Inf(1), Inf(-1)},
+	{Inf(1), Inf(1)},
+	{Inf(1), nan},
+	{nan, Inf(-1)},
+	{nan, Copysign(0, -1)},
+	{nan, 0},
+	{nan, Inf(1)},
+	{nan, nan},
 }
 var fdimSC = []float64{
 	NaN(),
@@ -1322,16 +1368,43 @@ var log1pSC = []float64{
 
 var vfmodfSC = []float64{
 	Inf(-1),
+	Copysign(0, -1),
 	Inf(1),
 	NaN(),
 }
 var modfSC = [][2]float64{
 	{Inf(-1), NaN()}, // [2]float64{Copysign(0, -1), Inf(-1)},
-	{Inf(1), NaN()},  // [2]float64{0, Inf(1)},
+	{Copysign(0, -1), Copysign(0, -1)},
+	{Inf(1), NaN()}, // [2]float64{0, Inf(1)},
 	{NaN(), NaN()},
 }
 
-var vfnextafterSC = [][2]float64{
+var vfnextafter32SC = [][2]float32{
+	{0, 0},
+	{0, float32(Copysign(0, -1))},
+	{0, -1},
+	{0, float32(NaN())},
+	{float32(Copysign(0, -1)), 1},
+	{float32(Copysign(0, -1)), 0},
+	{float32(Copysign(0, -1)), float32(Copysign(0, -1))},
+	{float32(Copysign(0, -1)), -1},
+	{float32(NaN()), 0},
+	{float32(NaN()), float32(NaN())},
+}
+var nextafter32SC = []float32{
+	0,
+	0,
+	-1.401298464e-45, // Float32frombits(0x80000001)
+	float32(NaN()),
+	1.401298464e-45, // Float32frombits(0x00000001)
+	float32(Copysign(0, -1)),
+	float32(Copysign(0, -1)),
+	-1.401298464e-45, // Float32frombits(0x80000001)
+	float32(NaN()),
+	float32(NaN()),
+}
+
+var vfnextafter64SC = [][2]float64{
 	{0, 0},
 	{0, Copysign(0, -1)},
 	{0, -1},
@@ -1343,7 +1416,7 @@ var vfnextafterSC = [][2]float64{
 	{NaN(), 0},
 	{NaN(), NaN()},
 }
-var nextafterSC = []float64{
+var nextafter64SC = []float64{
 	0,
 	0,
 	-4.9406564584124654418e-324, // Float64frombits(0x8000000000000001)
@@ -1550,6 +1623,7 @@ var vfsqrtSC = []float64{
 	0,
 	Inf(1),
 	NaN(),
+	Float64frombits(2), // subnormal; see https://golang.org/issue/13013
 }
 var sqrtSC = []float64{
 	NaN(),
@@ -1558,6 +1632,7 @@ var sqrtSC = []float64{
 	0,
 	Inf(1),
 	NaN(),
+	3.1434555694052576e-162,
 }
 
 var vftanhSC = []float64{
@@ -1671,8 +1746,10 @@ func tolerance(a, b, e float64) bool {
 		d = -d
 	}
 
-	if a != 0 {
-		e = e * a
+	// note: b is correct (expected) value, a is actual value.
+	// make error tolerance a fraction of b, not a.
+	if b != 0 {
+		e = e * b
 		if e < 0 {
 			e = -e
 		}
@@ -1922,6 +1999,12 @@ func TestExpm1(t *testing.T) {
 			t.Errorf("Expm1(%g) = %g, want %g", a, f, expm1[i])
 		}
 	}
+	for i := 0; i < len(vf); i++ {
+		a := vf[i] * 10
+		if f := Expm1(a); !close(expm1Large[i], f) {
+			t.Errorf("Expm1(%g) = %g, want %g", a, f, expm1Large[i])
+		}
+	}
 	for i := 0; i < len(vfexpm1SC); i++ {
 		if f := Expm1(vfexpm1SC[i]); !alike(expm1SC[i], f) {
 			t.Errorf("Expm1(%g) = %g, want %g", vfexpm1SC[i], f, expm1SC[i])
@@ -1978,6 +2061,11 @@ func TestDim(t *testing.T) {
 			t.Errorf("Dim(%g, %g) = %g, want %g", vffdimSC[i][0], vffdimSC[i][1], f, fdimSC[i])
 		}
 	}
+	for i := 0; i < len(vffdim2SC); i++ {
+		if f := Dim(vffdim2SC[i][0], vffdim2SC[i][1]); !alike(fdimSC[i], f) {
+			t.Errorf("Dim(%g, %g) = %g, want %g", vffdim2SC[i][0], vffdim2SC[i][1], f, fdimSC[i])
+		}
+	}
 }
 
 func TestFloor(t *testing.T) {
@@ -2004,6 +2092,11 @@ func TestMax(t *testing.T) {
 			t.Errorf("Max(%g, %g) = %g, want %g", vffdimSC[i][0], vffdimSC[i][1], f, fmaxSC[i])
 		}
 	}
+	for i := 0; i < len(vffdim2SC); i++ {
+		if f := Max(vffdim2SC[i][0], vffdim2SC[i][1]); !alike(fmaxSC[i], f) {
+			t.Errorf("Max(%g, %g) = %g, want %g", vffdim2SC[i][0], vffdim2SC[i][1], f, fmaxSC[i])
+		}
+	}
 }
 
 func TestMin(t *testing.T) {
@@ -2015,6 +2108,11 @@ func TestMin(t *testing.T) {
 	for i := 0; i < len(vffdimSC); i++ {
 		if f := Min(vffdimSC[i][0], vffdimSC[i][1]); !alike(fminSC[i], f) {
 			t.Errorf("Min(%g, %g) = %g, want %g", vffdimSC[i][0], vffdimSC[i][1], f, fminSC[i])
+		}
+	}
+	for i := 0; i < len(vffdim2SC); i++ {
+		if f := Min(vffdim2SC[i][0], vffdim2SC[i][1]); !alike(fminSC[i], f) {
+			t.Errorf("Min(%g, %g) = %g, want %g", vffdim2SC[i][0], vffdim2SC[i][1], f, fminSC[i])
 		}
 	}
 }
@@ -2303,15 +2401,29 @@ func TestModf(t *testing.T) {
 	}
 }
 
-func TestNextafter(t *testing.T) {
+func TestNextafter32(t *testing.T) {
 	for i := 0; i < len(vf); i++ {
-		if f := Nextafter(vf[i], 10); nextafter[i] != f {
-			t.Errorf("Nextafter(%g, %g) = %g want %g", vf[i], 10.0, f, nextafter[i])
+		vfi := float32(vf[i])
+		if f := Nextafter32(vfi, 10); nextafter32[i] != f {
+			t.Errorf("Nextafter32(%g, %g) = %g want %g", vfi, 10.0, f, nextafter32[i])
 		}
 	}
-	for i := 0; i < len(vfnextafterSC); i++ {
-		if f := Nextafter(vfnextafterSC[i][0], vfnextafterSC[i][1]); !alike(nextafterSC[i], f) {
-			t.Errorf("Nextafter(%g, %g) = %g want %g", vfnextafterSC[i][0], vfnextafterSC[i][1], f, nextafterSC[i])
+	for i := 0; i < len(vfnextafter32SC); i++ {
+		if f := Nextafter32(vfnextafter32SC[i][0], vfnextafter32SC[i][1]); !alike(float64(nextafter32SC[i]), float64(f)) {
+			t.Errorf("Nextafter32(%g, %g) = %g want %g", vfnextafter32SC[i][0], vfnextafter32SC[i][1], f, nextafter32SC[i])
+		}
+	}
+}
+
+func TestNextafter64(t *testing.T) {
+	for i := 0; i < len(vf); i++ {
+		if f := Nextafter(vf[i], 10); nextafter64[i] != f {
+			t.Errorf("Nextafter64(%g, %g) = %g want %g", vf[i], 10.0, f, nextafter64[i])
+		}
+	}
+	for i := 0; i < len(vfnextafter64SC); i++ {
+		if f := Nextafter(vfnextafter64SC[i][0], vfnextafter64SC[i][1]); !alike(nextafter64SC[i], f) {
+			t.Errorf("Nextafter64(%g, %g) = %g want %g", vfnextafter64SC[i][0], vfnextafter64SC[i][1], f, nextafter64SC[i])
 		}
 	}
 }
@@ -2555,7 +2667,7 @@ func TestLargeTan(t *testing.T) {
 
 // Check that math constants are accepted by compiler
 // and have right value (assumes strconv.ParseFloat works).
-// http://code.google.com/p/go/issues/detail?id=201
+// https://golang.org/issue/201
 
 type floatTest struct {
 	val  interface{}
@@ -2827,7 +2939,13 @@ func BenchmarkModf(b *testing.B) {
 	}
 }
 
-func BenchmarkNextafter(b *testing.B) {
+func BenchmarkNextafter32(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		Nextafter32(.5, 1)
+	}
+}
+
+func BenchmarkNextafter64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Nextafter(.5, 1)
 	}
@@ -2887,15 +3005,56 @@ func BenchmarkSinh(b *testing.B) {
 	}
 }
 
+var Global float64
+
 func BenchmarkSqrt(b *testing.B) {
+	x, y := 0.0, 10.0
 	for i := 0; i < b.N; i++ {
-		Sqrt(10)
+		x += Sqrt(y)
 	}
+	Global = x
+}
+
+func BenchmarkSqrtIndirect(b *testing.B) {
+	x, y := 0.0, 10.0
+	f := Sqrt
+	for i := 0; i < b.N; i++ {
+		x += f(y)
+	}
+	Global = x
 }
 
 func BenchmarkSqrtGo(b *testing.B) {
+	x, y := 0.0, 10.0
 	for i := 0; i < b.N; i++ {
-		SqrtGo(10)
+		x += SqrtGo(y)
+	}
+	Global = x
+}
+
+func isPrime(i int) bool {
+	// Yes, this is a dumb way to write this code,
+	// but calling Sqrt repeatedly in this way demonstrates
+	// the benefit of using a direct SQRT instruction on systems
+	// that have one, whereas the obvious loop seems not to
+	// demonstrate such a benefit.
+	for j := 2; float64(j) <= Sqrt(float64(i)); j++ {
+		if i%j == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func BenchmarkSqrtPrime(b *testing.B) {
+	any := false
+	for i := 0; i < b.N; i++ {
+		if isPrime(100003) {
+			any = true
+		}
+	}
+	if any {
+		Global = 1
 	}
 }
 

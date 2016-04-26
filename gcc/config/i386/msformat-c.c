@@ -1,5 +1,5 @@
 /* Check calls to formatted I/O functions (-Wformat).
-   Copyright (C) 1992-2014 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,14 +21,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "tree.h"
-#include "flags.h"
 #include "c-family/c-common.h"
 #include "intl.h"
-#include "diagnostic.h"
-#include "langhooks.h"
 #include "c-family/c-format.h"
-#include "alloc-pool.h"
 
 /* Mingw specific format attributes ms_printf, ms_scanf, and ms_strftime.  */
 

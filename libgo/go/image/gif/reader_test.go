@@ -17,21 +17,21 @@ import (
 const (
 	headerStr = "GIF89a" +
 		"\x02\x00\x01\x00" + // width=2, height=1
-		"\x80\x00\x00" // headerFields=(a color map of 2 pixels), backgroundIndex, aspect
-	paletteStr = "\x10\x20\x30\x40\x50\x60" // the color map, also known as a palette
+		"\x80\x00\x00" // headerFields=(a color table of 2 pixels), backgroundIndex, aspect
+	paletteStr = "\x10\x20\x30\x40\x50\x60" // the color table, also known as a palette
 	trailerStr = "\x3b"
 )
 
-func TestDecode(t *testing.T) {
-	// lzwEncode returns an LZW encoding (with 2-bit literals) of n zeroes.
-	lzwEncode := func(n int) []byte {
-		b := &bytes.Buffer{}
-		w := lzw.NewWriter(b, lzw.LSB, 2)
-		w.Write(make([]byte, n))
-		w.Close()
-		return b.Bytes()
-	}
+// lzwEncode returns an LZW encoding (with 2-bit literals) of n zeroes.
+func lzwEncode(n int) []byte {
+	b := &bytes.Buffer{}
+	w := lzw.NewWriter(b, lzw.LSB, 2)
+	w.Write(make([]byte, n))
+	w.Close()
+	return b.Bytes()
+}
 
+func TestDecode(t *testing.T) {
 	testCases := []struct {
 		nPix    int  // The number of pixels in the image data.
 		extra   bool // Whether to write an extra block after the LZW-encoded data.
@@ -90,12 +90,58 @@ func TestDecode(t *testing.T) {
 	}
 }
 
+func TestTransparentIndex(t *testing.T) {
+	b := &bytes.Buffer{}
+	b.WriteString(headerStr)
+	b.WriteString(paletteStr)
+	for transparentIndex := 0; transparentIndex < 3; transparentIndex++ {
+		if transparentIndex < 2 {
+			// Write the graphic control for the transparent index.
+			b.WriteString("\x21\xf9\x00\x01\x00\x00")
+			b.WriteByte(byte(transparentIndex))
+			b.WriteByte(0)
+		}
+		// Write an image with bounds 2x1, as per TestDecode.
+		b.WriteString("\x2c\x00\x00\x00\x00\x02\x00\x01\x00\x00\x02")
+		enc := lzwEncode(2)
+		if len(enc) > 0xff {
+			t.Fatalf("compressed length %d is too large", len(enc))
+		}
+		b.WriteByte(byte(len(enc)))
+		b.Write(enc)
+		b.WriteByte(0x00)
+	}
+	b.WriteString(trailerStr)
+
+	g, err := DecodeAll(b)
+	if err != nil {
+		t.Fatalf("DecodeAll: %v", err)
+	}
+	c0 := color.RGBA{paletteStr[0], paletteStr[1], paletteStr[2], 0xff}
+	c1 := color.RGBA{paletteStr[3], paletteStr[4], paletteStr[5], 0xff}
+	cz := color.RGBA{}
+	wants := []color.Palette{
+		{cz, c1},
+		{c0, cz},
+		{c0, c1},
+	}
+	if len(g.Image) != len(wants) {
+		t.Fatalf("got %d images, want %d", len(g.Image), len(wants))
+	}
+	for i, want := range wants {
+		got := g.Image[i].Palette
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("palette #%d:\ngot  %v\nwant %v", i, got, want)
+		}
+	}
+}
+
 // testGIF is a simple GIF that we can modify to test different scenarios.
 var testGIF = []byte{
 	'G', 'I', 'F', '8', '9', 'a',
 	1, 0, 1, 0, // w=1, h=1 (6)
 	128, 0, 0, // headerFields, bg, aspect (10)
-	0, 0, 0, 1, 1, 1, // color map and graphics control (13)
+	0, 0, 0, 1, 1, 1, // color table and graphics control (13)
 	0x21, 0xf9, 0x04, 0x00, 0x00, 0x00, 0xff, 0x00, // (19)
 	// frame 1 (0,0 - 1,1)
 	0x2c,
@@ -154,22 +200,26 @@ func TestNoPalette(t *testing.T) {
 	b.WriteString("\x2c\x00\x00\x00\x00\x02\x00\x01\x00\x00\x02")
 
 	// Encode the pixels: neither is in range, because there is no palette.
-	pix := []byte{0, 128}
+	pix := []byte{0, 3}
 	enc := &bytes.Buffer{}
 	w := lzw.NewWriter(enc, lzw.LSB, 2)
-	w.Write(pix)
-	w.Close()
+	if _, err := w.Write(pix); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 	b.WriteByte(byte(len(enc.Bytes())))
 	b.Write(enc.Bytes())
 	b.WriteByte(0x00) // An empty block signifies the end of the image data.
 
 	b.WriteString(trailerStr)
 
-	try(t, b.Bytes(), "gif: invalid pixel value")
+	try(t, b.Bytes(), "gif: no color table")
 }
 
 func TestPixelOutsidePaletteRange(t *testing.T) {
-	for _, pval := range []byte{0, 1, 2, 3, 255} {
+	for _, pval := range []byte{0, 1, 2, 3} {
 		b := &bytes.Buffer{}
 
 		// Manufacture a GIF with a 2 color palette.
@@ -183,8 +233,12 @@ func TestPixelOutsidePaletteRange(t *testing.T) {
 		pix := []byte{pval, pval}
 		enc := &bytes.Buffer{}
 		w := lzw.NewWriter(enc, lzw.LSB, 2)
-		w.Write(pix)
-		w.Close()
+		if _, err := w.Write(pix); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 		b.WriteByte(byte(len(enc.Bytes())))
 		b.Write(enc.Bytes())
 		b.WriteByte(0x00) // An empty block signifies the end of the image data.
@@ -197,5 +251,26 @@ func TestPixelOutsidePaletteRange(t *testing.T) {
 			want = "gif: invalid pixel value"
 		}
 		try(t, b.Bytes(), want)
+	}
+}
+
+func TestLoopCount(t *testing.T) {
+	data := []byte("GIF89a000\x00000,0\x00\x00\x00\n\x00" +
+		"\n\x00\x80000000\x02\b\xf01u\xb9\xfdal\x05\x00;")
+	img, err := DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal("DecodeAll:", err)
+	}
+	w := new(bytes.Buffer)
+	err = EncodeAll(w, img)
+	if err != nil {
+		t.Fatal("EncodeAll:", err)
+	}
+	img1, err := DecodeAll(w)
+	if err != nil {
+		t.Fatal("DecodeAll:", err)
+	}
+	if img.LoopCount != img1.LoopCount {
+		t.Errorf("loop count mismatch: %d vs %d", img.LoopCount, img1.LoopCount)
 	}
 }

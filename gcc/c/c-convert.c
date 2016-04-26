@@ -1,5 +1,5 @@
 /* Language-level data type conversion for GNU C.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,14 +26,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
-#include "flags.h"
-#include "convert.h"
-#include "c-family/c-common.h"
-#include "c-tree.h"
-#include "langhooks.h"
 #include "target.h"
+#include "c-tree.h"
+#include "convert.h"
+#include "langhooks.h"
+#include "ubsan.h"
 
 /* Change of width--truncation and extension of integers or reals--
    is represented with NOP_EXPR.  Proper functioning of many things
@@ -72,8 +69,7 @@ convert (tree type, tree expr)
   location_t loc = EXPR_LOCATION (expr);
 
   if (type == error_mark_node
-      || expr == error_mark_node
-      || TREE_TYPE (expr) == error_mark_node)
+      || error_operand_p (expr))
     return error_mark_node;
 
   if ((invalid_conv_diag
@@ -110,6 +106,24 @@ convert (tree type, tree expr)
 
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
+      if (flag_sanitize & SANITIZE_FLOAT_CAST
+	  && TREE_CODE (TREE_TYPE (expr)) == REAL_TYPE
+	  && COMPLETE_TYPE_P (type)
+	  && do_ubsan_in_current_function ())
+	{
+	  if (in_late_binary_op)
+	    expr = save_expr (expr);
+	  else
+	    {
+	      expr = c_save_expr (expr);
+	      expr = c_fully_fold (expr, false, NULL);
+	    }
+	  tree check = ubsan_instrument_float_cast (loc, type, expr);
+	  expr = fold_build1 (FIX_TRUNC_EXPR, type, expr);
+	  if (check == NULL_TREE)
+	    return expr;
+	  return fold_build2 (COMPOUND_EXPR, TREE_TYPE (expr), check, expr);
+	}
       ret = convert_to_integer (type, e);
       goto maybe_fold;
 

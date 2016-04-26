@@ -1,5 +1,5 @@
 /* Common declarations for all of GNU Fortran libcaf implementations.
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
    Contributed by Tobias Burnus <burnus@net-b.de>
 
 This file is part of the GNU Fortran Coarray Runtime Library (libcaf).
@@ -57,7 +57,9 @@ typedef enum caf_register_t {
   CAF_REGTYPE_COARRAY_ALLOC,
   CAF_REGTYPE_LOCK_STATIC,
   CAF_REGTYPE_LOCK_ALLOC,
-  CAF_REGTYPE_CRITICAL
+  CAF_REGTYPE_CRITICAL,
+  CAF_REGTYPE_EVENT_STATIC,
+  CAF_REGTYPE_EVENT_ALLOC
 }
 caf_register_t;
 
@@ -100,26 +102,31 @@ void *_gfortran_caf_register (size_t, caf_register_t, caf_token_t *, int *,
 void _gfortran_caf_deregister (caf_token_t *, int *, char *, int);
 
 void _gfortran_caf_sync_all (int *, char *, int);
+void _gfortran_caf_sync_memory (int *, char *, int);
 void _gfortran_caf_sync_images (int, int[], int *, char *, int);
 
+void _gfortran_caf_stop_numeric (int32_t)
+     __attribute__ ((noreturn));
+void _gfortran_caf_stop_str (const char *, int32_t)
+     __attribute__ ((noreturn));
 void _gfortran_caf_error_stop_str (const char *, int32_t)
      __attribute__ ((noreturn));
 void _gfortran_caf_error_stop (int32_t) __attribute__ ((noreturn));
 
-void _gfortran_caf_co_sum (gfc_descriptor_t *, int, int *,
-			   char *, int);
-void _gfortran_caf_co_min (gfc_descriptor_t *, int, int *, char *,
-			   int, int);
-void _gfortran_caf_co_max (gfc_descriptor_t *, int, int *, char *,
-			   int, int);
+void _gfortran_caf_co_broadcast (gfc_descriptor_t *, int, int *, char *, int);
+void _gfortran_caf_co_sum (gfc_descriptor_t *, int, int *, char *, int);
+void _gfortran_caf_co_min (gfc_descriptor_t *, int, int *, char *, int, int);
+void _gfortran_caf_co_max (gfc_descriptor_t *, int, int *, char *, int, int);
+void _gfortran_caf_co_reduce (gfc_descriptor_t *, void* (*) (void *, void*),
+			      int, int, int *, char *, int, int);
 
 void _gfortran_caf_get (caf_token_t, size_t, int, gfc_descriptor_t *,
-                        caf_vector_t *, gfc_descriptor_t *, int, int);
+                        caf_vector_t *, gfc_descriptor_t *, int, int, bool);
 void _gfortran_caf_send (caf_token_t, size_t, int, gfc_descriptor_t *,
-			 caf_vector_t *, gfc_descriptor_t *, int, int);
+			 caf_vector_t *, gfc_descriptor_t *, int, int, bool);
 void _gfortran_caf_sendget (caf_token_t, size_t, int, gfc_descriptor_t *,
 			    caf_vector_t *, caf_token_t, size_t, int,
-			    gfc_descriptor_t *, caf_vector_t *, int, int);
+			    gfc_descriptor_t *, caf_vector_t *, int, int, bool);
 
 void _gfortran_caf_atomic_define (caf_token_t, size_t, int, void *, int *,
 				  int, int);
@@ -132,5 +139,8 @@ void _gfortran_caf_atomic_op (int, caf_token_t, size_t, int, void *, void *,
 
 void _gfortran_caf_lock (caf_token_t, size_t, int, int *, int *, char *, int);
 void _gfortran_caf_unlock (caf_token_t, size_t, int, int *, char *, int);
+void _gfortran_caf_event_post (caf_token_t, size_t, int, int *, char *, int);
+void _gfortran_caf_event_wait (caf_token_t, size_t, int, int *, char *, int);
+void _gfortran_caf_event_query (caf_token_t, size_t, int, int *, int *);
 
 #endif  /* LIBCAF_H  */

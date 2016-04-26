@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,6 +23,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Checks;   use Checks;
 with Einfo;    use Einfo;
@@ -42,6 +43,8 @@ with Exp_Strm; use Exp_Strm;
 with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
 with Freeze;   use Freeze;
+with Ghost;    use Ghost;
+with Inline;   use Inline;
 with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
@@ -198,9 +201,9 @@ package body Exp_Ch3 is
    --  subprogram they rename is not frozen when the type is frozen.
 
    procedure Insert_Component_Invariant_Checks
-     (N   : Node_Id;
-     Typ  : Entity_Id;
-     Proc : Node_Id);
+     (N    : Node_Id;
+      Typ  : Entity_Id;
+      Proc : Node_Id);
    --  If a composite type has invariants and also has components with defined
    --  invariants. the component invariant procedure is inserted into the user-
    --  defined invariant procedure and added to the checks to be performed.
@@ -222,6 +225,9 @@ package body Exp_Ch3 is
    --    _Task_Name : String
    --
    --  The caller must append additional entries for discriminants if required.
+
+   function Inline_Init_Proc (Typ : Entity_Id) return Boolean;
+   --  Returns true if the initialization procedure of Typ should be inlined
 
    function In_Runtime (E : Entity_Id) return Boolean;
    --  Check if E is defined in the RTL (in a child of Ada or System). Used
@@ -308,7 +314,7 @@ package body Exp_Ch3 is
    --  Predefined_Primitive_Bodies.
 
    function Has_New_Non_Standard_Rep (T : Entity_Id) return Boolean;
-   --  returns True if there are representation clauses for type T that are not
+   --  Returns True if there are representation clauses for type T that are not
    --  inherited. If the result is false, the init_proc and the discriminant
    --  checking functions of the parent can be reused by a derived type.
 
@@ -378,7 +384,7 @@ package body Exp_Ch3 is
    --  type. The rules for inheritance of stream attributes by type extensions
    --  are enforced by this function. Furthermore, various restrictions prevent
    --  the generation of these operations, as a useful optimization or for
-   --  certification purposes.
+   --  certification purposes and to save unnecessary generated code.
 
    --------------------------
    -- Adjust_Discriminants --
@@ -668,14 +674,9 @@ package body Exp_Ch3 is
       --  Nothing to generate in the following cases:
 
       --    1. Initialization is suppressed for the type
-      --    2. The type is a value type, in the CIL sense.
-      --    3. The type has CIL/JVM convention.
-      --    4. An initialization already exists for the base type
+      --    2. An initialization already exists for the base type
 
       if Initialization_Suppressed (A_Type)
-        or else Is_Value_Type (Comp_Type)
-        or else Convention (A_Type) = Convention_CIL
-        or else Convention (A_Type) = Convention_Java
         or else Present (Base_Init_Proc (A_Type))
       then
          return;
@@ -758,16 +759,10 @@ package body Exp_Ch3 is
             Set_Debug_Info_Off (Proc_Id);
          end if;
 
-         --  Set inlined unless controlled stuff or tasks around, in which
-         --  case we do not want to inline, because nested stuff may cause
-         --  difficulties in inter-unit inlining, and furthermore there is
-         --  in any case no point in inlining such complex init procs.
+         --  Set Inlined on Init_Proc if it is set on the Init_Proc of the
+         --  component type itself (see also Build_Record_Init_Proc).
 
-         if not Has_Task (Proc_Id)
-           and then not Needs_Finalization (Proc_Id)
-         then
-            Set_Is_Inlined (Proc_Id);
-         end if;
+         Set_Is_Inlined (Proc_Id, Inline_Init_Proc (Comp_Type));
 
          --  Associate Init_Proc with type, and determine if the procedure
          --  is null (happens because of the Initialize_Scalars pragma case,
@@ -1136,13 +1131,12 @@ package body Exp_Ch3 is
               or else Frontend_Layout_On_Target
             then
                Func_Id := Build_Dcheck_Function (Discr_Name, Variant);
+
                Decl :=
                  First_Non_Pragma (Component_Items (Component_List_Node));
-
                while Present (Decl) loop
                   Set_Discriminant_Checking_Func
                     (Defining_Identifier (Decl), Func_Id);
-
                   Next_Non_Pragma (Decl);
                end loop;
 
@@ -1459,7 +1453,7 @@ package body Exp_Ch3 is
       Discr          : Entity_Id;
       First_Arg      : Node_Id;
       Full_Init_Type : Entity_Id;
-      Full_Type      : Entity_Id := Typ;
+      Full_Type      : Entity_Id;
       Init_Type      : Entity_Id;
       Proc           : Entity_Id;
 
@@ -1480,30 +1474,42 @@ package body Exp_Ch3 is
       --  Nothing to do if the Init_Proc is null, unless Initialize_Scalars
       --  is active (in which case we make the call anyway, since in the
       --  actual compiled client it may be non null).
-      --  Also nothing to do for value types.
 
-      if (Is_Null_Init_Proc (Proc) and then not Init_Or_Norm_Scalars)
-        or else Is_Value_Type (Typ)
-        or else
-          (Is_Array_Type (Typ) and then Is_Value_Type (Component_Type (Typ)))
-      then
+      if Is_Null_Init_Proc (Proc) and then not Init_Or_Norm_Scalars then
          return Empty_List;
       end if;
 
-      --  Go to full view or underlying full view if private type. In the case
-      --  of successive private derivations, this can require two steps.
+      --  Use the [underlying] full view when dealing with a private type. This
+      --  may require several steps depending on derivations.
 
-      if Is_Private_Type (Full_Type)
-        and then Present (Full_View (Full_Type))
-      then
-         Full_Type := Full_View (Full_Type);
-      end if;
+      Full_Type := Typ;
+      loop
+         if Is_Private_Type (Full_Type) then
+            if Present (Full_View (Full_Type)) then
+               Full_Type := Full_View (Full_Type);
 
-      if Is_Private_Type (Full_Type)
-        and then Present (Underlying_Full_View (Full_Type))
-      then
-         Full_Type := Underlying_Full_View (Full_Type);
-      end if;
+            elsif Present (Underlying_Full_View (Full_Type)) then
+               Full_Type := Underlying_Full_View (Full_Type);
+
+            --  When a private type acts as a generic actual and lacks a full
+            --  view, use the base type.
+
+            elsif Is_Generic_Actual_Type (Full_Type) then
+               Full_Type := Base_Type (Full_Type);
+
+            --  The loop has recovered the [underlying] full view, stop the
+            --  traversal.
+
+            else
+               exit;
+            end if;
+
+         --  The type is not private, nothing to do
+
+         else
+            exit;
+         end if;
+      end loop;
 
       --  If Typ is derived, the procedure is the initialization procedure for
       --  the root type. Wrap the argument in an conversion to make it type
@@ -1574,7 +1580,6 @@ package body Exp_Ch3 is
 
       if Has_Discriminants (Full_Init_Type) then
          Discr := First_Discriminant (Full_Init_Type);
-
          while Present (Discr) loop
 
             --  If this is a discriminated concurrent type, the init_proc
@@ -1715,7 +1720,7 @@ package body Exp_Ch3 is
       Decls     : constant List_Id  := New_List;
       Discr_Map : constant Elist_Id := New_Elmt_List;
       Loc       : constant Source_Ptr := Sloc (Rec_Ent);
-      Counter   : Int := 0;
+      Counter   : Nat := 0;
       Proc_Id   : Entity_Id;
       Rec_Type  : Entity_Id;
       Set_Tag   : Entity_Id := Empty;
@@ -1845,8 +1850,8 @@ package body Exp_Ch3 is
          Set_No_Ctrl_Actions (First (Res));
 
          --  Adjust the tag if tagged (because of possible view conversions).
-         --  Suppress the tag adjustment when VM_Target because VM tags are
-         --  represented implicitly in objects.
+         --  Suppress the tag adjustment when not Tagged_Type_Expansion because
+         --  tags are represented implicitly in objects.
 
          if Is_Tagged_Type (Typ) and then Tagged_Type_Expansion then
             Append_To (Res,
@@ -2158,8 +2163,8 @@ package body Exp_Ch3 is
       begin
          --  Offset_To_Top_Functions are built only for derivations of types
          --  with discriminants that cover interface types.
-         --  Nothing is needed either in case of virtual machines, since
-         --  interfaces are handled directly by the VM.
+         --  Nothing is needed either in case of virtual targets, since
+         --  interfaces are handled directly by the target.
 
          if not Is_Tagged_Type (Rec_Type)
            or else Etype (Rec_Type) = Rec_Type
@@ -2372,7 +2377,44 @@ package body Exp_Ch3 is
                   --  generated.
 
                   if not Is_Interface (Etype (Rec_Ent)) then
-                     Prepend_To (Body_Stmts, Remove_Head (Stmts));
+                     declare
+                        Parent_IP : constant Name_Id :=
+                                      Make_Init_Proc_Name (Etype (Rec_Ent));
+                        Stmt      : Node_Id;
+                        IP_Call   : Node_Id;
+                        IP_Stmts  : List_Id;
+
+                     begin
+                        --  Look for a call to the parent IP at the beginning
+                        --  of Stmts associated with the record extension
+
+                        Stmt := First (Stmts);
+                        IP_Call := Empty;
+                        while Present (Stmt) loop
+                           if Nkind (Stmt) = N_Procedure_Call_Statement
+                             and then Chars (Name (Stmt)) = Parent_IP
+                           then
+                              IP_Call := Stmt;
+                              exit;
+                           end if;
+
+                           Next (Stmt);
+                        end loop;
+
+                        --  If found then move it to the beginning of the
+                        --  statements of this IP routine
+
+                        if Present (IP_Call) then
+                           IP_Stmts := New_List;
+                           loop
+                              Stmt := Remove_Head (Stmts);
+                              Append_To (IP_Stmts, Stmt);
+                              exit when Stmt = IP_Call;
+                           end loop;
+
+                           Prepend_List_To (Body_Stmts, IP_Stmts);
+                        end if;
+                     end;
                   end if;
 
                   Append_List_To (Body_Stmts, Stmts);
@@ -2386,10 +2428,10 @@ package body Exp_Ch3 is
 
          --     _Init._Tag := Typ'Tag;
 
-         --  Suppress the tag assignment when VM_Target because VM tags are
-         --  represented implicitly in objects. It is also suppressed in case
-         --  of CPP_Class types because in this case the tag is initialized in
-         --  the C++ side.
+         --  Suppress the tag assignment when not Tagged_Type_Expansion because
+         --  tags are represented implicitly in objects. It is also suppressed
+         --  in case of CPP_Class types because in this case the tag is
+         --  initialized in the C++ side.
 
          if Is_Tagged_Type (Rec_Type)
            and then Tagged_Type_Expansion
@@ -2641,11 +2683,7 @@ package body Exp_Ch3 is
            --  list by Insert_Actions.
 
            and then Nkind (First_Non_SCIL_Node (Body_Stmts)) = N_Null_Statement
-           and then VM_Target = No_VM
          then
-            --  Even though the init proc may be null at this time it might get
-            --  some stuff added to it later by the VM backend.
-
             Set_Is_Null_Init_Proc (Proc_Id);
          end if;
       end Build_Init_Procedure;
@@ -2655,15 +2693,16 @@ package body Exp_Ch3 is
       ---------------------------
 
       function Build_Init_Statements (Comp_List : Node_Id) return List_Id is
-         Checks     : constant List_Id := New_List;
-         Actions    : List_Id   := No_List;
-         Comp_Loc   : Source_Ptr;
-         Counter_Id : Entity_Id := Empty;
-         Decl       : Node_Id;
-         Has_POC    : Boolean;
-         Id         : Entity_Id;
-         Stmts      : List_Id;
-         Typ        : Entity_Id;
+         Checks       : constant List_Id := New_List;
+         Actions      : List_Id          := No_List;
+         Counter_Id   : Entity_Id        := Empty;
+         Comp_Loc     : Source_Ptr;
+         Decl         : Node_Id;
+         Has_POC      : Boolean;
+         Id           : Entity_Id;
+         Parent_Stmts : List_Id;
+         Stmts        : List_Id;
+         Typ          : Entity_Id;
 
          procedure Increment_Counter (Loc : Source_Ptr);
          --  Generate an "increment by one" statement for the current counter
@@ -2727,6 +2766,7 @@ package body Exp_Ch3 is
             return New_List (Make_Null_Statement (Loc));
          end if;
 
+         Parent_Stmts := New_List;
          Stmts := New_List;
 
          --  Loop through visible declarations of task types and protected
@@ -2956,28 +2996,41 @@ package body Exp_Ch3 is
                end if;
 
                if Present (Checks) then
-                  Append_List_To (Stmts, Checks);
+                  if Chars (Id) = Name_uParent then
+                     Append_List_To (Parent_Stmts, Checks);
+                  else
+                     Append_List_To (Stmts, Checks);
+                  end if;
                end if;
 
                if Present (Actions) then
-                  Append_List_To (Stmts, Actions);
+                  if Chars (Id) = Name_uParent then
+                     Append_List_To (Parent_Stmts, Actions);
 
-                  --  Preserve the initialization state in the current counter
+                  else
+                     Append_List_To (Stmts, Actions);
 
-                  if Chars (Id) /= Name_uParent
-                    and then Needs_Finalization (Typ)
-                  then
-                     if No (Counter_Id) then
-                        Make_Counter (Comp_Loc);
+                     --  Preserve initialization state in the current counter
+
+                     if Needs_Finalization (Typ) then
+                        if No (Counter_Id) then
+                           Make_Counter (Comp_Loc);
+                        end if;
+
+                        Increment_Counter (Comp_Loc);
                      end if;
-
-                     Increment_Counter (Comp_Loc);
                   end if;
                end if;
             end if;
 
             Next_Non_Pragma (Decl);
          end loop;
+
+         --  The parent field must be initialized first because variable
+         --  size components of the parent affect the location of all the
+         --  new components.
+
+         Prepend_List_To (Stmts, Parent_Stmts);
 
          --  Set up tasks and protected object support. This needs to be done
          --  before any component with a per-object access discriminant
@@ -3227,7 +3280,6 @@ package body Exp_Ch3 is
             end if;
 
             S := First (Constraints (C));
-
             while Present (S) loop
                Number_Of_Constraints := Number_Of_Constraints + 1;
                Next (S);
@@ -3458,13 +3510,7 @@ package body Exp_Ch3 is
    --  Start of processing for Build_Record_Init_Proc
 
    begin
-      --  Check for value type, which means no initialization required
-
       Rec_Type := Defining_Identifier (N);
-
-      if Is_Value_Type (Rec_Type) then
-         return;
-      end if;
 
       --  This may be full declaration of a private type, in which case
       --  the visible entity is a record, and the private entity has been
@@ -3545,28 +3591,23 @@ package body Exp_Ch3 is
          Build_Offset_To_Top_Functions;
          Build_CPP_Init_Procedure;
          Build_Init_Procedure;
-         Set_Is_Public (Proc_Id, Is_Public (Rec_Ent));
 
-         --  The initialization of protected records is not worth inlining.
-         --  In addition, when compiled for another unit for inlining purposes,
-         --  it may make reference to entities that have not been elaborated
-         --  yet. The initialization of controlled records contains a nested
-         --  clean-up procedure that makes it impractical to inline as well,
-         --  and leads to undefined symbols if inlined in a different unit.
-         --  Similar considerations apply to task types.
-
-         if not Is_Concurrent_Type (Rec_Type)
-           and then not Has_Task (Rec_Type)
-           and then not Needs_Finalization (Rec_Type)
-         then
-            Set_Is_Inlined  (Proc_Id);
-         end if;
-
+         Set_Is_Public      (Proc_Id, Is_Public (Rec_Ent));
          Set_Is_Internal    (Proc_Id);
          Set_Has_Completion (Proc_Id);
 
          if not Debug_Generated_Code then
             Set_Debug_Info_Off (Proc_Id);
+         end if;
+
+         Set_Is_Inlined (Proc_Id, Inline_Init_Proc (Rec_Type));
+
+         --  Do not build an aggregate if Modify_Tree_For_C, this isn't
+         --  needed and may generate early references to non frozen types
+         --  since we expand aggregate much more systematically.
+
+         if Modify_Tree_For_C then
+            return;
          end if;
 
          declare
@@ -3596,10 +3637,9 @@ package body Exp_Ch3 is
                   Set_Itype (Ref, Etype (First_Index (Typ)));
                   Append_Freeze_Action (Rec_Type, Ref);
 
-                  Sub_Aggr := First (Expressions (Comp));
-
                   --  Recurse on nested arrays
 
+                  Sub_Aggr := First (Expressions (Comp));
                   while Present (Sub_Aggr) loop
                      Collect_Itypes (Sub_Aggr);
                      Next (Sub_Aggr);
@@ -3702,10 +3742,12 @@ package body Exp_Ch3 is
             end if;
          end if;
 
+         --  The aspect is type-specific, so retrieve it from the base type
+
          Call :=
            Make_Procedure_Call_Statement (Loc,
              Name                   =>
-               New_Occurrence_Of (Invariant_Procedure (Typ), Loc),
+               New_Occurrence_Of (Invariant_Procedure (Base_Type (Typ)), Loc),
              Parameter_Associations => New_List (Sel_Comp));
 
          if Is_Access_Type (Etype (Comp)) then
@@ -3738,7 +3780,7 @@ package body Exp_Ch3 is
          Decl := First_Non_Pragma (Component_Items (Comp_List));
          while Present (Decl) loop
             if Nkind (Decl) = N_Component_Declaration then
-               Id  := Defining_Identifier (Decl);
+               Id := Defining_Identifier (Decl);
 
                if Has_Invariants (Etype (Id))
                  and then In_Open_Scopes (Scope (R_Type))
@@ -4529,130 +4571,1137 @@ package body Exp_Ch3 is
       end if;
    end Check_Stream_Attributes;
 
-   -----------------------------
-   -- Expand_Record_Extension --
-   -----------------------------
+   ----------------------
+   -- Clean_Task_Names --
+   ----------------------
 
-   --  Add a field _parent at the beginning of the record extension. This is
-   --  used to implement inheritance. Here are some examples of expansion:
+   procedure Clean_Task_Names
+     (Typ     : Entity_Id;
+      Proc_Id : Entity_Id)
+   is
+   begin
+      if Has_Task (Typ)
+        and then not Restriction_Active (No_Implicit_Heap_Allocations)
+        and then not Global_Discard_Names
+        and then Tagged_Type_Expansion
+      then
+         Set_Uses_Sec_Stack (Proc_Id);
+      end if;
+   end Clean_Task_Names;
 
-   --  1. no discriminants
-   --      type T2 is new T1 with null record;
-   --   gives
-   --      type T2 is new T1 with record
-   --        _Parent : T1;
-   --      end record;
+   ------------------------------
+   -- Expand_Freeze_Array_Type --
+   ------------------------------
 
-   --  2. renamed discriminants
-   --    type T2 (B, C : Int) is new T1 (A => B) with record
-   --       _Parent : T1 (A => B);
-   --       D : Int;
-   --    end;
+   procedure Expand_Freeze_Array_Type (N : Node_Id) is
+      Typ      : constant Entity_Id := Entity (N);
+      Base     : constant Entity_Id := Base_Type (Typ);
+      Comp_Typ : constant Entity_Id := Component_Type (Typ);
 
-   --  3. inherited discriminants
-   --    type T2 is new T1 with record -- discriminant A inherited
-   --       _Parent : T1 (A);
-   --       D : Int;
-   --    end;
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
 
-   procedure Expand_Record_Extension (T : Entity_Id; Def : Node_Id) is
-      Indic        : constant Node_Id    := Subtype_Indication (Def);
-      Loc          : constant Source_Ptr := Sloc (Def);
-      Rec_Ext_Part : Node_Id             := Record_Extension_Part (Def);
-      Par_Subtype  : Entity_Id;
-      Comp_List    : Node_Id;
-      Comp_Decl    : Node_Id;
-      Parent_N     : Node_Id;
-      D            : Entity_Id;
-      List_Constr  : constant List_Id    := New_List;
+      Ins_Node : Node_Id;
 
    begin
-      --  Expand_Record_Extension is called directly from the semantics, so
-      --  we must check to see whether expansion is active before proceeding,
-      --  because this affects the visibility of selected components in bodies
-      --  of instances.
+      --  Ensure that all freezing activities are properly flagged as Ghost
 
-      if not Expander_Active then
+      Set_Ghost_Mode_From_Entity (Typ);
+
+      if not Is_Bit_Packed_Array (Typ) then
+
+         --  If the component contains tasks, so does the array type. This may
+         --  not be indicated in the array type because the component may have
+         --  been a private type at the point of definition. Same if component
+         --  type is controlled or contains protected objects.
+
+         Set_Has_Task       (Base, Has_Task      (Comp_Typ));
+         Set_Has_Protected  (Base, Has_Protected (Comp_Typ));
+         Set_Has_Controlled_Component
+                            (Base, Has_Controlled_Component
+                                                 (Comp_Typ)
+                                     or else
+                                   Is_Controlled (Comp_Typ));
+
+         if No (Init_Proc (Base)) then
+
+            --  If this is an anonymous array created for a declaration with
+            --  an initial value, its init_proc will never be called. The
+            --  initial value itself may have been expanded into assignments,
+            --  in which case the object declaration is carries the
+            --  No_Initialization flag.
+
+            if Is_Itype (Base)
+              and then Nkind (Associated_Node_For_Itype (Base)) =
+                                                    N_Object_Declaration
+              and then
+                (Present (Expression (Associated_Node_For_Itype (Base)))
+                  or else No_Initialization (Associated_Node_For_Itype (Base)))
+            then
+               null;
+
+            --  We do not need an init proc for string or wide [wide] string,
+            --  since the only time these need initialization in normalize or
+            --  initialize scalars mode, and these types are treated specially
+            --  and do not need initialization procedures.
+
+            elsif Is_Standard_String_Type (Base) then
+               null;
+
+            --  Otherwise we have to build an init proc for the subtype
+
+            else
+               Build_Array_Init_Proc (Base, N);
+            end if;
+         end if;
+
+         if Typ = Base then
+            if Has_Controlled_Component (Base) then
+               Build_Controlling_Procs (Base);
+
+               if not Is_Limited_Type (Comp_Typ)
+                 and then Number_Dimensions (Typ) = 1
+               then
+                  Build_Slice_Assignment (Typ);
+               end if;
+            end if;
+
+            --  Create a finalization master to service the anonymous access
+            --  components of the array.
+
+            if Ekind (Comp_Typ) = E_Anonymous_Access_Type
+              and then Needs_Finalization (Designated_Type (Comp_Typ))
+            then
+               --  The finalization master is inserted before the declaration
+               --  of the array type. The only exception to this is when the
+               --  array type is an itype, in which case the master appears
+               --  before the related context.
+
+               if Is_Itype (Typ) then
+                  Ins_Node := Associated_Node_For_Itype (Typ);
+               else
+                  Ins_Node := Parent (Typ);
+               end if;
+
+               Build_Finalization_Master
+                 (Typ            => Comp_Typ,
+                  For_Anonymous  => True,
+                  Context_Scope  => Scope (Typ),
+                  Insertion_Node => Ins_Node);
+            end if;
+         end if;
+
+      --  For packed case, default initialization, except if the component type
+      --  is itself a packed structure with an initialization procedure, or
+      --  initialize/normalize scalars active, and we have a base type, or the
+      --  type is public, because in that case a client might specify
+      --  Normalize_Scalars and there better be a public Init_Proc for it.
+
+      elsif (Present (Init_Proc (Component_Type (Base)))
+              and then No (Base_Init_Proc (Base)))
+        or else (Init_Or_Norm_Scalars and then Base = Typ)
+        or else Is_Public (Typ)
+      then
+         Build_Array_Init_Proc (Base, N);
+      end if;
+
+      if Has_Invariants (Component_Type (Base))
+        and then Typ = Base
+        and then In_Open_Scopes (Scope (Component_Type (Base)))
+      then
+         --  Generate component invariant checking procedure. This is only
+         --  relevant if the array type is within the scope of the component
+         --  type. Otherwise an array object can only be built using the public
+         --  subprograms for the component type, and calls to those will have
+         --  invariant checks. The invariant procedure is only generated for
+         --  a base type, not a subtype.
+
+         Insert_Component_Invariant_Checks
+           (N, Base, Build_Array_Invariant_Proc (Base, N));
+      end if;
+
+      Ghost_Mode := Save_Ghost_Mode;
+   end Expand_Freeze_Array_Type;
+
+   -----------------------------------
+   -- Expand_Freeze_Class_Wide_Type --
+   -----------------------------------
+
+   procedure Expand_Freeze_Class_Wide_Type (N : Node_Id) is
+      function Is_C_Derivation (Typ : Entity_Id) return Boolean;
+      --  Given a type, determine whether it is derived from a C or C++ root
+
+      ---------------------
+      -- Is_C_Derivation --
+      ---------------------
+
+      function Is_C_Derivation (Typ : Entity_Id) return Boolean is
+         T : Entity_Id;
+
+      begin
+         T := Typ;
+         loop
+            if Is_CPP_Class (T)
+              or else Convention (T) = Convention_C
+              or else Convention (T) = Convention_CPP
+            then
+               return True;
+            end if;
+
+            exit when T = Etype (T);
+
+            T := Etype (T);
+         end loop;
+
+         return False;
+      end Is_C_Derivation;
+
+      --  Local variables
+
+      Typ  : constant Entity_Id := Entity (N);
+      Root : constant Entity_Id := Root_Type (Typ);
+
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
+   --  Start of processing for Expand_Freeze_Class_Wide_Type
+
+   begin
+      --  Certain run-time configurations and targets do not provide support
+      --  for controlled types.
+
+      if Restriction_Active (No_Finalization) then
+         return;
+
+      --  Do not create TSS routine Finalize_Address when dispatching calls are
+      --  disabled since the core of the routine is a dispatching call.
+
+      elsif Restriction_Active (No_Dispatching_Calls) then
+         return;
+
+      --  Do not create TSS routine Finalize_Address for concurrent class-wide
+      --  types. Ignore C, C++, CIL and Java types since it is assumed that the
+      --  non-Ada side will handle their destruction.
+
+      elsif Is_Concurrent_Type (Root)
+        or else Is_C_Derivation (Root)
+        or else Convention (Typ) = Convention_CPP
+      then
+         return;
+
+      --  Do not create TSS routine Finalize_Address when compiling in CodePeer
+      --  mode since the routine contains an Unchecked_Conversion.
+
+      elsif CodePeer_Mode then
          return;
       end if;
 
-      --  This may be a derivation of an untagged private type whose full
-      --  view is tagged, in which case the Derived_Type_Definition has no
-      --  extension part. Build an empty one now.
+      --  Ensure that all freezing activities are properly flagged as Ghost
 
-      if No (Rec_Ext_Part) then
-         Rec_Ext_Part :=
-           Make_Record_Definition (Loc,
-             End_Label      => Empty,
-             Component_List => Empty,
-             Null_Present   => True);
+      Set_Ghost_Mode_From_Entity (Typ);
 
-         Set_Record_Extension_Part (Def, Rec_Ext_Part);
-         Mark_Rewrite_Insertion (Rec_Ext_Part);
-      end if;
+      --  Create the body of TSS primitive Finalize_Address. This automatically
+      --  sets the TSS entry for the class-wide type.
 
-      Comp_List := Component_List (Rec_Ext_Part);
+      Make_Finalize_Address_Body (Typ);
+      Ghost_Mode := Save_Ghost_Mode;
+   end Expand_Freeze_Class_Wide_Type;
 
-      Parent_N := Make_Defining_Identifier (Loc, Name_uParent);
+   ------------------------------------
+   -- Expand_Freeze_Enumeration_Type --
+   ------------------------------------
 
-      --  If the derived type inherits its discriminants the type of the
-      --  _parent field must be constrained by the inherited discriminants
+   procedure Expand_Freeze_Enumeration_Type (N : Node_Id) is
+      Typ : constant Entity_Id  := Entity (N);
+      Loc : constant Source_Ptr := Sloc (Typ);
 
-      if Has_Discriminants (T)
-        and then Nkind (Indic) /= N_Subtype_Indication
-        and then not Is_Constrained (Entity (Indic))
-      then
-         D := First_Discriminant (T);
-         while Present (D) loop
-            Append_To (List_Constr, New_Occurrence_Of (D, Loc));
-            Next_Discriminant (D);
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
+      Arr           : Entity_Id;
+      Ent           : Entity_Id;
+      Fent          : Entity_Id;
+      Is_Contiguous : Boolean;
+      Ityp          : Entity_Id;
+      Last_Repval   : Uint;
+      Lst           : List_Id;
+      Num           : Nat;
+      Pos_Expr      : Node_Id;
+
+      Func : Entity_Id;
+      pragma Warnings (Off, Func);
+
+   begin
+      --  Ensure that all freezing activities are properly flagged as Ghost
+
+      Set_Ghost_Mode_From_Entity (Typ);
+
+      --  Various optimizations possible if given representation is contiguous
+
+      Is_Contiguous := True;
+
+      Ent := First_Literal (Typ);
+      Last_Repval := Enumeration_Rep (Ent);
+
+      Next_Literal (Ent);
+      while Present (Ent) loop
+         if Enumeration_Rep (Ent) - Last_Repval /= 1 then
+            Is_Contiguous := False;
+            exit;
+         else
+            Last_Repval := Enumeration_Rep (Ent);
+         end if;
+
+         Next_Literal (Ent);
+      end loop;
+
+      if Is_Contiguous then
+         Set_Has_Contiguous_Rep (Typ);
+         Ent := First_Literal (Typ);
+         Num := 1;
+         Lst := New_List (New_Occurrence_Of (Ent, Sloc (Ent)));
+
+      else
+         --  Build list of literal references
+
+         Lst := New_List;
+         Num := 0;
+
+         Ent := First_Literal (Typ);
+         while Present (Ent) loop
+            Append_To (Lst, New_Occurrence_Of (Ent, Sloc (Ent)));
+            Num := Num + 1;
+            Next_Literal (Ent);
          end loop;
-
-         Par_Subtype :=
-           Process_Subtype (
-             Make_Subtype_Indication (Loc,
-               Subtype_Mark => New_Occurrence_Of (Entity (Indic), Loc),
-               Constraint   =>
-                 Make_Index_Or_Discriminant_Constraint (Loc,
-                   Constraints => List_Constr)),
-             Def);
-
-      --  Otherwise the original subtype_indication is just what is needed
-
-      else
-         Par_Subtype := Process_Subtype (New_Copy_Tree (Indic), Def);
       end if;
 
-      Set_Parent_Subtype (T, Par_Subtype);
+      --  Now build an array declaration
 
-      Comp_Decl :=
-        Make_Component_Declaration (Loc,
-          Defining_Identifier => Parent_N,
-          Component_Definition =>
-            Make_Component_Definition (Loc,
-              Aliased_Present => False,
-              Subtype_Indication => New_Occurrence_Of (Par_Subtype, Loc)));
+      --    typA : array (Natural range 0 .. num - 1) of ctype :=
+      --             (v, v, v, v, v, ....)
 
-      if Null_Present (Rec_Ext_Part) then
-         Set_Component_List (Rec_Ext_Part,
-           Make_Component_List (Loc,
-             Component_Items => New_List (Comp_Decl),
-             Variant_Part => Empty,
-             Null_Present => False));
-         Set_Null_Present (Rec_Ext_Part, False);
+      --  where ctype is the corresponding integer type. If the representation
+      --  is contiguous, we only keep the first literal, which provides the
+      --  offset for Pos_To_Rep computations.
 
-      elsif Null_Present (Comp_List)
-        or else Is_Empty_List (Component_Items (Comp_List))
+      Arr :=
+        Make_Defining_Identifier (Loc,
+          Chars => New_External_Name (Chars (Typ), 'A'));
+
+      Append_Freeze_Action (Typ,
+        Make_Object_Declaration (Loc,
+          Defining_Identifier => Arr,
+          Constant_Present    => True,
+
+          Object_Definition   =>
+            Make_Constrained_Array_Definition (Loc,
+              Discrete_Subtype_Definitions => New_List (
+                Make_Subtype_Indication (Loc,
+                  Subtype_Mark => New_Occurrence_Of (Standard_Natural, Loc),
+                  Constraint =>
+                    Make_Range_Constraint (Loc,
+                      Range_Expression =>
+                        Make_Range (Loc,
+                          Low_Bound  =>
+                            Make_Integer_Literal (Loc, 0),
+                          High_Bound =>
+                            Make_Integer_Literal (Loc, Num - 1))))),
+
+              Component_Definition =>
+                Make_Component_Definition (Loc,
+                  Aliased_Present => False,
+                  Subtype_Indication => New_Occurrence_Of (Typ, Loc))),
+
+          Expression =>
+            Make_Aggregate (Loc,
+              Expressions => Lst)));
+
+      Set_Enum_Pos_To_Rep (Typ, Arr);
+
+      --  Now we build the function that converts representation values to
+      --  position values. This function has the form:
+
+      --    function _Rep_To_Pos (A : etype; F : Boolean) return Integer is
+      --    begin
+      --       case ityp!(A) is
+      --         when enum-lit'Enum_Rep => return posval;
+      --         when enum-lit'Enum_Rep => return posval;
+      --         ...
+      --         when others   =>
+      --           [raise Constraint_Error when F "invalid data"]
+      --           return -1;
+      --       end case;
+      --    end;
+
+      --  Note: the F parameter determines whether the others case (no valid
+      --  representation) raises Constraint_Error or returns a unique value
+      --  of minus one. The latter case is used, e.g. in 'Valid code.
+
+      --  Note: the reason we use Enum_Rep values in the case here is to avoid
+      --  the code generator making inappropriate assumptions about the range
+      --  of the values in the case where the value is invalid. ityp is a
+      --  signed or unsigned integer type of appropriate width.
+
+      --  Note: if exceptions are not supported, then we suppress the raise
+      --  and return -1 unconditionally (this is an erroneous program in any
+      --  case and there is no obligation to raise Constraint_Error here). We
+      --  also do this if pragma Restrictions (No_Exceptions) is active.
+
+      --  Is this right??? What about No_Exception_Propagation???
+
+      --  Representations are signed
+
+      if Enumeration_Rep (First_Literal (Typ)) < 0 then
+
+         --  The underlying type is signed. Reset the Is_Unsigned_Type
+         --  explicitly, because it might have been inherited from
+         --  parent type.
+
+         Set_Is_Unsigned_Type (Typ, False);
+
+         if Esize (Typ) <= Standard_Integer_Size then
+            Ityp := Standard_Integer;
+         else
+            Ityp := Universal_Integer;
+         end if;
+
+      --  Representations are unsigned
+
+      else
+         if Esize (Typ) <= Standard_Integer_Size then
+            Ityp := RTE (RE_Unsigned);
+         else
+            Ityp := RTE (RE_Long_Long_Unsigned);
+         end if;
+      end if;
+
+      --  The body of the function is a case statement. First collect case
+      --  alternatives, or optimize the contiguous case.
+
+      Lst := New_List;
+
+      --  If representation is contiguous, Pos is computed by subtracting
+      --  the representation of the first literal.
+
+      if Is_Contiguous then
+         Ent := First_Literal (Typ);
+
+         if Enumeration_Rep (Ent) = Last_Repval then
+
+            --  Another special case: for a single literal, Pos is zero
+
+            Pos_Expr := Make_Integer_Literal (Loc, Uint_0);
+
+         else
+            Pos_Expr :=
+              Convert_To (Standard_Integer,
+                Make_Op_Subtract (Loc,
+                  Left_Opnd  =>
+                    Unchecked_Convert_To
+                     (Ityp, Make_Identifier (Loc, Name_uA)),
+                  Right_Opnd =>
+                    Make_Integer_Literal (Loc,
+                      Intval => Enumeration_Rep (First_Literal (Typ)))));
+         end if;
+
+         Append_To (Lst,
+           Make_Case_Statement_Alternative (Loc,
+             Discrete_Choices => New_List (
+               Make_Range (Sloc (Enumeration_Rep_Expr (Ent)),
+                 Low_Bound =>
+                   Make_Integer_Literal (Loc,
+                    Intval =>  Enumeration_Rep (Ent)),
+                 High_Bound =>
+                   Make_Integer_Literal (Loc, Intval => Last_Repval))),
+
+             Statements => New_List (
+               Make_Simple_Return_Statement (Loc,
+                 Expression => Pos_Expr))));
+
+      else
+         Ent := First_Literal (Typ);
+         while Present (Ent) loop
+            Append_To (Lst,
+              Make_Case_Statement_Alternative (Loc,
+                Discrete_Choices => New_List (
+                  Make_Integer_Literal (Sloc (Enumeration_Rep_Expr (Ent)),
+                    Intval => Enumeration_Rep (Ent))),
+
+                Statements => New_List (
+                  Make_Simple_Return_Statement (Loc,
+                    Expression =>
+                      Make_Integer_Literal (Loc,
+                        Intval => Enumeration_Pos (Ent))))));
+
+            Next_Literal (Ent);
+         end loop;
+      end if;
+
+      --  In normal mode, add the others clause with the test
+
+      if not No_Exception_Handlers_Set then
+         Append_To (Lst,
+           Make_Case_Statement_Alternative (Loc,
+             Discrete_Choices => New_List (Make_Others_Choice (Loc)),
+             Statements => New_List (
+               Make_Raise_Constraint_Error (Loc,
+                 Condition => Make_Identifier (Loc, Name_uF),
+                 Reason    => CE_Invalid_Data),
+               Make_Simple_Return_Statement (Loc,
+                 Expression =>
+                   Make_Integer_Literal (Loc, -1)))));
+
+      --  If either of the restrictions No_Exceptions_Handlers/Propagation is
+      --  active then return -1 (we cannot usefully raise Constraint_Error in
+      --  this case). See description above for further details.
+
+      else
+         Append_To (Lst,
+           Make_Case_Statement_Alternative (Loc,
+             Discrete_Choices => New_List (Make_Others_Choice (Loc)),
+             Statements => New_List (
+               Make_Simple_Return_Statement (Loc,
+                 Expression =>
+                   Make_Integer_Literal (Loc, -1)))));
+      end if;
+
+      --  Now we can build the function body
+
+      Fent :=
+        Make_Defining_Identifier (Loc, Make_TSS_Name (Typ, TSS_Rep_To_Pos));
+
+      Func :=
+        Make_Subprogram_Body (Loc,
+          Specification =>
+            Make_Function_Specification (Loc,
+              Defining_Unit_Name       => Fent,
+              Parameter_Specifications => New_List (
+                Make_Parameter_Specification (Loc,
+                  Defining_Identifier =>
+                    Make_Defining_Identifier (Loc, Name_uA),
+                  Parameter_Type => New_Occurrence_Of (Typ, Loc)),
+                Make_Parameter_Specification (Loc,
+                  Defining_Identifier =>
+                    Make_Defining_Identifier (Loc, Name_uF),
+                  Parameter_Type =>
+                    New_Occurrence_Of (Standard_Boolean, Loc))),
+
+              Result_Definition => New_Occurrence_Of (Standard_Integer, Loc)),
+
+            Declarations => Empty_List,
+
+            Handled_Statement_Sequence =>
+              Make_Handled_Sequence_Of_Statements (Loc,
+                Statements => New_List (
+                  Make_Case_Statement (Loc,
+                    Expression =>
+                      Unchecked_Convert_To
+                        (Ityp, Make_Identifier (Loc, Name_uA)),
+                    Alternatives => Lst))));
+
+      Set_TSS (Typ, Fent);
+
+      --  Set Pure flag (it will be reset if the current context is not Pure).
+      --  We also pretend there was a pragma Pure_Function so that for purposes
+      --  of optimization and constant-folding, we will consider the function
+      --  Pure even if we are not in a Pure context).
+
+      Set_Is_Pure (Fent);
+      Set_Has_Pragma_Pure_Function (Fent);
+
+      --  Unless we are in -gnatD mode, where we are debugging generated code,
+      --  this is an internal entity for which we don't need debug info.
+
+      if not Debug_Generated_Code then
+         Set_Debug_Info_Off (Fent);
+      end if;
+
+      Ghost_Mode := Save_Ghost_Mode;
+
+   exception
+      when RE_Not_Available =>
+         Ghost_Mode := Save_Ghost_Mode;
+         return;
+   end Expand_Freeze_Enumeration_Type;
+
+   -------------------------------
+   -- Expand_Freeze_Record_Type --
+   -------------------------------
+
+   procedure Expand_Freeze_Record_Type (N : Node_Id) is
+      Typ      : constant Node_Id := Entity (N);
+      Typ_Decl : constant Node_Id := Parent (Typ);
+
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
+      Comp        : Entity_Id;
+      Comp_Typ    : Entity_Id;
+      Has_AACC    : Boolean;
+      Predef_List : List_Id;
+
+      Renamed_Eq : Node_Id := Empty;
+      --  Defining unit name for the predefined equality function in the case
+      --  where the type has a primitive operation that is a renaming of
+      --  predefined equality (but only if there is also an overriding
+      --  user-defined equality function). Used to pass this entity from
+      --  Make_Predefined_Primitive_Specs to Predefined_Primitive_Bodies.
+
+      Wrapper_Decl_List : List_Id := No_List;
+      Wrapper_Body_List : List_Id := No_List;
+
+   --  Start of processing for Expand_Freeze_Record_Type
+
+   begin
+      --  Ensure that all freezing activities are properly flagged as Ghost
+
+      Set_Ghost_Mode_From_Entity (Typ);
+
+      --  Build discriminant checking functions if not a derived type (for
+      --  derived types that are not tagged types, always use the discriminant
+      --  checking functions of the parent type). However, for untagged types
+      --  the derivation may have taken place before the parent was frozen, so
+      --  we copy explicitly the discriminant checking functions from the
+      --  parent into the components of the derived type.
+
+      if not Is_Derived_Type (Typ)
+        or else Has_New_Non_Standard_Rep (Typ)
+        or else Is_Tagged_Type (Typ)
       then
-         Set_Component_Items (Comp_List, New_List (Comp_Decl));
-         Set_Null_Present (Comp_List, False);
+         Build_Discr_Checking_Funcs (Typ_Decl);
 
-      else
-         Insert_Before (First (Component_Items (Comp_List)), Comp_Decl);
+      elsif Is_Derived_Type (Typ)
+        and then not Is_Tagged_Type (Typ)
+
+        --  If we have a derived Unchecked_Union, we do not inherit the
+        --  discriminant checking functions from the parent type since the
+        --  discriminants are non existent.
+
+        and then not Is_Unchecked_Union (Typ)
+        and then Has_Discriminants (Typ)
+      then
+         declare
+            Old_Comp : Entity_Id;
+
+         begin
+            Old_Comp :=
+              First_Component (Base_Type (Underlying_Type (Etype (Typ))));
+            Comp := First_Component (Typ);
+            while Present (Comp) loop
+               if Ekind (Comp) = E_Component
+                 and then Chars (Comp) = Chars (Old_Comp)
+               then
+                  Set_Discriminant_Checking_Func
+                    (Comp, Discriminant_Checking_Func (Old_Comp));
+               end if;
+
+               Next_Component (Old_Comp);
+               Next_Component (Comp);
+            end loop;
+         end;
       end if;
 
-      Analyze (Comp_Decl);
-   end Expand_Record_Extension;
+      if Is_Derived_Type (Typ)
+        and then Is_Limited_Type (Typ)
+        and then Is_Tagged_Type (Typ)
+      then
+         Check_Stream_Attributes (Typ);
+      end if;
+
+      --  Update task, protected, and controlled component flags, because some
+      --  of the component types may have been private at the point of the
+      --  record declaration. Detect anonymous access-to-controlled components.
+
+      Has_AACC := False;
+
+      Comp := First_Component (Typ);
+      while Present (Comp) loop
+         Comp_Typ := Etype (Comp);
+
+         if Has_Task (Comp_Typ) then
+            Set_Has_Task (Typ);
+         end if;
+
+         if Has_Protected (Comp_Typ) then
+            Set_Has_Protected (Typ);
+         end if;
+
+         --  Do not set Has_Controlled_Component on a class-wide equivalent
+         --  type. See Make_CW_Equivalent_Type.
+
+         if not Is_Class_Wide_Equivalent_Type (Typ)
+           and then
+             (Has_Controlled_Component (Comp_Typ)
+               or else (Chars (Comp) /= Name_uParent
+                         and then (Is_Controlled_Active (Comp_Typ))))
+         then
+            Set_Has_Controlled_Component (Typ);
+         end if;
+
+         --  Non-self-referential anonymous access-to-controlled component
+
+         if Ekind (Comp_Typ) = E_Anonymous_Access_Type
+           and then Needs_Finalization (Designated_Type (Comp_Typ))
+           and then Designated_Type (Comp_Typ) /= Typ
+         then
+            Has_AACC := True;
+         end if;
+
+         Next_Component (Comp);
+      end loop;
+
+      --  Handle constructors of untagged CPP_Class types
+
+      if not Is_Tagged_Type (Typ) and then Is_CPP_Class (Typ) then
+         Set_CPP_Constructors (Typ);
+      end if;
+
+      --  Creation of the Dispatch Table. Note that a Dispatch Table is built
+      --  for regular tagged types as well as for Ada types deriving from a C++
+      --  Class, but not for tagged types directly corresponding to C++ classes
+      --  In the later case we assume that it is created in the C++ side and we
+      --  just use it.
+
+      if Is_Tagged_Type (Typ) then
+
+         --  Add the _Tag component
+
+         if Underlying_Type (Etype (Typ)) = Typ then
+            Expand_Tagged_Root (Typ);
+         end if;
+
+         if Is_CPP_Class (Typ) then
+            Set_All_DT_Position (Typ);
+
+            --  Create the tag entities with a minimum decoration
+
+            if Tagged_Type_Expansion then
+               Append_Freeze_Actions (Typ, Make_Tags (Typ));
+            end if;
+
+            Set_CPP_Constructors (Typ);
+
+         else
+            if not Building_Static_DT (Typ) then
+
+               --  Usually inherited primitives are not delayed but the first
+               --  Ada extension of a CPP_Class is an exception since the
+               --  address of the inherited subprogram has to be inserted in
+               --  the new Ada Dispatch Table and this is a freezing action.
+
+               --  Similarly, if this is an inherited operation whose parent is
+               --  not frozen yet, it is not in the DT of the parent, and we
+               --  generate an explicit freeze node for the inherited operation
+               --  so it is properly inserted in the DT of the current type.
+
+               declare
+                  Elmt : Elmt_Id;
+                  Subp : Entity_Id;
+
+               begin
+                  Elmt := First_Elmt (Primitive_Operations (Typ));
+                  while Present (Elmt) loop
+                     Subp := Node (Elmt);
+
+                     if Present (Alias (Subp)) then
+                        if Is_CPP_Class (Etype (Typ)) then
+                           Set_Has_Delayed_Freeze (Subp);
+
+                        elsif Has_Delayed_Freeze (Alias (Subp))
+                          and then not Is_Frozen (Alias (Subp))
+                        then
+                           Set_Is_Frozen (Subp, False);
+                           Set_Has_Delayed_Freeze (Subp);
+                        end if;
+                     end if;
+
+                     Next_Elmt (Elmt);
+                  end loop;
+               end;
+            end if;
+
+            --  Unfreeze momentarily the type to add the predefined primitives
+            --  operations. The reason we unfreeze is so that these predefined
+            --  operations will indeed end up as primitive operations (which
+            --  must be before the freeze point).
+
+            Set_Is_Frozen (Typ, False);
+
+            --  Do not add the spec of predefined primitives in case of
+            --  CPP tagged type derivations that have convention CPP.
+
+            if Is_CPP_Class (Root_Type (Typ))
+              and then Convention (Typ) = Convention_CPP
+            then
+               null;
+
+            --  Do not add the spec of the predefined primitives if we are
+            --  compiling under restriction No_Dispatching_Calls.
+
+            elsif not Restriction_Active (No_Dispatching_Calls) then
+               Make_Predefined_Primitive_Specs (Typ, Predef_List, Renamed_Eq);
+               Insert_List_Before_And_Analyze (N, Predef_List);
+            end if;
+
+            --  Ada 2005 (AI-391): For a nonabstract null extension, create
+            --  wrapper functions for each nonoverridden inherited function
+            --  with a controlling result of the type. The wrapper for such
+            --  a function returns an extension aggregate that invokes the
+            --  parent function.
+
+            if Ada_Version >= Ada_2005
+              and then not Is_Abstract_Type (Typ)
+              and then Is_Null_Extension (Typ)
+            then
+               Make_Controlling_Function_Wrappers
+                 (Typ, Wrapper_Decl_List, Wrapper_Body_List);
+               Insert_List_Before_And_Analyze (N, Wrapper_Decl_List);
+            end if;
+
+            --  Ada 2005 (AI-251): For a nonabstract type extension, build
+            --  null procedure declarations for each set of homographic null
+            --  procedures that are inherited from interface types but not
+            --  overridden. This is done to ensure that the dispatch table
+            --  entry associated with such null primitives are properly filled.
+
+            if Ada_Version >= Ada_2005
+              and then Etype (Typ) /= Typ
+              and then not Is_Abstract_Type (Typ)
+              and then Has_Interfaces (Typ)
+            then
+               Insert_Actions (N, Make_Null_Procedure_Specs (Typ));
+            end if;
+
+            Set_Is_Frozen (Typ);
+
+            if not Is_Derived_Type (Typ)
+              or else Is_Tagged_Type (Etype (Typ))
+            then
+               Set_All_DT_Position (Typ);
+
+            --  If this is a type derived from an untagged private type whose
+            --  full view is tagged, the type is marked tagged for layout
+            --  reasons, but it has no dispatch table.
+
+            elsif Is_Derived_Type (Typ)
+              and then Is_Private_Type (Etype (Typ))
+              and then not Is_Tagged_Type (Etype (Typ))
+            then
+               return;
+            end if;
+
+            --  Create and decorate the tags. Suppress their creation when
+            --  not Tagged_Type_Expansion because the dispatching mechanism is
+            --  handled internally by the virtual target.
+
+            if Tagged_Type_Expansion then
+               Append_Freeze_Actions (Typ, Make_Tags (Typ));
+
+               --  Generate dispatch table of locally defined tagged type.
+               --  Dispatch tables of library level tagged types are built
+               --  later (see Analyze_Declarations).
+
+               if not Building_Static_DT (Typ) then
+                  Append_Freeze_Actions (Typ, Make_DT (Typ));
+               end if;
+            end if;
+
+            --  If the type has unknown discriminants, propagate dispatching
+            --  information to its underlying record view, which does not get
+            --  its own dispatch table.
+
+            if Is_Derived_Type (Typ)
+              and then Has_Unknown_Discriminants (Typ)
+              and then Present (Underlying_Record_View (Typ))
+            then
+               declare
+                  Rep : constant Entity_Id := Underlying_Record_View (Typ);
+               begin
+                  Set_Access_Disp_Table
+                    (Rep, Access_Disp_Table           (Typ));
+                  Set_Dispatch_Table_Wrappers
+                    (Rep, Dispatch_Table_Wrappers     (Typ));
+                  Set_Direct_Primitive_Operations
+                    (Rep, Direct_Primitive_Operations (Typ));
+               end;
+            end if;
+
+            --  Make sure that the primitives Initialize, Adjust and Finalize
+            --  are Frozen before other TSS subprograms. We don't want them
+            --  Frozen inside.
+
+            if Is_Controlled (Typ) then
+               if not Is_Limited_Type (Typ) then
+                  Append_Freeze_Actions (Typ,
+                    Freeze_Entity (Find_Prim_Op (Typ, Name_Adjust), Typ));
+               end if;
+
+               Append_Freeze_Actions (Typ,
+                 Freeze_Entity (Find_Prim_Op (Typ, Name_Initialize), Typ));
+
+               Append_Freeze_Actions (Typ,
+                 Freeze_Entity (Find_Prim_Op (Typ, Name_Finalize), Typ));
+            end if;
+
+            --  Freeze rest of primitive operations. There is no need to handle
+            --  the predefined primitives if we are compiling under restriction
+            --  No_Dispatching_Calls.
+
+            if not Restriction_Active (No_Dispatching_Calls) then
+               Append_Freeze_Actions (Typ, Predefined_Primitive_Freeze (Typ));
+            end if;
+         end if;
+
+      --  In the untagged case, ever since Ada 83 an equality function must
+      --  be  provided for variant records that are not unchecked unions.
+      --  In Ada 2012 the equality function composes, and thus must be built
+      --  explicitly just as for tagged records.
+
+      elsif Has_Discriminants (Typ)
+        and then not Is_Limited_Type (Typ)
+      then
+         declare
+            Comps : constant Node_Id :=
+                      Component_List (Type_Definition (Typ_Decl));
+         begin
+            if Present (Comps)
+              and then Present (Variant_Part (Comps))
+            then
+               Build_Variant_Record_Equality (Typ);
+            end if;
+         end;
+
+      --  Otherwise create primitive equality operation (AI05-0123)
+
+      --  This is done unconditionally to ensure that tools can be linked
+      --  properly with user programs compiled with older language versions.
+      --  In addition, this is needed because "=" composes for bounded strings
+      --  in all language versions (see Exp_Ch4.Expand_Composite_Equality).
+
+      elsif Comes_From_Source (Typ)
+        and then Convention (Typ) = Convention_Ada
+        and then not Is_Limited_Type (Typ)
+      then
+         Build_Untagged_Equality (Typ);
+      end if;
+
+      --  Before building the record initialization procedure, if we are
+      --  dealing with a concurrent record value type, then we must go through
+      --  the discriminants, exchanging discriminals between the concurrent
+      --  type and the concurrent record value type. See the section "Handling
+      --  of Discriminants" in the Einfo spec for details.
+
+      if Is_Concurrent_Record_Type (Typ)
+        and then Has_Discriminants (Typ)
+      then
+         declare
+            Ctyp       : constant Entity_Id :=
+                           Corresponding_Concurrent_Type (Typ);
+            Conc_Discr : Entity_Id;
+            Rec_Discr  : Entity_Id;
+            Temp       : Entity_Id;
+
+         begin
+            Conc_Discr := First_Discriminant (Ctyp);
+            Rec_Discr  := First_Discriminant (Typ);
+            while Present (Conc_Discr) loop
+               Temp := Discriminal (Conc_Discr);
+               Set_Discriminal (Conc_Discr, Discriminal (Rec_Discr));
+               Set_Discriminal (Rec_Discr, Temp);
+
+               Set_Discriminal_Link (Discriminal (Conc_Discr), Conc_Discr);
+               Set_Discriminal_Link (Discriminal (Rec_Discr),  Rec_Discr);
+
+               Next_Discriminant (Conc_Discr);
+               Next_Discriminant (Rec_Discr);
+            end loop;
+         end;
+      end if;
+
+      if Has_Controlled_Component (Typ) then
+         Build_Controlling_Procs (Typ);
+      end if;
+
+      Adjust_Discriminants (Typ);
+
+      --  Do not need init for interfaces on virtual targets since they're
+      --  abstract.
+
+      if Tagged_Type_Expansion or else not Is_Interface (Typ) then
+         Build_Record_Init_Proc (Typ_Decl, Typ);
+      end if;
+
+      --  For tagged type that are not interfaces, build bodies of primitive
+      --  operations. Note: do this after building the record initialization
+      --  procedure, since the primitive operations may need the initialization
+      --  routine. There is no need to add predefined primitives of interfaces
+      --  because all their predefined primitives are abstract.
+
+      if Is_Tagged_Type (Typ) and then not Is_Interface (Typ) then
+
+         --  Do not add the body of predefined primitives in case of CPP tagged
+         --  type derivations that have convention CPP.
+
+         if Is_CPP_Class (Root_Type (Typ))
+           and then Convention (Typ) = Convention_CPP
+         then
+            null;
+
+         --  Do not add the body of the predefined primitives if we are
+         --  compiling under restriction No_Dispatching_Calls or if we are
+         --  compiling a CPP tagged type.
+
+         elsif not Restriction_Active (No_Dispatching_Calls) then
+
+            --  Create the body of TSS primitive Finalize_Address. This must
+            --  be done before the bodies of all predefined primitives are
+            --  created. If Typ is limited, Stream_Input and Stream_Read may
+            --  produce build-in-place allocations and for those the expander
+            --  needs Finalize_Address.
+
+            Make_Finalize_Address_Body (Typ);
+            Predef_List := Predefined_Primitive_Bodies (Typ, Renamed_Eq);
+            Append_Freeze_Actions (Typ, Predef_List);
+         end if;
+
+         --  Ada 2005 (AI-391): If any wrappers were created for nonoverridden
+         --  inherited functions, then add their bodies to the freeze actions.
+
+         if Present (Wrapper_Body_List) then
+            Append_Freeze_Actions (Typ, Wrapper_Body_List);
+         end if;
+
+         --  Create extra formals for the primitive operations of the type.
+         --  This must be done before analyzing the body of the initialization
+         --  procedure, because a self-referential type might call one of these
+         --  primitives in the body of the init_proc itself.
+
+         declare
+            Elmt : Elmt_Id;
+            Subp : Entity_Id;
+
+         begin
+            Elmt := First_Elmt (Primitive_Operations (Typ));
+            while Present (Elmt) loop
+               Subp := Node (Elmt);
+               if not Has_Foreign_Convention (Subp)
+                 and then not Is_Predefined_Dispatching_Operation (Subp)
+               then
+                  Create_Extra_Formals (Subp);
+               end if;
+
+               Next_Elmt (Elmt);
+            end loop;
+         end;
+      end if;
+
+      --  Create a heterogeneous finalization master to service the anonymous
+      --  access-to-controlled components of the record type.
+
+      if Has_AACC then
+         declare
+            Encl_Scope : constant Entity_Id  := Scope (Typ);
+            Ins_Node   : constant Node_Id    := Parent (Typ);
+            Loc        : constant Source_Ptr := Sloc (Typ);
+            Fin_Mas_Id : Entity_Id;
+
+            Attributes_Set : Boolean := False;
+            Master_Built   : Boolean := False;
+            --  Two flags which control the creation and initialization of a
+            --  common heterogeneous master.
+
+         begin
+            Comp := First_Component (Typ);
+            while Present (Comp) loop
+               Comp_Typ := Etype (Comp);
+
+               --  A non-self-referential anonymous access-to-controlled
+               --  component.
+
+               if Ekind (Comp_Typ) = E_Anonymous_Access_Type
+                 and then Needs_Finalization (Designated_Type (Comp_Typ))
+                 and then Designated_Type (Comp_Typ) /= Typ
+               then
+                  --  Build a homogeneous master for the first anonymous
+                  --  access-to-controlled component. This master may be
+                  --  converted into a heterogeneous collection if more
+                  --  components are to follow.
+
+                  if not Master_Built then
+                     Master_Built := True;
+
+                     --  All anonymous access-to-controlled types allocate
+                     --  on the global pool. Note that the finalization
+                     --  master and the associated storage pool must be set
+                     --  on the root type (both are "root type only").
+
+                     Set_Associated_Storage_Pool
+                       (Root_Type (Comp_Typ), RTE (RE_Global_Pool_Object));
+
+                     Build_Finalization_Master
+                       (Typ            => Root_Type (Comp_Typ),
+                        For_Anonymous  => True,
+                        Context_Scope  => Encl_Scope,
+                        Insertion_Node => Ins_Node);
+
+                     Fin_Mas_Id := Finalization_Master (Comp_Typ);
+
+                  --  Subsequent anonymous access-to-controlled components
+                  --  reuse the available master.
+
+                  else
+                     --  All anonymous access-to-controlled types allocate
+                     --  on the global pool. Note that both the finalization
+                     --  master and the associated storage pool must be set
+                     --  on the root type (both are "root type only").
+
+                     Set_Associated_Storage_Pool
+                       (Root_Type (Comp_Typ), RTE (RE_Global_Pool_Object));
+
+                     --  Shared the master among multiple components
+
+                     Set_Finalization_Master
+                       (Root_Type (Comp_Typ), Fin_Mas_Id);
+
+                     --  Convert the master into a heterogeneous collection.
+                     --  Generate:
+                     --    Set_Is_Heterogeneous (<Fin_Mas_Id>);
+
+                     if not Attributes_Set then
+                        Attributes_Set := True;
+
+                        Insert_Action (Ins_Node,
+                          Make_Procedure_Call_Statement (Loc,
+                            Name                   =>
+                              New_Occurrence_Of
+                                (RTE (RE_Set_Is_Heterogeneous), Loc),
+                            Parameter_Associations => New_List (
+                              New_Occurrence_Of (Fin_Mas_Id, Loc))));
+                     end if;
+                  end if;
+               end if;
+
+               Next_Component (Comp);
+            end loop;
+         end;
+      end if;
+
+      --  Check whether individual components have a defined invariant, and add
+      --  the corresponding component invariant checks.
+
+      --  Do not create an invariant procedure for some internally generated
+      --  subtypes, in particular those created for objects of a class-wide
+      --  type. Such types may have components to which invariant apply, but
+      --  the corresponding checks will be applied when an object of the parent
+      --  type is constructed.
+
+      --  Such objects will show up in a class-wide postcondition, and the
+      --  invariant will be checked, if necessary, upon return from the
+      --  enclosing subprogram.
+
+      if not Is_Class_Wide_Equivalent_Type (Typ) then
+         Insert_Component_Invariant_Checks
+           (N, Typ, Build_Record_Invariant_Proc (Typ, N));
+      end if;
+
+      Ghost_Mode := Save_Ghost_Mode;
+   end Expand_Freeze_Record_Type;
 
    ------------------------------------
    -- Expand_N_Full_Type_Declaration --
@@ -4697,24 +5746,6 @@ package body Exp_Ch3 is
 
          elsif Is_Limited_Class_Wide_Type (Desig_Typ)
            and then Tasking_Allowed
-
-           --  Do not create a class-wide master for types whose convention is
-           --  Java since these types cannot embed Ada tasks anyway. Note that
-           --  the following test cannot catch the following case:
-
-           --      package java.lang.Object is
-           --         type Typ is tagged limited private;
-           --         type Ref is access all Typ'Class;
-           --      private
-           --         type Typ is tagged limited ...;
-           --         pragma Convention (Typ, Java)
-           --      end;
-
-           --  Because the convention appears after we have done the
-           --  processing for type Ref.
-
-           and then Convention (Desig_Typ) /= Convention_Java
-           and then Convention (Desig_Typ) /= Convention_CIL
          then
             Build_Class_Wide_Master (Ptr_Typ);
          end if;
@@ -4860,9 +5891,9 @@ package body Exp_Ch3 is
    ---------------------------------
 
    procedure Expand_N_Object_Declaration (N : Node_Id) is
+      Loc      : constant Source_Ptr := Sloc (N);
       Def_Id   : constant Entity_Id  := Defining_Identifier (N);
       Expr     : constant Node_Id    := Expression (N);
-      Loc      : constant Source_Ptr := Sloc (N);
       Obj_Def  : constant Node_Id    := Object_Definition (N);
       Typ      : constant Entity_Id  := Etype (Def_Id);
       Base_Typ : constant Entity_Id  := Base_Type (Typ);
@@ -5042,20 +6073,19 @@ package body Exp_Ch3 is
 
          --  Local variables
 
-         Abrt_Blk   : Node_Id;
-         Abrt_HSS   : Node_Id;
-         Abrt_Id    : Entity_Id;
-         Abrt_Stmts : List_Id;
-         Aggr_Init  : Node_Id;
-         Comp_Init  : List_Id := No_List;
-         Fin_Call   : Node_Id;
-         Fin_Stmts  : List_Id := No_List;
-         Obj_Init   : Node_Id := Empty;
-         Obj_Ref    : Node_Id;
+         Exceptions_OK : constant Boolean :=
+                           not Restriction_Active (No_Exception_Propagation);
 
-         Dummy : Entity_Id;
-         --  This variable captures a dummy internal entity, see the comment
-         --  associated with its use.
+         Abrt_Blk    : Node_Id;
+         Abrt_Blk_Id : Entity_Id;
+         Abrt_HSS    : Node_Id;
+         Aggr_Init   : Node_Id;
+         AUD         : Entity_Id;
+         Comp_Init   : List_Id := No_List;
+         Fin_Call    : Node_Id;
+         Init_Stmts  : List_Id := No_List;
+         Obj_Init    : Node_Id := Empty;
+         Obj_Ref     : Node_Id;
 
       --  Start of processing for Default_Initialize_Object
 
@@ -5064,33 +6094,39 @@ package body Exp_Ch3 is
          --  known to be imported (i.e. whose declaration specifies the Import
          --  aspect). Note that for objects with a pragma Import, we generate
          --  initialization here, and then remove it downstream when processing
-         --  the pragma.
+         --  the pragma. It is also suppressed for variables for which a pragma
+         --  Suppress_Initialization has been explicitly given
 
-         if Is_Imported (Def_Id) then
+         if Is_Imported (Def_Id) or else Suppress_Initialization (Def_Id) then
             return;
          end if;
 
-         --  Step 1: Initialize the object
+         --  The expansion performed by this routine is as follows:
 
-         if Needs_Finalization (Typ) and then not No_Initialization (N) then
-            Obj_Init :=
-              Make_Init_Call
-                (Obj_Ref => New_Occurrence_Of (Def_Id, Loc),
-                 Typ     => Typ);
-         end if;
+         --    begin
+         --       Abort_Defer;
+         --       Type_Init_Proc (Obj);
 
-         --  Step 2: Initialize the components of the object
+         --       begin
+         --          [Deep_]Initialize (Obj);
 
-         --  Do not initialize the components if their initialization is
-         --  prohibited or the type represents a value type in a .NET VM.
+         --       exception
+         --          when others =>
+         --             [Deep_]Finalize (Obj, Self => False);
+         --             raise;
+         --       end;
+         --    at end
+         --       Abort_Undefer_Direct;
+         --    end;
+
+         --  Initialize the components of the object
 
          if Has_Non_Null_Base_Init_Proc (Typ)
            and then not No_Initialization (N)
            and then not Initialization_Suppressed (Typ)
-           and then not Is_Value_Type (Typ)
          then
             --  Do not initialize the components if No_Default_Initialization
-            --  applies as the the actual restriction check will occur later
+            --  applies as the actual restriction check will occur later
             --  when the object is frozen as it is not known yet whether the
             --  object is imported or not.
 
@@ -5113,7 +6149,8 @@ package body Exp_Ch3 is
                elsif Build_Equivalent_Aggregate then
                   null;
 
-               --  Otherwise invoke the type init proc
+               --  Otherwise invoke the type init proc, generate:
+               --    Type_Init_Proc (Obj);
 
                else
                   Obj_Ref := New_Object_Reference;
@@ -5128,11 +6165,11 @@ package body Exp_Ch3 is
 
          --  Provide a default value if the object needs simple initialization
          --  and does not already have an initial value. A generated temporary
-         --  do not require initialization because it will be assigned later.
+         --  does not require initialization because it will be assigned later.
 
          elsif Needs_Simple_Initialization
                  (Typ, Initialize_Scalars
-                         and then not Has_Following_Address_Clause (N))
+                         and then No (Following_Address_Clause (N)))
            and then not Is_Internal (Def_Id)
            and then not Has_Init_Expression (N)
          then
@@ -5141,41 +6178,35 @@ package body Exp_Ch3 is
             Analyze_And_Resolve (Expression (N), Typ);
          end if;
 
-         --  Step 3: Add partial finalization and abort actions, generate:
+         --  Initialize the object, generate:
+         --    [Deep_]Initialize (Obj);
 
-         --    Type_Init_Proc (Obj);
+         if Needs_Finalization (Typ) and then not No_Initialization (N) then
+            Obj_Init :=
+              Make_Init_Call
+                (Obj_Ref => New_Occurrence_Of (Def_Id, Loc),
+                 Typ     => Typ);
+         end if;
+
+         --  Build a special finalization block when both the object and its
+         --  controlled components are to be initialized. The block finalizes
+         --  the components if the object initialization fails. Generate:
+
          --    begin
-         --       Deep_Initialize (Obj);
+         --       <Obj_Init>
+
          --    exception
          --       when others =>
-         --          Deep_Finalize (Obj, Self => False);
+         --          <Fin_Call>
          --          raise;
          --    end;
-
-         --  Step 3a: Build the finalization block (if applicable)
-
-         --  The finalization block is required when both the object and its
-         --  controlled components are to be initialized. The block finalizes
-         --  the components if the object initialization fails.
 
          if Has_Controlled_Component (Typ)
            and then Present (Comp_Init)
            and then Present (Obj_Init)
-           and then not Restriction_Active (No_Exception_Propagation)
+           and then Exceptions_OK
          then
-            --  Generate:
-            --    Type_Init_Proc (Obj);
-
-            Fin_Stmts := Comp_Init;
-
-            --  Generate:
-            --    begin
-            --       Deep_Initialize (Obj);
-            --    exception
-            --       when others =>
-            --          Deep_Finalize (Obj, Self => False);
-            --          raise;
-            --    end;
+            Init_Stmts := Comp_Init;
 
             Fin_Call :=
               Make_Final_Call
@@ -5191,7 +6222,7 @@ package body Exp_Ch3 is
 
                Set_No_Elaboration_Check (Fin_Call);
 
-               Append_To (Fin_Stmts,
+               Append_To (Init_Stmts,
                  Make_Block_Statement (Loc,
                    Declarations               => No_List,
 
@@ -5209,85 +6240,94 @@ package body Exp_Ch3 is
                              Make_Raise_Statement (Loc)))))));
             end if;
 
-         --  Finalization is not required, the initialization calls are passed
-         --  to the abort block building circuitry, generate:
+         --  Otherwise finalization is not required, the initialization calls
+         --  are passed to the abort block building circuitry, generate:
 
          --    Type_Init_Proc (Obj);
-         --    Deep_Initialize (Obj);
+         --    [Deep_]Initialize (Obj);
 
          else
             if Present (Comp_Init) then
-               Fin_Stmts := Comp_Init;
+               Init_Stmts := Comp_Init;
             end if;
 
             if Present (Obj_Init) then
-               if No (Fin_Stmts) then
-                  Fin_Stmts := New_List;
+               if No (Init_Stmts) then
+                  Init_Stmts := New_List;
                end if;
 
-               Append_To (Fin_Stmts, Obj_Init);
+               Append_To (Init_Stmts, Obj_Init);
             end if;
          end if;
 
-         --  Step 3b: Build the abort block (if applicable)
+         --  Build an abort block to protect the initialization calls
 
-         --  The abort block is required when aborts are allowed in order to
-         --  protect both initialization calls.
+         if Abort_Allowed
+           and then Present (Comp_Init)
+           and then Present (Obj_Init)
+         then
+            --  Generate:
+            --    Abort_Defer;
 
-         if Present (Comp_Init) and then Present (Obj_Init) then
-            if Abort_Allowed then
+            Prepend_To (Init_Stmts, Build_Runtime_Call (Loc, RE_Abort_Defer));
 
-               --  Generate:
-               --    Abort_Defer;
+            --  When exceptions are propagated, abort deferral must take place
+            --  in the presence of initialization or finalization exceptions.
+            --  Generate:
 
-               Prepend_To
-                 (Fin_Stmts, Build_Runtime_Call (Loc, RE_Abort_Defer));
+            --    begin
+            --       Abort_Defer;
+            --       <Init_Stmts>
+            --    at end
+            --       Abort_Undefer_Direct;
+            --    end;
 
-               --  Generate:
-               --    begin
-               --       Abort_Defer;
-               --       <finalization statements>
-               --    at end
-               --       Abort_Undefer_Direct;
-               --    end;
+            if Exceptions_OK then
+               AUD := RTE (RE_Abort_Undefer_Direct);
 
                Abrt_HSS :=
                  Make_Handled_Sequence_Of_Statements (Loc,
-                   Statements  => Fin_Stmts,
-                   At_End_Proc =>
-                     New_Occurrence_Of (RTE (RE_Abort_Undefer_Direct), Loc));
+                   Statements  => Init_Stmts,
+                   At_End_Proc => New_Occurrence_Of (AUD, Loc));
 
                Abrt_Blk :=
                  Make_Block_Statement (Loc,
-                   Declarations               => No_List,
                    Handled_Statement_Sequence => Abrt_HSS);
 
-               Add_Block_Identifier (Abrt_Blk, Abrt_Id);
-               Expand_At_End_Handler (Abrt_HSS, Abrt_Id);
+               Add_Block_Identifier  (Abrt_Blk, Abrt_Blk_Id);
+               Expand_At_End_Handler (Abrt_HSS, Abrt_Blk_Id);
 
-               Abrt_Stmts := New_List (Abrt_Blk);
+               --  Present the Abort_Undefer_Direct function to the backend so
+               --  that it can inline the call to the function.
 
-            --  Abort is not required
+               Add_Inlined_Body (AUD, N);
+
+               Init_Stmts := New_List (Abrt_Blk);
+
+            --  Otherwise exceptions are not propagated. Generate:
+
+            --    Abort_Defer;
+            --    <Init_Stmts>
+            --    Abort_Undefer;
 
             else
-               --  Generate a dummy entity to ensure that the internal symbols
-               --  are in sync when a unit is compiled with and without aborts.
-               --  The entity is a block with proper scope and type.
-
-               Dummy := New_Internal_Entity (E_Block, Current_Scope, Loc, 'B');
-               Set_Etype (Dummy, Standard_Void_Type);
-               Abrt_Stmts := Fin_Stmts;
+               Append_To (Init_Stmts,
+                 Build_Runtime_Call (Loc, RE_Abort_Undefer));
             end if;
-
-         --  No initialization calls present
-
-         else
-            Abrt_Stmts := Fin_Stmts;
          end if;
 
-         --  Step 4: Insert the whole initialization sequence into the tree
+         --  Insert the whole initialization sequence into the tree. If the
+         --  object has a delayed freeze, as will be the case when it has
+         --  aspect specifications, the initialization sequence is part of
+         --  the freeze actions.
 
-         Insert_Actions_After (After, Abrt_Stmts);
+         if Present (Init_Stmts) then
+            if Has_Delayed_Freeze (Def_Id) then
+               Append_Freeze_Actions (Def_Id, Init_Stmts);
+            else
+               Insert_Actions_After (After, Init_Stmts);
+            end if;
+         end if;
       end Default_Initialize_Object;
 
       -------------------------
@@ -5305,9 +6345,9 @@ package body Exp_Ch3 is
 
       --  Local variables
 
-      Next_N  : constant Node_Id := Next (N);
-      Id_Ref  : Node_Id;
-      New_Ref : Node_Id;
+      Next_N     : constant Node_Id := Next (N);
+      Id_Ref     : Node_Id;
+      Tag_Assign : Node_Id;
 
       Init_After : Node_Id := N;
       --  Node after which the initialization actions are to be inserted. This
@@ -5325,6 +6365,14 @@ package body Exp_Ch3 is
          return;
       end if;
 
+      --  The type of the object cannot be abstract. This is diagnosed at the
+      --  point the object is frozen, which happens after the declaration is
+      --  fully expanded, so simply return now.
+
+      if Is_Abstract_Type (Typ) then
+         return;
+      end if;
+
       --  First we do special processing for objects of a tagged type where
       --  this is the point at which the type is frozen. The creation of the
       --  dispatch table and the initialization procedure have to be deferred
@@ -5337,9 +6385,9 @@ package body Exp_Ch3 is
         and then Static_Dispatch_Tables
         and then Is_Library_Level_Entity (Def_Id)
         and then Is_Library_Level_Tagged_Type (Base_Typ)
-        and then (Ekind (Base_Typ) = E_Record_Type
-                   or else Ekind (Base_Typ) = E_Protected_Type
-                   or else Ekind (Base_Typ) = E_Task_Type)
+        and then Ekind_In (Base_Typ, E_Record_Type,
+                                     E_Protected_Type,
+                                     E_Task_Type)
         and then not Has_Dispatch_Table (Base_Typ)
       then
          declare
@@ -5414,8 +6462,26 @@ package body Exp_Ch3 is
            and then not Has_Init_Expression (N)
            and then not No_Initialization (N)
          then
-            Insert_After (N,
-              Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
+            --  If entity has an address clause or aspect, make invariant
+            --  call into a freeze action for the explicit freeze node for
+            --  object. Otherwise insert invariant check after declaration.
+
+            if Present (Following_Address_Clause (N))
+              or else Has_Aspect (Def_Id, Aspect_Address)
+            then
+               Ensure_Freeze_Node (Def_Id);
+               Set_Has_Delayed_Freeze (Def_Id);
+               Set_Is_Frozen (Def_Id, False);
+
+               if not Partial_View_Has_Unknown_Discr (Typ) then
+                  Append_Freeze_Action (Def_Id,
+                    Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
+               end if;
+
+            elsif not Partial_View_Has_Unknown_Discr (Typ) then
+               Insert_After (N,
+                 Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
+            end if;
          end if;
 
          Default_Initialize_Object (Init_After);
@@ -5791,44 +6857,26 @@ package body Exp_Ch3 is
             --  be re-initialized separately in order to avoid the propagation
             --  of a wrong tag coming from a view conversion unless the type
             --  is class wide (in this case the tag comes from the init value).
-            --  Suppress the tag assignment when VM_Target because VM tags are
-            --  represented implicitly in objects. Ditto for types that are
-            --  CPP_CLASS, and for initializations that are aggregates, because
-            --  they have to have the right tag.
+            --  Suppress the tag assignment when not Tagged_Type_Expansion
+            --  because tags are represented implicitly in objects. Ditto for
+            --  types that are CPP_CLASS, and for initializations that are
+            --  aggregates, because they have to have the right tag.
 
-            if Is_Tagged_Type (Typ)
-              and then not Is_Class_Wide_Type (Typ)
-              and then not Is_CPP_Class (Typ)
-              and then Tagged_Type_Expansion
-              and then Nkind (Expr) /= N_Aggregate
-              and then (Nkind (Expr) /= N_Qualified_Expression
-                         or else Nkind (Expression (Expr)) /= N_Aggregate)
-            then
-               declare
-                  Full_Typ : constant Entity_Id := Underlying_Type (Typ);
+            --  The re-assignment of the tag has to be done even if the object
+            --  is a constant. The assignment must be analyzed after the
+            --  declaration. If an address clause follows, this is handled as
+            --  part of the freeze actions for the object, otherwise insert
+            --  tag assignment here.
 
-               begin
-                  --  The re-assignment of the tag has to be done even if the
-                  --  object is a constant. The assignment must be analyzed
-                  --  after the declaration.
+            Tag_Assign := Make_Tag_Assignment (N);
 
-                  New_Ref :=
-                    Make_Selected_Component (Loc,
-                       Prefix => New_Occurrence_Of (Def_Id, Loc),
-                       Selector_Name =>
-                         New_Occurrence_Of (First_Tag_Component (Full_Typ),
-                                           Loc));
-                  Set_Assignment_OK (New_Ref);
+            if Present (Tag_Assign) then
+               if Present (Following_Address_Clause (N)) then
+                  Ensure_Freeze_Node (Def_Id);
 
-                  Insert_Action_After (Init_After,
-                    Make_Assignment_Statement (Loc,
-                      Name       => New_Ref,
-                      Expression =>
-                        Unchecked_Convert_To (RTE (RE_Tag),
-                          New_Occurrence_Of
-                            (Node (First_Elmt (Access_Disp_Table (Full_Typ))),
-                             Loc))));
-               end;
+               else
+                  Insert_Action_After (Init_After, Tag_Assign);
+               end if;
 
             --  Handle C++ constructor calls. Note that we do not check that
             --  Typ is a tagged type since the equivalent Ada type of a C++
@@ -5853,6 +6901,30 @@ package body Exp_Ch3 is
 
                Set_Expression (N, Empty);
                return;
+
+            --  Handle initialization of limited tagged types
+
+            elsif Is_Tagged_Type (Typ)
+              and then Is_Class_Wide_Type (Typ)
+              and then Is_Limited_Record (Typ)
+              and then not Is_Limited_Interface (Typ)
+            then
+               --  Given that the type is limited we cannot perform a copy. If
+               --  Expr_Q is the reference to a variable we mark the variable
+               --  as OK_To_Rename to expand this declaration into a renaming
+               --  declaration (see bellow).
+
+               if Is_Entity_Name (Expr_Q) then
+                  Set_OK_To_Rename (Entity (Expr_Q));
+
+               --  If we cannot convert the expression into a renaming we must
+               --  consider it an internal error because the backend does not
+               --  have support to handle it.
+
+               else
+                  pragma Assert (False);
+                  raise Program_Error;
+               end if;
 
             --  For discrete types, set the Is_Known_Valid flag if the
             --  initializing value is known to be valid. Only do this for
@@ -6019,24 +7091,23 @@ package body Exp_Ch3 is
          end;
       end if;
 
-      --  At this point the object is fully initialized by either invoking the
-      --  related type init proc, routine [Deep_]Initialize or performing in-
-      --  place assingments for an array object. If the related type is subject
-      --  to pragma Default_Initial_Condition, add a runtime check to verify
-      --  the assumption of the pragma. Generate:
+      --  If the object is default initialized and its type is subject to
+      --  pragma Default_Initial_Condition, add a runtime check to verify
+      --  the assumption of the pragma (SPARK RM 7.3.3). Generate:
 
       --    <Base_Typ>Default_Init_Cond (<Base_Typ> (Def_Id));
 
       --  Note that the check is generated for source objects only
 
       if Comes_From_Source (Def_Id)
-        and then (Has_Default_Init_Cond           (Base_Typ)
+        and then (Has_Default_Init_Cond (Typ)
                     or else
-                  Has_Inherited_Default_Init_Cond (Base_Typ))
+                  Has_Inherited_Default_Init_Cond (Typ))
+        and then not Has_Init_Expression (N)
       then
          declare
             DIC_Call : constant Node_Id :=
-                         Build_Default_Init_Cond_Call (Loc, Def_Id, Base_Typ);
+                         Build_Default_Init_Cond_Call (Loc, Def_Id, Typ);
          begin
             if Present (Next_N) then
                Insert_Before_And_Analyze (Next_N, DIC_Call);
@@ -6132,6 +7203,131 @@ package body Exp_Ch3 is
       end loop;
    end Expand_Previous_Access_Type;
 
+   -----------------------------
+   -- Expand_Record_Extension --
+   -----------------------------
+
+   --  Add a field _parent at the beginning of the record extension. This is
+   --  used to implement inheritance. Here are some examples of expansion:
+
+   --  1. no discriminants
+   --      type T2 is new T1 with null record;
+   --   gives
+   --      type T2 is new T1 with record
+   --        _Parent : T1;
+   --      end record;
+
+   --  2. renamed discriminants
+   --    type T2 (B, C : Int) is new T1 (A => B) with record
+   --       _Parent : T1 (A => B);
+   --       D : Int;
+   --    end;
+
+   --  3. inherited discriminants
+   --    type T2 is new T1 with record -- discriminant A inherited
+   --       _Parent : T1 (A);
+   --       D : Int;
+   --    end;
+
+   procedure Expand_Record_Extension (T : Entity_Id; Def : Node_Id) is
+      Indic        : constant Node_Id    := Subtype_Indication (Def);
+      Loc          : constant Source_Ptr := Sloc (Def);
+      Rec_Ext_Part : Node_Id             := Record_Extension_Part (Def);
+      Par_Subtype  : Entity_Id;
+      Comp_List    : Node_Id;
+      Comp_Decl    : Node_Id;
+      Parent_N     : Node_Id;
+      D            : Entity_Id;
+      List_Constr  : constant List_Id    := New_List;
+
+   begin
+      --  Expand_Record_Extension is called directly from the semantics, so
+      --  we must check to see whether expansion is active before proceeding,
+      --  because this affects the visibility of selected components in bodies
+      --  of instances.
+
+      if not Expander_Active then
+         return;
+      end if;
+
+      --  This may be a derivation of an untagged private type whose full
+      --  view is tagged, in which case the Derived_Type_Definition has no
+      --  extension part. Build an empty one now.
+
+      if No (Rec_Ext_Part) then
+         Rec_Ext_Part :=
+           Make_Record_Definition (Loc,
+             End_Label      => Empty,
+             Component_List => Empty,
+             Null_Present   => True);
+
+         Set_Record_Extension_Part (Def, Rec_Ext_Part);
+         Mark_Rewrite_Insertion (Rec_Ext_Part);
+      end if;
+
+      Comp_List := Component_List (Rec_Ext_Part);
+
+      Parent_N := Make_Defining_Identifier (Loc, Name_uParent);
+
+      --  If the derived type inherits its discriminants the type of the
+      --  _parent field must be constrained by the inherited discriminants
+
+      if Has_Discriminants (T)
+        and then Nkind (Indic) /= N_Subtype_Indication
+        and then not Is_Constrained (Entity (Indic))
+      then
+         D := First_Discriminant (T);
+         while Present (D) loop
+            Append_To (List_Constr, New_Occurrence_Of (D, Loc));
+            Next_Discriminant (D);
+         end loop;
+
+         Par_Subtype :=
+           Process_Subtype (
+             Make_Subtype_Indication (Loc,
+               Subtype_Mark => New_Occurrence_Of (Entity (Indic), Loc),
+               Constraint   =>
+                 Make_Index_Or_Discriminant_Constraint (Loc,
+                   Constraints => List_Constr)),
+             Def);
+
+      --  Otherwise the original subtype_indication is just what is needed
+
+      else
+         Par_Subtype := Process_Subtype (New_Copy_Tree (Indic), Def);
+      end if;
+
+      Set_Parent_Subtype (T, Par_Subtype);
+
+      Comp_Decl :=
+        Make_Component_Declaration (Loc,
+          Defining_Identifier => Parent_N,
+          Component_Definition =>
+            Make_Component_Definition (Loc,
+              Aliased_Present => False,
+              Subtype_Indication => New_Occurrence_Of (Par_Subtype, Loc)));
+
+      if Null_Present (Rec_Ext_Part) then
+         Set_Component_List (Rec_Ext_Part,
+           Make_Component_List (Loc,
+             Component_Items => New_List (Comp_Decl),
+             Variant_Part => Empty,
+             Null_Present => False));
+         Set_Null_Present (Rec_Ext_Part, False);
+
+      elsif Null_Present (Comp_List)
+        or else Is_Empty_List (Component_Items (Comp_List))
+      then
+         Set_Component_Items (Comp_List, New_List (Comp_Decl));
+         Set_Null_Present (Comp_List, False);
+
+      else
+         Insert_Before (First (Component_Items (Comp_List)), Comp_Decl);
+      end if;
+
+      Analyze (Comp_Decl);
+   end Expand_Record_Extension;
+
    ------------------------
    -- Expand_Tagged_Root --
    ------------------------
@@ -6190,1129 +7386,6 @@ package body Exp_Ch3 is
          return;
    end Expand_Tagged_Root;
 
-   ----------------------
-   -- Clean_Task_Names --
-   ----------------------
-
-   procedure Clean_Task_Names
-     (Typ     : Entity_Id;
-      Proc_Id : Entity_Id)
-   is
-   begin
-      if Has_Task (Typ)
-        and then not Restriction_Active (No_Implicit_Heap_Allocations)
-        and then not Global_Discard_Names
-        and then Tagged_Type_Expansion
-      then
-         Set_Uses_Sec_Stack (Proc_Id);
-      end if;
-   end Clean_Task_Names;
-
-   ------------------------------
-   -- Expand_Freeze_Array_Type --
-   ------------------------------
-
-   procedure Expand_Freeze_Array_Type (N : Node_Id) is
-      Typ      : constant Entity_Id := Entity (N);
-      Comp_Typ : constant Entity_Id := Component_Type (Typ);
-      Base     : constant Entity_Id := Base_Type (Typ);
-
-   begin
-      if not Is_Bit_Packed_Array (Typ) then
-
-         --  If the component contains tasks, so does the array type. This may
-         --  not be indicated in the array type because the component may have
-         --  been a private type at the point of definition. Same if component
-         --  type is controlled or contains protected objects.
-
-         Set_Has_Task       (Base, Has_Task      (Comp_Typ));
-         Set_Has_Protected  (Base, Has_Protected (Comp_Typ));
-         Set_Has_Controlled_Component
-                            (Base, Has_Controlled_Component
-                                                 (Comp_Typ)
-                                     or else
-                                   Is_Controlled (Comp_Typ));
-
-         if No (Init_Proc (Base)) then
-
-            --  If this is an anonymous array created for a declaration with
-            --  an initial value, its init_proc will never be called. The
-            --  initial value itself may have been expanded into assignments,
-            --  in which case the object declaration is carries the
-            --  No_Initialization flag.
-
-            if Is_Itype (Base)
-              and then Nkind (Associated_Node_For_Itype (Base)) =
-                                                    N_Object_Declaration
-              and then
-                (Present (Expression (Associated_Node_For_Itype (Base)))
-                  or else No_Initialization (Associated_Node_For_Itype (Base)))
-            then
-               null;
-
-            --  We do not need an init proc for string or wide [wide] string,
-            --  since the only time these need initialization in normalize or
-            --  initialize scalars mode, and these types are treated specially
-            --  and do not need initialization procedures.
-
-            elsif Is_Standard_String_Type (Base) then
-               null;
-
-            --  Otherwise we have to build an init proc for the subtype
-
-            else
-               Build_Array_Init_Proc (Base, N);
-            end if;
-         end if;
-
-         if Typ = Base then
-            if Has_Controlled_Component (Base) then
-               Build_Controlling_Procs (Base);
-
-               if not Is_Limited_Type (Comp_Typ)
-                 and then Number_Dimensions (Typ) = 1
-               then
-                  Build_Slice_Assignment (Typ);
-               end if;
-            end if;
-
-            --  Create a finalization master to service the anonymous access
-            --  components of the array.
-
-            if Ekind (Comp_Typ) = E_Anonymous_Access_Type
-              and then Needs_Finalization (Designated_Type (Comp_Typ))
-            then
-               Build_Finalization_Master
-                 (Typ        => Comp_Typ,
-                  Ins_Node   => Parent (Typ),
-                  Encl_Scope => Scope (Typ));
-            end if;
-         end if;
-
-      --  For packed case, default initialization, except if the component type
-      --  is itself a packed structure with an initialization procedure, or
-      --  initialize/normalize scalars active, and we have a base type, or the
-      --  type is public, because in that case a client might specify
-      --  Normalize_Scalars and there better be a public Init_Proc for it.
-
-      elsif (Present (Init_Proc (Component_Type (Base)))
-              and then No (Base_Init_Proc (Base)))
-        or else (Init_Or_Norm_Scalars and then Base = Typ)
-        or else Is_Public (Typ)
-      then
-         Build_Array_Init_Proc (Base, N);
-      end if;
-
-      if Has_Invariants (Component_Type (Base))
-        and then Typ = Base
-        and then In_Open_Scopes (Scope (Component_Type (Base)))
-      then
-         --  Generate component invariant checking procedure. This is only
-         --  relevant if the array type is within the scope of the component
-         --  type. Otherwise an array object can only be built using the public
-         --  subprograms for the component type, and calls to those will have
-         --  invariant checks. The invariant procedure is only generated for
-         --  a base type, not a subtype.
-
-         Insert_Component_Invariant_Checks
-           (N, Base, Build_Array_Invariant_Proc (Base, N));
-      end if;
-   end Expand_Freeze_Array_Type;
-
-   -----------------------------------
-   -- Expand_Freeze_Class_Wide_Type --
-   -----------------------------------
-
-   procedure Expand_Freeze_Class_Wide_Type (N : Node_Id) is
-      Typ  : constant Entity_Id := Entity (N);
-      Root : constant Entity_Id := Root_Type (Typ);
-
-      function Is_C_Derivation (Typ : Entity_Id) return Boolean;
-      --  Given a type, determine whether it is derived from a C or C++ root
-
-      ---------------------
-      -- Is_C_Derivation --
-      ---------------------
-
-      function Is_C_Derivation (Typ : Entity_Id) return Boolean is
-         T : Entity_Id := Typ;
-
-      begin
-         loop
-            if Is_CPP_Class (T)
-              or else Convention (T) = Convention_C
-              or else Convention (T) = Convention_CPP
-            then
-               return True;
-            end if;
-
-            exit when T = Etype (T);
-
-            T := Etype (T);
-         end loop;
-
-         return False;
-      end Is_C_Derivation;
-
-   --  Start of processing for Expand_Freeze_Class_Wide_Type
-
-   begin
-      --  Certain run-time configurations and targets do not provide support
-      --  for controlled types.
-
-      if Restriction_Active (No_Finalization) then
-         return;
-
-      --  Do not create TSS routine Finalize_Address when dispatching calls are
-      --  disabled since the core of the routine is a dispatching call.
-
-      elsif Restriction_Active (No_Dispatching_Calls) then
-         return;
-
-      --  Do not create TSS routine Finalize_Address for concurrent class-wide
-      --  types. Ignore C, C++, CIL and Java types since it is assumed that the
-      --  non-Ada side will handle their destruction.
-
-      elsif Is_Concurrent_Type (Root)
-        or else Is_C_Derivation (Root)
-        or else Convention (Typ) = Convention_CIL
-        or else Convention (Typ) = Convention_CPP
-        or else Convention (Typ) = Convention_Java
-      then
-         return;
-
-      --  Do not create TSS routine Finalize_Address for .NET/JVM because these
-      --  targets do not support address arithmetic and unchecked conversions.
-
-      elsif VM_Target /= No_VM then
-         return;
-
-      --  Do not create TSS routine Finalize_Address when compiling in CodePeer
-      --  mode since the routine contains an Unchecked_Conversion.
-
-      elsif CodePeer_Mode then
-         return;
-      end if;
-
-      --  Create the body of TSS primitive Finalize_Address. This automatically
-      --  sets the TSS entry for the class-wide type.
-
-      Make_Finalize_Address_Body (Typ);
-   end Expand_Freeze_Class_Wide_Type;
-
-   ------------------------------------
-   -- Expand_Freeze_Enumeration_Type --
-   ------------------------------------
-
-   procedure Expand_Freeze_Enumeration_Type (N : Node_Id) is
-      Typ           : constant Entity_Id  := Entity (N);
-      Loc           : constant Source_Ptr := Sloc (Typ);
-      Ent           : Entity_Id;
-      Lst           : List_Id;
-      Num           : Nat;
-      Arr           : Entity_Id;
-      Fent          : Entity_Id;
-      Ityp          : Entity_Id;
-      Is_Contiguous : Boolean;
-      Pos_Expr      : Node_Id;
-      Last_Repval   : Uint;
-
-      Func : Entity_Id;
-      pragma Warnings (Off, Func);
-
-   begin
-      --  Various optimizations possible if given representation is contiguous
-
-      Is_Contiguous := True;
-
-      Ent := First_Literal (Typ);
-      Last_Repval := Enumeration_Rep (Ent);
-
-      Next_Literal (Ent);
-      while Present (Ent) loop
-         if Enumeration_Rep (Ent) - Last_Repval /= 1 then
-            Is_Contiguous := False;
-            exit;
-         else
-            Last_Repval := Enumeration_Rep (Ent);
-         end if;
-
-         Next_Literal (Ent);
-      end loop;
-
-      if Is_Contiguous then
-         Set_Has_Contiguous_Rep (Typ);
-         Ent := First_Literal (Typ);
-         Num := 1;
-         Lst := New_List (New_Occurrence_Of (Ent, Sloc (Ent)));
-
-      else
-         --  Build list of literal references
-
-         Lst := New_List;
-         Num := 0;
-
-         Ent := First_Literal (Typ);
-         while Present (Ent) loop
-            Append_To (Lst, New_Occurrence_Of (Ent, Sloc (Ent)));
-            Num := Num + 1;
-            Next_Literal (Ent);
-         end loop;
-      end if;
-
-      --  Now build an array declaration
-
-      --    typA : array (Natural range 0 .. num - 1) of ctype :=
-      --             (v, v, v, v, v, ....)
-
-      --  where ctype is the corresponding integer type. If the representation
-      --  is contiguous, we only keep the first literal, which provides the
-      --  offset for Pos_To_Rep computations.
-
-      Arr :=
-        Make_Defining_Identifier (Loc,
-          Chars => New_External_Name (Chars (Typ), 'A'));
-
-      Append_Freeze_Action (Typ,
-        Make_Object_Declaration (Loc,
-          Defining_Identifier => Arr,
-          Constant_Present    => True,
-
-          Object_Definition   =>
-            Make_Constrained_Array_Definition (Loc,
-              Discrete_Subtype_Definitions => New_List (
-                Make_Subtype_Indication (Loc,
-                  Subtype_Mark => New_Occurrence_Of (Standard_Natural, Loc),
-                  Constraint =>
-                    Make_Range_Constraint (Loc,
-                      Range_Expression =>
-                        Make_Range (Loc,
-                          Low_Bound  =>
-                            Make_Integer_Literal (Loc, 0),
-                          High_Bound =>
-                            Make_Integer_Literal (Loc, Num - 1))))),
-
-              Component_Definition =>
-                Make_Component_Definition (Loc,
-                  Aliased_Present => False,
-                  Subtype_Indication => New_Occurrence_Of (Typ, Loc))),
-
-          Expression =>
-            Make_Aggregate (Loc,
-              Expressions => Lst)));
-
-      Set_Enum_Pos_To_Rep (Typ, Arr);
-
-      --  Now we build the function that converts representation values to
-      --  position values. This function has the form:
-
-      --    function _Rep_To_Pos (A : etype; F : Boolean) return Integer is
-      --    begin
-      --       case ityp!(A) is
-      --         when enum-lit'Enum_Rep => return posval;
-      --         when enum-lit'Enum_Rep => return posval;
-      --         ...
-      --         when others   =>
-      --           [raise Constraint_Error when F "invalid data"]
-      --           return -1;
-      --       end case;
-      --    end;
-
-      --  Note: the F parameter determines whether the others case (no valid
-      --  representation) raises Constraint_Error or returns a unique value
-      --  of minus one. The latter case is used, e.g. in 'Valid code.
-
-      --  Note: the reason we use Enum_Rep values in the case here is to avoid
-      --  the code generator making inappropriate assumptions about the range
-      --  of the values in the case where the value is invalid. ityp is a
-      --  signed or unsigned integer type of appropriate width.
-
-      --  Note: if exceptions are not supported, then we suppress the raise
-      --  and return -1 unconditionally (this is an erroneous program in any
-      --  case and there is no obligation to raise Constraint_Error here). We
-      --  also do this if pragma Restrictions (No_Exceptions) is active.
-
-      --  Is this right??? What about No_Exception_Propagation???
-
-      --  Representations are signed
-
-      if Enumeration_Rep (First_Literal (Typ)) < 0 then
-
-         --  The underlying type is signed. Reset the Is_Unsigned_Type
-         --  explicitly, because it might have been inherited from
-         --  parent type.
-
-         Set_Is_Unsigned_Type (Typ, False);
-
-         if Esize (Typ) <= Standard_Integer_Size then
-            Ityp := Standard_Integer;
-         else
-            Ityp := Universal_Integer;
-         end if;
-
-      --  Representations are unsigned
-
-      else
-         if Esize (Typ) <= Standard_Integer_Size then
-            Ityp := RTE (RE_Unsigned);
-         else
-            Ityp := RTE (RE_Long_Long_Unsigned);
-         end if;
-      end if;
-
-      --  The body of the function is a case statement. First collect case
-      --  alternatives, or optimize the contiguous case.
-
-      Lst := New_List;
-
-      --  If representation is contiguous, Pos is computed by subtracting
-      --  the representation of the first literal.
-
-      if Is_Contiguous then
-         Ent := First_Literal (Typ);
-
-         if Enumeration_Rep (Ent) = Last_Repval then
-
-            --  Another special case: for a single literal, Pos is zero
-
-            Pos_Expr := Make_Integer_Literal (Loc, Uint_0);
-
-         else
-            Pos_Expr :=
-              Convert_To (Standard_Integer,
-                Make_Op_Subtract (Loc,
-                  Left_Opnd  =>
-                    Unchecked_Convert_To
-                     (Ityp, Make_Identifier (Loc, Name_uA)),
-                  Right_Opnd =>
-                    Make_Integer_Literal (Loc,
-                      Intval => Enumeration_Rep (First_Literal (Typ)))));
-         end if;
-
-         Append_To (Lst,
-              Make_Case_Statement_Alternative (Loc,
-                Discrete_Choices => New_List (
-                  Make_Range (Sloc (Enumeration_Rep_Expr (Ent)),
-                    Low_Bound =>
-                      Make_Integer_Literal (Loc,
-                       Intval =>  Enumeration_Rep (Ent)),
-                    High_Bound =>
-                      Make_Integer_Literal (Loc, Intval => Last_Repval))),
-
-                Statements => New_List (
-                  Make_Simple_Return_Statement (Loc,
-                    Expression => Pos_Expr))));
-
-      else
-         Ent := First_Literal (Typ);
-         while Present (Ent) loop
-            Append_To (Lst,
-              Make_Case_Statement_Alternative (Loc,
-                Discrete_Choices => New_List (
-                  Make_Integer_Literal (Sloc (Enumeration_Rep_Expr (Ent)),
-                    Intval => Enumeration_Rep (Ent))),
-
-                Statements => New_List (
-                  Make_Simple_Return_Statement (Loc,
-                    Expression =>
-                      Make_Integer_Literal (Loc,
-                        Intval => Enumeration_Pos (Ent))))));
-
-            Next_Literal (Ent);
-         end loop;
-      end if;
-
-      --  In normal mode, add the others clause with the test
-
-      if not No_Exception_Handlers_Set then
-         Append_To (Lst,
-           Make_Case_Statement_Alternative (Loc,
-             Discrete_Choices => New_List (Make_Others_Choice (Loc)),
-             Statements => New_List (
-               Make_Raise_Constraint_Error (Loc,
-                 Condition => Make_Identifier (Loc, Name_uF),
-                 Reason    => CE_Invalid_Data),
-               Make_Simple_Return_Statement (Loc,
-                 Expression =>
-                   Make_Integer_Literal (Loc, -1)))));
-
-      --  If either of the restrictions No_Exceptions_Handlers/Propagation is
-      --  active then return -1 (we cannot usefully raise Constraint_Error in
-      --  this case). See description above for further details.
-
-      else
-         Append_To (Lst,
-           Make_Case_Statement_Alternative (Loc,
-             Discrete_Choices => New_List (Make_Others_Choice (Loc)),
-             Statements => New_List (
-               Make_Simple_Return_Statement (Loc,
-                 Expression =>
-                   Make_Integer_Literal (Loc, -1)))));
-      end if;
-
-      --  Now we can build the function body
-
-      Fent :=
-        Make_Defining_Identifier (Loc, Make_TSS_Name (Typ, TSS_Rep_To_Pos));
-
-      Func :=
-        Make_Subprogram_Body (Loc,
-          Specification =>
-            Make_Function_Specification (Loc,
-              Defining_Unit_Name       => Fent,
-              Parameter_Specifications => New_List (
-                Make_Parameter_Specification (Loc,
-                  Defining_Identifier =>
-                    Make_Defining_Identifier (Loc, Name_uA),
-                  Parameter_Type => New_Occurrence_Of (Typ, Loc)),
-                Make_Parameter_Specification (Loc,
-                  Defining_Identifier =>
-                    Make_Defining_Identifier (Loc, Name_uF),
-                  Parameter_Type =>
-                    New_Occurrence_Of (Standard_Boolean, Loc))),
-
-              Result_Definition => New_Occurrence_Of (Standard_Integer, Loc)),
-
-            Declarations => Empty_List,
-
-            Handled_Statement_Sequence =>
-              Make_Handled_Sequence_Of_Statements (Loc,
-                Statements => New_List (
-                  Make_Case_Statement (Loc,
-                    Expression =>
-                      Unchecked_Convert_To
-                        (Ityp, Make_Identifier (Loc, Name_uA)),
-                    Alternatives => Lst))));
-
-      Set_TSS (Typ, Fent);
-
-      --  Set Pure flag (it will be reset if the current context is not Pure).
-      --  We also pretend there was a pragma Pure_Function so that for purposes
-      --  of optimization and constant-folding, we will consider the function
-      --  Pure even if we are not in a Pure context).
-
-      Set_Is_Pure (Fent);
-      Set_Has_Pragma_Pure_Function (Fent);
-
-      --  Unless we are in -gnatD mode, where we are debugging generated code,
-      --  this is an internal entity for which we don't need debug info.
-
-      if not Debug_Generated_Code then
-         Set_Debug_Info_Off (Fent);
-      end if;
-
-   exception
-      when RE_Not_Available =>
-         return;
-   end Expand_Freeze_Enumeration_Type;
-
-   -------------------------------
-   -- Expand_Freeze_Record_Type --
-   -------------------------------
-
-   procedure Expand_Freeze_Record_Type (N : Node_Id) is
-      Def_Id      : constant Node_Id := Entity (N);
-      Type_Decl   : constant Node_Id := Parent (Def_Id);
-      Comp        : Entity_Id;
-      Comp_Typ    : Entity_Id;
-      Has_AACC    : Boolean;
-      Predef_List : List_Id;
-
-      Renamed_Eq : Node_Id := Empty;
-      --  Defining unit name for the predefined equality function in the case
-      --  where the type has a primitive operation that is a renaming of
-      --  predefined equality (but only if there is also an overriding
-      --  user-defined equality function). Used to pass this entity from
-      --  Make_Predefined_Primitive_Specs to Predefined_Primitive_Bodies.
-
-      Wrapper_Decl_List : List_Id := No_List;
-      Wrapper_Body_List : List_Id := No_List;
-
-   --  Start of processing for Expand_Freeze_Record_Type
-
-   begin
-      --  Build discriminant checking functions if not a derived type (for
-      --  derived types that are not tagged types, always use the discriminant
-      --  checking functions of the parent type). However, for untagged types
-      --  the derivation may have taken place before the parent was frozen, so
-      --  we copy explicitly the discriminant checking functions from the
-      --  parent into the components of the derived type.
-
-      if not Is_Derived_Type (Def_Id)
-        or else Has_New_Non_Standard_Rep (Def_Id)
-        or else Is_Tagged_Type (Def_Id)
-      then
-         Build_Discr_Checking_Funcs (Type_Decl);
-
-      elsif Is_Derived_Type (Def_Id)
-        and then not Is_Tagged_Type (Def_Id)
-
-        --  If we have a derived Unchecked_Union, we do not inherit the
-        --  discriminant checking functions from the parent type since the
-        --  discriminants are non existent.
-
-        and then not Is_Unchecked_Union (Def_Id)
-        and then Has_Discriminants (Def_Id)
-      then
-         declare
-            Old_Comp : Entity_Id;
-
-         begin
-            Old_Comp :=
-              First_Component (Base_Type (Underlying_Type (Etype (Def_Id))));
-            Comp := First_Component (Def_Id);
-            while Present (Comp) loop
-               if Ekind (Comp) = E_Component
-                 and then Chars (Comp) = Chars (Old_Comp)
-               then
-                  Set_Discriminant_Checking_Func (Comp,
-                    Discriminant_Checking_Func (Old_Comp));
-               end if;
-
-               Next_Component (Old_Comp);
-               Next_Component (Comp);
-            end loop;
-         end;
-      end if;
-
-      if Is_Derived_Type (Def_Id)
-        and then Is_Limited_Type (Def_Id)
-        and then Is_Tagged_Type (Def_Id)
-      then
-         Check_Stream_Attributes (Def_Id);
-      end if;
-
-      --  Update task, protected, and controlled component flags, because some
-      --  of the component types may have been private at the point of the
-      --  record declaration. Detect anonymous access-to-controlled components.
-
-      Has_AACC := False;
-
-      Comp := First_Component (Def_Id);
-      while Present (Comp) loop
-         Comp_Typ := Etype (Comp);
-
-         if Has_Task (Comp_Typ) then
-            Set_Has_Task (Def_Id);
-         end if;
-
-         if Has_Protected (Comp_Typ) then
-            Set_Has_Protected (Def_Id);
-         end if;
-
-         --  Do not set Has_Controlled_Component on a class-wide equivalent
-         --  type. See Make_CW_Equivalent_Type.
-
-         if not Is_Class_Wide_Equivalent_Type (Def_Id)
-           and then (Has_Controlled_Component (Comp_Typ)
-                      or else (Chars (Comp) /= Name_uParent
-                                and then Is_Controlled (Comp_Typ)))
-         then
-            Set_Has_Controlled_Component (Def_Id);
-         end if;
-
-         --  Non-self-referential anonymous access-to-controlled component
-
-         if Ekind (Comp_Typ) = E_Anonymous_Access_Type
-           and then Needs_Finalization (Designated_Type (Comp_Typ))
-           and then Designated_Type (Comp_Typ) /= Def_Id
-         then
-            Has_AACC := True;
-         end if;
-
-         Next_Component (Comp);
-      end loop;
-
-      --  Handle constructors of untagged CPP_Class types
-
-      if not Is_Tagged_Type (Def_Id) and then Is_CPP_Class (Def_Id) then
-         Set_CPP_Constructors (Def_Id);
-      end if;
-
-      --  Creation of the Dispatch Table. Note that a Dispatch Table is built
-      --  for regular tagged types as well as for Ada types deriving from a C++
-      --  Class, but not for tagged types directly corresponding to C++ classes
-      --  In the later case we assume that it is created in the C++ side and we
-      --  just use it.
-
-      if Is_Tagged_Type (Def_Id) then
-
-         --  Add the _Tag component
-
-         if Underlying_Type (Etype (Def_Id)) = Def_Id then
-            Expand_Tagged_Root (Def_Id);
-         end if;
-
-         if Is_CPP_Class (Def_Id) then
-            Set_All_DT_Position (Def_Id);
-
-            --  Create the tag entities with a minimum decoration
-
-            if Tagged_Type_Expansion then
-               Append_Freeze_Actions (Def_Id, Make_Tags (Def_Id));
-            end if;
-
-            Set_CPP_Constructors (Def_Id);
-
-         else
-            if not Building_Static_DT (Def_Id) then
-
-               --  Usually inherited primitives are not delayed but the first
-               --  Ada extension of a CPP_Class is an exception since the
-               --  address of the inherited subprogram has to be inserted in
-               --  the new Ada Dispatch Table and this is a freezing action.
-
-               --  Similarly, if this is an inherited operation whose parent is
-               --  not frozen yet, it is not in the DT of the parent, and we
-               --  generate an explicit freeze node for the inherited operation
-               --  so it is properly inserted in the DT of the current type.
-
-               declare
-                  Elmt : Elmt_Id;
-                  Subp : Entity_Id;
-
-               begin
-                  Elmt := First_Elmt (Primitive_Operations (Def_Id));
-                  while Present (Elmt) loop
-                     Subp := Node (Elmt);
-
-                     if Present (Alias (Subp)) then
-                        if Is_CPP_Class (Etype (Def_Id)) then
-                           Set_Has_Delayed_Freeze (Subp);
-
-                        elsif Has_Delayed_Freeze (Alias (Subp))
-                          and then not Is_Frozen (Alias (Subp))
-                        then
-                           Set_Is_Frozen (Subp, False);
-                           Set_Has_Delayed_Freeze (Subp);
-                        end if;
-                     end if;
-
-                     Next_Elmt (Elmt);
-                  end loop;
-               end;
-            end if;
-
-            --  Unfreeze momentarily the type to add the predefined primitives
-            --  operations. The reason we unfreeze is so that these predefined
-            --  operations will indeed end up as primitive operations (which
-            --  must be before the freeze point).
-
-            Set_Is_Frozen (Def_Id, False);
-
-            --  Do not add the spec of predefined primitives in case of
-            --  CPP tagged type derivations that have convention CPP.
-
-            if Is_CPP_Class (Root_Type (Def_Id))
-              and then Convention (Def_Id) = Convention_CPP
-            then
-               null;
-
-            --  Do not add the spec of predefined primitives in case of
-            --  CIL and Java tagged types
-
-            elsif Convention (Def_Id) = Convention_CIL
-              or else Convention (Def_Id) = Convention_Java
-            then
-               null;
-
-            --  Do not add the spec of the predefined primitives if we are
-            --  compiling under restriction No_Dispatching_Calls.
-
-            elsif not Restriction_Active (No_Dispatching_Calls) then
-               Make_Predefined_Primitive_Specs
-                 (Def_Id, Predef_List, Renamed_Eq);
-               Insert_List_Before_And_Analyze (N, Predef_List);
-            end if;
-
-            --  Ada 2005 (AI-391): For a nonabstract null extension, create
-            --  wrapper functions for each nonoverridden inherited function
-            --  with a controlling result of the type. The wrapper for such
-            --  a function returns an extension aggregate that invokes the
-            --  parent function.
-
-            if Ada_Version >= Ada_2005
-              and then not Is_Abstract_Type (Def_Id)
-              and then Is_Null_Extension (Def_Id)
-            then
-               Make_Controlling_Function_Wrappers
-                 (Def_Id, Wrapper_Decl_List, Wrapper_Body_List);
-               Insert_List_Before_And_Analyze (N, Wrapper_Decl_List);
-            end if;
-
-            --  Ada 2005 (AI-251): For a nonabstract type extension, build
-            --  null procedure declarations for each set of homographic null
-            --  procedures that are inherited from interface types but not
-            --  overridden. This is done to ensure that the dispatch table
-            --  entry associated with such null primitives are properly filled.
-
-            if Ada_Version >= Ada_2005
-              and then Etype (Def_Id) /= Def_Id
-              and then not Is_Abstract_Type (Def_Id)
-              and then Has_Interfaces (Def_Id)
-            then
-               Insert_Actions (N, Make_Null_Procedure_Specs (Def_Id));
-            end if;
-
-            Set_Is_Frozen (Def_Id);
-            if not Is_Derived_Type (Def_Id)
-              or else Is_Tagged_Type (Etype (Def_Id))
-            then
-               Set_All_DT_Position (Def_Id);
-
-            --  If this is a type derived from an untagged private type whose
-            --  full view is tagged, the type is marked tagged for layout
-            --  reasons, but it has no dispatch table.
-
-            elsif Is_Derived_Type (Def_Id)
-              and then Is_Private_Type (Etype (Def_Id))
-              and then not Is_Tagged_Type (Etype (Def_Id))
-            then
-               return;
-            end if;
-
-            --  Create and decorate the tags. Suppress their creation when
-            --  VM_Target because the dispatching mechanism is handled
-            --  internally by the VMs.
-
-            if Tagged_Type_Expansion then
-               Append_Freeze_Actions (Def_Id, Make_Tags (Def_Id));
-
-               --  Generate dispatch table of locally defined tagged type.
-               --  Dispatch tables of library level tagged types are built
-               --  later (see Analyze_Declarations).
-
-               if not Building_Static_DT (Def_Id) then
-                  Append_Freeze_Actions (Def_Id, Make_DT (Def_Id));
-               end if;
-
-            elsif VM_Target /= No_VM then
-               Append_Freeze_Actions (Def_Id, Make_VM_TSD (Def_Id));
-            end if;
-
-            --  If the type has unknown discriminants, propagate dispatching
-            --  information to its underlying record view, which does not get
-            --  its own dispatch table.
-
-            if Is_Derived_Type (Def_Id)
-              and then Has_Unknown_Discriminants (Def_Id)
-              and then Present (Underlying_Record_View (Def_Id))
-            then
-               declare
-                  Rep : constant Entity_Id := Underlying_Record_View (Def_Id);
-               begin
-                  Set_Access_Disp_Table
-                    (Rep, Access_Disp_Table       (Def_Id));
-                  Set_Dispatch_Table_Wrappers
-                    (Rep, Dispatch_Table_Wrappers (Def_Id));
-                  Set_Direct_Primitive_Operations
-                    (Rep, Direct_Primitive_Operations (Def_Id));
-               end;
-            end if;
-
-            --  Make sure that the primitives Initialize, Adjust and Finalize
-            --  are Frozen before other TSS subprograms. We don't want them
-            --  Frozen inside.
-
-            if Is_Controlled (Def_Id) then
-               if not Is_Limited_Type (Def_Id) then
-                  Append_Freeze_Actions (Def_Id,
-                    Freeze_Entity
-                      (Find_Prim_Op (Def_Id, Name_Adjust), Def_Id));
-               end if;
-
-               Append_Freeze_Actions (Def_Id,
-                 Freeze_Entity
-                   (Find_Prim_Op (Def_Id, Name_Initialize), Def_Id));
-
-               Append_Freeze_Actions (Def_Id,
-                 Freeze_Entity
-                   (Find_Prim_Op (Def_Id, Name_Finalize), Def_Id));
-            end if;
-
-            --  Freeze rest of primitive operations. There is no need to handle
-            --  the predefined primitives if we are compiling under restriction
-            --  No_Dispatching_Calls.
-
-            if not Restriction_Active (No_Dispatching_Calls) then
-               Append_Freeze_Actions
-                 (Def_Id, Predefined_Primitive_Freeze (Def_Id));
-            end if;
-         end if;
-
-      --  In the untagged case, ever since Ada 83 an equality function must
-      --  be  provided for variant records that are not unchecked unions.
-      --  In Ada 2012 the equality function composes, and thus must be built
-      --  explicitly just as for tagged records.
-
-      elsif Has_Discriminants (Def_Id)
-        and then not Is_Limited_Type (Def_Id)
-      then
-         declare
-            Comps : constant Node_Id :=
-                      Component_List (Type_Definition (Type_Decl));
-         begin
-            if Present (Comps)
-              and then Present (Variant_Part (Comps))
-            then
-               Build_Variant_Record_Equality (Def_Id);
-            end if;
-         end;
-
-      --  Otherwise create primitive equality operation (AI05-0123)
-
-      --  This is done unconditionally to ensure that tools can be linked
-      --  properly with user programs compiled with older language versions.
-      --  In addition, this is needed because "=" composes for bounded strings
-      --  in all language versions (see Exp_Ch4.Expand_Composite_Equality).
-
-      elsif Comes_From_Source (Def_Id)
-        and then Convention (Def_Id) = Convention_Ada
-        and then not Is_Limited_Type (Def_Id)
-      then
-         Build_Untagged_Equality (Def_Id);
-      end if;
-
-      --  Before building the record initialization procedure, if we are
-      --  dealing with a concurrent record value type, then we must go through
-      --  the discriminants, exchanging discriminals between the concurrent
-      --  type and the concurrent record value type. See the section "Handling
-      --  of Discriminants" in the Einfo spec for details.
-
-      if Is_Concurrent_Record_Type (Def_Id)
-        and then Has_Discriminants (Def_Id)
-      then
-         declare
-            Ctyp       : constant Entity_Id :=
-                           Corresponding_Concurrent_Type (Def_Id);
-            Conc_Discr : Entity_Id;
-            Rec_Discr  : Entity_Id;
-            Temp       : Entity_Id;
-
-         begin
-            Conc_Discr := First_Discriminant (Ctyp);
-            Rec_Discr  := First_Discriminant (Def_Id);
-            while Present (Conc_Discr) loop
-               Temp := Discriminal (Conc_Discr);
-               Set_Discriminal (Conc_Discr, Discriminal (Rec_Discr));
-               Set_Discriminal (Rec_Discr, Temp);
-
-               Set_Discriminal_Link (Discriminal (Conc_Discr), Conc_Discr);
-               Set_Discriminal_Link (Discriminal (Rec_Discr),  Rec_Discr);
-
-               Next_Discriminant (Conc_Discr);
-               Next_Discriminant (Rec_Discr);
-            end loop;
-         end;
-      end if;
-
-      if Has_Controlled_Component (Def_Id) then
-         Build_Controlling_Procs (Def_Id);
-      end if;
-
-      Adjust_Discriminants (Def_Id);
-
-      if Tagged_Type_Expansion or else not Is_Interface (Def_Id) then
-
-         --  Do not need init for interfaces on e.g. CIL since they're
-         --  abstract. Helps operation of peverify (the PE Verify tool).
-
-         Build_Record_Init_Proc (Type_Decl, Def_Id);
-      end if;
-
-      --  For tagged type that are not interfaces, build bodies of primitive
-      --  operations. Note: do this after building the record initialization
-      --  procedure, since the primitive operations may need the initialization
-      --  routine. There is no need to add predefined primitives of interfaces
-      --  because all their predefined primitives are abstract.
-
-      if Is_Tagged_Type (Def_Id) and then not Is_Interface (Def_Id) then
-
-         --  Do not add the body of predefined primitives in case of CPP tagged
-         --  type derivations that have convention CPP.
-
-         if Is_CPP_Class (Root_Type (Def_Id))
-           and then Convention (Def_Id) = Convention_CPP
-         then
-            null;
-
-         --  Do not add the body of predefined primitives in case of CIL and
-         --  Java tagged types.
-
-         elsif Convention (Def_Id) = Convention_CIL
-           or else Convention (Def_Id) = Convention_Java
-         then
-            null;
-
-         --  Do not add the body of the predefined primitives if we are
-         --  compiling under restriction No_Dispatching_Calls or if we are
-         --  compiling a CPP tagged type.
-
-         elsif not Restriction_Active (No_Dispatching_Calls) then
-
-            --  Create the body of TSS primitive Finalize_Address. This must
-            --  be done before the bodies of all predefined primitives are
-            --  created. If Def_Id is limited, Stream_Input and Stream_Read
-            --  may produce build-in-place allocations and for those the
-            --  expander needs Finalize_Address.
-
-            Make_Finalize_Address_Body (Def_Id);
-            Predef_List := Predefined_Primitive_Bodies (Def_Id, Renamed_Eq);
-            Append_Freeze_Actions (Def_Id, Predef_List);
-         end if;
-
-         --  Ada 2005 (AI-391): If any wrappers were created for nonoverridden
-         --  inherited functions, then add their bodies to the freeze actions.
-
-         if Present (Wrapper_Body_List) then
-            Append_Freeze_Actions (Def_Id, Wrapper_Body_List);
-         end if;
-
-         --  Create extra formals for the primitive operations of the type.
-         --  This must be done before analyzing the body of the initialization
-         --  procedure, because a self-referential type might call one of these
-         --  primitives in the body of the init_proc itself.
-
-         declare
-            Elmt : Elmt_Id;
-            Subp : Entity_Id;
-
-         begin
-            Elmt := First_Elmt (Primitive_Operations (Def_Id));
-            while Present (Elmt) loop
-               Subp := Node (Elmt);
-               if not Has_Foreign_Convention (Subp)
-                 and then not Is_Predefined_Dispatching_Operation (Subp)
-               then
-                  Create_Extra_Formals (Subp);
-               end if;
-
-               Next_Elmt (Elmt);
-            end loop;
-         end;
-      end if;
-
-      --  Create a heterogeneous finalization master to service the anonymous
-      --  access-to-controlled components of the record type.
-
-      if Has_AACC then
-         declare
-            Encl_Scope : constant Entity_Id  := Scope (Def_Id);
-            Ins_Node   : constant Node_Id    := Parent (Def_Id);
-            Loc        : constant Source_Ptr := Sloc (Def_Id);
-            Fin_Mas_Id : Entity_Id;
-
-            Attributes_Set : Boolean := False;
-            Master_Built   : Boolean := False;
-            --  Two flags which control the creation and initialization of a
-            --  common heterogeneous master.
-
-         begin
-            Comp := First_Component (Def_Id);
-            while Present (Comp) loop
-               Comp_Typ := Etype (Comp);
-
-               --  A non-self-referential anonymous access-to-controlled
-               --  component.
-
-               if Ekind (Comp_Typ) = E_Anonymous_Access_Type
-                 and then Needs_Finalization (Designated_Type (Comp_Typ))
-                 and then Designated_Type (Comp_Typ) /= Def_Id
-               then
-                  if VM_Target = No_VM then
-
-                     --  Build a homogeneous master for the first anonymous
-                     --  access-to-controlled component. This master may be
-                     --  converted into a heterogeneous collection if more
-                     --  components are to follow.
-
-                     if not Master_Built then
-                        Master_Built := True;
-
-                        --  All anonymous access-to-controlled types allocate
-                        --  on the global pool. Note that the finalization
-                        --  master and the associated storage pool must be set
-                        --  on the root type (both are "root type only").
-
-                        Set_Associated_Storage_Pool
-                          (Root_Type (Comp_Typ), RTE (RE_Global_Pool_Object));
-
-                        Build_Finalization_Master
-                          (Typ        => Root_Type (Comp_Typ),
-                           Ins_Node   => Ins_Node,
-                           Encl_Scope => Encl_Scope);
-
-                        Fin_Mas_Id := Finalization_Master (Comp_Typ);
-
-                     --  Subsequent anonymous access-to-controlled components
-                     --  reuse the available master.
-
-                     else
-                        --  All anonymous access-to-controlled types allocate
-                        --  on the global pool. Note that both the finalization
-                        --  master and the associated storage pool must be set
-                        --  on the root type (both are "root type only").
-
-                        Set_Associated_Storage_Pool
-                          (Root_Type (Comp_Typ), RTE (RE_Global_Pool_Object));
-
-                        --  Shared the master among multiple components
-
-                        Set_Finalization_Master
-                          (Root_Type (Comp_Typ), Fin_Mas_Id);
-
-                        --  Convert the master into a heterogeneous collection.
-                        --  Generate:
-                        --    Set_Is_Heterogeneous (<Fin_Mas_Id>);
-
-                        if not Attributes_Set then
-                           Attributes_Set := True;
-
-                           Insert_Action (Ins_Node,
-                             Make_Procedure_Call_Statement (Loc,
-                               Name                   =>
-                                 New_Occurrence_Of
-                                   (RTE (RE_Set_Is_Heterogeneous), Loc),
-                               Parameter_Associations => New_List (
-                                 New_Occurrence_Of (Fin_Mas_Id, Loc))));
-                        end if;
-                     end if;
-
-                  --  Since .NET/JVM targets do not support heterogeneous
-                  --  masters, each component must have its own master.
-
-                  else
-                     Build_Finalization_Master
-                       (Typ        => Comp_Typ,
-                        Ins_Node   => Ins_Node,
-                        Encl_Scope => Encl_Scope);
-                  end if;
-               end if;
-
-               Next_Component (Comp);
-            end loop;
-         end;
-      end if;
-
-      --  Check whether individual components have a defined invariant, and add
-      --  the corresponding component invariant checks.
-
-      --  Do not create an invariant procedure for some internally generated
-      --  subtypes, in particular those created for objects of a class-wide
-      --  type. Such types may have components to which invariant apply, but
-      --  the corresponding checks will be applied when an object of the parent
-      --  type is constructed.
-
-      --  Such objects will show up in a class-wide postcondition, and the
-      --  invariant will be checked, if necessary, upon return from the
-      --  enclosing subprogram.
-
-      if not Is_Class_Wide_Equivalent_Type (Def_Id) then
-         Insert_Component_Invariant_Checks
-           (N, Def_Id, Build_Record_Invariant_Proc (Def_Id, N));
-      end if;
-   end Expand_Freeze_Record_Type;
-
    ------------------------------
    -- Freeze_Stream_Operations --
    ------------------------------
@@ -7358,34 +7431,114 @@ package body Exp_Ch3 is
    --  node using Append_Freeze_Actions.
 
    function Freeze_Type (N : Node_Id) return Boolean is
-      Def_Id    : constant Entity_Id := Entity (N);
-      RACW_Seen : Boolean := False;
-      Result    : Boolean := False;
+      procedure Process_RACW_Types (Typ : Entity_Id);
+      --  Validate and generate stubs for all RACW types associated with type
+      --  Typ.
 
-   begin
-      --  Process associated access types needing special processing
+      procedure Process_Pending_Access_Types (Typ : Entity_Id);
+      --  Associate type Typ's Finalize_Address primitive with the finalization
+      --  masters of pending access-to-Typ types.
 
-      if Present (Access_Types_To_Process (N)) then
-         declare
-            E : Elmt_Id := First_Elmt (Access_Types_To_Process (N));
+      ------------------------
+      -- Process_RACW_Types --
+      ------------------------
 
-         begin
+      procedure Process_RACW_Types (Typ : Entity_Id) is
+         List : constant Elist_Id := Access_Types_To_Process (N);
+         E    : Elmt_Id;
+         Seen : Boolean := False;
+
+      begin
+         if Present (List) then
+            E := First_Elmt (List);
             while Present (E) loop
                if Is_Remote_Access_To_Class_Wide_Type (Node (E)) then
                   Validate_RACW_Primitives (Node (E));
-                  RACW_Seen := True;
+                  Seen := True;
                end if;
 
-               E := Next_Elmt (E);
+               Next_Elmt (E);
             end loop;
-         end;
+         end if;
 
          --  If there are RACWs designating this type, make stubs now
 
-         if RACW_Seen then
-            Remote_Types_Tagged_Full_View_Encountered (Def_Id);
+         if Seen then
+            Remote_Types_Tagged_Full_View_Encountered (Typ);
          end if;
-      end if;
+      end Process_RACW_Types;
+
+      ----------------------------------
+      -- Process_Pending_Access_Types --
+      ----------------------------------
+
+      procedure Process_Pending_Access_Types (Typ : Entity_Id) is
+         E : Elmt_Id;
+
+      begin
+         --  Finalize_Address is not generated in CodePeer mode because the
+         --  body contains address arithmetic. This processing is disabled.
+
+         if CodePeer_Mode then
+            null;
+
+         --  Certain itypes are generated for contexts that cannot allocate
+         --  objects and should not set primitive Finalize_Address.
+
+         elsif Is_Itype (Typ)
+           and then Nkind (Associated_Node_For_Itype (Typ)) =
+                      N_Explicit_Dereference
+         then
+            null;
+
+         --  When an access type is declared after the incomplete view of a
+         --  Taft-amendment type, the access type is considered pending in
+         --  case the full view of the Taft-amendment type is controlled. If
+         --  this is indeed the case, associate the Finalize_Address routine
+         --  of the full view with the finalization masters of all pending
+         --  access types. This scenario applies to anonymous access types as
+         --  well.
+
+         elsif Needs_Finalization (Typ)
+           and then Present (Pending_Access_Types (Typ))
+         then
+            E := First_Elmt (Pending_Access_Types (Typ));
+            while Present (E) loop
+
+               --  Generate:
+               --    Set_Finalize_Address
+               --      (Ptr_Typ, <Typ>FD'Unrestricted_Access);
+
+               Append_Freeze_Action (Typ,
+                 Make_Set_Finalize_Address_Call
+                   (Loc     => Sloc (N),
+                    Ptr_Typ => Node (E)));
+
+               Next_Elmt (E);
+            end loop;
+         end if;
+      end Process_Pending_Access_Types;
+
+      --  Local variables
+
+      Def_Id : constant Entity_Id := Entity (N);
+      Result : Boolean := False;
+
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
+   --  Start of processing for Freeze_Type
+
+   begin
+      --  The type being frozen may be subject to pragma Ghost. Set the mode
+      --  now to ensure that any nodes generated during freezing are properly
+      --  marked as Ghost.
+
+      Set_Ghost_Mode (N, Def_Id);
+
+      --  Process any remote access-to-class-wide types designating the type
+      --  being frozen.
+
+      Process_RACW_Types (Def_Id);
 
       --  Freeze processing for record types
 
@@ -7539,10 +7692,6 @@ package body Exp_Ch3 is
             elsif Ada_Version >= Ada_2012
               and then Present (Associated_Storage_Pool (Def_Id))
 
-              --  Omit this check on .NET/JVM where pools are not supported
-
-              and then VM_Target = No_VM
-
               --  Omit this check for the case of a configurable run-time that
               --  does not provide package System.Storage_Pools.Subpools.
 
@@ -7630,18 +7779,26 @@ package body Exp_Ch3 is
             then
                null;
 
-            --  Assume that incomplete and private types are always completed
-            --  by a controlled full view.
+            --  Create a finalization master for an access-to-controlled type
+            --  or an access-to-incomplete type. It is assumed that the full
+            --  view will be controlled.
 
             elsif Needs_Finalization (Desig_Type)
-              or else
-                (Is_Incomplete_Or_Private_Type (Desig_Type)
-                  and then No (Full_View (Desig_Type)))
-              or else
-                (Is_Array_Type (Desig_Type)
-                  and then Needs_Finalization (Component_Type (Desig_Type)))
+              or else (Is_Incomplete_Type (Desig_Type)
+                        and then No (Full_View (Desig_Type)))
             then
                Build_Finalization_Master (Def_Id);
+
+            --  Create a finalization master when the designated type contains
+            --  a private component. It is assumed that the full view will be
+            --  controlled.
+
+            elsif Has_Private_Component (Desig_Type) then
+               Build_Finalization_Master
+                 (Typ            => Def_Id,
+                  For_Private    => True,
+                  Context_Scope  => Scope (Def_Id),
+                  Insertion_Node => Declaration_Node (Desig_Type));
             end if;
          end;
 
@@ -7680,11 +7837,19 @@ package body Exp_Ch3 is
 
       end if;
 
+      --  Complete the initialization of all pending access types' finalization
+      --  masters now that the designated type has been is frozen and primitive
+      --  Finalize_Address generated.
+
+      Process_Pending_Access_Types (Def_Id);
       Freeze_Stream_Operations (N, Def_Id);
+
+      Ghost_Mode := Save_Ghost_Mode;
       return Result;
 
    exception
       when RE_Not_Available =>
+         Ghost_Mode := Save_Ghost_Mode;
          return False;
    end Freeze_Type;
 
@@ -8052,6 +8217,34 @@ package body Exp_Ch3 is
 
       end if;
    end Has_New_Non_Standard_Rep;
+
+   ----------------------
+   -- Inline_Init_Proc --
+   ----------------------
+
+   function Inline_Init_Proc (Typ : Entity_Id) return Boolean is
+   begin
+      --  The initialization proc of protected records is not worth inlining.
+      --  In addition, when compiled for another unit for inlining purposes,
+      --  it may make reference to entities that have not been elaborated yet.
+      --  The initialization proc of records that need finalization contains
+      --  a nested clean-up procedure that makes it impractical to inline as
+      --  well, except for simple controlled types themselves. And similar
+      --  considerations apply to task types.
+
+      if Is_Concurrent_Type (Typ) then
+         return False;
+
+      elsif Needs_Finalization (Typ) and then not Is_Controlled (Typ) then
+         return False;
+
+      elsif Has_Task (Typ) then
+         return False;
+
+      else
+         return True;
+      end if;
+   end Inline_Init_Proc;
 
    ----------------
    -- In_Runtime --
@@ -8623,7 +8816,6 @@ package body Exp_Ch3 is
       Body_List := New_List;
 
       Prim_Elmt := First_Elmt (Primitive_Operations (Tag_Typ));
-
       while Present (Prim_Elmt) loop
          Subp := Node (Prim_Elmt);
 
@@ -9636,11 +9828,6 @@ package body Exp_Ch3 is
       if Restriction_Active (No_Finalization) then
          null;
 
-      --  Finalization is not available for CIL value types
-
-      elsif Is_Value_Type (Tag_Typ) then
-         null;
-
       else
          if not Is_Limited_Type (Tag_Typ) then
             Append_To (Res, Predef_Deep_Spec (Loc, Tag_Typ, TSS_Deep_Adjust));
@@ -9651,6 +9838,50 @@ package body Exp_Ch3 is
 
       Predef_List := Res;
    end Make_Predefined_Primitive_Specs;
+
+   -------------------------
+   -- Make_Tag_Assignment --
+   -------------------------
+
+   function Make_Tag_Assignment (N : Node_Id) return Node_Id is
+      Loc      : constant Source_Ptr := Sloc (N);
+      Def_If   : constant Entity_Id := Defining_Identifier (N);
+      Expr     : constant Node_Id := Expression (N);
+      Typ      : constant Entity_Id := Etype (Def_If);
+      Full_Typ : constant Entity_Id := Underlying_Type (Typ);
+      New_Ref  : Node_Id;
+
+   begin
+      --  This expansion activity is called during analysis, but cannot
+      --  be applied in ASIS mode when other expansion is disabled.
+
+      if Is_Tagged_Type (Typ)
+       and then not Is_Class_Wide_Type (Typ)
+       and then not Is_CPP_Class (Typ)
+       and then Tagged_Type_Expansion
+       and then Nkind (Expr) /= N_Aggregate
+       and then not ASIS_Mode
+       and then (Nkind (Expr) /= N_Qualified_Expression
+                  or else Nkind (Expression (Expr)) /= N_Aggregate)
+      then
+         New_Ref :=
+           Make_Selected_Component (Loc,
+              Prefix        => New_Occurrence_Of (Def_If, Loc),
+              Selector_Name =>
+                New_Occurrence_Of (First_Tag_Component (Full_Typ), Loc));
+         Set_Assignment_OK (New_Ref);
+
+         return
+           Make_Assignment_Statement (Loc,
+              Name       => New_Ref,
+              Expression =>
+                Unchecked_Convert_To (RTE (RE_Tag),
+                  New_Occurrence_Of (Node
+                      (First_Elmt (Access_Disp_Table (Full_Typ))), Loc)));
+      else
+         return Empty;
+      end if;
+   end Make_Tag_Assignment;
 
    ---------------------------------
    -- Needs_Simple_Initialization --
@@ -9964,7 +10195,9 @@ package body Exp_Ch3 is
 
       --  Bodies for Dispatching stream IO routines. We need these only for
       --  non-limited types (in the limited case there is no dispatching).
-      --  We also skip them if dispatching or finalization are not available.
+      --  We also skip them if dispatching or finalization are not available
+      --  or if stream operations are prohibited by restriction No_Streams or
+      --  from use of pragma/aspect No_Tagged_Streams.
 
       if Stream_Operation_OK (Tag_Typ, TSS_Stream_Read)
         and then No (TSS (Tag_Typ, TSS_Stream_Read))
@@ -10239,10 +10472,7 @@ package body Exp_Ch3 is
       --  we don't want an abstract version created because types derived from
       --  the abstract type may not even have Input available (for example if
       --  derived from a private view of the abstract type that doesn't have
-      --  a visible Input), but a VM such as .NET or the Java VM can treat the
-      --  operation as inherited anyway, and we don't want an abstract function
-      --  to be (implicitly) inherited in that case because it can lead to a VM
-      --  exception.
+      --  a visible Input).
 
       --  Do not generate stream routines for type Finalization_Master because
       --  a master may never appear in types and therefore cannot be read or
@@ -10265,6 +10495,7 @@ package body Exp_Ch3 is
                 or else Is_Synchronized_Interface (Typ)))
         and then not Restriction_Active (No_Streams)
         and then not Restriction_Active (No_Dispatch)
+        and then No (No_Tagged_Streams_Pragma (Typ))
         and then not No_Run_Time_Mode
         and then RTE_Available (RE_Tag)
         and then No (Type_Without_Stream_Operation (Typ))

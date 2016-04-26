@@ -1,5 +1,5 @@
 /* Glue to interface gcj with bytecode verifier.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,14 +27,13 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 
 #include "system.h"
 #include "coretypes.h"
-#include "tree.h"
+#include "options.h"
 #include "stringpool.h"
+#include "diagnostic-core.h"
 #include "parse.h"
 
 #include "verify.h"
-#include "java-tree.h"
 #include "java-except.h"
-#include "diagnostic-core.h"
 
 void *
 vfy_alloc (size_t bytes)

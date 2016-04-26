@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (C) 2013 Free Software Foundation, Inc.
+# Copyright (C) 2013-2016 Free Software Foundation, Inc.
 #
 # This script is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -183,6 +183,7 @@ class Copyright:
             '|[Cc]opyright\s+%s'
             '|[Cc]opyright\s+&copy;'
             '|[Cc]opyright\s+@copyright{}'
+            '|copyright = u\''
             '|@set\s+copyright[\w-]+)'
 
             # 2: the years.  Include the whitespace in the year, so that
@@ -363,7 +364,8 @@ class Copyright:
             return (False, orig_line, next_line)
 
         line = (line[:match.start (2)]
-                + ' ' + canon_form + self.separator
+                + ('' if intro.startswith ('copyright = ') else ' ')
+                + canon_form + self.separator
                 + line[match.end (2):])
 
         # Use the standard (C) form.
@@ -694,6 +696,7 @@ class GCCCopyright (Copyright):
         self.add_external_author ('James Theiler, Brian Gough')
         self.add_external_author ('Makoto Matsumoto and Takuji Nishimura,')
         self.add_external_author ('National Research Council of Canada.')
+        self.add_external_author ('NVIDIA Corporation')
         self.add_external_author ('Peter Dimov and Multi Media Ltd.')
         self.add_external_author ('Peter Dimov')
         self.add_external_author ('Pipeline Associates, Inc.')
@@ -743,6 +746,7 @@ class GCCCmdLine (CmdLine):
         # libsanitiser is imported from upstream.
         self.add_dir ('libssp')
         self.add_dir ('libstdc++-v3', LibStdCxxFilter())
+        self.add_dir ('libvtv')
         self.add_dir ('lto-plugin')
         # zlib is imported from upstream.
 

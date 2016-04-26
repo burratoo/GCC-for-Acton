@@ -1,7 +1,7 @@
 /* This file is part of the Intel(R) Cilk(TM) Plus support
    This file contains routines to handle Array Notation expression
    handling routines in the C Compiler.
-   Copyright (C) 2013-2014 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by Balaji V. Iyer <balaji.v.iyer@intel.com>,
                   Intel Corporation.
 
@@ -68,12 +68,9 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tree.h"
 #include "c-tree.h"
 #include "gimple-expr.h"
 #include "tree-iterator.h"
-#include "opts.h"
-#include "c-family/c-common.h"
 
 /* If *VALUE is not of type INTEGER_CST, PARM_DECL or VAR_DECL, then map it
    to a variable and then set *VALUE to the new variable.  */
@@ -84,7 +81,7 @@ make_triplet_val_inv (location_t loc, tree *value)
   tree var, new_exp;
   if (TREE_CODE (*value) != INTEGER_CST
       && TREE_CODE (*value) != PARM_DECL
-      && TREE_CODE (*value) != VAR_DECL)
+      && !VAR_P (*value))
     {
       var = build_decl (loc, VAR_DECL, NULL_TREE, integer_type_node);
       new_exp = build_modify_expr (loc, var, TREE_TYPE (var), NOP_EXPR, loc,
@@ -208,7 +205,7 @@ fix_builtin_array_notation_fn (tree an_builtin_fn, tree *new_var)
   location_t location = UNKNOWN_LOCATION;
   tree loop_with_init = alloc_stmt_list ();
   vec<vec<an_parts> > an_info = vNULL;
-  vec<an_loop_parts> an_loop_info = vNULL;
+  auto_vec<an_loop_parts> an_loop_info;
   enum built_in_function an_type =
     is_cilkplus_reduce_builtin (CALL_EXPR_FN (an_builtin_fn));
   if (an_type == BUILT_IN_NONE)
@@ -295,7 +292,7 @@ fix_builtin_array_notation_fn (tree an_builtin_fn, tree *new_var)
 
   for (ii = 0; ii < rank; ii++)
     {
-      an_loop_info[ii].var = create_tmp_var (integer_type_node, NULL);
+      an_loop_info[ii].var = create_tmp_var (integer_type_node);
       an_loop_info[ii].ind_init =
 	build_modify_expr (location, an_loop_info[ii].var,
 			   TREE_TYPE (an_loop_info[ii].var), NOP_EXPR,
@@ -321,7 +318,7 @@ fix_builtin_array_notation_fn (tree an_builtin_fn, tree *new_var)
     array_ind_value = build_decl (location, VAR_DECL, NULL_TREE, 
 				  TREE_TYPE (func_parm));
   array_op0 = (*array_operand)[0];
-  if (TREE_CODE (array_op0) == INDIRECT_REF)
+  if (INDIRECT_REF_P (array_op0))
     array_op0 = TREE_OPERAND (array_op0, 0);
   switch (an_type)
     {
@@ -596,8 +593,7 @@ fix_builtin_array_notation_fn (tree an_builtin_fn, tree *new_var)
     }
   append_to_statement_list_force (body, &loop_with_init);
 
-  an_info.release ();
-  an_loop_info.release ();
+  release_vec_vec (an_info);
   
   return loop_with_init;
 }
@@ -617,7 +613,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
   tree array_expr_lhs = NULL_TREE, array_expr_rhs = NULL_TREE;
   tree array_expr = NULL_TREE;
   tree an_init = NULL_TREE;
-  vec<tree> cond_expr = vNULL;
+  auto_vec<tree> cond_expr;
   tree body, loop_with_init = alloc_stmt_list();
   tree scalar_mods = NULL_TREE;
   vec<tree, va_gc> *rhs_array_operand = NULL, *lhs_array_operand = NULL;
@@ -627,7 +623,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
   tree new_modify_expr, new_var = NULL_TREE, builtin_loop = NULL_TREE;
   size_t rhs_list_size = 0, lhs_list_size = 0; 
   vec<vec<an_parts> > lhs_an_info = vNULL, rhs_an_info = vNULL;
-  vec<an_loop_parts> lhs_an_loop_info = vNULL, rhs_an_loop_info = vNULL;
+  auto_vec<an_loop_parts> lhs_an_loop_info, rhs_an_loop_info;
   
   /* If either of this is true, an error message must have been send out
      already.  Not necessary to send out multiple error messages.  */
@@ -774,7 +770,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
 	  && length_mismatch_in_expr_p (EXPR_LOCATION (rhs), rhs_an_info)))
     {
       pop_stmt_list (an_init);
-      return error_mark_node;
+      goto error;
     }
   if (lhs_list_size > 0 && rhs_list_size > 0 && lhs_rank > 0 && rhs_rank > 0
       && TREE_CODE (lhs_an_info[0][0].length) == INTEGER_CST
@@ -789,14 +785,13 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
 	{
 	  error_at (location, "length mismatch between LHS and RHS");
 	  pop_stmt_list (an_init);
-	  return error_mark_node;
+	  goto error;
 	}
     }
   for (ii = 0; ii < lhs_rank; ii++)
     if (lhs_an_info[0][ii].is_vector)
       {
-	lhs_an_loop_info[ii].var = create_tmp_var (integer_type_node,
-						   NULL);
+	lhs_an_loop_info[ii].var = create_tmp_var (integer_type_node);
 	lhs_an_loop_info[ii].ind_init = build_modify_expr
 	  (location, lhs_an_loop_info[ii].var,
 	   TREE_TYPE (lhs_an_loop_info[ii].var), NOP_EXPR,
@@ -807,8 +802,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
     {
       /* When we have a polynomial, we assume that the indices are of type 
 	 integer.  */
-      rhs_an_loop_info[ii].var = create_tmp_var (integer_type_node,
-						 NULL);
+      rhs_an_loop_info[ii].var = create_tmp_var (integer_type_node);
       rhs_an_loop_info[ii].ind_init = build_modify_expr
 	(location, rhs_an_loop_info[ii].var,
 	 TREE_TYPE (rhs_an_loop_info[ii].var), NOP_EXPR,
@@ -834,7 +828,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
 						 rhs_an_loop_info, rhs_rank,
 						 rhs);
       if (!rhs_array_operand)
-	return error_mark_node;
+	goto error;
       replace_array_notations (&rhs, true, rhs_list, rhs_array_operand);
     }
   else if (rhs_list_size > 0)
@@ -843,7 +837,7 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
 						 lhs_an_loop_info, lhs_rank,
 						 lhs);
       if (!rhs_array_operand)
-	return error_mark_node;
+	goto error;
       replace_array_notations (&rhs, true, rhs_list, rhs_array_operand);
     }
   array_expr_lhs = lhs;
@@ -886,15 +880,15 @@ build_array_notation_expr (location_t location, tree lhs, tree lhs_origtype,
     }
   append_to_statement_list_force (body, &loop_with_init);
 
-  lhs_an_info.release ();
-  lhs_an_loop_info.release ();
-  if (rhs_rank)
-    {
-      rhs_an_info.release ();
-      rhs_an_loop_info.release ();
-    }
-  cond_expr.release ();
+  release_vec_vec (lhs_an_info);
+  release_vec_vec (rhs_an_info);
   return loop_with_init;
+
+error:
+  release_vec_vec (lhs_an_info);
+  release_vec_vec (rhs_an_info);
+
+  return error_mark_node;
 }
 
 /* Helper function for fix_conditional_array_notations.  Encloses the 
@@ -914,7 +908,7 @@ fix_conditional_array_notations_1 (tree stmt)
   location_t location = EXPR_LOCATION (stmt);
   tree body = NULL_TREE, loop_with_init = alloc_stmt_list ();
   vec<vec<an_parts> > an_info = vNULL;
-  vec<an_loop_parts> an_loop_info = vNULL;
+  auto_vec<an_loop_parts> an_loop_info;
  
   if (TREE_CODE (stmt) == COND_EXPR)
     cond = COND_EXPR_COND (stmt);
@@ -984,7 +978,7 @@ fix_conditional_array_notations_1 (tree stmt)
   cilkplus_extract_an_triplets (array_list, list_size, rank, &an_info);
   for (ii = 0; ii < rank; ii++)
     {
-      an_loop_info[ii].var = create_tmp_var (integer_type_node, NULL);
+      an_loop_info[ii].var = create_tmp_var (integer_type_node);
       an_loop_info[ii].ind_init =
 	build_modify_expr (location, an_loop_info[ii].var,
 			   TREE_TYPE (an_loop_info[ii].var), NOP_EXPR,
@@ -1010,9 +1004,7 @@ fix_conditional_array_notations_1 (tree stmt)
       body = pop_stmt_list (new_loop);
     }
   append_to_statement_list_force (body, &loop_with_init);
-
-  an_loop_info.release ();
-  an_info.release ();
+  release_vec_vec (an_info);
 
   return loop_with_init;
 }
@@ -1053,7 +1045,7 @@ fix_array_notation_expr (location_t location, enum tree_code code,
   tree loop_init;
   tree body, loop_with_init = alloc_stmt_list ();
   vec<vec<an_parts> > an_info = vNULL;
-  vec<an_loop_parts> an_loop_info = vNULL;
+  auto_vec<an_loop_parts> an_loop_info;
   
   if (!find_rank (location, arg.value, arg.value, false, &rank))
     {
@@ -1080,7 +1072,7 @@ fix_array_notation_expr (location_t location, enum tree_code code,
   loop_init = push_stmt_list ();
   for (ii = 0; ii < rank; ii++)
     {
-      an_loop_info[ii].var = create_tmp_var (integer_type_node, NULL);
+      an_loop_info[ii].var = create_tmp_var (integer_type_node);
       an_loop_info[ii].ind_init =
 	build_modify_expr (location, an_loop_info[ii].var,
 			   TREE_TYPE (an_loop_info[ii].var), NOP_EXPR,
@@ -1115,8 +1107,7 @@ fix_array_notation_expr (location_t location, enum tree_code code,
     }
   append_to_statement_list_force (body, &loop_with_init);
   arg.value = loop_with_init;
-  an_info.release ();
-  an_loop_info.release ();
+  release_vec_vec (an_info);
   return arg;
 }
 
@@ -1133,7 +1124,7 @@ fix_array_notation_call_expr (tree arg)
   tree body, loop_with_init = alloc_stmt_list ();
   location_t location = UNKNOWN_LOCATION;
   vec<vec<an_parts> > an_info = vNULL;
-  vec<an_loop_parts> an_loop_info = vNULL;
+  auto_vec<an_loop_parts> an_loop_info;
 
   if (TREE_CODE (arg) == CALL_EXPR
       && is_cilkplus_reduce_builtin (CALL_EXPR_FN (arg)))
@@ -1175,7 +1166,7 @@ fix_array_notation_call_expr (tree arg)
     }
   for (ii = 0; ii < rank; ii++)
     {
-      an_loop_info[ii].var = create_tmp_var (integer_type_node, NULL);
+      an_loop_info[ii].var = create_tmp_var (integer_type_node);
       an_loop_info[ii].ind_init =
 	build_modify_expr (location, an_loop_info[ii].var,
 			   TREE_TYPE (an_loop_info[ii].var), NOP_EXPR, location,
@@ -1199,8 +1190,7 @@ fix_array_notation_call_expr (tree arg)
       body = pop_stmt_list (new_loop);
     }
   append_to_statement_list_force (body, &loop_with_init);
-  an_loop_info.release ();
-  an_info.release ();
+  release_vec_vec (an_info);
   return loop_with_init;
 }
 

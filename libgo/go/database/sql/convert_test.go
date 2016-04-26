@@ -16,23 +16,28 @@ import (
 var someTime = time.Unix(123, 0)
 var answer int64 = 42
 
+type userDefined float64
+
+type userDefinedSlice []int
+
 type conversionTest struct {
 	s, d interface{} // source and destination
 
 	// following are used if they're non-zero
-	wantint   int64
-	wantuint  uint64
-	wantstr   string
-	wantbytes []byte
-	wantraw   RawBytes
-	wantf32   float32
-	wantf64   float64
-	wanttime  time.Time
-	wantbool  bool // used if d is of type *bool
-	wanterr   string
-	wantiface interface{}
-	wantptr   *int64 // if non-nil, *d's pointed value must be equal to *wantptr
-	wantnil   bool   // if true, *d must be *int64(nil)
+	wantint    int64
+	wantuint   uint64
+	wantstr    string
+	wantbytes  []byte
+	wantraw    RawBytes
+	wantf32    float32
+	wantf64    float64
+	wanttime   time.Time
+	wantbool   bool // used if d is of type *bool
+	wanterr    string
+	wantiface  interface{}
+	wantptr    *int64 // if non-nil, *d's pointed value must be equal to *wantptr
+	wantnil    bool   // if true, *d must be *int64(nil)
+	wantusrdef userDefined
 }
 
 // Target variables for scanning into.
@@ -72,6 +77,14 @@ var conversionTests = []conversionTest{
 	{s: uint64(123), d: &scanstr, wantstr: "123"},
 	{s: 1.5, d: &scanstr, wantstr: "1.5"},
 
+	// From time.Time:
+	{s: time.Unix(1, 0).UTC(), d: &scanstr, wantstr: "1970-01-01T00:00:01Z"},
+	{s: time.Unix(1453874597, 0).In(time.FixedZone("here", -3600*8)), d: &scanstr, wantstr: "2016-01-26T22:03:17-08:00"},
+	{s: time.Unix(1, 2).UTC(), d: &scanstr, wantstr: "1970-01-01T00:00:01.000000002Z"},
+	{s: time.Time{}, d: &scanstr, wantstr: "0001-01-01T00:00:00Z"},
+	{s: time.Unix(1, 2).UTC(), d: &scanbytes, wantbytes: []byte("1970-01-01T00:00:01.000000002Z")},
+	{s: time.Unix(1, 2).UTC(), d: &scaniface, wantiface: time.Unix(1, 2).UTC()},
+
 	// To []byte
 	{s: nil, d: &scanbytes, wantbytes: nil},
 	{s: "string", d: &scanbytes, wantbytes: []byte("string")},
@@ -99,10 +112,16 @@ var conversionTests = []conversionTest{
 
 	// Strings to integers
 	{s: "255", d: &scanuint8, wantuint: 255},
-	{s: "256", d: &scanuint8, wanterr: `converting string "256" to a uint8: strconv.ParseUint: parsing "256": value out of range`},
+	{s: "256", d: &scanuint8, wanterr: "converting driver.Value type string (\"256\") to a uint8: value out of range"},
 	{s: "256", d: &scanuint16, wantuint: 256},
 	{s: "-1", d: &scanint, wantint: -1},
-	{s: "foo", d: &scanint, wanterr: `converting string "foo" to a int: strconv.ParseInt: parsing "foo": invalid syntax`},
+	{s: "foo", d: &scanint, wanterr: "converting driver.Value type string (\"foo\") to a int: invalid syntax"},
+
+	// int64 to smaller integers
+	{s: int64(5), d: &scanuint8, wantuint: 5},
+	{s: int64(256), d: &scanuint8, wanterr: "converting driver.Value type int64 (\"256\") to a uint8: value out of range"},
+	{s: int64(256), d: &scanuint16, wantuint: 256},
+	{s: int64(65536), d: &scanuint16, wanterr: "converting driver.Value type int64 (\"65536\") to a uint16: value out of range"},
 
 	// True bools
 	{s: true, d: &scanbool, wantbool: true},
@@ -145,6 +164,15 @@ var conversionTests = []conversionTest{
 	{s: true, d: &scaniface, wantiface: true},
 	{s: nil, d: &scaniface},
 	{s: []byte(nil), d: &scaniface, wantiface: []byte(nil)},
+
+	// To a user-defined type
+	{s: 1.5, d: new(userDefined), wantusrdef: 1.5},
+	{s: int64(123), d: new(userDefined), wantusrdef: 123},
+	{s: "1.5", d: new(userDefined), wantusrdef: 1.5},
+	{s: []byte{1, 2, 3}, d: new(userDefinedSlice), wanterr: `unsupported Scan, storing driver.Value type []uint8 into type *sql.userDefinedSlice`},
+
+	// Other errors
+	{s: complex(1, 2), d: &scanstr, wanterr: `unsupported Scan, storing driver.Value type complex128 into type *string`},
 }
 
 func intPtrValue(intptr interface{}) interface{} {
@@ -228,6 +256,9 @@ func TestConversions(t *testing.T) {
 				}
 			}
 		}
+		if ct.wantusrdef != 0 && ct.wantusrdef != *ct.d.(*userDefined) {
+			errf("want userDefined %f, got %f", ct.wantusrdef, *ct.d.(*userDefined))
+		}
 	}
 }
 
@@ -283,6 +314,26 @@ func TestValueConverters(t *testing.T) {
 
 // Tests that assigning to RawBytes doesn't allocate (and also works).
 func TestRawBytesAllocs(t *testing.T) {
+	var tests = []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"uint64", uint64(12345678), "12345678"},
+		{"uint32", uint32(1234), "1234"},
+		{"uint16", uint16(12), "12"},
+		{"uint8", uint8(1), "1"},
+		{"uint", uint(123), "123"},
+		{"int", int(123), "123"},
+		{"int8", int8(1), "1"},
+		{"int16", int16(12), "12"},
+		{"int32", int32(1234), "1234"},
+		{"int64", int64(12345678), "12345678"},
+		{"float32", float32(1.5), "1.5"},
+		{"float64", float64(64), "64"},
+		{"bool", false, "false"},
+	}
+
 	buf := make(RawBytes, 10)
 	test := func(name string, in interface{}, want string) {
 		if err := convertAssign(&buf, in); err != nil {
@@ -301,20 +352,11 @@ func TestRawBytesAllocs(t *testing.T) {
 			t.Fatalf("%s: got %q (len %d); want %q (len %d)", name, buf, len(buf), want, len(want))
 		}
 	}
+
 	n := testing.AllocsPerRun(100, func() {
-		test("uint64", uint64(12345678), "12345678")
-		test("uint32", uint32(1234), "1234")
-		test("uint16", uint16(12), "12")
-		test("uint8", uint8(1), "1")
-		test("uint", uint(123), "123")
-		test("int", int(123), "123")
-		test("int8", int8(1), "1")
-		test("int16", int16(12), "12")
-		test("int32", int32(1234), "1234")
-		test("int64", int64(12345678), "12345678")
-		test("float32", float32(1.5), "1.5")
-		test("float64", float64(64), "64")
-		test("bool", false, "false")
+		for _, tt := range tests {
+			test(tt.name, tt.in, tt.want)
+		}
 	})
 
 	// The numbers below are only valid for 64-bit interface word sizes,

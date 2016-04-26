@@ -9,6 +9,7 @@ typedef struct {
 int *a_p;
 S a[1000];
 
+void
 f(int k)
 {
 	int i;
@@ -19,5 +20,4 @@ f(int k)
         }
 }
 
-/* { dg-final { scan-tree-dump-times "&a" 1 "optimized" { xfail { lp64 || llp64 } } } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */
+/* { dg-final { scan-tree-dump-times "&a" 1 "optimized" } } */

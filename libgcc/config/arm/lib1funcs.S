@@ -1,7 +1,7 @@
 @ libgcc routines for ARM cpu.
 @ Division routines, written by Richard Earnshaw, (rearnsha@armltd.co.uk)
 
-/* Copyright (C) 1995-2014 Free Software Foundation, Inc.
+/* Copyright (C) 1995-2016 Free Software Foundation, Inc.
 
 This file is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -418,8 +418,12 @@ SYM (\name):
 #define THUMB_SYNTAX
 #endif
 
-.macro FUNC_START name
+.macro FUNC_START name sp_section=
+  .ifc \sp_section, function_section
+	.section	.text.__\name,"ax",%progbits
+  .else
 	.text
+  .endif
 	.globl SYM (__\name)
 	TYPE (__\name)
 	.align 0
@@ -429,14 +433,24 @@ SYM (\name):
 SYM (__\name):
 .endm
 
+.macro ARM_SYM_START name
+       TYPE (\name)
+       .align 0
+SYM (\name):
+.endm
+
+.macro SYM_END name
+       SIZE (\name)
+.endm
+
 /* Special function that will always be coded in ARM assembly, even if
    in Thumb-only compilation.  */
 
 #if defined(__thumb2__)
 
 /* For Thumb-2 we build everything in thumb mode.  */
-.macro ARM_FUNC_START name
-       FUNC_START \name
+.macro ARM_FUNC_START name sp_section=
+       FUNC_START \name \sp_section
        .syntax unified
 .endm
 #define EQUIV .thumb_set
@@ -467,8 +481,12 @@ _L__\name:
 #ifdef __ARM_ARCH_6M__
 #define EQUIV .thumb_set
 #else
-.macro	ARM_FUNC_START name
+.macro	ARM_FUNC_START name sp_section=
+  .ifc \sp_section, function_section
+	.section	.text.__\name,"ax",%progbits
+  .else
 	.text
+  .endif
 	.globl SYM (__\name)
 	TYPE (__\name)
 	.align 0
@@ -1318,23 +1336,30 @@ LSYM(Lover12):
 #define SIGFPE	8
 
 #ifdef __ARM_EABI__
+	cfi_start	__aeabi_ldiv0, LSYM(Lend_aeabi_ldiv0)
 	WEAK aeabi_idiv0
 	WEAK aeabi_ldiv0
 	ARM_FUNC_START aeabi_idiv0
 	ARM_FUNC_START aeabi_ldiv0
+	do_push	{r1, lr}
+98:	cfi_push 98b - __aeabi_ldiv0, 0xe, -0x4, 0x8
 #else
+	cfi_start	__div0, LSYM(Lend_div0)
 	ARM_FUNC_START div0
+	do_push	{r1, lr}
+98:	cfi_push 98b - __div0, 0xe, -0x4, 0x8
 #endif
 
-	do_push	{r1, lr}
 	mov	r0, #SIGFPE
 	bl	SYM(raise) __PLT__
-	RETLDM	r1
+	RETLDM	r1 unwind=98b
 
 #ifdef __ARM_EABI__
+	cfi_end	LSYM(Lend_aeabi_ldiv0)
 	FUNC_END aeabi_ldiv0
 	FUNC_END aeabi_idiv0
 #else
+	cfi_end	LSYM(Lend_div0)
 	FUNC_END div0
 #endif
 	
@@ -1946,6 +1971,16 @@ LSYM(Lchange_\register):
 #endif
 
 #endif /* Arch supports thumb.  */
+
+.macro CFI_START_FUNCTION
+	.cfi_startproc
+	.cfi_remember_state
+.endm
+
+.macro CFI_END_FUNCTION
+	.cfi_restore_state
+	.cfi_endproc
+.endm
 
 #ifndef __symbian__
 #ifndef __ARM_ARCH_6M__

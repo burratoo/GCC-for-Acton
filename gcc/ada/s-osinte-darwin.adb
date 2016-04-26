@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1999-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -129,6 +129,36 @@ package body System.OS_Interface is
       return Result;
    end clock_gettime;
 
+   ------------------
+   -- clock_getres --
+   ------------------
+
+   function clock_getres
+     (clock_id : clockid_t;
+      res      : access timespec) return int
+   is
+      pragma Unreferenced (clock_id);
+
+      --  Darwin Threads don't have clock_getres.
+
+      Nano   : constant := 10**9;
+      nsec   : int := 0;
+      Result : int := -1;
+
+      function clock_get_res return int;
+      pragma Import (C, clock_get_res, "__gnat_clock_get_res");
+
+   begin
+      nsec := clock_get_res;
+      res.all := To_Timespec (Duration (0.0) + Duration (nsec) / Nano);
+
+      if nsec > 0 then
+         Result := 0;
+      end if;
+
+      return Result;
+   end clock_getres;
+
    -----------------
    -- sched_yield --
    -----------------
@@ -141,17 +171,6 @@ package body System.OS_Interface is
       sched_yield_base (System.Null_Address);
       return 0;
    end sched_yield;
-
-   --------------
-   -- lwp_self --
-   --------------
-
-   function lwp_self return Address is
-      function pthread_mach_thread_np (thread : pthread_t) return Address;
-      pragma Import (C, pthread_mach_thread_np, "pthread_mach_thread_np");
-   begin
-      return pthread_mach_thread_np (pthread_self);
-   end lwp_self;
 
    ------------------
    -- pthread_init --

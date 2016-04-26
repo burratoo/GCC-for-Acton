@@ -1,5 +1,5 @@
 ;;- Machine description for Blackfin for GNU compiler
-;;  Copyright (C) 2005-2014 Free Software Foundation, Inc.
+;;  Copyright (C) 2005-2016 Free Software Foundation, Inc.
 ;;  Contributed by Analog Devices.
 
 ;; This file is part of GCC.
@@ -848,12 +848,10 @@
    (set (match_dup 2) (lo_sum:SI (match_dup 2) (match_dup 3)))]
 {
   long values;
-  REAL_VALUE_TYPE value;
 
   gcc_assert (GET_CODE (operands[1]) == CONST_DOUBLE);
 
-  REAL_VALUE_FROM_CONST_DOUBLE (value, operands[1]);
-  REAL_VALUE_TO_TARGET_SINGLE (value, values);
+  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (operands[1]), values);
 
   operands[2] = gen_rtx_REG (SImode, true_regnum (operands[0]));
   operands[3] = GEN_INT (trunc_int_for_mode (values, SImode));
@@ -1970,15 +1968,15 @@
 
 (define_split
   [(set (pc)
-	(if_then_else (ne (match_operand:SI 0 "nondp_reg_or_memory_operand" "")
+	(if_then_else (ne (match_operand:SI 0 "nondp_reg_or_memory_operand")
 			  (const_int 1))
-		      (label_ref (match_operand 1 "" ""))
+		      (label_ref (match_operand 1 ""))
 		      (pc)))
    (set (match_dup 0)
 	(plus (match_dup 0)
 	      (const_int -1)))
    (unspec [(const_int 0)] UNSPEC_LSETUP_END)
-   (clobber (match_scratch:SI 2 "=&r"))]
+   (clobber (match_scratch:SI 2))]
   "memory_operand (operands[0], SImode) || splitting_loops"
   [(set (match_dup 2) (match_dup 0))
    (set (match_dup 2) (plus:SI (match_dup 2) (const_int -1)))

@@ -12,6 +12,9 @@ import (
 	"bytes"
 	"go/ast"
 	"go/token"
+	"strconv"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -163,8 +166,8 @@ func (p *printer) exprList(prev0 token.Pos, list []ast.Expr, depth int, mode exp
 	size := 0
 
 	// print all list elements
+	prevLine := prev.Line
 	for i, x := range list {
-		prevLine := line
 		line = p.lineFor(x.Pos())
 
 		// determine if the next linebreak, if any, needs to use formfeed:
@@ -207,8 +210,8 @@ func (p *printer) exprList(prev0 token.Pos, list []ast.Expr, depth int, mode exp
 			}
 		}
 
+		needsLinebreak := 0 < prevLine && prevLine < line
 		if i > 0 {
-			needsLinebreak := prevLine < line && prevLine > 0 && line > 0
 			// use position of expression following the comma as
 			// comma position for correct comment placement, but
 			// only if the expression is on the same line
@@ -232,16 +235,20 @@ func (p *printer) exprList(prev0 token.Pos, list []ast.Expr, depth int, mode exp
 			}
 		}
 
-		if isPair && size > 0 && len(list) > 1 {
-			// we have a key:value expression that fits onto one line and
-			// is in a list with more then one entry: use a column for the
-			// key such that consecutive entries can align if possible
+		if len(list) > 1 && isPair && size > 0 && needsLinebreak {
+			// we have a key:value expression that fits onto one line
+			// and it's not on the same line as the prior expression:
+			// use a column for the key such that consecutive entries
+			// can align if possible
+			// (needsLinebreak is set if we started a new line before)
 			p.expr(pair.Key)
 			p.print(pair.Colon, token.COLON, vtab)
 			p.expr(pair.Value)
 		} else {
 			p.expr0(x, depth)
 		}
+
+		prevLine = line
 	}
 
 	if mode&commaTerm != 0 && next.IsValid() && p.pos.Line < next.Line {
@@ -732,7 +739,7 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 		if _, hasParens := x.X.(*ast.ParenExpr); hasParens {
 			// don't print parentheses around an already parenthesized expression
 			// TODO(gri) consider making this more general and incorporate precedence levels
-			p.expr0(x.X, reduceDepth(depth)) // parentheses undo one level of depth
+			p.expr0(x.X, depth)
 		} else {
 			p.print(token.LPAREN)
 			p.expr0(x.X, reduceDepth(depth)) // parentheses undo one level of depth
@@ -740,13 +747,7 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 		}
 
 	case *ast.SelectorExpr:
-		p.expr1(x.X, token.HighestPrec, depth)
-		p.print(token.PERIOD)
-		if line := p.lineFor(x.Sel.Pos()); p.pos.IsValid() && p.pos.Line < line {
-			p.print(indent, newline, x.Sel.Pos(), x.Sel, unindent)
-		} else {
-			p.print(x.Sel.Pos(), x.Sel)
-		}
+		p.selectorExpr(x, depth, false)
 
 	case *ast.TypeAssertExpr:
 		p.expr1(x.X, token.HighestPrec, depth)
@@ -795,13 +796,14 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 		if len(x.Args) > 1 {
 			depth++
 		}
+		var wasIndented bool
 		if _, ok := x.Fun.(*ast.FuncType); ok {
 			// conversions to literal function types require parentheses around the type
 			p.print(token.LPAREN)
-			p.expr1(x.Fun, token.HighestPrec, depth)
+			wasIndented = p.possibleSelectorExpr(x.Fun, token.HighestPrec, depth)
 			p.print(token.RPAREN)
 		} else {
-			p.expr1(x.Fun, token.HighestPrec, depth)
+			wasIndented = p.possibleSelectorExpr(x.Fun, token.HighestPrec, depth)
 		}
 		p.print(x.Lparen, token.LPAREN)
 		if x.Ellipsis.IsValid() {
@@ -814,6 +816,9 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 			p.exprList(x.Lparen, x.Args, depth, commaTerm, x.Rparen)
 		}
 		p.print(x.Rparen, token.RPAREN)
+		if wasIndented {
+			p.print(unindent)
+		}
 
 	case *ast.CompositeLit:
 		// composite literal elements that are composite literals themselves may have the type omitted
@@ -882,6 +887,30 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 	}
 
 	return
+}
+
+func (p *printer) possibleSelectorExpr(expr ast.Expr, prec1, depth int) bool {
+	if x, ok := expr.(*ast.SelectorExpr); ok {
+		return p.selectorExpr(x, depth, true)
+	}
+	p.expr1(expr, prec1, depth)
+	return false
+}
+
+// selectorExpr handles an *ast.SelectorExpr node and returns whether x spans
+// multiple lines.
+func (p *printer) selectorExpr(x *ast.SelectorExpr, depth int, isMethod bool) bool {
+	p.expr1(x.X, token.HighestPrec, depth)
+	p.print(token.PERIOD)
+	if line := p.lineFor(x.Sel.Pos()); p.pos.IsValid() && p.pos.Line < line {
+		p.print(indent, newline, x.Sel.Pos(), x.Sel)
+		if !isMethod {
+			p.print(unindent)
+		}
+		return true
+	}
+	p.print(x.Sel.Pos(), x.Sel)
+	return false
 }
 
 func (p *printer) expr0(x ast.Expr, depth int) {
@@ -1156,6 +1185,9 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool) {
 			case *ast.BlockStmt, *ast.IfStmt:
 				p.stmt(s.Else, nextIsRBrace)
 			default:
+				// This can only happen with an incorrectly
+				// constructed AST. Permit it but print so
+				// that it can be parsed without errors.
 				p.print(token.LBRACE, indent, formfeed)
 				p.stmt(s.Else, true)
 				p.print(unindent, formfeed, token.RBRACE)
@@ -1216,14 +1248,17 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool) {
 
 	case *ast.RangeStmt:
 		p.print(token.FOR, blank)
-		p.expr(s.Key)
-		if s.Value != nil {
-			// use position of value following the comma as
-			// comma position for correct comment placement
-			p.print(s.Value.Pos(), token.COMMA, blank)
-			p.expr(s.Value)
+		if s.Key != nil {
+			p.expr(s.Key)
+			if s.Value != nil {
+				// use position of value following the comma as
+				// comma position for correct comment placement
+				p.print(s.Value.Pos(), token.COMMA, blank)
+				p.expr(s.Value)
+			}
+			p.print(blank, s.TokPos, s.Tok, blank)
 		}
-		p.print(blank, s.TokPos, s.Tok, blank, token.RANGE, blank)
+		p.print(token.RANGE, blank)
 		p.expr(stripParens(s.X))
 		p.print(blank)
 		p.block(s.Body, 1)
@@ -1327,6 +1362,49 @@ func (p *printer) valueSpec(s *ast.ValueSpec, keepType bool) {
 	}
 }
 
+func sanitizeImportPath(lit *ast.BasicLit) *ast.BasicLit {
+	// Note: An unmodified AST generated by go/parser will already
+	// contain a backward- or double-quoted path string that does
+	// not contain any invalid characters, and most of the work
+	// here is not needed. However, a modified or generated AST
+	// may possibly contain non-canonical paths. Do the work in
+	// all cases since it's not too hard and not speed-critical.
+
+	// if we don't have a proper string, be conservative and return whatever we have
+	if lit.Kind != token.STRING {
+		return lit
+	}
+	s, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return lit
+	}
+
+	// if the string is an invalid path, return whatever we have
+	//
+	// spec: "Implementation restriction: A compiler may restrict
+	// ImportPaths to non-empty strings using only characters belonging
+	// to Unicode's L, M, N, P, and S general categories (the Graphic
+	// characters without spaces) and may also exclude the characters
+	// !"#$%&'()*,:;<=>?[\]^`{|} and the Unicode replacement character
+	// U+FFFD."
+	if s == "" {
+		return lit
+	}
+	const illegalChars = `!"#$%&'()*,:;<=>?[\]^{|}` + "`\uFFFD"
+	for _, r := range s {
+		if !unicode.IsGraphic(r) || unicode.IsSpace(r) || strings.ContainsRune(illegalChars, r) {
+			return lit
+		}
+	}
+
+	// otherwise, return the double-quoted path
+	s = strconv.Quote(s)
+	if s == lit.Value {
+		return lit // nothing wrong with lit
+	}
+	return &ast.BasicLit{ValuePos: lit.ValuePos, Kind: token.STRING, Value: s}
+}
+
 // The parameter n is the number of specs in the group. If doIndent is set,
 // multi-line identifier lists in the spec are indented when the first
 // linebreak is encountered.
@@ -1339,7 +1417,7 @@ func (p *printer) spec(spec ast.Spec, n int, doIndent bool) {
 			p.expr(s.Name)
 			p.print(blank)
 		}
-		p.expr(s.Path)
+		p.expr(sanitizeImportPath(s.Path))
 		p.setComment(s.Comment)
 		p.print(s.EndPos)
 

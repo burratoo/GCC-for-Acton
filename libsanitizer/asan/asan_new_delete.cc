@@ -14,9 +14,16 @@
 #include "asan_internal.h"
 #include "asan_stack.h"
 
-#include "sanitizer_common/sanitizer_interception.h"
+#include "interception/interception.h"
 
 #include <stddef.h>
+
+// C++ operators can't have visibility attributes on Windows.
+#if SANITIZER_WINDOWS
+# define CXX_OPERATOR_ATTRIBUTE
+#else
+# define CXX_OPERATOR_ATTRIBUTE INTERCEPTOR_ATTRIBUTE
+#endif
 
 using namespace __asan;  // NOLINT
 
@@ -49,14 +56,14 @@ struct nothrow_t {};
 #endif  // __FreeBSD_version
 #endif  // SANITIZER_FREEBSD && SANITIZER_WORDSIZE == 32
 
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void *operator new(size_t size) { OPERATOR_NEW_BODY(FROM_NEW); }
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void *operator new[](size_t size) { OPERATOR_NEW_BODY(FROM_NEW_BR); }
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void *operator new(size_t size, std::nothrow_t const&)
 { OPERATOR_NEW_BODY(FROM_NEW); }
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void *operator new[](size_t size, std::nothrow_t const&)
 { OPERATOR_NEW_BODY(FROM_NEW_BR); }
 
@@ -80,21 +87,31 @@ INTERCEPTOR(void *, _ZnamRKSt9nothrow_t, size_t size, std::nothrow_t const&) {
   asan_free(ptr, &stack, type);
 
 #if !SANITIZER_MAC
-INTERCEPTOR_ATTRIBUTE
-void operator delete(void *ptr) throw() {
+CXX_OPERATOR_ATTRIBUTE
+void operator delete(void *ptr) NOEXCEPT {
   OPERATOR_DELETE_BODY(FROM_NEW);
 }
-INTERCEPTOR_ATTRIBUTE
-void operator delete[](void *ptr) throw() {
+CXX_OPERATOR_ATTRIBUTE
+void operator delete[](void *ptr) NOEXCEPT {
   OPERATOR_DELETE_BODY(FROM_NEW_BR);
 }
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void operator delete(void *ptr, std::nothrow_t const&) {
   OPERATOR_DELETE_BODY(FROM_NEW);
 }
-INTERCEPTOR_ATTRIBUTE
+CXX_OPERATOR_ATTRIBUTE
 void operator delete[](void *ptr, std::nothrow_t const&) {
   OPERATOR_DELETE_BODY(FROM_NEW_BR);
+}
+CXX_OPERATOR_ATTRIBUTE
+void operator delete(void *ptr, size_t size) NOEXCEPT {
+  GET_STACK_TRACE_FREE;
+  asan_sized_free(ptr, size, &stack, FROM_NEW);
+}
+CXX_OPERATOR_ATTRIBUTE
+void operator delete[](void *ptr, size_t size) NOEXCEPT {
+  GET_STACK_TRACE_FREE;
+  asan_sized_free(ptr, size, &stack, FROM_NEW_BR);
 }
 
 #else  // SANITIZER_MAC

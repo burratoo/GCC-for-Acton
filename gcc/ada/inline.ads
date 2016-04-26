@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -30,17 +30,15 @@
 
 --  b) Compilation of unit bodies that contain the bodies of inlined sub-
 --  programs. This is done only if inlining is enabled (-gnatn). Full inlining
---  requires that a) an b) be mutually recursive, because each step may
---  generate another generic expansion and further inlined calls. For now each
---  of them uses a workpile algorithm, but they are called independently from
---  Frontend, and thus are not mutually recursive.
+--  requires that a) and b) be mutually recursive, because each step may
+--  generate another generic expansion and further inlined calls.
 
 --  c) Front-end inlining for Inline_Always subprograms. This is primarily an
 --  expansion activity that is performed for performance reasons, and when the
---  target does not use the gcc backend.
+--  target does not use the GCC back end.
 
 --  d) Front-end inlining for GNATprove, to perform source transformations
---  to simplify formal verification. The machinery used is the same than for
+--  to simplify formal verification. The machinery used is the same as for
 --  Inline_Always subprograms, but there are fewer restrictions on the source
 --  of subprograms.
 
@@ -76,9 +74,9 @@ package Inline is
       --  must be inhibited.
 
       Current_Sem_Unit : Unit_Number_Type;
-      --  The semantic unit within which the instantiation is found. Must
-      --  be restored when compiling the body, to insure that internal enti-
-      --  ties use the same counter and are unique over spec and body.
+      --  The semantic unit within which the instantiation is found. Must be
+      --  restored when compiling the body, to insure that internal entities
+      --  use the same counter and are unique over spec and body.
 
       Scope_Suppress           : Suppress_Record;
       Local_Suppress_Stack_Top : Suppress_Stack_Entry_Ptr;
@@ -149,11 +147,11 @@ package Inline is
    --  instantiate the bodies of generic instantiations that appear in the
    --  compilation unit.
 
-   procedure Add_Inlined_Body (E : Entity_Id);
-   --  E is an inlined subprogram appearing in a call, either explicitly, or
-   --  a discriminant check for which gigi builds a call.  Add E's enclosing
-   --  unit to Inlined_Bodies so that body of E can be subsequently retrieved
-   --  and analyzed.
+   procedure Add_Inlined_Body (E : Entity_Id; N : Node_Id);
+   --  E is an inlined subprogram appearing in a call, either explicitly or in
+   --  a discriminant check for which gigi builds a call or an at-end handler.
+   --  Add E's enclosing unit to Inlined_Bodies so that E can be subsequently
+   --  retrieved and analyzed. N is the node giving rise to the call to E.
 
    procedure Analyze_Inlined_Bodies;
    --  At end of compilation, analyze the bodies of all units that contain
@@ -165,9 +163,19 @@ package Inline is
    --  subsequently used for inline expansions at call sites. If subprogram can
    --  be inlined (depending on size and nature of local declarations) the
    --  template body is created. Otherwise subprogram body is treated normally
-   --  and calls are not inlined in the frontend.  If proper warnings are
+   --  and calls are not inlined in the frontend. If proper warnings are
    --  enabled and the subprogram contains a construct that cannot be inlined,
    --  the problematic construct is flagged accordingly.
+
+   function Can_Be_Inlined_In_GNATprove_Mode
+     (Spec_Id : Entity_Id;
+      Body_Id : Entity_Id) return Boolean;
+   --  Returns True if the subprogram identified by Spec_Id and Body_Id can
+   --  be inlined in GNATprove mode. One but not both of Spec_Id and Body_Id
+   --  can be Empty. Body_Id is Empty when doing a partial check on a call
+   --  to a subprogram whose body has not been seen yet, to know whether this
+   --  subprogram could possibly be inlined. GNATprove relies on this to adapt
+   --  its treatment of the subprogram.
 
    procedure Cannot_Inline
      (Msg        : String;
@@ -247,21 +255,8 @@ package Inline is
    --  Generate listing of calls inlined by the frontend plus listing of
    --  calls to inline subprograms passed to the backend.
 
-   procedure Register_Backend_Call (N : Node_Id);
-   --  Append N to the list Backend_Calls
-
    procedure Remove_Dead_Instance (N : Node_Id);
    --  If an instantiation appears in unreachable code, delete the pending
    --  body instance.
-
-   function Can_Be_Inlined_In_GNATprove_Mode
-     (Spec_Id : Entity_Id;
-      Body_Id : Entity_Id) return Boolean;
-   --  Returns True if the subprogram identified by Spec_Id and Body_Id can
-   --  be inlined in GNATprove mode. One but not both of Spec_Id and Body_Id
-   --  can be Empty. Body_Id is Empty when doing a partial check on a call
-   --  to a subprogram whose body has not been seen yet, to know whether this
-   --  subprogram could possibly be inlined. GNATprove relies on this to adapt
-   --  its treatment of the subprogram.
 
 end Inline;

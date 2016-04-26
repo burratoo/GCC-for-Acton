@@ -1,6 +1,6 @@
 // Exception Handling support header (exception_ptr class) for -*- C++ -*-
 
-// Copyright (C) 2008-2014 Free Software Foundation, Inc.
+// Copyright (C) 2008-2016 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -68,6 +68,8 @@ namespace std
 
   namespace __exception_ptr
   {
+    using std::rethrow_exception;
+
     /**
      *  @brief An opaque pointer to an arbitrary exception.
      *  @ingroup exceptions
@@ -168,16 +170,18 @@ namespace std
     exception_ptr 
     make_exception_ptr(_Ex __ex) _GLIBCXX_USE_NOEXCEPT
     {
-      __try
+#if __cpp_exceptions
+      try
 	{
-#ifdef __EXCEPTIONS
 	  throw __ex;
-#endif
 	}
-      __catch(...)
+      catch(...)
 	{
 	  return current_exception();
 	}
+#else
+      return exception_ptr();
+#endif
     }
 
   // _GLIBCXX_RESOLVE_LIB_DEFECTS

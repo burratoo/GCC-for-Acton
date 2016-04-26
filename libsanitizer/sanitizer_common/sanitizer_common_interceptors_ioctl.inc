@@ -518,7 +518,7 @@ static const ioctl_desc *ioctl_table_lookup(unsigned req) {
   if (left == right && ioctl_table[left].req == req)
     return ioctl_table + left;
   else
-    return 0;
+    return nullptr;
 }
 
 static bool ioctl_decode(unsigned req, ioctl_desc *desc) {
@@ -527,7 +527,7 @@ static bool ioctl_decode(unsigned req, ioctl_desc *desc) {
   desc->name = "<DECODED_IOCTL>";
   desc->size = IOC_SIZE(req);
   // Sanity check.
-  if (desc->size > 1024) return false;
+  if (desc->size > 0xFFFF) return false;
   unsigned dir = IOC_DIR(req);
   switch (dir) {
     case IOC_NONE:
@@ -545,10 +545,10 @@ static bool ioctl_decode(unsigned req, ioctl_desc *desc) {
     default:
       return false;
   }
-  if (desc->type != IOC_NONE && desc->size == 0) return false;
-  char id = IOC_TYPE(req);
+  // Size can be 0 iff type is NONE.
+  if ((desc->type == IOC_NONE) != (desc->size == 0)) return false;
   // Sanity check.
-  if (!(id >= 'a' && id <= 'z') && !(id >= 'A' && id <= 'Z')) return false;
+  if (IOC_TYPE(req) == 0) return false;
   return true;
 }
 
@@ -565,7 +565,7 @@ static const ioctl_desc *ioctl_lookup(unsigned req) {
       (desc->type == ioctl_desc::READWRITE || desc->type == ioctl_desc::WRITE ||
        desc->type == ioctl_desc::READ))
     return desc;
-  return 0;
+  return nullptr;
 }
 
 static void ioctl_common_pre(void *ctx, const ioctl_desc *desc, int d,
@@ -576,14 +576,10 @@ static void ioctl_common_pre(void *ctx, const ioctl_desc *desc, int d,
   }
   if (desc->type != ioctl_desc::CUSTOM)
     return;
-  switch (request) {
-    case 0x00008912: {  // SIOCGIFCONF
-      struct __sanitizer_ifconf *ifc = (__sanitizer_ifconf *)arg;
-      COMMON_INTERCEPTOR_READ_RANGE(ctx, &ifc->ifc_len, sizeof(ifc->ifc_len));
-      break;
-    }
+  if (request == IOCTL_SIOCGIFCONF) {
+    struct __sanitizer_ifconf *ifc = (__sanitizer_ifconf *)arg;
+    COMMON_INTERCEPTOR_READ_RANGE(ctx, &ifc->ifc_len, sizeof(ifc->ifc_len));
   }
-  return;
 }
 
 static void ioctl_common_post(void *ctx, const ioctl_desc *desc, int res, int d,
@@ -595,12 +591,8 @@ static void ioctl_common_post(void *ctx, const ioctl_desc *desc, int res, int d,
   }
   if (desc->type != ioctl_desc::CUSTOM)
     return;
-  switch (request) {
-    case 0x00008912: {  // SIOCGIFCONF
-      struct __sanitizer_ifconf *ifc = (__sanitizer_ifconf *)arg;
-      COMMON_INTERCEPTOR_WRITE_RANGE(ctx, ifc->ifc_ifcu.ifcu_req, ifc->ifc_len);
-      break;
-    }
+  if (request == IOCTL_SIOCGIFCONF) {
+    struct __sanitizer_ifconf *ifc = (__sanitizer_ifconf *)arg;
+    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, ifc->ifc_ifcu.ifcu_req, ifc->ifc_len);
   }
-  return;
 }

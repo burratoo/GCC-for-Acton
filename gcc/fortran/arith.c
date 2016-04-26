@@ -1,5 +1,5 @@
 /* Compiler arithmetic
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2016 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -26,7 +26,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "flags.h"
+#include "options.h"
 #include "gfortran.h"
 #include "arith.h"
 #include "target-memory.h"
@@ -301,7 +301,7 @@ gfc_check_integer_range (mpz_t p, int kind)
     }
 
 
-  if (gfc_option.flag_range_check == 0)
+  if (flag_range_check == 0)
     return result;
 
   if (mpz_cmp (p, gfc_integer_kinds[i].min_int) < 0
@@ -333,12 +333,12 @@ gfc_check_real_range (mpfr_t p, int kind)
 
   if (mpfr_inf_p (p))
     {
-      if (gfc_option.flag_range_check != 0)
+      if (flag_range_check != 0)
 	retval = ARITH_OVERFLOW;
     }
   else if (mpfr_nan_p (p))
     {
-      if (gfc_option.flag_range_check != 0)
+      if (flag_range_check != 0)
 	retval = ARITH_NAN;
     }
   else if (mpfr_sgn (q) == 0)
@@ -348,14 +348,14 @@ gfc_check_real_range (mpfr_t p, int kind)
     }
   else if (mpfr_cmp (q, gfc_real_kinds[i].huge) > 0)
     {
-      if (gfc_option.flag_range_check == 0)
+      if (flag_range_check == 0)
 	mpfr_set_inf (p, mpfr_sgn (p));
       else
 	retval = ARITH_OVERFLOW;
     }
   else if (mpfr_cmp (q, gfc_real_kinds[i].subnormal) < 0)
     {
-      if (gfc_option.flag_range_check == 0)
+      if (flag_range_check == 0)
 	{
 	  if (mpfr_sgn (p) < 0)
 	    {
@@ -544,14 +544,14 @@ check_result (arith rc, gfc_expr *x, gfc_expr *r, gfc_expr **rp)
 
   if (val == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (val), &x->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Wunderflow, gfc_arith_error (val), &x->where);
       val = ARITH_OK;
     }
 
   if (val == ARITH_ASYMMETRIC)
     {
-      gfc_warning (gfc_arith_error (val), &x->where);
+      gfc_warning (0, gfc_arith_error (val), &x->where);
       val = ARITH_OK;
     }
 
@@ -731,12 +731,32 @@ gfc_arith_divide (gfc_expr *op1, gfc_expr *op2, gfc_expr **resultp)
 	  break;
 	}
 
-      mpz_tdiv_q (result->value.integer, op1->value.integer,
-		  op2->value.integer);
+      if (warn_integer_division)
+	{
+	  mpz_t r;
+	  mpz_init (r);
+	  mpz_tdiv_qr (result->value.integer, r, op1->value.integer,
+		       op2->value.integer);
+
+	  if (mpz_cmp_si (r, 0) != 0)
+	    {
+	      char *p;
+	      p = mpz_get_str (NULL, 10, result->value.integer);
+	      gfc_warning_now (OPT_Winteger_division, "Integer division "
+			       "truncated to constant %qs at %L", p,
+			       &op1->where);
+	      free (p);
+	    }
+	  mpz_clear (r);
+	}
+      else
+	mpz_tdiv_q (result->value.integer, op1->value.integer,
+		    op2->value.integer);
+
       break;
 
     case BT_REAL:
-      if (mpfr_sgn (op2->value.real) == 0 && gfc_option.flag_range_check == 1)
+      if (mpfr_sgn (op2->value.real) == 0 && flag_range_check == 1)
 	{
 	  rc = ARITH_DIV0;
 	  break;
@@ -748,7 +768,7 @@ gfc_arith_divide (gfc_expr *op1, gfc_expr *op2, gfc_expr **resultp)
 
     case BT_COMPLEX:
       if (mpc_cmp_si_si (op2->value.complex, 0, 0) == 0
-	  && gfc_option.flag_range_check == 1)
+	  && flag_range_check == 1)
 	{
 	  rc = ARITH_DIV0;
 	  break;
@@ -758,7 +778,7 @@ gfc_arith_divide (gfc_expr *op1, gfc_expr *op2, gfc_expr **resultp)
       if (mpc_cmp_si_si (op2->value.complex, 0, 0) == 0)
       {
 	/* In Fortran, return (NaN + NaN I) for any zero divisor.  See
-	   PR 40318. */
+	   PR 40318.  */
 	mpfr_set_nan (mpc_realref (result->value.complex));
 	mpfr_set_nan (mpc_imagref (result->value.complex));
       }
@@ -863,7 +883,7 @@ arith_power (gfc_expr *op1, gfc_expr *op2, gfc_expr **resultp)
 		    int i;
 		    i = gfc_validate_kind (BT_INTEGER, result->ts.kind, false);
 
-		    if (gfc_option.flag_range_check)
+		    if (flag_range_check)
 		      rc = ARITH_OVERFLOW;
 
 		    /* Still, we want to give the same value as the
@@ -1521,7 +1541,7 @@ eval_intrinsic (gfc_intrinsic_op op,
       temp.value.op.op1 = op1;
       temp.value.op.op2 = op2;
 
-      gfc_type_convert_binary (&temp, 0);
+      gfc_type_convert_binary (&temp, warn_conversion || warn_conversion_extra);
 
       if (op == INTRINSIC_EQ || op == INTRINSIC_NE
 	  || op == INTRINSIC_GE || op == INTRINSIC_GT
@@ -1915,17 +1935,17 @@ arith_error (arith rc, gfc_typespec *from, gfc_typespec *to, locus *where)
       break;
     case ARITH_OVERFLOW:
       gfc_error ("Arithmetic overflow converting %s to %s at %L. This check "
-		 "can be disabled with the option -fno-range-check",
+		 "can be disabled with the option %<-fno-range-check%>",
 		 gfc_typename (from), gfc_typename (to), where);
       break;
     case ARITH_UNDERFLOW:
       gfc_error ("Arithmetic underflow converting %s to %s at %L. This check "
-		 "can be disabled with the option -fno-range-check",
+		 "can be disabled with the option %<-fno-range-check%>",
 		 gfc_typename (from), gfc_typename (to), where);
       break;
     case ARITH_NAN:
       gfc_error ("Arithmetic NaN converting %s to %s at %L. This check "
-		 "can be disabled with the option -fno-range-check",
+		 "can be disabled with the option %<-fno-range-check%>",
 		 gfc_typename (from), gfc_typename (to), where);
       break;
     case ARITH_DIV0:
@@ -1949,6 +1969,42 @@ arith_error (arith rc, gfc_typespec *from, gfc_typespec *to, locus *where)
      NaN, etc.  */
 }
 
+/* Returns true if significant bits were lost when converting real
+   constant r from from_kind to to_kind.  */
+
+static bool
+wprecision_real_real (mpfr_t r, int from_kind, int to_kind)
+{
+  mpfr_t rv, diff;
+  bool ret;
+
+  gfc_set_model_kind (to_kind);
+  mpfr_init (rv);
+  gfc_set_model_kind (from_kind);
+  mpfr_init (diff);
+
+  mpfr_set (rv, r, GFC_RND_MODE);
+  mpfr_sub (diff, rv, r, GFC_RND_MODE);
+
+  ret = ! mpfr_zero_p (diff);
+  mpfr_clear (rv);
+  mpfr_clear (diff);
+  return ret;
+}
+
+/* Return true if conversion from an integer to a real loses precision.  */
+
+static bool
+wprecision_int_real (mpz_t n, mpfr_t r)
+{
+  mpz_t i;
+  mpz_init (i);
+  mpfr_get_z (i, r, GFC_RND_MODE);
+  mpz_sub (i, i, n);
+  return mpz_cmp_si (i, 0) != 0;
+  mpz_clear (i);
+
+}
 
 /* Convert integers to integers.  */
 
@@ -1966,7 +2022,7 @@ gfc_int2int (gfc_expr *src, int kind)
     {
       if (rc == ARITH_ASYMMETRIC)
 	{
-	  gfc_warning (gfc_arith_error (rc), &src->where);
+	  gfc_warning (0, gfc_arith_error (rc), &src->where);
 	}
       else
 	{
@@ -1978,15 +2034,19 @@ gfc_int2int (gfc_expr *src, int kind)
 
   /*  If we do not trap numeric overflow, we need to convert the number to
       signed, throwing away high-order bits if necessary.  */
-  if (gfc_option.flag_range_check == 0)
+  if (flag_range_check == 0)
     {
       int k;
 
       k = gfc_validate_kind (BT_INTEGER, kind, false);
       gfc_convert_mpz_to_signed (result->value.integer,
 				 gfc_integer_kinds[k].bit_size);
-    }
 
+      if (warn_conversion && kind < src->ts.kind)
+	gfc_warning_now (OPT_Wconversion, "Conversion from %qs to %qs at %L",
+			 gfc_typename (&src->ts), gfc_typename (&result->ts),
+			 &src->where);
+    }
   return result;
 }
 
@@ -2009,6 +2069,14 @@ gfc_int2real (gfc_expr *src, int kind)
       gfc_free_expr (result);
       return NULL;
     }
+
+  if (warn_conversion
+      && wprecision_int_real (src->value.integer, result->value.real))
+    gfc_warning_now (OPT_Wconversion, "Change of value in conversion "
+		     "from %qs to %qs at %L",
+		     gfc_typename (&src->ts),
+		     gfc_typename (&result->ts),
+		     &src->where);
 
   return result;
 }
@@ -2034,6 +2102,15 @@ gfc_int2complex (gfc_expr *src, int kind)
       return NULL;
     }
 
+  if (warn_conversion
+      && wprecision_int_real (src->value.integer,
+			      mpc_realref (result->value.complex)))
+      gfc_warning_now (OPT_Wconversion, "Change of value in conversion "
+		       "from %qs to %qs at %L",
+		       gfc_typename (&src->ts),
+		       gfc_typename (&result->ts),
+		       &src->where);
+
   return result;
 }
 
@@ -2045,6 +2122,7 @@ gfc_real2int (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_INTEGER, kind, &src->where);
 
@@ -2055,6 +2133,28 @@ gfc_real2int (gfc_expr *src, int kind)
       arith_error (rc, &src->ts, &result->ts, &src->where);
       gfc_free_expr (result);
       return NULL;
+    }
+
+  /* If there was a fractional part, warn about this.  */
+
+  if (warn_conversion)
+    {
+      mpfr_t f;
+      mpfr_init (f);
+      mpfr_frac (f, src->value.real, GFC_RND_MODE);
+      if (mpfr_cmp_si (f, 0) != 0)
+	{
+	  gfc_warning_now (OPT_Wconversion, "Change of value in conversion "
+			   "from %qs to %qs at %L", gfc_typename (&src->ts),
+			   gfc_typename (&result->ts), &src->where);
+	  did_warn = true;
+	}
+    }
+  if (!did_warn && warn_conversion_extra)
+    {
+      gfc_warning_now (OPT_Wconversion_extra, "Conversion from %qs to %qs "
+		       "at %L", gfc_typename (&src->ts),
+		       gfc_typename (&result->ts), &src->where);
     }
 
   return result;
@@ -2068,6 +2168,7 @@ gfc_real2real (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_REAL, kind, &src->where);
 
@@ -2077,8 +2178,8 @@ gfc_real2real (gfc_expr *src, int kind)
 
   if (rc == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (rc), &src->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Woverflow, gfc_arith_error (rc), &src->where);
       mpfr_set_ui (result->value.real, 0, GFC_RND_MODE);
     }
   else if (rc != ARITH_OK)
@@ -2087,6 +2188,33 @@ gfc_real2real (gfc_expr *src, int kind)
       gfc_free_expr (result);
       return NULL;
     }
+
+  /* As a special bonus, don't warn about REAL values which are not changed by
+     the conversion if -Wconversion is specified and -Wconversion-extra is
+     not.  */
+
+  if ((warn_conversion || warn_conversion_extra) && src->ts.kind > kind)
+    {
+      int w = warn_conversion ? OPT_Wconversion : OPT_Wconversion_extra;
+      
+      /* Calculate the difference between the constant and the rounded
+	 value and check it against zero.  */
+
+      if (wprecision_real_real (src->value.real, src->ts.kind, kind))
+	{
+	  gfc_warning_now (w, "Change of value in conversion from "
+			   "%qs to %qs at %L",
+			   gfc_typename (&src->ts), gfc_typename (&result->ts),
+			   &src->where);
+	  /* Make sure the conversion warning is not emitted again.  */
+	  did_warn = true;
+	}
+    }
+
+    if (!did_warn && warn_conversion_extra)
+      gfc_warning_now (OPT_Wconversion_extra, "Conversion from %qs to %qs "
+		       "at %L", gfc_typename(&src->ts),
+		       gfc_typename(&result->ts), &src->where);
 
   return result;
 }
@@ -2099,6 +2227,7 @@ gfc_real2complex (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_COMPLEX, kind, &src->where);
 
@@ -2108,8 +2237,8 @@ gfc_real2complex (gfc_expr *src, int kind)
 
   if (rc == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (rc), &src->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Woverflow, gfc_arith_error (rc), &src->where);
       mpfr_set_ui (mpc_realref (result->value.complex), 0, GFC_RND_MODE);
     }
   else if (rc != ARITH_OK)
@@ -2118,6 +2247,26 @@ gfc_real2complex (gfc_expr *src, int kind)
       gfc_free_expr (result);
       return NULL;
     }
+
+  if ((warn_conversion || warn_conversion_extra) && src->ts.kind > kind)
+    {
+      int w = warn_conversion ? OPT_Wconversion : OPT_Wconversion_extra;
+
+      if (wprecision_real_real (src->value.real, src->ts.kind, kind))
+	{
+	  gfc_warning_now (w, "Change of value in conversion from "
+			   "%qs to %qs at %L",
+			   gfc_typename (&src->ts), gfc_typename (&result->ts),
+			   &src->where);
+	  /* Make sure the conversion warning is not emitted again.  */
+	  did_warn = true;
+	}
+    }
+
+  if (!did_warn && warn_conversion_extra)
+    gfc_warning_now (OPT_Wconversion_extra, "Conversion from %qs to %qs "
+		     "at %L", gfc_typename(&src->ts),
+		     gfc_typename(&result->ts), &src->where);
 
   return result;
 }
@@ -2130,6 +2279,7 @@ gfc_complex2int (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_INTEGER, kind, &src->where);
 
@@ -2143,6 +2293,43 @@ gfc_complex2int (gfc_expr *src, int kind)
       return NULL;
     }
 
+  if (warn_conversion || warn_conversion_extra)
+    {
+      int w = warn_conversion ? OPT_Wconversion : OPT_Wconversion_extra;
+
+      /* See if we discarded an imaginary part.  */
+      if (mpfr_cmp_si (mpc_imagref (src->value.complex), 0) != 0)
+	{
+	  gfc_warning_now (w, "Non-zero imaginary part discarded "
+			   "in conversion from %qs to %qs at %L",
+			   gfc_typename(&src->ts), gfc_typename (&result->ts),
+			   &src->where);
+	  did_warn = true;
+	}
+
+      else {
+	mpfr_t f;
+
+	mpfr_init (f);
+	mpfr_frac (f, src->value.real, GFC_RND_MODE);
+	if (mpfr_cmp_si (f, 0) != 0)
+	  {
+	    gfc_warning_now (w, "Change of value in conversion from "
+			     "%qs to %qs at %L", gfc_typename (&src->ts),
+			     gfc_typename (&result->ts), &src->where);
+	    did_warn = true;
+	  }
+	mpfr_clear (f);
+      }
+
+      if (!did_warn && warn_conversion_extra)
+	{
+	  gfc_warning_now (OPT_Wconversion_extra, "Conversion from %qs to %qs "
+			   "at %L", gfc_typename (&src->ts),
+			   gfc_typename (&result->ts), &src->where);
+	}
+    }
+
   return result;
 }
 
@@ -2154,6 +2341,7 @@ gfc_complex2real (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_REAL, kind, &src->where);
 
@@ -2163,8 +2351,8 @@ gfc_complex2real (gfc_expr *src, int kind)
 
   if (rc == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (rc), &src->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Woverflow, gfc_arith_error (rc), &src->where);
       mpfr_set_ui (result->value.real, 0, GFC_RND_MODE);
     }
   if (rc != ARITH_OK)
@@ -2173,6 +2361,41 @@ gfc_complex2real (gfc_expr *src, int kind)
       gfc_free_expr (result);
       return NULL;
     }
+
+  if (warn_conversion || warn_conversion_extra)
+    {
+      int w = warn_conversion ? OPT_Wconversion : OPT_Wconversion_extra;
+
+      /* See if we discarded an imaginary part.  */
+      if (mpfr_cmp_si (mpc_imagref (src->value.complex), 0) != 0)
+	{
+	  gfc_warning_now (w, "Non-zero imaginary part discarded "
+			   "in conversion from %qs to %qs at %L",
+			   gfc_typename(&src->ts), gfc_typename (&result->ts),
+			   &src->where);
+	  did_warn = true;
+	}
+
+      /* Calculate the difference between the real constant and the rounded
+	 value and check it against zero.  */
+      
+      if (kind > src->ts.kind
+	  && wprecision_real_real (mpc_realref (src->value.complex),
+				   src->ts.kind, kind))
+	{
+	  gfc_warning_now (w, "Change of value in conversion from "
+			   "%qs to %qs at %L",
+			   gfc_typename (&src->ts), gfc_typename (&result->ts),
+			   &src->where);
+	  /* Make sure the conversion warning is not emitted again.  */
+	  did_warn = true;
+	}
+    }
+
+  if (!did_warn && warn_conversion_extra)
+    gfc_warning_now (OPT_Wconversion, "Conversion from %qs to %qs at %L",
+		     gfc_typename(&src->ts), gfc_typename (&result->ts),
+		     &src->where);
 
   return result;
 }
@@ -2185,6 +2408,7 @@ gfc_complex2complex (gfc_expr *src, int kind)
 {
   gfc_expr *result;
   arith rc;
+  bool did_warn = false;
 
   result = gfc_get_constant_expr (BT_COMPLEX, kind, &src->where);
 
@@ -2194,8 +2418,8 @@ gfc_complex2complex (gfc_expr *src, int kind)
 
   if (rc == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (rc), &src->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Woverflow, gfc_arith_error (rc), &src->where);
       mpfr_set_ui (mpc_realref (result->value.complex), 0, GFC_RND_MODE);
     }
   else if (rc != ARITH_OK)
@@ -2209,8 +2433,8 @@ gfc_complex2complex (gfc_expr *src, int kind)
 
   if (rc == ARITH_UNDERFLOW)
     {
-      if (gfc_option.warn_underflow)
-	gfc_warning (gfc_arith_error (rc), &src->where);
+      if (warn_underflow)
+	gfc_warning (OPT_Woverflow, gfc_arith_error (rc), &src->where);
       mpfr_set_ui (mpc_imagref (result->value.complex), 0, GFC_RND_MODE);
     }
   else if (rc != ARITH_OK)
@@ -2219,6 +2443,26 @@ gfc_complex2complex (gfc_expr *src, int kind)
       gfc_free_expr (result);
       return NULL;
     }
+
+  if ((warn_conversion || warn_conversion_extra) && src->ts.kind > kind
+      && (wprecision_real_real (mpc_realref (src->value.complex),
+				src->ts.kind, kind)
+	  || wprecision_real_real (mpc_imagref (src->value.complex),
+				   src->ts.kind, kind)))
+    {
+      int w = warn_conversion ? OPT_Wconversion : OPT_Wconversion_extra;
+
+      gfc_warning_now (w, "Change of value in conversion from "
+		       " %qs to %qs at %L",
+		       gfc_typename (&src->ts), gfc_typename (&result->ts),
+		       &src->where);
+      did_warn = true;
+    }
+
+  if (!did_warn && warn_conversion_extra && src->ts.kind != kind)
+    gfc_warning_now (OPT_Wconversion_extra, "Conversion from %qs to %qs "
+		     "at %L", gfc_typename(&src->ts),
+		     gfc_typename (&result->ts), &src->where);
 
   return result;
 }
@@ -2280,7 +2524,8 @@ hollerith2representation (gfc_expr *result, gfc_expr *src)
 
   if (src_len > result_len)
     {
-      gfc_warning ("The Hollerith constant at %L is too long to convert to %s",
+      gfc_warning (0,
+		   "The Hollerith constant at %L is too long to convert to %qs",
 		   &src->where, gfc_typename(&result->ts));
     }
 
@@ -2344,7 +2589,7 @@ gfc_hollerith2complex (gfc_expr *src, int kind)
 }
 
 
-/* Convert Hollerith to character. */
+/* Convert Hollerith to character.  */
 
 gfc_expr *
 gfc_hollerith2character (gfc_expr *src, int kind)

@@ -7,6 +7,7 @@
 
 /* { dg-do run } */
 /* { dg-options "-O -fno-pic" } */
+/* { dg-require-effective-target nonlocal_goto } */
 
 extern void abort (void);
 
@@ -80,6 +81,8 @@ extern void abort (void);
 /* No pic register.  */
 #elif defined(__vax__)
 /* No pic register.  */
+#elif defined(__VISIUM__)
+/* No pic register.  */
 #elif defined(__xstormy16__)
 /* No pic register.  */
 #elif defined(__XTENSA__)
@@ -103,6 +106,8 @@ extern void abort (void);
 #elif defined(__RL78__)
 /* No pic register.  */
 #elif defined(__MSP430__)
+/* No pic register.  */
+#elif defined (__nvptx__)
 /* No pic register.  */
 #else
 # error "Modify the test for your target."

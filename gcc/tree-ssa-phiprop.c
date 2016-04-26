@@ -1,5 +1,5 @@
 /* Backward propagation of indirect loads through PHIs.
-   Copyright (C) 2007-2014 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Richard Guenther <rguenther@suse.de>
 
 This file is part of GCC.
@@ -21,27 +21,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "tree.h"
-#include "tm_p.h"
-#include "basic-block.h"
-#include "gimple-pretty-print.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "tree-eh.h"
-#include "gimple-expr.h"
-#include "is-a.h"
 #include "gimple.h"
+#include "tree-pass.h"
+#include "ssa.h"
+#include "gimple-pretty-print.h"
+#include "fold-const.h"
+#include "tree-eh.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
-#include "gimple-ssa.h"
-#include "tree-phinodes.h"
-#include "ssa-iterators.h"
-#include "stringpool.h"
-#include "tree-ssanames.h"
-#include "tree-pass.h"
-#include "langhooks.h"
-#include "flags.h"
+#include "stor-layout.h"
 
 /* This pass propagates indirect loads through the PHI node for its
    address to make the load source possibly non-addressable and to
@@ -113,7 +103,7 @@ static bool
 phivn_valid_p (struct phiprop_d *phivn, tree name, basic_block bb)
 {
   tree vuse = phivn[SSA_NAME_VERSION (name)].vuse;
-  gimple use_stmt;
+  gimple *use_stmt;
   imm_use_iterator ui2;
   bool ok = true;
 
@@ -139,11 +129,11 @@ phivn_valid_p (struct phiprop_d *phivn, tree name, basic_block bb)
    BB with the virtual operands from USE_STMT.  */
 
 static tree
-phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
+phiprop_insert_phi (basic_block bb, gphi *phi, gimple *use_stmt,
 		    struct phiprop_d *phivn, size_t n)
 {
   tree res;
-  gimple new_phi;
+  gphi *new_phi = NULL;
   edge_iterator ei;
   edge e;
 
@@ -153,7 +143,8 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
   /* Build a new PHI node to replace the definition of
      the indirect reference lhs.  */
   res = gimple_assign_lhs (use_stmt);
-  new_phi = create_phi_node (res, bb);
+  if (TREE_CODE (res) == SSA_NAME)
+    new_phi = create_phi_node (res, bb);
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
@@ -166,7 +157,7 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
   FOR_EACH_EDGE (e, ei, bb->preds)
     {
       tree old_arg, new_var;
-      gimple tmp;
+      gassign *tmp;
       source_location locus;
 
       old_arg = PHI_ARG_DEF_FROM_EDGE (phi, e);
@@ -175,7 +166,7 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
 	     && (SSA_NAME_VERSION (old_arg) >= n
 	         || phivn[SSA_NAME_VERSION (old_arg)].value == NULL_TREE))
 	{
-	  gimple def_stmt = SSA_NAME_DEF_STMT (old_arg);
+	  gimple *def_stmt = SSA_NAME_DEF_STMT (old_arg);
 	  old_arg = gimple_assign_rhs1 (def_stmt);
 	  locus = gimple_location (def_stmt);
 	}
@@ -198,7 +189,10 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
 	{
 	  tree rhs = gimple_assign_rhs1 (use_stmt);
 	  gcc_assert (TREE_CODE (old_arg) == ADDR_EXPR);
-	  new_var = make_ssa_name (TREE_TYPE (rhs), NULL);
+	  if (TREE_CODE (res) == SSA_NAME)
+	    new_var = make_ssa_name (TREE_TYPE (rhs));
+	  else
+	    new_var = unshare_expr (res);
 	  if (!is_gimple_min_invariant (old_arg))
 	    old_arg = PHI_ARG_DEF_FROM_EDGE (phi, e);
 	  else
@@ -221,13 +215,17 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
 	    }
 	}
 
-      add_phi_arg (new_phi, new_var, e, locus);
+      if (new_phi)
+	add_phi_arg (new_phi, new_var, e, locus);
     }
 
-  update_stmt (new_phi);
+  if (new_phi)
+    {
+      update_stmt (new_phi);
 
-  if (dump_file && (dump_flags & TDF_DETAILS))
-    print_gimple_stmt (dump_file, new_phi, 0, 0);
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	print_gimple_stmt (dump_file, new_phi, 0, 0);
+    }
 
   return res;
 }
@@ -247,11 +245,11 @@ phiprop_insert_phi (basic_block bb, gimple phi, gimple use_stmt,
    with aliasing issues as we are moving memory reads.  */
 
 static bool
-propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
+propagate_with_phi (basic_block bb, gphi *phi, struct phiprop_d *phivn,
 		    size_t n)
 {
   tree ptr = PHI_RESULT (phi);
-  gimple use_stmt;
+  gimple *use_stmt;
   tree res = NULL_TREE;
   gimple_stmt_iterator gsi;
   imm_use_iterator ui;
@@ -261,7 +259,8 @@ propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
   tree type = NULL_TREE;
 
   if (!POINTER_TYPE_P (TREE_TYPE (ptr))
-      || !is_gimple_reg_type (TREE_TYPE (TREE_TYPE (ptr))))
+      || (!is_gimple_reg_type (TREE_TYPE (TREE_TYPE (ptr)))
+	  && TYPE_MODE (TREE_TYPE (TREE_TYPE (ptr))) == BLKmode))
     return false;
 
   /* Check if we can "cheaply" dereference all phi arguments.  */
@@ -276,7 +275,7 @@ propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
 	     && (SSA_NAME_VERSION (arg) >= n
 	         || phivn[SSA_NAME_VERSION (arg)].value == NULL_TREE))
 	{
-	  gimple def_stmt = SSA_NAME_DEF_STMT (arg);
+	  gimple *def_stmt = SSA_NAME_DEF_STMT (arg);
 	  if (!gimple_assign_single_p (def_stmt))
 	    return false;
 	  arg = gimple_assign_rhs1 (def_stmt);
@@ -306,7 +305,7 @@ propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
   phi_inserted = false;
   FOR_EACH_IMM_USE_STMT (use_stmt, ui, ptr)
     {
-      gimple def_stmt;
+      gimple *def_stmt;
       tree vuse;
 
       /* Only replace loads in blocks that post-dominate the PHI node.  That
@@ -317,7 +316,6 @@ propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
          
       /* Check whether this is a load of *ptr.  */
       if (!(is_gimple_assign (use_stmt)
-	    && TREE_CODE (gimple_assign_lhs (use_stmt)) == SSA_NAME
 	    && gimple_assign_rhs_code (use_stmt) == MEM_REF
 	    && TREE_OPERAND (gimple_assign_rhs1 (use_stmt), 0) == ptr
 	    && integer_zerop (TREE_OPERAND (gimple_assign_rhs1 (use_stmt), 1))
@@ -329,18 +327,42 @@ propagate_with_phi (basic_block bb, gimple phi, struct phiprop_d *phivn,
 	continue;
 
       /* Check if we can move the loads.  The def stmt of the virtual use
-	 needs to be in a different basic block dominating bb.  */
+	 needs to be in a different basic block dominating bb.  When the
+	 def is an edge-inserted one we know it dominates us.  */
       vuse = gimple_vuse (use_stmt);
       def_stmt = SSA_NAME_DEF_STMT (vuse);
       if (!SSA_NAME_IS_DEFAULT_DEF (vuse)
 	  && (gimple_bb (def_stmt) == bb
-	      || !dominated_by_p (CDI_DOMINATORS,
-				  bb, gimple_bb (def_stmt))))
+	      || (gimple_bb (def_stmt)
+		  && !dominated_by_p (CDI_DOMINATORS,
+				      bb, gimple_bb (def_stmt)))))
 	goto next;
+
+      /* Found a proper dereference with an aggregate copy.  Just
+         insert aggregate copies on the edges instead.  */
+      if (!is_gimple_reg_type (TREE_TYPE (TREE_TYPE (ptr))))
+	{
+	  phiprop_insert_phi (bb, phi, use_stmt, phivn, n);
+
+	  /* Remove old stmt.  The phi is taken care of by DCE.  */
+	  gsi = gsi_for_stmt (use_stmt);
+	  /* Unlinking the VDEF here is fine as we are sure that we process
+	     stmts in execution order due to aggregate copies having VDEFs
+	     and we emit loads on the edges in the very same order.
+	     We get multiple copies (or intermediate register loads) handled
+	     only by walking PHIs or immediate uses in a lucky order though,
+	     so we could signal the caller to re-start iterating over PHIs
+	     when we come here which would make it quadratic in the number
+	     of PHIs.  */
+	  unlink_stmt_vdef (use_stmt);
+	  gsi_remove (&gsi, true);
+
+	  phi_inserted = true;
+	}
 
       /* Found a proper dereference.  Insert a phi node if this
 	 is the first load transformation.  */
-      if (!phi_inserted)
+      else if (!phi_inserted)
 	{
 	  res = phiprop_insert_phi (bb, phi, use_stmt, phivn, n);
 	  type = TREE_TYPE (res);
@@ -409,7 +431,7 @@ pass_phiprop::execute (function *fun)
   struct phiprop_d *phivn;
   bool did_something = false;
   basic_block bb;
-  gimple_stmt_iterator gsi;
+  gphi_iterator gsi;
   unsigned i;
   size_t n;
 
@@ -424,7 +446,7 @@ pass_phiprop::execute (function *fun)
 				  single_succ (ENTRY_BLOCK_PTR_FOR_FN (fun)));
   FOR_EACH_VEC_ELT (bbs, i, bb)
     for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi); gsi_next (&gsi))
-      did_something |= propagate_with_phi (bb, gsi_stmt (gsi), phivn, n);
+      did_something |= propagate_with_phi (bb, gsi.phi (), phivn, n);
 
   if (did_something)
     gsi_commit_edge_inserts ();

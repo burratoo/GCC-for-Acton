@@ -1,5 +1,5 @@
 /* LTO symbol table.
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
@@ -21,20 +21,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "diagnostic-core.h"
-#include "tree.h"
+#include "target.h"
+#include "function.h"
 #include "basic-block.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
+#include "tree.h"
 #include "gimple.h"
-#include "hashtab.h"
-#include "plugin-api.h"
+#include "cgraph.h"
 #include "lto-streamer.h"
 #include "ipa-utils.h"
-#include "ipa-inline.h"
 #include "builtins.h"
+#include "alias.h"
+#include "lto-symtab.h"
 
 /* Replace the cgraph node NODE with PREVAILING_NODE in the cgraph, merging
    all edges and removing the old node.  */
@@ -46,9 +43,9 @@ lto_cgraph_replace_node (struct cgraph_node *node,
   struct cgraph_edge *e, *next;
   bool compatible_p;
 
-  if (cgraph_dump_file)
+  if (symtab->dump_file)
     {
-      fprintf (cgraph_dump_file, "Replacing cgraph node %s/%i by %s/%i"
+      fprintf (symtab->dump_file, "Replacing cgraph node %s/%i by %s/%i"
  	       " for symbol %s\n",
 	       node->name (), node->order,
 	       prevailing_node->name (),
@@ -67,6 +64,9 @@ lto_cgraph_replace_node (struct cgraph_node *node,
       gcc_assert (!prevailing_node->global.inlined_to);
       prevailing_node->mark_address_taken ();
     }
+  if (node->definition && prevailing_node->definition
+      && DECL_COMDAT (node->decl) && DECL_COMDAT (prevailing_node->decl))
+    prevailing_node->merged_comdat = true;
 
   /* Redirect all incoming edges.  */
   compatible_p
@@ -75,7 +75,7 @@ lto_cgraph_replace_node (struct cgraph_node *node,
   for (e = node->callers; e; e = next)
     {
       next = e->next_caller;
-      cgraph_redirect_edge_callee (e, prevailing_node);
+      e->redirect_callee (prevailing_node);
       /* If there is a mismatch between the supposed callee return type and
 	 the real one do not attempt to inline this function.
 	 ???  We really need a way to match function signatures for ABI
@@ -86,7 +86,20 @@ lto_cgraph_replace_node (struct cgraph_node *node,
   /* Redirect incomming references.  */
   prevailing_node->clone_referring (node);
 
-  ipa_merge_profiles (prevailing_node, node);
+  /* Fix instrumentation references.  */
+  if (node->instrumented_version)
+    {
+      gcc_assert (node->instrumentation_clone
+		  == prevailing_node->instrumentation_clone);
+      node->instrumented_version->instrumented_version = prevailing_node;
+      if (!prevailing_node->instrumented_version)
+	prevailing_node->instrumented_version = node->instrumented_version;
+      /* Need to reset node->instrumented_version to NULL,
+	 otherwise node removal code would reset
+	 node->instrumented_version->instrumented_version.  */
+      node->instrumented_version = NULL;
+    }
+
   lto_free_function_in_decl_state_for_node (node);
 
   if (node->decl != prevailing_node->decl)
@@ -123,14 +136,158 @@ lto_varpool_replace_node (varpool_node *vnode,
 
   if (vnode->tls_model != prevailing_node->tls_model)
     {
-      error_at (DECL_SOURCE_LOCATION (vnode->decl),
-		"%qD is defined as %s", vnode->decl, tls_model_names [vnode->tls_model]);
-      inform (DECL_SOURCE_LOCATION (prevailing_node->decl),
-	      "previously defined here as %s",
-	      tls_model_names [prevailing_node->tls_model]);
+      bool error = false;
+
+      /* Non-TLS and TLS never mix together.  Also emulated model is not
+	 compatible with anything else.  */
+      if (prevailing_node->tls_model == TLS_MODEL_NONE
+	  || prevailing_node->tls_model == TLS_MODEL_EMULATED
+	  || vnode->tls_model == TLS_MODEL_NONE
+	  || vnode->tls_model == TLS_MODEL_EMULATED)
+	error = true;
+      /* Linked is silently supporting transitions
+	 GD -> IE, GD -> LE, LD -> LE, IE -> LE, LD -> IE.
+	 Do the same transitions and error out on others.  */
+      else if ((prevailing_node->tls_model == TLS_MODEL_REAL
+		|| prevailing_node->tls_model == TLS_MODEL_LOCAL_DYNAMIC)
+	       && (vnode->tls_model == TLS_MODEL_INITIAL_EXEC
+		   || vnode->tls_model == TLS_MODEL_LOCAL_EXEC))
+	prevailing_node->tls_model = vnode->tls_model;
+      else if ((vnode->tls_model == TLS_MODEL_REAL
+		|| vnode->tls_model == TLS_MODEL_LOCAL_DYNAMIC)
+	       && (prevailing_node->tls_model == TLS_MODEL_INITIAL_EXEC
+		   || prevailing_node->tls_model == TLS_MODEL_LOCAL_EXEC))
+	;
+      else if (prevailing_node->tls_model == TLS_MODEL_INITIAL_EXEC
+	       && vnode->tls_model == TLS_MODEL_LOCAL_EXEC)
+	prevailing_node->tls_model = vnode->tls_model;
+      else if (vnode->tls_model == TLS_MODEL_INITIAL_EXEC
+	       && prevailing_node->tls_model == TLS_MODEL_LOCAL_EXEC)
+	;
+      else
+	error = true;
+      if (error)
+	{
+	  error_at (DECL_SOURCE_LOCATION (vnode->decl),
+		    "%qD is defined with tls model %s", vnode->decl, tls_model_names [vnode->tls_model]);
+	  inform (DECL_SOURCE_LOCATION (prevailing_node->decl),
+		  "previously defined here as %s",
+		  tls_model_names [prevailing_node->tls_model]);
+	}
     }
   /* Finally remove the replaced node.  */
   vnode->remove ();
+}
+
+/* Return non-zero if we want to output waring about T1 and T2.
+   Return value is a bitmask of reasons of violation:
+   Bit 0 indicates that types are not compatible.
+   Bit 1 indicates that types are not compatible because of C++ ODR rule.
+   If COMMON_OR_EXTERN is true, do not warn on size mismatches of arrays.
+   Bit 2 indicates that types are not ODR compatible
+
+   The interoperability rules are language specific.  At present we do only
+   full checking for C++ ODR rule and for other languages we do basic check
+   that data structures are of same size and TBAA compatible.  Our TBAA
+   implementation should be coarse enough so all valid type transitions
+   across different languages are allowed.
+
+   In partiucular we thus allow almost arbitrary type changes with
+   -fno-strict-aliasing which may be tough of as a feature rather than bug
+   as it allows to implement dodgy tricks in the language runtimes.
+
+   Naturally this code can be strenghtened significantly if we could track
+   down the language of origin.  */
+
+static int
+warn_type_compatibility_p (tree prevailing_type, tree type,
+			   bool common_or_extern)
+{
+  int lev = 0;
+  bool odr_p = odr_or_derived_type_p (prevailing_type)
+	       && odr_or_derived_type_p (type);
+
+  if (prevailing_type == type)
+    return 0;
+
+  /* C++ provide a robust way to check for type compatibility via the ODR
+     rule.  */
+  if (odr_p && !odr_types_equivalent_p (prevailing_type, type))
+    lev |= 2;
+
+  /* Function types needs special care, because types_compatible_p never
+     thinks prototype is compatible to non-prototype.  */
+  if (TREE_CODE (type) == FUNCTION_TYPE || TREE_CODE (type) == METHOD_TYPE)
+    {
+      if (TREE_CODE (type) != TREE_CODE (prevailing_type))
+	lev |= 1;
+      lev |= warn_type_compatibility_p (TREE_TYPE (prevailing_type),
+				        TREE_TYPE (type), false);
+      if (TREE_CODE (type) == METHOD_TYPE
+	  && TREE_CODE (prevailing_type) == METHOD_TYPE)
+	lev |= warn_type_compatibility_p (TYPE_METHOD_BASETYPE (prevailing_type),
+					  TYPE_METHOD_BASETYPE (type), false);
+      if (prototype_p (prevailing_type) && prototype_p (type)
+	  && TYPE_ARG_TYPES (prevailing_type) != TYPE_ARG_TYPES (type))
+	{
+	  tree parm1, parm2;
+	  for (parm1 = TYPE_ARG_TYPES (prevailing_type),
+	       parm2 = TYPE_ARG_TYPES (type);
+	       parm1 && parm2;
+	       parm1 = TREE_CHAIN (parm1),
+	       parm2 = TREE_CHAIN (parm2))
+	    lev |= warn_type_compatibility_p (TREE_VALUE (parm1),
+					      TREE_VALUE (parm2), false);
+	  if (parm1 || parm2)
+	    lev |= odr_p ? 3 : 1;
+	}
+      if (comp_type_attributes (prevailing_type, type) == 0)
+	lev |= 1;
+      return lev;
+    }
+
+  /* Get complete type.  */
+  prevailing_type = TYPE_MAIN_VARIANT (prevailing_type);
+  type = TYPE_MAIN_VARIANT (type);
+
+  /* We can not use types_compatible_p because we permit some changes
+     across types.  For example unsigned size_t and "signed size_t" may be
+     compatible when merging C and Fortran types.  */
+  if (COMPLETE_TYPE_P (prevailing_type)
+      && COMPLETE_TYPE_P (type)
+      /* While global declarations are never variadic, we can recurse here
+	 for function parameter types.  */
+      && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
+      && TREE_CODE (TYPE_SIZE (prevailing_type)) == INTEGER_CST
+      && !tree_int_cst_equal (TYPE_SIZE (type), TYPE_SIZE (prevailing_type)))
+    {
+       /* As a special case do not warn about merging
+	  int a[];
+	  and
+	  int a[]={1,2,3};
+	  here the first declaration is COMMON or EXTERN
+	  and sizeof(a) == sizeof (int).  */
+       if (!common_or_extern
+	   || TREE_CODE (type) != ARRAY_TYPE
+	   || TYPE_SIZE (type) != TYPE_SIZE (TREE_TYPE (type)))
+       lev |= 1;
+    }
+
+  /* Verify TBAA compatibility.  Take care of alias set 0 and the fact that
+     we make ptr_type_node to TBAA compatible with every other type.  */
+  if (type_with_alias_set_p (type) && type_with_alias_set_p (prevailing_type))
+    {
+      alias_set_type set1 = get_alias_set (type);
+      alias_set_type set2 = get_alias_set (prevailing_type);
+
+      if (set1 && set2 && set1 != set2 
+          && (!POINTER_TYPE_P (type) || !POINTER_TYPE_P (prevailing_type)
+	      || (set1 != TYPE_ALIAS_SET (ptr_type_node)
+		  && set2 != TYPE_ALIAS_SET (ptr_type_node))))
+        lev |= 5;
+    }
+
+  return lev;
 }
 
 /* Merge two variable or function symbol table entries PREVAILING and ENTRY.
@@ -142,10 +299,12 @@ lto_symtab_merge (symtab_node *prevailing, symtab_node *entry)
 {
   tree prevailing_decl = prevailing->decl;
   tree decl = entry->decl;
-  tree prevailing_type, type;
 
   if (prevailing_decl == decl)
     return true;
+
+  if (TREE_CODE (decl) != TREE_CODE (prevailing_decl))
+    return false;
 
   /* Merge decl state in both directions, we may still end up using
      the new decl.  */
@@ -157,70 +316,24 @@ lto_symtab_merge (symtab_node *prevailing, symtab_node *entry)
 
   if (TREE_CODE (decl) == FUNCTION_DECL)
     {
-      if (!types_compatible_p (TREE_TYPE (prevailing_decl),
-			       TREE_TYPE (decl)))
-	/* If we don't have a merged type yet...sigh.  The linker
-	   wouldn't complain if the types were mismatched, so we
-	   probably shouldn't either.  Just use the type from
-	   whichever decl appears to be associated with the
-	   definition.  If for some odd reason neither decl is, the
-	   older one wins.  */
-	(void) 0;
+      /* Merge decl state in both directions, we may still end up using
+	 the new decl.  */
+      DECL_POSSIBLY_INLINED (prevailing_decl) |= DECL_POSSIBLY_INLINED (decl);
+      DECL_POSSIBLY_INLINED (decl) |= DECL_POSSIBLY_INLINED (prevailing_decl);
+
+      if (warn_type_compatibility_p (TREE_TYPE (prevailing_decl),
+			             TREE_TYPE (decl),
+				     DECL_COMMON (decl)
+				     || DECL_EXTERNAL (decl)))
+	return false;
 
       return true;
     }
 
-  /* Now we exclusively deal with VAR_DECLs.  */
-
-  /* Sharing a global symbol is a strong hint that two types are
-     compatible.  We could use this information to complete
-     incomplete pointed-to types more aggressively here, ignoring
-     mismatches in both field and tag names.  It's difficult though
-     to guarantee that this does not have side-effects on merging
-     more compatible types from other translation units though.  */
-
-  /* We can tolerate differences in type qualification, the
-     qualification of the prevailing definition will prevail.
-     ???  In principle we might want to only warn for structurally
-     incompatible types here, but unless we have protective measures
-     for TBAA in place that would hide useful information.  */
-  prevailing_type = TYPE_MAIN_VARIANT (TREE_TYPE (prevailing_decl));
-  type = TYPE_MAIN_VARIANT (TREE_TYPE (decl));
-
-  if (!types_compatible_p (prevailing_type, type))
-    {
-      if (COMPLETE_TYPE_P (type))
-	return false;
-
-      /* If type is incomplete then avoid warnings in the cases
-	 that TBAA handles just fine.  */
-
-      if (TREE_CODE (prevailing_type) != TREE_CODE (type))
-	return false;
-
-      if (TREE_CODE (prevailing_type) == ARRAY_TYPE)
-	{
-	  tree tem1 = TREE_TYPE (prevailing_type);
-	  tree tem2 = TREE_TYPE (type);
-	  while (TREE_CODE (tem1) == ARRAY_TYPE
-		 && TREE_CODE (tem2) == ARRAY_TYPE)
-	    {
-	      tem1 = TREE_TYPE (tem1);
-	      tem2 = TREE_TYPE (tem2);
-	    }
-
-	  if (TREE_CODE (tem1) != TREE_CODE (tem2))
-	    return false;
-
-	  if (!types_compatible_p (tem1, tem2))
-	    return false;
-	}
-
-      /* Fallthru.  Compatible enough.  */
-    }
-
-  /* ???  We might want to emit a warning here if type qualification
-     differences were spotted.  Do not do this unconditionally though.  */
+  if (warn_type_compatibility_p (TREE_TYPE (prevailing_decl),
+				 TREE_TYPE (decl),
+				 DECL_COMMON (decl) || DECL_EXTERNAL (decl)))
+    return false;
 
   /* There is no point in comparing too many details of the decls here.
      The type compatibility checks or the completing of types has properly
@@ -232,6 +345,20 @@ lto_symtab_merge (symtab_node *prevailing, symtab_node *entry)
   /* Report a warning if user-specified alignments do not match.  */
   if ((DECL_USER_ALIGN (prevailing_decl) && DECL_USER_ALIGN (decl))
       && DECL_ALIGN (prevailing_decl) < DECL_ALIGN (decl))
+    return false;
+
+  if (DECL_SIZE (decl) && DECL_SIZE (prevailing_decl)
+      && !tree_int_cst_equal (DECL_SIZE (decl), DECL_SIZE (prevailing_decl))
+      /* As a special case do not warn about merging
+	 int a[];
+	 and
+	 int a[]={1,2,3};
+	 here the first declaration is COMMON
+	 and sizeof(a) == sizeof (int).  */
+      && ((!DECL_COMMON (decl) && !DECL_EXTERNAL (decl))
+	  || TREE_CODE (TREE_TYPE (decl)) != ARRAY_TYPE
+	  || TYPE_SIZE (TREE_TYPE (decl))
+	     != TYPE_SIZE (TREE_TYPE (TREE_TYPE (decl)))))
     return false;
 
   return true;
@@ -314,7 +441,7 @@ lto_symtab_resolve_symbols (symtab_node *first)
 	    && (e->resolution == LDPR_PREVAILING_DEF_IRONLY
 		|| e->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP
 		|| e->resolution == LDPR_PREVAILING_DEF))
-	  fatal_error ("multiple prevailing defs for %qE",
+	  fatal_error (input_location, "multiple prevailing defs for %qE",
 		       DECL_NAME (prevailing->decl));
       return prevailing;
     }
@@ -379,6 +506,72 @@ lto_symtab_resolve_symbols (symtab_node *first)
   return prevailing;
 }
 
+/* Decide if it is OK to merge DECL into PREVAILING.
+   Because we wrap most of uses of declarations in MEM_REF, we can tolerate
+   some differences but other code may inspect directly the DECL.  */
+
+static bool
+lto_symtab_merge_p (tree prevailing, tree decl)
+{
+  if (TREE_CODE (prevailing) != TREE_CODE (decl))
+    {
+      if (symtab->dump_file)
+	fprintf (symtab->dump_file, "Not merging decls; "
+		 "TREE_CODE mismatch\n");
+      return false;
+    }
+  gcc_checking_assert (TREE_CHAIN (prevailing) == TREE_CHAIN (decl));
+  
+  if (TREE_CODE (prevailing) == FUNCTION_DECL)
+    {
+      if (DECL_BUILT_IN (prevailing) != DECL_BUILT_IN (decl))
+	{
+          if (symtab->dump_file)
+	    fprintf (symtab->dump_file, "Not merging decls; "
+		     "DECL_BUILT_IN mismatch\n");
+	  return false;
+	}
+      if (DECL_BUILT_IN (prevailing)
+	  && (DECL_BUILT_IN_CLASS (prevailing) != DECL_BUILT_IN_CLASS (decl)
+	      || DECL_FUNCTION_CODE (prevailing) != DECL_FUNCTION_CODE (decl)))
+	{
+          if (symtab->dump_file)
+	    fprintf (symtab->dump_file, "Not merging decls; "
+		     "DECL_BUILT_IN_CLASS or CODE mismatch\n");
+	  return false;
+	}
+    }
+  if (DECL_ATTRIBUTES (prevailing) != DECL_ATTRIBUTES (decl))
+    {
+      tree prev_attr = lookup_attribute ("error", DECL_ATTRIBUTES (prevailing));
+      tree attr = lookup_attribute ("error", DECL_ATTRIBUTES (decl));
+      if ((prev_attr == NULL) != (attr == NULL)
+	  || (prev_attr
+	      && TREE_VALUE (TREE_VALUE (prev_attr))
+		 != TREE_VALUE (TREE_VALUE (attr))))
+	{
+          if (symtab->dump_file)
+	    fprintf (symtab->dump_file, "Not merging decls; "
+		     "error attribute mismatch\n");
+	  return false;
+	}
+
+      prev_attr = lookup_attribute ("warning", DECL_ATTRIBUTES (prevailing));
+      attr = lookup_attribute ("warning", DECL_ATTRIBUTES (decl));
+      if ((prev_attr == NULL) != (attr == NULL)
+	  || (prev_attr
+	      && TREE_VALUE (TREE_VALUE (prev_attr))
+		 != TREE_VALUE (TREE_VALUE (attr))))
+	{
+          if (symtab->dump_file)
+	    fprintf (symtab->dump_file, "Not merging decls; "
+		     "warning attribute mismatch\n");
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* Merge all decls in the symbol table chain to the prevailing decl and
    issue diagnostics about type mismatches.  If DIAGNOSED_P is true
    do not issue further diagnostics.*/
@@ -391,6 +584,7 @@ lto_symtab_merge_decls_2 (symtab_node *first, bool diagnosed_p)
   vec<tree> mismatches = vNULL;
   unsigned i;
   tree decl;
+  bool tbaa_p = false;
 
   /* Nothing to do for a single entry.  */
   prevailing = first;
@@ -398,38 +592,116 @@ lto_symtab_merge_decls_2 (symtab_node *first, bool diagnosed_p)
     return;
 
   /* Try to merge each entry with the prevailing one.  */
-  for (e = prevailing->next_sharing_asm_name;
-       e; e = e->next_sharing_asm_name)
-    if (TREE_PUBLIC (e->decl))
-      {
-	if (!lto_symtab_merge (prevailing, e)
-	    && !diagnosed_p)
-	  mismatches.safe_push (e->decl);
-      }
+  symtab_node *last_prevailing = prevailing, *next;
+  for (e = prevailing->next_sharing_asm_name; e; e = next)
+    {
+      next = e->next_sharing_asm_name;
+
+      /* Skip non-LTO symbols and symbols whose declaration we already
+	 visited.  */
+      if (lto_symtab_prevailing_decl (e->decl) != e->decl
+	  || !lto_symtab_symbol_p (e)
+          || e->decl == prevailing->decl)
+	continue;
+
+      if (!lto_symtab_merge (prevailing, e)
+	  && !diagnosed_p
+	  && !DECL_ARTIFICIAL (e->decl))
+	mismatches.safe_push (e->decl);
+
+      symtab_node *this_prevailing;
+      for (this_prevailing = prevailing; ;
+	   this_prevailing = this_prevailing->next_sharing_asm_name)
+	{
+	  if (this_prevailing->decl != e->decl
+	      && lto_symtab_merge_p (this_prevailing->decl, e->decl))
+	    break;
+	  if (this_prevailing == last_prevailing)
+	    {
+	      this_prevailing = NULL;
+	      break;
+	    }
+	}
+
+      if (this_prevailing)
+	lto_symtab_prevail_decl (this_prevailing->decl, e->decl);
+      /* Maintain LRU list: relink the new prevaililng symbol
+	 just after previaling node in the chain and update last_prevailing.
+	 Since the number of possible declarations of a given symbol is
+	 small, this should be faster than building a hash.  */
+      else if (e == prevailing->next_sharing_asm_name)
+	last_prevailing = e;
+      else
+	{
+	  if (e->next_sharing_asm_name)
+	    e->next_sharing_asm_name->previous_sharing_asm_name
+	      = e->previous_sharing_asm_name;
+	  e->previous_sharing_asm_name->next_sharing_asm_name
+	    = e->next_sharing_asm_name;
+	  e->previous_sharing_asm_name = prevailing;
+	  e->next_sharing_asm_name = prevailing->next_sharing_asm_name;
+	  prevailing->next_sharing_asm_name->previous_sharing_asm_name = e;
+	  prevailing->next_sharing_asm_name = e;
+	  if (last_prevailing == prevailing)
+	    last_prevailing = e;
+	}
+    }
   if (mismatches.is_empty ())
     return;
 
   /* Diagnose all mismatched re-declarations.  */
   FOR_EACH_VEC_ELT (mismatches, i, decl)
     {
-      if (!types_compatible_p (TREE_TYPE (prevailing->decl),
-			       TREE_TYPE (decl)))
-	diagnosed_p |= warning_at (DECL_SOURCE_LOCATION (decl), 0,
-				   "type of %qD does not match original "
-				   "declaration", decl);
-
+      int level = warn_type_compatibility_p (TREE_TYPE (prevailing->decl),
+					     TREE_TYPE (decl),
+					     DECL_COMDAT (decl));
+      if (level)
+	{
+	  bool diag = false;
+	  if (level & 2)
+	    diag = warning_at (DECL_SOURCE_LOCATION (decl),
+			       OPT_Wodr,
+			       "%qD violates the C++ One Definition Rule ",
+			       decl);
+	  if (!diag && (level & 1))
+	    diag = warning_at (DECL_SOURCE_LOCATION (decl),
+			       OPT_Wlto_type_mismatch,
+			       "type of %qD does not match original "
+			       "declaration", decl);
+	  if (diag)
+	    {
+	      warn_types_mismatch (TREE_TYPE (prevailing->decl),
+				   TREE_TYPE (decl),
+				   DECL_SOURCE_LOCATION (prevailing->decl),
+				   DECL_SOURCE_LOCATION (decl));
+	      if ((level & 4)
+		  && !TREE_READONLY (prevailing->decl))
+		tbaa_p = true;
+	    }
+	  diagnosed_p |= diag;
+	}
       else if ((DECL_USER_ALIGN (prevailing->decl)
 	        && DECL_USER_ALIGN (decl))
 	       && DECL_ALIGN (prevailing->decl) < DECL_ALIGN (decl))
 	{
-	  diagnosed_p |= warning_at (DECL_SOURCE_LOCATION (decl), 0,
+	  diagnosed_p |= warning_at (DECL_SOURCE_LOCATION (decl),
+				     OPT_Wlto_type_mismatch,
 				     "alignment of %qD is bigger than "
 				     "original declaration", decl);
 	}
+      else
+	diagnosed_p |= warning_at (DECL_SOURCE_LOCATION (decl),
+				   OPT_Wlto_type_mismatch,
+				   "size of %qD differ from the size of "
+				   "original declaration", decl);
     }
   if (diagnosed_p)
     inform (DECL_SOURCE_LOCATION (prevailing->decl),
-	    "previously declared here");
+	    "%qD was previously declared here", prevailing->decl);
+  if (tbaa_p)
+    inform (DECL_SOURCE_LOCATION (prevailing->decl),
+	    "code may be misoptimized unless "
+	    "-fno-strict-aliasing is used");
 
   mismatches.release ();
 }
@@ -443,13 +715,13 @@ lto_symtab_merge_decls_1 (symtab_node *first)
   symtab_node *prevailing;
   bool diagnosed_p = false;
 
-  if (cgraph_dump_file)
+  if (symtab->dump_file)
     {
-      fprintf (cgraph_dump_file, "Merging nodes for %s. Candidates:\n",
+      fprintf (symtab->dump_file, "Merging nodes for %s. Candidates:\n",
 	       first->asm_name ());
       for (e = first; e; e = e->next_sharing_asm_name)
 	if (TREE_PUBLIC (e->decl))
-	  e->dump (cgraph_dump_file);
+	  e->dump (symtab->dump_file);
     }
 
   /* Compute the symbol resolutions.  This is a no-op when using the
@@ -483,7 +755,7 @@ lto_symtab_merge_decls_1 (symtab_node *first)
 		&& lto_symtab_symbol_p (e))
 	      prevailing = e;
 	}
-      /* For variables prefer the non-builtin if one is available.  */
+      /* For functions prefer the non-builtin if one is available.  */
       else if (TREE_CODE (prevailing->decl) == FUNCTION_DECL)
 	{
 	  for (e = first; e; e = e->next_sharing_asm_name)
@@ -497,7 +769,7 @@ lto_symtab_merge_decls_1 (symtab_node *first)
 	}
     }
 
-  symtab_prevail_in_asm_name_hash (prevailing);
+  symtab->symtab_prevail_in_asm_name_hash (prevailing);
 
   /* Diagnose mismatched objects.  */
   for (e = prevailing->next_sharing_asm_name;
@@ -539,11 +811,11 @@ lto_symtab_merge_decls_1 (symtab_node *first)
      mismatches.  */
   lto_symtab_merge_decls_2 (prevailing, diagnosed_p);
 
-  if (cgraph_dump_file)
+  if (symtab->dump_file)
     {
-      fprintf (cgraph_dump_file, "After resolution:\n");
+      fprintf (symtab->dump_file, "After resolution:\n");
       for (e = prevailing; e; e = e->next_sharing_asm_name)
-	e->dump (cgraph_dump_file);
+	e->dump (symtab->dump_file);
     }
 }
 
@@ -555,7 +827,7 @@ lto_symtab_merge_decls (void)
   symtab_node *node;
 
   /* Populate assembler name hash.   */
-  symtab_initialize_asm_name_hash ();
+  symtab->symtab_initialize_asm_name_hash ();
 
   FOR_EACH_SYMBOL (node)
     if (!node->previous_sharing_asm_name
@@ -571,6 +843,8 @@ lto_symtab_merge_symbols_1 (symtab_node *prevailing)
   symtab_node *e;
   symtab_node *next;
 
+  prevailing->decl->decl_with_vis.symtab_node = prevailing;
+
   /* Replace the cgraph node of each entry with the prevailing one.  */
   for (e = prevailing->next_sharing_asm_name; e;
        e = next)
@@ -580,10 +854,52 @@ lto_symtab_merge_symbols_1 (symtab_node *prevailing)
       if (!lto_symtab_symbol_p (e))
 	continue;
       cgraph_node *ce = dyn_cast <cgraph_node *> (e);
-      if (ce && !DECL_BUILT_IN (e->decl))
-	lto_cgraph_replace_node (ce, dyn_cast<cgraph_node *> (prevailing));
-      if (varpool_node *ve = dyn_cast <varpool_node *> (e))
-	lto_varpool_replace_node (ve, dyn_cast<varpool_node *> (prevailing));
+      symtab_node *to = symtab_node::get (lto_symtab_prevailing_decl (e->decl));
+
+      /* No matter how we are going to deal with resolution, we will ultimately
+	 use prevailing definition.  */
+      if (ce)
+          ipa_merge_profiles (dyn_cast<cgraph_node *> (prevailing),
+			      dyn_cast<cgraph_node *> (e));
+
+      /* If we decided to replace the node by TO, do it.  */
+      if (e != to)
+	{
+	  if (ce)
+	    lto_cgraph_replace_node (ce, dyn_cast<cgraph_node *> (to));
+	  else if (varpool_node *ve = dyn_cast <varpool_node *> (e))
+	    lto_varpool_replace_node (ve, dyn_cast<varpool_node *> (to));
+	}
+      /* Watch out for duplicated symbols for a given declaration.  */
+      else if (!e->transparent_alias
+	       || !e->definition || e->get_alias_target () != to)
+	{
+	  /* We got a new declaration we do not want to merge.  In this case
+	     get rid of the existing definition and create a transparent
+	     alias.  */
+	  if (ce)
+	    {
+	      lto_free_function_in_decl_state_for_node (ce);
+	      if (!ce->weakref)
+	        ce->release_body ();
+	      ce->reset ();
+	      symtab->call_cgraph_removal_hooks (ce);
+	    }
+	  else
+	    {
+	      DECL_INITIAL (e->decl) = error_mark_node;
+	      if (e->lto_file_data)
+		{
+		  lto_free_function_in_decl_state_for_node (e);
+		  e->lto_file_data = NULL;
+		}
+	      symtab->call_varpool_removal_hooks (dyn_cast<varpool_node *> (e));
+	    }
+	  e->remove_all_references ();
+	  e->analyzed = e->body_removed = false;
+	  e->resolve_alias (prevailing, true);
+	  gcc_assert (e != prevailing);
+	}
     }
 
   return;
@@ -599,7 +915,7 @@ lto_symtab_merge_symbols (void)
 
   if (!flag_ltrans)
     {
-      symtab_initialize_asm_name_hash ();
+      symtab->symtab_initialize_asm_name_hash ();
 
       /* Do the actual merging.  
          At this point we invalidate hash translating decls into symtab nodes
@@ -621,12 +937,11 @@ lto_symtab_merge_symbols (void)
 
 	  if (!node->analyzed && node->alias_target)
 	    {
-	      symtab_node *tgt = symtab_node_for_asm (node->alias_target);
+	      symtab_node *tgt = symtab_node::get_for_asmname (node->alias_target);
 	      gcc_assert (node->weakref);
 	      if (tgt)
-		node->resolve_alias (tgt);
+		node->resolve_alias (tgt, true);
 	    }
-	  node->aux = NULL;
 
 	  if (!(cnode = dyn_cast <cgraph_node *> (node))
 	      || !cnode->clone_of
@@ -653,7 +968,7 @@ lto_symtab_merge_symbols (void)
 
 	      /* Abstract functions may have duplicated cgraph nodes attached;
 		 remove them.  */
-	      else if (cnode && DECL_ABSTRACT (cnode->decl)
+	      else if (cnode && DECL_ABSTRACT_P (cnode->decl)
 		       && (cnode2 = cgraph_node::get (node->decl))
 		       && cnode2 != cnode)
 		cnode2->remove ();
@@ -664,33 +979,46 @@ lto_symtab_merge_symbols (void)
     }
 }
 
-/* Given the decl DECL, return the prevailing decl with the same name. */
+/* Virtual tables may matter for code generation even if they are not
+   directly refernced by the code because they may be used for devirtualizaiton.
+   For this reason it is important to merge even virtual tables that have no
+   associated symbol table entries.  Without doing so we lose optimization
+   oppurtunities by losing track of the vtable constructor.
+   FIXME: we probably ought to introduce explicit symbol table entries for
+   those before streaming.  */
 
 tree
-lto_symtab_prevailing_decl (tree decl)
+lto_symtab_prevailing_virtual_decl (tree decl)
 {
-  symtab_node *ret;
-
-  /* Builtins and local symbols are their own prevailing decl.  */
-  if ((!TREE_PUBLIC (decl) && !DECL_EXTERNAL (decl)) || is_builtin_fn (decl))
+  if (DECL_ABSTRACT_P (decl))
     return decl;
+  gcc_checking_assert (!type_in_anonymous_namespace_p (DECL_CONTEXT (decl))
+		       && DECL_ASSEMBLER_NAME_SET_P (decl));
 
-  /* DECL_ABSTRACTs are their own prevailng decl.  */
-  if (TREE_CODE (decl) == FUNCTION_DECL && DECL_ABSTRACT (decl))
-    return decl;
+  symtab_node *n = symtab_node::get_for_asmname
+		     (DECL_ASSEMBLER_NAME (decl));
+  while (n && ((!DECL_EXTERNAL (n->decl) && !TREE_PUBLIC (n->decl))
+	       || !DECL_VIRTUAL_P (n->decl)))
+    n = n->next_sharing_asm_name;
+  if (n)
+    {
+      /* Merge decl state in both directions, we may still end up using
+	 the other decl.  */
+      TREE_ADDRESSABLE (n->decl) |= TREE_ADDRESSABLE (decl);
+      TREE_ADDRESSABLE (decl) |= TREE_ADDRESSABLE (n->decl);
 
-  /* Likewise builtins are their own prevailing decl.  This preserves
-     non-builtin vs. builtin uses from compile-time.  */
-  if (TREE_CODE (decl) == FUNCTION_DECL && DECL_BUILT_IN (decl))
-    return decl;
+      if (TREE_CODE (decl) == FUNCTION_DECL)
+	{
+	  /* Merge decl state in both directions, we may still end up using
+	     the other decl.  */
+	  DECL_POSSIBLY_INLINED (n->decl) |= DECL_POSSIBLY_INLINED (decl);
+	  DECL_POSSIBLY_INLINED (decl) |= DECL_POSSIBLY_INLINED (n->decl);
+	}
+      lto_symtab_prevail_decl (n->decl, decl);
+      decl = n->decl;
+    }
+  else
+    symtab_node::get_create (decl);
 
-  /* Ensure DECL_ASSEMBLER_NAME will not set assembler name.  */
-  gcc_assert (DECL_ASSEMBLER_NAME_SET_P (decl));
-
-  /* Walk through the list of candidates and return the one we merged to.  */
-  ret = symtab_node_for_asm (DECL_ASSEMBLER_NAME (decl));
-  if (!ret)
-    return decl;
-
-  return ret->decl;
+  return decl;
 }

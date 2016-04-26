@@ -1,4 +1,3 @@
-/* { dg-do run } */
 /* { dg-require-effective-target vect_double } */
 
 #include "tree-vect.h"
@@ -43,4 +42,3 @@ int main()
   return 0;
 }
 
-/* { dg-final { cleanup-tree-dump "vect" } } */

@@ -1,7 +1,8 @@
-/* Copyright (C) 2006-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>.
 
-   This file is part of the GNU OpenMP Library (libgomp).
+   This file is part of the GNU Offloading and Multi Processing Library
+   (libgomp).
 
    Libgomp is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -113,3 +114,27 @@ gomp_affinity_print_place (void *p)
 {
   (void) p;
 }
+
+int
+omp_get_place_num_procs (int place_num)
+{
+  (void) place_num;
+  return 0;
+}
+
+void
+omp_get_place_proc_ids (int place_num, int *ids)
+{
+  (void) place_num;
+  (void) ids;
+}
+
+void
+gomp_get_place_proc_ids_8 (int place_num, int64_t *ids)
+{
+  (void) place_num;
+  (void) ids;
+}
+
+ialias(omp_get_place_num_procs)
+ialias(omp_get_place_proc_ids)

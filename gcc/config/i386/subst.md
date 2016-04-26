@@ -1,5 +1,5 @@
 ;; GCC machine description for AVX512F instructions
-;; Copyright (C) 2013-2014 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2016 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -57,11 +57,13 @@
 (define_subst_attr "mask_mode512bit_condition" "mask" "1" "(<MODE_SIZE> == 64 || TARGET_AVX512VL)")
 (define_subst_attr "mask_avx512vl_condition" "mask" "1" "TARGET_AVX512VL")
 (define_subst_attr "mask_avx512bw_condition" "mask" "1" "TARGET_AVX512BW")
+(define_subst_attr "mask_avx512dq_condition" "mask" "1" "TARGET_AVX512DQ")
 (define_subst_attr "store_mask_constraint" "mask" "vm" "v")
 (define_subst_attr "store_mask_predicate" "mask" "nonimmediate_operand" "register_operand")
 (define_subst_attr "mask_prefix" "mask" "vex" "evex")
 (define_subst_attr "mask_prefix2" "mask" "maybe_vex" "evex")
 (define_subst_attr "mask_prefix3" "mask" "orig,vex" "evex")
+(define_subst_attr "mask_prefix4" "mask" "orig,orig,vex" "evex")
 (define_subst_attr "mask_expand_op3" "mask" "3" "5")
 
 (define_subst "mask"
@@ -121,7 +123,8 @@
 (define_subst_attr "round_constraint" "round" "vm" "v")
 (define_subst_attr "round_constraint2" "round" "m" "v")
 (define_subst_attr "round_constraint3" "round" "rm" "r")
-(define_subst_attr "round_nimm_predicate" "round" "nonimmediate_operand" "register_operand")
+(define_subst_attr "round_nimm_predicate" "round" "vector_operand" "register_operand")
+(define_subst_attr "round_nimm_scalar_predicate" "round" "nonimmediate_operand" "register_operand")
 (define_subst_attr "round_prefix" "round" "vex" "evex")
 (define_subst_attr "round_mode512bit_condition" "round" "1" "(<MODE>mode == V16SFmode
 							      || <MODE>mode == V8DFmode
@@ -160,7 +163,8 @@
 (define_subst_attr "round_saeonly_sd_mask_op5" "round_saeonly" "" "<round_saeonly_sd_mask_operand5>")
 (define_subst_attr "round_saeonly_constraint" "round_saeonly" "vm" "v")
 (define_subst_attr "round_saeonly_constraint2" "round_saeonly" "m" "v")
-(define_subst_attr "round_saeonly_nimm_predicate" "round_saeonly" "nonimmediate_operand" "register_operand")
+(define_subst_attr "round_saeonly_nimm_predicate" "round_saeonly" "vector_operand" "register_operand")
+(define_subst_attr "round_saeonly_nimm_scalar_predicate" "round_saeonly" "nonimmediate_operand" "register_operand")
 (define_subst_attr "round_saeonly_mode512bit_condition" "round_saeonly" "1" "(<MODE>mode == V16SFmode
 									      || <MODE>mode == V8DFmode
 									      || <MODE>mode == V8DImode

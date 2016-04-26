@@ -9,7 +9,7 @@ struct X {
   int *r;
 };
 int __attribute__((noinline))
-foo(int i, int j, int k, int off)
+foo(int i, int j, int k, __SIZE_TYPE__ off)
 {
   struct X x;
   int **p, *q;
@@ -34,4 +34,3 @@ int main()
 }
 
 /* { dg-final { scan-tree-dump "q_. = { i j k }" "alias" } } */
-/* { dg-final { cleanup-tree-dump "alias" } } */

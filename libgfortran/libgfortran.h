@@ -1,5 +1,5 @@
 /* Common declarations for all of libgfortran.
-   Copyright (C) 2002-2014 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>, and
    Andy Vaught <andy@xena.eas.asu.edu>
 
@@ -404,8 +404,7 @@ typedef GFC_ARRAY_DESCRIPTOR (GFC_MAX_DIMENSIONS, GFC_LOGICAL_16) gfc_array_l16;
 
 /* Macros to get both the size and the type with a single masking operation  */
 
-#define GFC_DTYPE_SIZE_MASK \
-  ((~((index_type) 0) >> GFC_DTYPE_SIZE_SHIFT) << GFC_DTYPE_SIZE_SHIFT)
+#define GFC_DTYPE_SIZE_MASK (-((index_type) 1 << GFC_DTYPE_SIZE_SHIFT))
 #define GFC_DTYPE_TYPE_SIZE_MASK (GFC_DTYPE_SIZE_MASK | GFC_DTYPE_TYPE_MASK)
 
 #define GFC_DTYPE_TYPE_SIZE(desc) ((desc)->dtype & GFC_DTYPE_TYPE_SIZE_MASK)
@@ -573,10 +572,6 @@ iexport_data_proto(line);
 extern char *filename;
 iexport_data_proto(filename);
 
-/* Avoid conflicting prototypes of alloca() in system headers by using 
-   GCC's builtin alloca().  */
-#define gfc_alloca(x)  __builtin_alloca(x)
-
 
 /* The default value of record length for preconnected units is defined
    here. This value can be overriden by an environment variable.
@@ -654,16 +649,11 @@ internal_proto(get_args);
 extern void store_exe_path (const char *);
 export_proto(store_exe_path);
 
-extern char * full_exe_path (void);
-internal_proto(full_exe_path);
-
-extern void find_addr2line (void);
-internal_proto(find_addr2line);
-
 /* backtrace.c */
 
-extern void backtrace (void);
-iexport_proto(backtrace);
+extern void show_backtrace (bool);
+internal_proto(show_backtrace);
+
 
 /* error.c */
 
@@ -684,6 +674,9 @@ iexport_proto(backtrace);
 
 extern _Noreturn void sys_abort (void);
 internal_proto(sys_abort);
+
+extern _Noreturn void exit_error (int);
+internal_proto(exit_error);
 
 extern ssize_t estr_write (const char *);
 internal_proto(estr_write);
@@ -800,14 +793,8 @@ internal_proto(xrealloc);
 
 /* environ.c */
 
-extern int check_buffered (int);
-internal_proto(check_buffered);
-
 extern void init_variables (void);
 internal_proto(init_variables);
-
-extern void show_variables (void);
-internal_proto(show_variables);
 
 unit_convert get_unformatted_convert (int);
 internal_proto(get_unformatted_convert);
@@ -850,6 +837,12 @@ export_proto(string_len_trim_char4);
 
 extern char *fc_strdup(const char *, gfc_charlen_type);
 internal_proto(fc_strdup);
+
+extern char *fc_strdup_notrim(const char *, gfc_charlen_type);
+internal_proto(fc_strdup_notrim);
+
+extern const char *gfc_itoa(GFC_INTEGER_LARGEST, char *, size_t);
+internal_proto(gfc_itoa);
 
 /* io/intrinsics.c */
 

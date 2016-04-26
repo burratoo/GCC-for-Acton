@@ -1,5 +1,5 @@
 /* Definitions for code generation pass of GNU compiler.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,7 +20,6 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_LIBFUNCS_H
 #define GCC_LIBFUNCS_H
 
-#include "hashtab.h"
 
 /* Enumeration of indexes into libfunc_table.  */
 enum libfunc_index
@@ -48,16 +47,24 @@ enum libfunc_index
 };
 
 /* Information about an optab-related libfunc.  The op field is logically
-   an enum optab_d, and the mode fields are logically enum machine_mode.
+   an enum optab_d, and the mode fields are logically machine_mode.
    However, in the absence of forward-declared enums, there's no practical
    benefit of pulling in the defining headers.
 
    We use the same hashtable for normal optabs and conversion optabs.  In
    the first case mode2 is forced to VOIDmode.  */
 
-struct GTY(()) libfunc_entry {
+struct GTY((for_user)) libfunc_entry {
   int op, mode1, mode2;
   rtx libfunc;
+};
+
+/* Descriptor for libfunc_entry.  */
+
+struct libfunc_hasher : ggc_ptr_hash<libfunc_entry>
+{
+  static hashval_t hash (libfunc_entry *);
+  static bool equal (libfunc_entry *, libfunc_entry *);
 };
 
 /* Target-dependent globals.  */
@@ -67,7 +74,7 @@ struct GTY(()) target_libfuncs {
   rtx x_libfunc_table[LTI_MAX];
 
   /* Hash table used to convert declarations into nodes.  */
-  htab_t GTY((param_is (struct libfunc_entry))) x_libfunc_hash;
+  hash_table<libfunc_hasher> *GTY(()) x_libfunc_hash;
 };
 
 extern GTY(()) struct target_libfuncs default_target_libfuncs;

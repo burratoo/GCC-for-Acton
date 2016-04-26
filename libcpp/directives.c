@@ -1,5 +1,5 @@
 /* CPP Library. (Directive handling.)
-   Copyright (C) 1986-2014 Free Software Foundation, Inc.
+   Copyright (C) 1986-2016 Free Software Foundation, Inc.
    Contributed by Per Bothner, 1994-95.
    Based on CCCP program by Paul Rubin, June 1986
    Adapted to ANSI C, Richard Stallman, Jan 1987
@@ -122,7 +122,8 @@ static void do_pragma_error (cpp_reader *);
 static void do_linemarker (cpp_reader *);
 static const cpp_token *get_token_no_padding (cpp_reader *);
 static const cpp_token *get__Pragma_string (cpp_reader *);
-static void destringize_and_run (cpp_reader *, const cpp_string *);
+static void destringize_and_run (cpp_reader *, const cpp_string *,
+				 source_location);
 static int parse_answer (cpp_reader *, struct answer **, int, source_location);
 static cpp_hashnode *parse_assertion (cpp_reader *, struct answer **, int);
 static struct answer ** find_answer (cpp_hashnode *, const struct answer *);
@@ -213,16 +214,33 @@ skip_rest_of_line (cpp_reader *pfile)
       ;
 }
 
-/* Ensure there are no stray tokens at the end of a directive.  If
-   EXPAND is true, tokens macro-expanding to nothing are allowed.  */
+/* Helper function for check_oel.  */
+
 static void
-check_eol (cpp_reader *pfile, bool expand)
+check_eol_1 (cpp_reader *pfile, bool expand, int reason)
 {
   if (! SEEN_EOL () && (expand
 			? cpp_get_token (pfile)
 			: _cpp_lex_token (pfile))->type != CPP_EOF)
-    cpp_error (pfile, CPP_DL_PEDWARN, "extra tokens at end of #%s directive",
-	       pfile->directive->name);
+    cpp_pedwarning (pfile, reason, "extra tokens at end of #%s directive",
+		    pfile->directive->name);
+}
+
+/* Variant of check_eol used for Wendif-labels warnings.  */
+
+static void
+check_eol_endif_labels (cpp_reader *pfile)
+{
+  check_eol_1 (pfile, false, CPP_W_ENDIF_LABELS);
+}
+
+/* Ensure there are no stray tokens at the end of a directive.  If
+   EXPAND is true, tokens macro-expanding to nothing are allowed.  */
+
+static void
+check_eol (cpp_reader *pfile, bool expand)
+{
+  check_eol_1 (pfile, expand, CPP_W_NONE);
 }
 
 /* Ensure there are no stray tokens other than comments at the end of
@@ -329,7 +347,7 @@ prepare_directive_trad (cpp_reader *pfile)
 
       if (no_expand)
 	pfile->state.prevent_expansion++;
-      _cpp_scan_out_logical_line (pfile, NULL);
+      _cpp_scan_out_logical_line (pfile, NULL, false);
       if (no_expand)
 	pfile->state.prevent_expansion--;
 
@@ -549,6 +567,11 @@ lex_macro_node (cpp_reader *pfile, bool is_def_or_undef)
       if (is_def_or_undef && node == pfile->spec_nodes.n_defined)
 	cpp_error (pfile, CPP_DL_ERROR,
 		   "\"defined\" cannot be used as a macro name");
+      else if (is_def_or_undef
+	    && (node == pfile->spec_nodes.n__has_include__
+	     || node == pfile->spec_nodes.n__has_include_next__))
+	cpp_error (pfile, CPP_DL_ERROR,
+		   "\"__has_include__\" cannot be used as a macro name");
       else if (! (node->flags & NODE_POISONED))
 	return node;
     }
@@ -610,6 +633,11 @@ do_undef (cpp_reader *pfile)
 	  if (node->flags & NODE_WARN)
 	    cpp_error (pfile, CPP_DL_WARNING,
 		       "undefining \"%s\"", NODE_NAME (node));
+	  else if ((node->flags & NODE_BUILTIN)
+		   && CPP_OPTION (pfile, warn_builtin_macro_redefined))
+	    cpp_warning_with_line (pfile, CPP_W_BUILTIN_MACRO_REDEFINED,
+				   pfile->directive_line, 0,
+				   "undefining \"%s\"", NODE_NAME (node));
 
 	  if (CPP_OPTION (pfile, warn_unused_macros))
 	    _cpp_warn_if_unused_macro (pfile, node, NULL);
@@ -884,8 +912,8 @@ strtolinenum (const uchar *str, size_t len, linenum_type *nump, bool *wrapped)
 static void
 do_line (cpp_reader *pfile)
 {
-  const struct line_maps *line_table = pfile->line_table;
-  const struct line_map *map = LINEMAPS_LAST_ORDINARY_MAP (line_table);
+  struct line_maps *line_table = pfile->line_table;
+  const line_map_ordinary *map = LINEMAPS_LAST_ORDINARY_MAP (line_table);
 
   /* skip_rest_of_line() may cause line table to be realloc()ed so note down
      sysp right now.  */
@@ -938,6 +966,7 @@ do_line (cpp_reader *pfile)
   skip_rest_of_line (pfile);
   _cpp_do_file_change (pfile, LC_RENAME_VERBATIM, new_file, new_lineno,
 		       map_sysp);
+  line_table->seen_line_directive = true;
 }
 
 /* Interpret the # 44 "file" [flags] notation, which has slightly
@@ -946,8 +975,8 @@ do_line (cpp_reader *pfile)
 static void
 do_linemarker (cpp_reader *pfile)
 {
-  const struct line_maps *line_table = pfile->line_table;
-  const struct line_map *map = LINEMAPS_LAST_ORDINARY_MAP (line_table);
+  struct line_maps *line_table = pfile->line_table;
+  const line_map_ordinary *map = LINEMAPS_LAST_ORDINARY_MAP (line_table);
   const cpp_token *token;
   const char *new_file = ORDINARY_MAP_FILE_NAME (map);
   linenum_type new_lineno;
@@ -1017,6 +1046,23 @@ do_linemarker (cpp_reader *pfile)
 
   skip_rest_of_line (pfile);
 
+  if (reason == LC_LEAVE)
+    {
+      /* Reread map since cpp_get_token can invalidate it with a
+	 reallocation.  */
+      map = LINEMAPS_LAST_ORDINARY_MAP (line_table);
+      const line_map_ordinary *from;      
+      if (MAIN_FILE_P (map)
+	  || (new_file
+	      && (from = INCLUDED_FROM (pfile->line_table, map)) != NULL
+	      && filename_cmp (ORDINARY_MAP_FILE_NAME (from), new_file) != 0))
+	{
+	  cpp_warning (pfile, CPP_W_NONE,
+		       "file \"%s\" linemarker ignored due to "
+		       "incorrect nesting", new_file);
+	  return;
+	}
+    }
   /* Compensate for the increment in linemap_add that occurs in
      _cpp_do_file_change.  We're currently at the start of the line
      *following* the #line directive.  A separate source_location for this
@@ -1025,6 +1071,7 @@ do_linemarker (cpp_reader *pfile)
   pfile->line_table->highest_location--;
 
   _cpp_do_file_change (pfile, reason, new_file, new_lineno, new_sysp);
+  line_table->seen_line_directive = true;
 }
 
 /* Arrange the file_change callback.  pfile->line has changed to
@@ -1036,15 +1083,20 @@ _cpp_do_file_change (cpp_reader *pfile, enum lc_reason reason,
 		     const char *to_file, linenum_type file_line,
 		     unsigned int sysp)
 {
+  linemap_assert (reason != LC_ENTER_MACRO);
   const struct line_map *map = linemap_add (pfile->line_table, reason, sysp,
 					    to_file, file_line);
+  const line_map_ordinary *ord_map = NULL;
   if (map != NULL)
-    linemap_line_start (pfile->line_table,
-			ORDINARY_MAP_STARTING_LINE_NUMBER (map),
-			127);
+    {
+      ord_map = linemap_check_ordinary (map);
+      linemap_line_start (pfile->line_table,
+			  ORDINARY_MAP_STARTING_LINE_NUMBER (ord_map),
+			  127);
+    }
 
   if (pfile->cb.file_change)
-    pfile->cb.file_change (pfile, map);
+    pfile->cb.file_change (pfile, ord_map);
 }
 
 /* Report a warning or error detected by the program we are
@@ -1719,7 +1771,8 @@ get__Pragma_string (cpp_reader *pfile)
 /* Destringize IN into a temporary buffer, by removing the first \ of
    \" and \\ sequences, and process the result as a #pragma directive.  */
 static void
-destringize_and_run (cpp_reader *pfile, const cpp_string *in)
+destringize_and_run (cpp_reader *pfile, const cpp_string *in,
+		     source_location expansion_loc)
 {
   const unsigned char *src, *limit;
   char *dest, *result;
@@ -1799,6 +1852,12 @@ destringize_and_run (cpp_reader *pfile, const cpp_string *in)
 	      toks = XRESIZEVEC (cpp_token, toks, maxcount);
 	    }
 	  toks[count] = *cpp_get_token (pfile);
+	  /* _Pragma is a builtin, so we're not within a macro-map, and so
+	     the token locations are set to bogus ordinary locations
+	     near to, but after that of the "_Pragma".
+	     Paper over this by setting them equal to the location of the
+	     _Pragma itself (PR preprocessor/69126).  */
+	  toks[count].src_loc = expansion_loc;
 	  /* Macros have been already expanded by cpp_get_token
 	     if the pragma allowed expansion.  */
 	  toks[count++].flags |= NO_EXPAND;
@@ -1833,14 +1892,14 @@ destringize_and_run (cpp_reader *pfile, const cpp_string *in)
 
 /* Handle the _Pragma operator.  Return 0 on error, 1 if ok.  */
 int
-_cpp_do__Pragma (cpp_reader *pfile)
+_cpp_do__Pragma (cpp_reader *pfile, source_location expansion_loc)
 {
   const cpp_token *string = get__Pragma_string (pfile);
   pfile->directive_result.type = CPP_PADDING;
 
   if (string)
     {
-      destringize_and_run (pfile, &string->val.str);
+      destringize_and_run (pfile, &string->val.str, expansion_loc);
       return 1;
     }
   cpp_error (pfile, CPP_DL_ERROR,
@@ -1985,7 +2044,7 @@ do_else (cpp_reader *pfile)
 
       /* Only check EOL if was not originally skipping.  */
       if (!ifs->was_skipping && CPP_OPTION (pfile, warn_endif_labels))
-	check_eol (pfile, false);
+	check_eol_endif_labels (pfile);
     }
 }
 
@@ -2009,23 +2068,16 @@ do_elif (cpp_reader *pfile)
 	}
       ifs->type = T_ELIF;
 
-      if (! ifs->was_skipping)
+      /* See DR#412: "Only the first group whose control condition
+	 evaluates to true (nonzero) is processed; any following groups
+	 are skipped and their controlling directives are processed as
+	 if they were in a group that is skipped."  */
+      if (ifs->skip_elses)
+	pfile->state.skipping = 1;
+      else
 	{
-	  bool value;
-	  /* The standard mandates that the expression be parsed even
-	     if we are skipping elses at this point -- the lexical
-	     restrictions on #elif only apply to skipped groups, but
-	     this group is not being skipped.  Temporarily set
-	     skipping to false to get lexer warnings.  */
-	  pfile->state.skipping = 0;
-	  value = _cpp_parse_expr (pfile, false);
-	  if (ifs->skip_elses)
-	    pfile->state.skipping = 1;
-	  else
-	    {
-	      pfile->state.skipping = ! value;
-	      ifs->skip_elses = value;
-	    }
+	  pfile->state.skipping = ! _cpp_parse_expr (pfile, false);
+	  ifs->skip_elses = ! pfile->state.skipping;
 	}
 
       /* Invalidate any controlling macro.  */
@@ -2046,7 +2098,7 @@ do_endif (cpp_reader *pfile)
     {
       /* Only check EOL if was not originally skipping.  */
       if (!ifs->was_skipping && CPP_OPTION (pfile, warn_endif_labels))
-	check_eol (pfile, false);
+	check_eol_endif_labels (pfile);
 
       /* If potential control macro, we go back outside again.  */
       if (ifs->next == 0 && ifs->mi_cmacro)
@@ -2373,11 +2425,11 @@ cpp_define (cpp_reader *pfile, const char *str)
 void
 cpp_define_formatted (cpp_reader *pfile, const char *fmt, ...)
 {
-  char *ptr = NULL;
+  char *ptr;
 
   va_list ap;
   va_start (ap, fmt);
-  vasprintf (&ptr, fmt, ap);
+  ptr = xvasprintf (fmt, ap);
   va_end (ap);
 
   cpp_define (pfile, ptr);
@@ -2601,3 +2653,12 @@ _cpp_init_directives (cpp_reader *pfile)
       node->directive_index = i;
     }
 }
+
+/* Extract header file from a bracket include. Parsing starts after '<'.
+   The string is malloced and must be freed by the caller.  */
+char *
+_cpp_bracket_include(cpp_reader *pfile)
+{
+  return glue_header_name (pfile);
+}
+

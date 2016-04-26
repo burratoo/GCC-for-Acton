@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -44,24 +44,6 @@ package Sem_Ch6 is
    procedure Analyze_Simple_Return_Statement         (N : Node_Id);
    procedure Analyze_Subprogram_Declaration          (N : Node_Id);
    procedure Analyze_Subprogram_Body                 (N : Node_Id);
-
-   procedure Analyze_Subprogram_Body_Contract (Body_Id : Entity_Id);
-   --  Analyze all delayed aspects chained on the contract of subprogram body
-   --  Body_Id as if they appeared at the end of a declarative region. The
-   --  aspects in question are:
-   --    Refined_Depends
-   --    Refined_Global
-
-   procedure Analyze_Subprogram_Contract (Subp : Entity_Id);
-   --  Analyze all delayed aspects chained on the contract of subprogram Subp
-   --  as if they appeared at the end of a declarative region. The aspects in
-   --  question are:
-   --    Contract_Cases
-   --    Depends
-   --    Global
-   --    Postcondition
-   --    Precondition
-   --    Test_Case
 
    function Analyze_Subprogram_Specification (N : Node_Id) return Entity_Id;
    --  Analyze subprogram specification in both subprogram declarations

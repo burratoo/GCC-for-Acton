@@ -1,5 +1,5 @@
 /* params.h - Run-time parameters.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Written by Mark Mitchell <mark@codesourcery.com>.
 
 This file is part of GCC.
@@ -55,6 +55,9 @@ struct param_info
 
   /* A short description of the option.  */
   const char *const help;
+
+  /* The optional names corresponding to the values.  */
+  const char **value_names;
 };
 
 /* An array containing the compiler parameters and their current
@@ -81,12 +84,12 @@ extern void set_param_value (const char *name, int value,
 
 enum compiler_param
 {
-#define DEFPARAM(enumerator, option, msgid, default, min, max) \
-  enumerator,
-#include "params.def"
-#undef DEFPARAM
+#include "params.list"
   LAST_PARAM
 };
+
+extern bool find_param (const char *, enum compiler_param *);
+extern bool param_string_value_p (enum compiler_param, const char *, int *);
 
 /* The value of the parameter given by ENUM.  Not an lvalue.  */
 #define PARAM_VALUE(ENUM) \
@@ -112,6 +115,10 @@ extern void global_init_params (void);
 /* Note that all parameters have been added and all default values
    set.  */
 extern void finish_params (void);
+
+/* Reset all state in params.c  */
+
+extern void params_c_finalize (void);
 
 /* Return the default value of parameter NUM.  */
 
@@ -198,6 +205,8 @@ extern void init_param_values (int *params);
   PARAM_VALUE (PARAM_IRA_LOOP_RESERVED_REGS)
 #define LRA_MAX_CONSIDERED_RELOAD_PSEUDOS \
   PARAM_VALUE (PARAM_LRA_MAX_CONSIDERED_RELOAD_PSEUDOS)
+#define LRA_INHERITANCE_EBB_PROBABILITY_CUTOFF \
+  PARAM_VALUE (PARAM_LRA_INHERITANCE_EBB_PROBABILITY_CUTOFF)
 #define SWITCH_CONVERSION_BRANCH_RATIO \
   PARAM_VALUE (PARAM_SWITCH_CONVERSION_BRANCH_RATIO)
 #define LOOP_INVARIANT_MAX_BBS_IN_LOOP \

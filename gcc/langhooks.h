@@ -1,5 +1,5 @@
 /* The lang_hooks data structure.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -69,7 +69,7 @@ struct lang_hooks_for_types
 
   /* Given MODE and UNSIGNEDP, return a suitable type-tree with that
      mode.  */
-  tree (*type_for_mode) (enum machine_mode, int);
+  tree (*type_for_mode) (machine_mode, int);
 
   /* Given PRECISION and UNSIGNEDP, return a suitable type-tree for an
      integer type with at least that precision.  */
@@ -127,6 +127,11 @@ struct lang_hooks_for_types
   /* Fill in information for the debugger about the bounds of TYPE.  */
   void (*get_subrange_bounds) (const_tree, tree *, tree *);
 
+  /* Called on INTEGER_TYPEs.  Return NULL_TREE for non-biased types.  For
+     biased types, return as an INTEGER_CST node the value that is represented
+     by a physical zero.  */
+  tree (*get_type_bias) (const_tree);
+
   /* A type descriptive of TYPE's complex layout generated to help the
      debugger to decode variable-length or self-referential constructs.
      This is only used for the AT_GNAT_descriptive_type DWARF attribute.  */
@@ -143,6 +148,17 @@ struct lang_hooks_for_types
      type_for_size.  Used in dwarf2out.c to add a DW_AT_type base type
      reference to a DW_TAG_enumeration.  */
   tree (*enum_underlying_base_type) (const_tree);
+
+  /* Return a type to use in the debug info instead of TYPE, or NULL_TREE to
+     keep TYPE.  This is useful to keep a single "source type" when the
+     middle-end uses specialized types, for instance constrained discriminated
+     types in Ada.  */
+  tree (*get_debug_type) (const_tree);
+
+  /* Return TRUE if TYPE implements a fixed point type and fills in information
+     for the debugger about scale factor, etc.  */
+  bool (*get_fixed_point_type_info) (const_tree,
+				     struct fixed_point_type_info *);
 };
 
 /* Language hooks related to decls and the symbol table.  */
@@ -166,6 +182,9 @@ struct lang_hooks_for_decls
   /* Returns true if DECL is explicit member function.  */
   bool (*function_decl_explicit_p) (tree);
 
+  /* Returns true if DECL is C++11 deleted special member function.  */
+  bool (*function_decl_deleted_p) (tree);
+
   /* Returns True if the parameter is a generic parameter decl
      of a generic type, e.g a template template parameter for the C++ FE.  */
   bool (*generic_generic_parameter_decl_p) (const_tree);
@@ -181,9 +200,11 @@ struct lang_hooks_for_decls
      We will already have checked that it has static binding.  */
   bool (*warn_unused_global) (const_tree);
 
-  /* Obtain a list of globals and do final output on them at end
-     of compilation */
-  void (*final_write_globals) (void);
+  /* Perform any post compilation-proper parser cleanups and
+     processing.  This is currently only needed for the C++ parser,
+     which hopefully can be cleaned up so this hook is no longer
+     necessary.  */
+  void (*post_compilation_parsing_cleanups) (void);
 
   /* True if this decl may be called via a sibcall.  */
   bool (*ok_for_sibcall) (const_tree);
@@ -258,7 +279,8 @@ struct lang_hooks_for_lto
 
 struct lang_hooks
 {
-  /* String identifying the front end.  e.g. "GNU C++".  */
+  /* String identifying the front end and optionally language standard
+     version, e.g. "GNU C++98" or "GNU Java".  */
   const char *name;
 
   /* sizeof (struct lang_identifier), so make_node () creates
@@ -500,5 +522,11 @@ extern tree add_builtin_function_ext_scope (const char *name, tree type,
 					    const char *library_name,
 					    tree attrs);
 extern tree add_builtin_type (const char *name, tree type);
+
+/* Language helper functions.  */
+
+extern bool lang_GNU_C (void);
+extern bool lang_GNU_CXX (void);
+extern bool lang_GNU_Fortran (void);
  
 #endif /* GCC_LANG_HOOKS_H */

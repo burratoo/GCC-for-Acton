@@ -1,6 +1,6 @@
 // class template regex -*- C++ -*-
 
-// Copyright (C) 2013-2014 Free Software Foundation, Inc.
+// Copyright (C) 2013-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -39,17 +39,17 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     bool _Executor<_BiIter, _Alloc, _TraitsT, __dfs_mode>::
     _M_search()
     {
+      if (_M_search_from_first())
+	return true;
       if (_M_flags & regex_constants::match_continuous)
-	return _M_search_from_first();
-      auto __cur = _M_begin;
-      do
+	return false;
+      _M_flags |= regex_constants::match_prev_avail;
+      while (_M_begin != _M_end)
 	{
-	  _M_current = __cur;
-	  if (_M_main(_Match_mode::_Prefix))
+	  ++_M_begin;
+	  if (_M_search_from_first())
 	    return true;
 	}
-      // Continue when __cur == _M_end
-      while (__cur++ != _M_end);
       return false;
     }
 
@@ -145,11 +145,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _BiIter, typename _Alloc, typename _TraitsT,
 	   bool __dfs_mode>
     bool _Executor<_BiIter, _Alloc, _TraitsT, __dfs_mode>::
-    _M_lookahead(_State<_TraitsT> __state)
+    _M_lookahead(_StateIdT __next)
     {
-      _ResultsVec __what(_M_cur_results.size());
+      // Backreferences may refer to captured content.
+      // We may want to make this faster by not copying,
+      // but let's not be clever prematurely.
+      _ResultsVec __what(_M_cur_results);
       _Executor __sub(_M_current, _M_end, __what, _M_re, _M_flags);
-      __sub._M_states._M_start = __state._M_alt;
+      __sub._M_states._M_start = __next;
       if (__sub._M_search_from_first())
 	{
 	  for (size_t __i = 0; __i < __what.size(); __i++)
@@ -203,7 +206,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       const auto& __state = _M_nfa[__i];
       // Every change on _M_cur_results and _M_current will be rolled back after
       // finishing the recursion step.
-      switch (__state._M_opcode)
+      switch (__state._M_opcode())
 	{
 	// _M_alt branch is "match once more", while _M_next is "get me out
 	// of this quantifier". Executing _M_next first or _M_alt first don't
@@ -274,19 +277,21 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    _M_dfs(__match_mode, __state._M_next);
 	  break;
 	case _S_opcode_word_boundary:
-	  if (_M_word_boundary(__state) == !__state._M_neg)
+	  if (_M_word_boundary() == !__state._M_neg)
 	    _M_dfs(__match_mode, __state._M_next);
 	  break;
 	// Here __state._M_alt offers a single start node for a sub-NFA.
 	// We recursively invoke our algorithm to match the sub-NFA.
 	case _S_opcode_subexpr_lookahead:
-	  if (_M_lookahead(__state) == !__state._M_neg)
+	  if (_M_lookahead(__state._M_alt) == !__state._M_neg)
 	    _M_dfs(__match_mode, __state._M_next);
 	  break;
 	case _S_opcode_match:
+	  if (_M_current == _M_end)
+	    break;
 	  if (__dfs_mode)
 	    {
-	      if (_M_current != _M_end && __state._M_matches(*_M_current))
+	      if (__state._M_matches(*_M_current))
 		{
 		  ++_M_current;
 		  _M_dfs(__match_mode, __state._M_next);
@@ -303,7 +308,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	// If matched, keep going; else just return and try another state.
 	case _S_opcode_backref:
 	  {
-	    _GLIBCXX_DEBUG_ASSERT(__dfs_mode);
+	    __glibcxx_assert(__dfs_mode);
 	    auto& __submatch = _M_cur_results[__state._M_backref_index];
 	    if (!__submatch.matched)
 	      break;
@@ -312,9 +317,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 		 __last != _M_end && __tmp != __submatch.second;
 		 ++__tmp)
 	      ++__last;
-	    if (_M_re._M_traits.transform(__submatch.first,
-						__submatch.second)
-		== _M_re._M_traits.transform(_M_current, __last))
+	    if (_M_re._M_automaton->_M_traits.transform(__submatch.first,
+							__submatch.second)
+		== _M_re._M_automaton->_M_traits.transform(_M_current, __last))
 	      {
 		if (__last != _M_current)
 		  {
@@ -331,7 +336,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	case _S_opcode_accept:
 	  if (__dfs_mode)
 	    {
-	      _GLIBCXX_DEBUG_ASSERT(!_M_has_sol);
+	      __glibcxx_assert(!_M_has_sol);
 	      if (__match_mode == _Match_mode::_Exact)
 		_M_has_sol = _M_current == _M_end;
 	      else
@@ -345,7 +350,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 		    _M_results = _M_cur_results;
 		  else // POSIX
 		    {
-		      _GLIBCXX_DEBUG_ASSERT(_M_states._M_get_sol_pos());
+		      __glibcxx_assert(_M_states._M_get_sol_pos());
 		      // Here's POSIX's logic: match the longest one. However
 		      // we never know which one (lhs or rhs of "|") is longer
 		      // unless we try both of them and compare the results.
@@ -380,8 +385,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	case _S_opcode_alternative:
 	  if (_M_nfa._M_flags & regex_constants::ECMAScript)
 	    {
-	      // TODO: Let DFS support ECMAScript's alternative operation.
-	      _GLIBCXX_DEBUG_ASSERT(!__dfs_mode);
+	      // TODO: Fix BFS support. It is wrong.
 	      _M_dfs(__match_mode, __state._M_alt);
 	      // Pick lhs if it matches. Only try rhs if it doesn't.
 	      if (!_M_has_sol)
@@ -399,7 +403,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    }
 	  break;
 	default:
-	  _GLIBCXX_DEBUG_ASSERT(false);
+	  __glibcxx_assert(false);
 	}
     }
 
@@ -407,25 +411,25 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _BiIter, typename _Alloc, typename _TraitsT,
 	   bool __dfs_mode>
     bool _Executor<_BiIter, _Alloc, _TraitsT, __dfs_mode>::
-    _M_word_boundary(_State<_TraitsT> __state) const
+    _M_word_boundary() const
     {
-      // By definition.
-      bool __ans = false;
-      auto __pre = _M_current;
-      --__pre;
-      if (!(_M_at_begin() && _M_at_end()))
+      if (_M_current == _M_begin && (_M_flags & regex_constants::match_not_bow))
+	return false;
+      if (_M_current == _M_end && (_M_flags & regex_constants::match_not_eow))
+	return false;
+
+      bool __left_is_word = false;
+      if (_M_current != _M_begin
+	  || (_M_flags & regex_constants::match_prev_avail))
 	{
-	  if (_M_at_begin())
-	    __ans = _M_is_word(*_M_current)
-	      && !(_M_flags & regex_constants::match_not_bow);
-	  else if (_M_at_end())
-	    __ans = _M_is_word(*__pre)
-	      && !(_M_flags & regex_constants::match_not_eow);
-	  else
-	    __ans = _M_is_word(*_M_current)
-	      != _M_is_word(*__pre);
+	  auto __prev = _M_current;
+	  if (_M_is_word(*std::prev(__prev)))
+	    __left_is_word = true;
 	}
-      return __ans;
+      bool __right_is_word =
+        _M_current != _M_end && _M_is_word(*_M_current);
+
+      return __left_is_word != __right_is_word;
     }
 
 _GLIBCXX_END_NAMESPACE_VERSION

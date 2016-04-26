@@ -73,14 +73,16 @@ template<u32 kLCSegment, typename SegmentCommand>
 bool MemoryMappingLayout::NextSegmentLoad(
     uptr *start, uptr *end, uptr *offset,
     char filename[], uptr filename_size, uptr *protection) {
-  if (protection)
-    UNIMPLEMENTED();
   const char* lc = current_load_cmd_addr_;
   current_load_cmd_addr_ += ((const load_command *)lc)->cmdsize;
   if (((const load_command *)lc)->cmd == kLCSegment) {
     const sptr dlloff = _dyld_get_image_vmaddr_slide(current_image_);
     const SegmentCommand* sc = (const SegmentCommand *)lc;
     if (start) *start = sc->vmaddr + dlloff;
+    if (protection) {
+      // Return the initial protection.
+      *protection = sc->initprot;
+    }
     if (end) *end = sc->vmaddr + sc->vmsize + dlloff;
     if (offset) {
       if (current_filetype_ == /*MH_EXECUTE*/ 0x2) {
@@ -155,28 +157,28 @@ uptr MemoryMappingLayout::DumpListOfModules(LoadedModule *modules,
                                             uptr max_modules,
                                             string_predicate_t filter) {
   Reset();
-  uptr cur_beg, cur_end;
-  InternalScopedBuffer<char> module_name(kMaxPathLength);
+  uptr cur_beg, cur_end, prot;
+  InternalScopedString module_name(kMaxPathLength);
   uptr n_modules = 0;
   for (uptr i = 0; n_modules < max_modules &&
                        Next(&cur_beg, &cur_end, 0, module_name.data(),
-                            module_name.size(), 0);
+                            module_name.size(), &prot);
        i++) {
     const char *cur_name = module_name.data();
     if (cur_name[0] == '\0')
       continue;
     if (filter && !filter(cur_name))
       continue;
-    LoadedModule *cur_module = 0;
+    LoadedModule *cur_module = nullptr;
     if (n_modules > 0 &&
         0 == internal_strcmp(cur_name, modules[n_modules - 1].full_name())) {
       cur_module = &modules[n_modules - 1];
     } else {
-      void *mem = &modules[n_modules];
-      cur_module = new(mem) LoadedModule(cur_name, cur_beg);
+      cur_module = &modules[n_modules];
+      cur_module->set(cur_name, cur_beg);
       n_modules++;
     }
-    cur_module->addAddressRange(cur_beg, cur_end);
+    cur_module->addAddressRange(cur_beg, cur_end, prot & kProtectionExecute);
   }
   return n_modules;
 }

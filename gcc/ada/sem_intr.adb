@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -359,6 +359,7 @@ package body Sem_Intr is
                          Name_Line,
                          Name_Source_Location,
                          Name_Enclosing_Entity,
+                         Name_Compilation_ISO_Date,
                          Name_Compilation_Date,
                          Name_Compilation_Time)
       then
@@ -430,12 +431,25 @@ package body Sem_Intr is
       then
          Errint
            ("first argument for shift must have size 8, 16, 32 or 64",
-             Ptyp1, N);
+            Ptyp1, N);
          return;
 
       elsif Non_Binary_Modulus (Typ1) then
+         Errint ("shifts not allowed for nonbinary modular types", Ptyp1, N);
+
+      --  For modular type, modulus must be 2**8, 2**16, 2**32, or 2**64.
+      --  Don't apply to generic types, since we may not have a modulus value.
+
+      elsif Is_Modular_Integer_Type (Typ1)
+        and then not Is_Generic_Type (Typ1)
+        and then Modulus (Typ1) /= Uint_2 ** 8
+        and then Modulus (Typ1) /= Uint_2 ** 16
+        and then Modulus (Typ1) /= Uint_2 ** 32
+        and then Modulus (Typ1) /= Uint_2 ** 64
+      then
          Errint
-           ("shifts not allowed for non-binary modular types", Ptyp1, N);
+           ("modular type for shift must have modulus of 2'*'*8, "
+            & "2'*'*16, 2'*'*32, or 2'*'*64", Ptyp1, N);
 
       elsif Etype (Arg1) /= Etype (E) then
          Errint

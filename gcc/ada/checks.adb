@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -169,7 +169,7 @@ package body Checks is
    end record;
 
    --  The following table keeps track of saved checks. Rather than use an
-   --  extensible table. We just use a table of fixed size, and we discard
+   --  extensible table, we just use a table of fixed size, and we discard
    --  any saved checks that do not fit. That's very unlikely to happen and
    --  this is only an optimization in any case.
 
@@ -749,14 +749,15 @@ package body Checks is
             end if;
          end;
 
-      --  If the expression has the form X'Address, then we can find out if
-      --  the object X has an alignment that is compatible with the object E.
-      --  If it hasn't or we don't know, we defer issuing the warning until
-      --  the end of the compilation to take into account back end annotations.
+      --  If the expression has the form X'Address, then we can find out if the
+      --  object X has an alignment that is compatible with the object E. If it
+      --  hasn't or we don't know, we defer issuing the warning until the end
+      --  of the compilation to take into account back end annotations.
 
       elsif Nkind (Expr) = N_Attribute_Reference
         and then Attribute_Name (Expr) = Name_Address
-        and then Has_Compatible_Alignment (E, Prefix (Expr)) = Known_Compatible
+        and then
+          Has_Compatible_Alignment (E, Prefix (Expr), False) = Known_Compatible
       then
          return;
       end if;
@@ -921,7 +922,7 @@ package body Checks is
       --    range of x op y is included in the range of type1
       --    size of type1 is at least twice the result size of op
 
-      --  then we don't do an overflow check in any case, instead we transform
+      --  then we don't do an overflow check in any case. Instead, we transform
       --  the operation so that we end up with:
 
       --    type1 (type1 (x) op type1 (y))
@@ -1037,17 +1038,12 @@ package body Checks is
          --  operation on signed integers on which the expander can promote
          --  later the operands to type Integer (see Expand_N_Type_Conversion).
 
-         --  Special case CLI target, where arithmetic overflow checks can be
-         --  performed for integer and long_integer
-
          if Backend_Overflow_Checks_On_Target
            or else not Do_Overflow_Check (N)
            or else not Expander_Active
            or else (Present (Parent (N))
                      and then Nkind (Parent (N)) = N_Type_Conversion
                      and then Integer_Promotion_Possible (Parent (N)))
-           or else
-             (VM_Target = CLI_Target and then Siz >= Standard_Integer_Size)
          then
             return;
          end if;
@@ -1213,7 +1209,18 @@ package body Checks is
         or else (Nkind (P) = N_Range
                   and then Nkind (Parent (P)) in N_Membership_Test)
       then
-         return;
+         --  If_Expressions and Case_Expressions are treated as arithmetic
+         --  ops, but if they appear in an assignment or similar contexts
+         --  there is no overflow check that starts from that parent node,
+         --  so apply check now.
+
+         if Nkind_In (P, N_If_Expression, N_Case_Expression)
+           and then not Is_Signed_Integer_Arithmetic_Op (Parent (P))
+         then
+            null;
+         else
+            return;
+         end if;
       end if;
 
       --  Otherwise, we have a top level arithmetic operation node, and this
@@ -1255,10 +1262,10 @@ package body Checks is
          --  This block is inserted (using Insert_Actions), and then the node
          --  is replaced with a reference to Rnn.
 
-         --  A special case arises if our parent is a conversion node. In this
-         --  case no point in generating a conversion to Result_Type, we will
-         --  let the parent handle this. Note that this special case is not
-         --  just about optimization. Consider
+         --  If our parent is a conversion node then there is no point in
+         --  generating a conversion to Result_Type. Instead, we let the parent
+         --  handle this. Note that this special case is not just about
+         --  optimization. Consider
 
          --      A,B,C : Integer;
          --      ...
@@ -1307,7 +1314,7 @@ package body Checks is
             Analyze_And_Resolve (Op);
          end;
 
-      --  Here we know the result is Long_Long_Integer'Base, of that it has
+      --  Here we know the result is Long_Long_Integer'Base, or that it has
       --  been rewritten because the parent operation is a conversion. See
       --  Apply_Arithmetic_Overflow_Strict.Conversion_Optimization.
 
@@ -2347,11 +2354,13 @@ package body Checks is
 
       --  Local variables
 
-      Actual_1 : Node_Id;
-      Actual_2 : Node_Id;
-      Check    : Node_Id;
-      Formal_1 : Entity_Id;
-      Formal_2 : Entity_Id;
+      Actual_1   : Node_Id;
+      Actual_2   : Node_Id;
+      Check      : Node_Id;
+      Formal_1   : Entity_Id;
+      Formal_2   : Entity_Id;
+      Orig_Act_1 : Node_Id;
+      Orig_Act_2 : Node_Id;
 
    --  Start of processing for Apply_Parameter_Aliasing_Checks
 
@@ -2361,25 +2370,38 @@ package body Checks is
       Actual_1 := First_Actual (Call);
       Formal_1 := First_Formal (Subp);
       while Present (Actual_1) and then Present (Formal_1) loop
+         Orig_Act_1 := Original_Actual (Actual_1);
 
          --  Ensure that the actual is an object that is not passed by value.
          --  Elementary types are always passed by value, therefore actuals of
-         --  such types cannot lead to aliasing.
+         --  such types cannot lead to aliasing. An aggregate is an object in
+         --  Ada 2012, but an actual that is an aggregate cannot overlap with
+         --  another actual. A type that is By_Reference (such as an array of
+         --  controlled types) is not subject to the check because any update
+         --  will be done in place and a subsequent read will always see the
+         --  correct value, see RM 6.2 (12/3).
 
-         if Is_Object_Reference (Original_Actual (Actual_1))
-           and then not Is_Elementary_Type (Etype (Original_Actual (Actual_1)))
+         if Nkind (Orig_Act_1) = N_Aggregate
+           or else (Nkind (Orig_Act_1) = N_Qualified_Expression
+                     and then Nkind (Expression (Orig_Act_1)) = N_Aggregate)
+         then
+            null;
+
+         elsif Is_Object_Reference (Orig_Act_1)
+           and then not Is_Elementary_Type (Etype (Orig_Act_1))
+           and then not Is_By_Reference_Type (Etype (Orig_Act_1))
          then
             Actual_2 := Next_Actual (Actual_1);
             Formal_2 := Next_Formal (Formal_1);
             while Present (Actual_2) and then Present (Formal_2) loop
+               Orig_Act_2 := Original_Actual (Actual_2);
 
                --  The other actual we are testing against must also denote
                --  a non pass-by-value object. Generate the check only when
                --  the mode of the two formals may lead to aliasing.
 
-               if Is_Object_Reference (Original_Actual (Actual_2))
-                 and then not
-                   Is_Elementary_Type (Etype (Original_Actual (Actual_2)))
+               if Is_Object_Reference (Orig_Act_2)
+                 and then not Is_Elementary_Type (Etype (Orig_Act_2))
                  and then May_Cause_Aliasing (Formal_1, Formal_2)
                then
                   Overlap_Check
@@ -2417,30 +2439,94 @@ package body Checks is
       Subp_Decl : Node_Id;
 
       procedure Add_Validity_Check
-        (Context    : Entity_Id;
-         PPC_Nam    : Name_Id;
+        (Formal     : Entity_Id;
+         Prag_Nam   : Name_Id;
          For_Result : Boolean := False);
       --  Add a single 'Valid[_Scalar] check which verifies the initialization
-      --  of Context. PPC_Nam denotes the pre or post condition pragma name.
+      --  of Formal. Prag_Nam denotes the pre or post condition pragma name.
       --  Set flag For_Result when to verify the result of a function.
-
-      procedure Build_PPC_Pragma (PPC_Nam : Name_Id; Check : Node_Id);
-      --  Create a pre or post condition pragma with name PPC_Nam which
-      --  tests expression Check.
 
       ------------------------
       -- Add_Validity_Check --
       ------------------------
 
       procedure Add_Validity_Check
-        (Context    : Entity_Id;
-         PPC_Nam    : Name_Id;
+        (Formal     : Entity_Id;
+         Prag_Nam   : Name_Id;
          For_Result : Boolean := False)
       is
+         procedure Build_Pre_Post_Condition (Expr : Node_Id);
+         --  Create a pre/postcondition pragma that tests expression Expr
+
+         ------------------------------
+         -- Build_Pre_Post_Condition --
+         ------------------------------
+
+         procedure Build_Pre_Post_Condition (Expr : Node_Id) is
+            Loc   : constant Source_Ptr := Sloc (Subp);
+            Decls : List_Id;
+            Prag  : Node_Id;
+
+         begin
+            Prag :=
+              Make_Pragma (Loc,
+                Pragma_Identifier            =>
+                  Make_Identifier (Loc, Prag_Nam),
+                Pragma_Argument_Associations => New_List (
+                  Make_Pragma_Argument_Association (Loc,
+                    Chars      => Name_Check,
+                    Expression => Expr)));
+
+            --  Add a message unless exception messages are suppressed
+
+            if not Exception_Locations_Suppressed then
+               Append_To (Pragma_Argument_Associations (Prag),
+                 Make_Pragma_Argument_Association (Loc,
+                   Chars      => Name_Message,
+                   Expression =>
+                     Make_String_Literal (Loc,
+                       Strval => "failed "
+                                 & Get_Name_String (Prag_Nam)
+                                 & " from "
+                                 & Build_Location_String (Loc))));
+            end if;
+
+            --  Insert the pragma in the tree
+
+            if Nkind (Parent (Subp_Decl)) = N_Compilation_Unit then
+               Add_Global_Declaration (Prag);
+               Analyze (Prag);
+
+            --  PPC pragmas associated with subprogram bodies must be inserted
+            --  in the declarative part of the body.
+
+            elsif Nkind (Subp_Decl) = N_Subprogram_Body then
+               Decls := Declarations (Subp_Decl);
+
+               if No (Decls) then
+                  Decls := New_List;
+                  Set_Declarations (Subp_Decl, Decls);
+               end if;
+
+               Prepend_To (Decls, Prag);
+               Analyze (Prag);
+
+            --  For subprogram declarations insert the PPC pragma right after
+            --  the declarative node.
+
+            else
+               Insert_After_And_Analyze (Subp_Decl, Prag);
+            end if;
+         end Build_Pre_Post_Condition;
+
+         --  Local variables
+
          Loc   : constant Source_Ptr := Sloc (Subp);
-         Typ   : constant Entity_Id  := Etype (Context);
+         Typ   : constant Entity_Id  := Etype (Formal);
          Check : Node_Id;
          Nam   : Name_Id;
+
+      --  Start of processing for Add_Validity_Check
 
       begin
          --  For scalars, generate 'Valid test
@@ -2462,7 +2548,7 @@ package body Checks is
          --  Step 1: Create the expression to verify the validity of the
          --  context.
 
-         Check := New_Occurrence_Of (Context, Loc);
+         Check := New_Occurrence_Of (Formal, Loc);
 
          --  When processing a function result, use 'Result. Generate
          --    Context'Result
@@ -2484,72 +2570,8 @@ package body Checks is
 
          --  Step 2: Create a pre or post condition pragma
 
-         Build_PPC_Pragma (PPC_Nam, Check);
+         Build_Pre_Post_Condition (Check);
       end Add_Validity_Check;
-
-      ----------------------
-      -- Build_PPC_Pragma --
-      ----------------------
-
-      procedure Build_PPC_Pragma (PPC_Nam : Name_Id; Check : Node_Id) is
-         Loc   : constant Source_Ptr := Sloc (Subp);
-         Decls : List_Id;
-         Prag  : Node_Id;
-
-      begin
-         Prag :=
-           Make_Pragma (Loc,
-             Pragma_Identifier            => Make_Identifier (Loc, PPC_Nam),
-             Pragma_Argument_Associations => New_List (
-               Make_Pragma_Argument_Association (Loc,
-                 Chars      => Name_Check,
-                 Expression => Check)));
-
-         --  Add a message unless exception messages are suppressed
-
-         if not Exception_Locations_Suppressed then
-            Append_To (Pragma_Argument_Associations (Prag),
-              Make_Pragma_Argument_Association (Loc,
-                Chars      => Name_Message,
-                Expression =>
-                  Make_String_Literal (Loc,
-                    Strval => "failed " & Get_Name_String (PPC_Nam) &
-                               " from " & Build_Location_String (Loc))));
-         end if;
-
-         --  Insert the pragma in the tree
-
-         if Nkind (Parent (Subp_Decl)) = N_Compilation_Unit then
-            Add_Global_Declaration (Prag);
-            Analyze (Prag);
-
-         --  PPC pragmas associated with subprogram bodies must be inserted in
-         --  the declarative part of the body.
-
-         elsif Nkind (Subp_Decl) = N_Subprogram_Body then
-            Decls := Declarations (Subp_Decl);
-
-            if No (Decls) then
-               Decls := New_List;
-               Set_Declarations (Subp_Decl, Decls);
-            end if;
-
-            Prepend_To (Decls, Prag);
-
-            --  Ensure the proper visibility of the subprogram body and its
-            --  parameters.
-
-            Push_Scope (Subp);
-            Analyze (Prag);
-            Pop_Scope;
-
-         --  For subprogram declarations insert the PPC pragma right after the
-         --  declarative node.
-
-         else
-            Insert_After_And_Analyze (Subp_Decl, Prag);
-         end if;
-      end Build_PPC_Pragma;
 
       --  Local variables
 
@@ -2576,7 +2598,7 @@ package body Checks is
 
         or else Is_Formal_Subprogram (Subp)
 
-        --  Do not process imported subprograms since pre and post conditions
+        --  Do not process imported subprograms since pre and postconditions
         --  are never verified on routines coming from a different language.
 
         or else Is_Imported (Subp)
@@ -2732,19 +2754,22 @@ package body Checks is
       --  Set to True if Expr should be regarded as a real value even though
       --  the type of Expr might be discrete.
 
-      procedure Bad_Value;
-      --  Procedure called if value is determined to be out of range
+      procedure Bad_Value (Warn : Boolean := False);
+      --  Procedure called if value is determined to be out of range. Warn is
+      --  True to force a warning instead of an error, even when SPARK_Mode is
+      --  On.
 
       ---------------
       -- Bad_Value --
       ---------------
 
-      procedure Bad_Value is
+      procedure Bad_Value (Warn : Boolean := False) is
       begin
          Apply_Compile_Time_Constraint_Error
            (Expr, "value not in range of}??", CE_Range_Check_Failed,
-            Ent => Target_Typ,
-            Typ => Target_Typ);
+            Ent  => Target_Typ,
+            Typ  => Target_Typ,
+            Warn => Warn);
       end Bad_Value;
 
    --  Start of processing for Apply_Scalar_Range_Check
@@ -2883,11 +2908,35 @@ package body Checks is
          --  Always do a range check if the source type includes infinities and
          --  the target type does not include infinities. We do not do this if
          --  range checks are killed.
+         --  If the expression is a literal and the bounds of the type are
+         --  static constants it may be possible to optimize the check.
 
          if Has_Infinities (S_Typ)
            and then not Has_Infinities (Target_Typ)
          then
-            Enable_Range_Check (Expr);
+            --  If the expression is a literal and the bounds of the type are
+            --  static constants it may be possible to optimize the check.
+
+            if Nkind (Expr) = N_Real_Literal then
+               declare
+                  Tlo : constant Node_Id := Type_Low_Bound  (Target_Typ);
+                  Thi : constant Node_Id := Type_High_Bound (Target_Typ);
+
+               begin
+                  if Compile_Time_Known_Value (Tlo)
+                    and then Compile_Time_Known_Value (Thi)
+                    and then Expr_Value_R (Expr) >= Expr_Value_R (Tlo)
+                    and then Expr_Value_R (Expr) <= Expr_Value_R (Thi)
+                  then
+                     return;
+                  else
+                     Enable_Range_Check (Expr);
+                  end if;
+               end;
+
+            else
+               Enable_Range_Check (Expr);
+            end if;
          end if;
       end if;
 
@@ -2926,7 +2975,20 @@ package body Checks is
                   --  since all possible values will raise CE).
 
                   if Lov > Hiv then
-                     Bad_Value;
+
+                     --  When SPARK_Mode is On, force a warning instead of
+                     --  an error in that case, as this likely corresponds
+                     --  to deactivated code.
+
+                     Bad_Value (Warn => SPARK_Mode = On);
+
+                     --  In GNATprove mode, we enable the range check so that
+                     --  GNATprove will issue a message if it cannot be proved.
+
+                     if GNATprove_Mode then
+                        Enable_Range_Check (Expr);
+                     end if;
+
                      return;
                   end if;
 
@@ -3222,7 +3284,7 @@ package body Checks is
                Rewrite (R_Cno, Make_Null_Statement (Loc));
             end if;
 
-         --  The range check raises Constrant_Error explicitly
+         --  The range check raises Constraint_Error explicitly
 
          else
             Install_Static_Check (R_Cno, Loc);
@@ -5507,10 +5569,14 @@ package body Checks is
                   return;
                end if;
 
-            --  Ditto if the prefix is an explicit dereference whose designated
-            --  type is unconstrained.
+            --  Ditto if prefix is simply an unconstrained array. We used
+            --  to think this case was OK, if the prefix was not an explicit
+            --  dereference, but we have now seen a case where this is not
+            --  true, so it is safer to just suppress the optimization in this
+            --  case. The back end is getting better at eliminating redundant
+            --  checks in any case, so the loss won't be important.
 
-            elsif Nkind (Prefix (P)) = N_Explicit_Dereference
+            elsif Is_Array_Type (Atyp)
               and then not Is_Constrained (Atyp)
             then
                Activate_Range_Check (N);
@@ -5627,7 +5693,13 @@ package body Checks is
    -- Ensure_Valid --
    ------------------
 
-   procedure Ensure_Valid (Expr : Node_Id; Holes_OK : Boolean := False) is
+   procedure Ensure_Valid
+     (Expr          : Node_Id;
+      Holes_OK      : Boolean   := False;
+      Related_Id    : Entity_Id := Empty;
+      Is_Low_Bound  : Boolean   := False;
+      Is_High_Bound : Boolean   := False)
+   is
       Typ : constant Entity_Id  := Etype (Expr);
 
    begin
@@ -5793,7 +5865,7 @@ package body Checks is
 
       --  If we fall through, a validity check is required
 
-      Insert_Valid_Check (Expr);
+      Insert_Valid_Check (Expr, Related_Id, Is_Low_Bound, Is_High_Bound);
 
       if Is_Entity_Name (Expr)
         and then Safe_To_Capture_Value (Expr, Entity (Expr))
@@ -5877,11 +5949,6 @@ package body Checks is
       --  appropriate these will be range checked in any case.
 
       elsif Nkind_In (Expr, N_Integer_Literal, N_Character_Literal) then
-         return True;
-
-      --  Real literals are assumed to be valid in VM targets
-
-      elsif VM_Target /= No_VM and then Nkind (Expr) = N_Real_Literal then
          return True;
 
       --  If we have a type conversion or a qualification of a known valid
@@ -6996,14 +7063,19 @@ package body Checks is
    -- Insert_Valid_Check --
    ------------------------
 
-   procedure Insert_Valid_Check (Expr : Node_Id) is
+   procedure Insert_Valid_Check
+     (Expr          : Node_Id;
+      Related_Id    : Entity_Id := Empty;
+      Is_Low_Bound  : Boolean   := False;
+      Is_High_Bound : Boolean   := False)
+   is
       Loc : constant Source_Ptr := Sloc (Expr);
       Typ : constant Entity_Id  := Etype (Expr);
       Exp : Node_Id;
 
    begin
-      --  Do not insert if checks off, or if not checking validity or
-      --  if expression is known to be valid
+      --  Do not insert if checks off, or if not checking validity or if
+      --  expression is known to be valid.
 
       if not Validity_Checks_On
         or else Range_Or_Validity_Checks_Suppressed (Expr)
@@ -7073,7 +7145,13 @@ package body Checks is
 
          --  Build the prefix for the 'Valid call
 
-         PV := Duplicate_Subexpr_No_Checks (Exp, Name_Req => False);
+         PV :=
+           Duplicate_Subexpr_No_Checks
+             (Exp           => Exp,
+              Name_Req      => False,
+              Related_Id    => Related_Id,
+              Is_Low_Bound  => Is_Low_Bound,
+              Is_High_Bound => Is_High_Bound);
 
          --  A rather specialized test. If PV is an analyzed expression which
          --  is an indexed component of a packed array that has not been
@@ -7098,14 +7176,14 @@ package body Checks is
          --  a name, and we don't care in this context!
 
          CE :=
-            Make_Raise_Constraint_Error (Loc,
-              Condition =>
-                Make_Op_Not (Loc,
-                  Right_Opnd =>
-                    Make_Attribute_Reference (Loc,
-                      Prefix         => PV,
-                      Attribute_Name => Name_Valid)),
-              Reason => CE_Invalid_Data);
+           Make_Raise_Constraint_Error (Loc,
+             Condition =>
+               Make_Op_Not (Loc,
+                 Right_Opnd =>
+                   Make_Attribute_Reference (Loc,
+                     Prefix         => PV,
+                     Attribute_Name => Name_Valid)),
+             Reason    => CE_Invalid_Data);
 
          --  Insert the validity check. Note that we do this with validity
          --  checks turned off, to avoid recursion, we do not want validity
@@ -7754,9 +7832,9 @@ package body Checks is
 
          Analyze_And_Resolve (N, Typ);
 
-         Scope_Suppress.Suppress (Overflow_Check)  := Svo;
-         Scope_Suppress.Overflow_Mode_General    := Svg;
-         Scope_Suppress.Overflow_Mode_Assertions := Sva;
+         Scope_Suppress.Suppress (Overflow_Check) := Svo;
+         Scope_Suppress.Overflow_Mode_General     := Svg;
+         Scope_Suppress.Overflow_Mode_Assertions  := Sva;
       end Reanalyze;
 
       --------------
@@ -7782,9 +7860,9 @@ package body Checks is
 
          Expand (N);
 
-         Scope_Suppress.Suppress (Overflow_Check)  := Svo;
-         Scope_Suppress.Overflow_Mode_General    := Svg;
-         Scope_Suppress.Overflow_Mode_Assertions := Sva;
+         Scope_Suppress.Suppress (Overflow_Check) := Svo;
+         Scope_Suppress.Overflow_Mode_General     := Svg;
+         Scope_Suppress.Overflow_Mode_Assertions  := Sva;
       end Reexpand;
 
    --  Start of processing for Minimize_Eliminate_Overflows
@@ -9147,7 +9225,7 @@ package body Checks is
                                 (Compile_Time_Constraint_Error
                                   (Wnode, "too few elements for}??", T_Typ));
 
-                           elsif  L_Length < R_Length then
+                           elsif L_Length < R_Length then
                               Add_Check
                                 (Compile_Time_Constraint_Error
                                   (Wnode, "too many elements for}??", T_Typ));
@@ -10113,12 +10191,22 @@ package body Checks is
    -- Validity_Check_Range --
    --------------------------
 
-   procedure Validity_Check_Range (N : Node_Id) is
+   procedure Validity_Check_Range
+     (N          : Node_Id;
+      Related_Id : Entity_Id := Empty)
+   is
    begin
       if Validity_Checks_On and Validity_Check_Operands then
          if Nkind (N) = N_Range then
-            Ensure_Valid (Low_Bound (N));
-            Ensure_Valid (High_Bound (N));
+            Ensure_Valid
+              (Expr          => Low_Bound (N),
+               Related_Id    => Related_Id,
+               Is_Low_Bound  => True);
+
+            Ensure_Valid
+              (Expr          => High_Bound (N),
+               Related_Id    => Related_Id,
+               Is_High_Bound => True);
          end if;
       end if;
    end Validity_Check_Range;

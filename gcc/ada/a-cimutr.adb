@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2004-2013, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -32,6 +32,10 @@ with Ada.Unchecked_Deallocation;
 with System; use type System.Address;
 
 package body Ada.Containers.Indefinite_Multiway_Trees is
+
+   pragma Warnings (Off, "variable ""Busy*"" is not referenced");
+   pragma Warnings (Off, "variable ""Lock*"" is not referenced");
+   --  See comment in Ada.Containers.Helpers
 
    --------------------
    --  Root_Iterator --
@@ -162,10 +166,6 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
 
    function "=" (Left, Right : Tree) return Boolean is
    begin
-      if Left'Address = Right'Address then
-         return True;
-      end if;
-
       return Equal_Children (Root_Node (Left), Root_Node (Right));
    end "=";
 
@@ -184,8 +184,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       --  are preserved in the event that the allocation fails.
 
       Container.Root.Children := Children_Type'(others => null);
-      Container.Busy := 0;
-      Container.Lock := 0;
+      Zero_Counts (Container.TC);
       Container.Count := 0;
 
       --  Copy_Children returns a count of the number of nodes that it
@@ -204,20 +203,6 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Container.Count := Source_Count;
    end Adjust;
 
-   procedure Adjust (Control : in out Reference_Control_Type) is
-   begin
-      if Control.Container /= null then
-         declare
-            C : Tree renames Control.Container.all;
-            B : Natural renames C.Busy;
-            L : Natural renames C.Lock;
-         begin
-            B := B + 1;
-            L := L + 1;
-         end;
-      end if;
-   end Adjust;
-
    -------------------
    -- Ancestor_Find --
    -------------------
@@ -229,13 +214,15 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       R, N : Tree_Node_Access;
 
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
       --  Commented-out pending ARG ruling.  ???
 
-      --  if Position.Container /= Container'Unrestricted_Access then
+      --  if Checks and then
+      --     Position.Container /= Container'Unrestricted_Access
+      --  then
       --     raise Program_Error with "Position cursor not in container";
       --  end if;
 
@@ -243,7 +230,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       --  not seem correct, as this value is just the limiting condition of the
       --  search. For now we omit this check pending a ruling from the ARG.???
 
-      --  if Is_Root (Position) then
+      --  if Checks and then Is_Root (Position) then
       --     raise Program_Error with "Position cursor designates root";
       --  end if;
 
@@ -274,11 +261,11 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Element     : Element_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then Parent.Container /= Container'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
@@ -286,10 +273,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       declare
          --  The element allocator may need an accessibility check in the case
@@ -404,15 +388,15 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       N      : Tree_Node_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Child = No_Element then
+      if Checks and then Child = No_Element then
          raise Constraint_Error with "Child cursor has no element";
       end if;
 
-      if Parent.Container /= Child.Container then
+      if Checks and then Parent.Container /= Child.Container then
          raise Program_Error with "Parent and Child in different containers";
       end if;
 
@@ -422,7 +406,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          Result := Result + 1;
          N := N.Parent;
 
-         if N = null then
+         if Checks and then N = null then
             raise Program_Error with "Parent is not ancestor of Child";
          end if;
       end loop;
@@ -439,10 +423,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Children_Count  : Count_Type;
 
    begin
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       --  We first set the container count to 0, in order to preserve
       --  invariants in case the deallocation fails. (This works because
@@ -476,21 +457,22 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position  : Cursor) return Constant_Reference_Type
    is
    begin
-      if Position.Container = null then
+      if Checks and then Position.Container = null then
          raise Constraint_Error with
            "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor designates wrong container";
       end if;
 
-      if Position.Node = Root_Node (Container) then
+      if Checks and then Position.Node = Root_Node (Container) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      if Position.Node.Element = null then
+      if Checks and then Position.Node.Element = null then
          raise Program_Error with "Node has no element";
       end if;
 
@@ -499,16 +481,14 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       --                 "Position cursor in Constant_Reference is bad");
 
       declare
-         C : Tree renames Position.Container.all;
-         B : Natural renames C.Busy;
-         L : Natural renames C.Lock;
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
       begin
          return R : constant Constant_Reference_Type :=
            (Element => Position.Node.Element.all'Access,
-            Control => (Controlled with Container'Unrestricted_Access))
+            Control => (Controlled with TC))
          do
-            B := B + 1;
-            L := L + 1;
+            Lock (TC.all);
          end return;
       end;
    end Constant_Reference;
@@ -613,20 +593,20 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Target_Count   : Count_Type;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Target'Unrestricted_Access then
+      if Checks and then Parent.Container /= Target'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Target'Unrestricted_Access then
+         if Checks and then Before.Container /= Target'Unrestricted_Access then
             raise Program_Error with "Before cursor not in container";
          end if;
 
-         if Before.Node.Parent /= Parent.Node then
+         if Checks and then Before.Node.Parent /= Parent.Node then
             raise Constraint_Error with "Before cursor not child of Parent";
          end if;
       end if;
@@ -635,7 +615,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Is_Root (Source) then
+      if Checks and then Is_Root (Source) then
          raise Constraint_Error with "Source cursor designates root";
       end if;
 
@@ -758,18 +738,15 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Count : Count_Type;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then Parent.Container /= Container'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       --  Deallocate_Children returns a count of the number of nodes
       --  that it deallocates, but it works by incrementing the
@@ -795,26 +772,24 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       X : Tree_Node_Access;
 
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with "Position cursor not in container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      if not Is_Leaf (Position) then
+      if Checks and then not Is_Leaf (Position) then
          raise Constraint_Error with "Position cursor does not designate leaf";
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       X := Position.Node;
       Position := No_Element;
@@ -844,22 +819,20 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Count : Count_Type;
 
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with "Position cursor not in container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       X := Position.Node;
       Position := No_Element;
@@ -922,11 +895,12 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
 
    function Element (Position : Cursor) return Element_Type is
    begin
-      if Position.Container = null then
+      if Checks and then Position.Container = null then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Node = Root_Node (Position.Container.all) then
+      if Checks and then Position.Node = Root_Node (Position.Container.all)
+      then
          raise Program_Error with "Position cursor designates root";
       end if;
 
@@ -974,11 +948,11 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Right_Position : Cursor) return Boolean
    is
    begin
-      if Left_Position = No_Element then
+      if Checks and then Left_Position = No_Element then
          raise Constraint_Error with "Left cursor has no element";
       end if;
 
-      if Right_Position = No_Element then
+      if Checks and then Right_Position = No_Element then
          raise Constraint_Error with "Right cursor has no element";
       end if;
 
@@ -1018,25 +992,8 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
    --------------
 
    procedure Finalize (Object : in out Root_Iterator) is
-      B : Natural renames Object.Container.Busy;
    begin
-      B := B - 1;
-   end Finalize;
-
-   procedure Finalize (Control : in out Reference_Control_Type) is
-   begin
-      if Control.Container /= null then
-         declare
-            C : Tree renames Control.Container.all;
-            B : Natural renames C.Busy;
-            L : Natural renames C.Lock;
-         begin
-            B := B - 1;
-            L := L - 1;
-         end;
-
-         Control.Container := null;
-      end if;
+      Unbusy (Object.Container.TC);
    end Finalize;
 
    ----------
@@ -1084,7 +1041,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Node : Tree_Node_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
@@ -1142,13 +1099,15 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Result : Tree_Node_Access;
 
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
       --  Commented-out pending ruling from ARG.  ???
 
-      --  if Position.Container /= Container'Unrestricted_Access then
+      --  if Checks and then
+      --    Position.Container /= Container'Unrestricted_Access
+      --  then
       --     raise Program_Error with "Position cursor not in container";
       --  end if;
 
@@ -1177,6 +1136,16 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
 
       return Find_In_Children (Subtree, Item);
    end Find_In_Subtree;
+
+   ------------------------
+   -- Get_Element_Access --
+   ------------------------
+
+   function Get_Element_Access
+     (Position : Cursor) return not null Element_Access is
+   begin
+      return Position.Node.Element;
+   end Get_Element_Access;
 
    -----------------
    -- Has_Element --
@@ -1217,24 +1186,26 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position  : out Cursor;
       Count     : Count_Type := 1)
    is
+      First   : Tree_Node_Access;
       Last    : Tree_Node_Access;
       Element : Element_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then Parent.Container /= Container'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Container'Unrestricted_Access then
+         if Checks and then Before.Container /= Container'Unrestricted_Access
+         then
             raise Program_Error with "Before cursor not in container";
          end if;
 
-         if Before.Node.Parent /= Parent.Node then
+         if Checks and then Before.Node.Parent /= Parent.Node then
             raise Constraint_Error with "Parent cursor not parent of Before";
          end if;
       end if;
@@ -1244,12 +1215,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
-
-      Position.Container := Parent.Container;
+      TC_Check (Container.TC);
 
       declare
          --  The element allocator may need an accessibility check in the case
@@ -1264,16 +1230,16 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          Element := new Element_Type'(New_Item);
       end;
 
-      Position.Node := new Tree_Node_Type'(Parent  => Parent.Node,
-                                           Element => Element,
-                                           others  => <>);
+      First := new Tree_Node_Type'(Parent  => Parent.Node,
+                                   Element => Element,
+                                   others  => <>);
 
-      Last := Position.Node;
-
+      Last := First;
       for J in Count_Type'(2) .. Count loop
+
          --  Reclaim other nodes if Storage_Error.  ???
 
-         Element := new Element_Type'(New_Item);
+         Element   := new Element_Type'(New_Item);
          Last.Next := new Tree_Node_Type'(Parent  => Parent.Node,
                                           Prev    => Last,
                                           Element => Element,
@@ -1283,7 +1249,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       end loop;
 
       Insert_Subtree_List
-        (First  => Position.Node,
+        (First  => First,
          Last   => Last,
          Parent => Parent.Node,
          Before => Before.Node);
@@ -1293,6 +1259,8 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       --  nodes we just inserted.
 
       Container.Count := Container.Count + Count;
+
+      Position := Cursor'(Parent.Container, First);
    end Insert_Child;
 
    -------------------------
@@ -1434,22 +1402,12 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      (Container : Tree;
       Process   : not null access procedure (Position : Cursor))
    is
-      B : Natural renames Container'Unrestricted_Access.all.Busy;
-
+      Busy : With_Busy (Container.TC'Unrestricted_Access);
    begin
-      B := B + 1;
-
       Iterate_Children
         (Container => Container'Unrestricted_Access,
          Subtree   => Root_Node (Container),
          Process   => Process);
-
-      B := B - 1;
-
-   exception
-      when others =>
-         B := B - 1;
-         raise;
    end Iterate;
 
    function Iterate (Container : Tree)
@@ -1467,31 +1425,18 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      (Parent  : Cursor;
       Process : not null access procedure (Position : Cursor))
    is
+      C : Tree_Node_Access;
+      Busy : With_Busy (Parent.Container.TC'Unrestricted_Access);
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      declare
-         B : Natural renames Parent.Container.Busy;
-         C : Tree_Node_Access;
-
-      begin
-         B := B + 1;
-
-         C := Parent.Node.Children.First;
-         while C /= null loop
-            Process (Position => Cursor'(Parent.Container, Node => C));
-            C := C.Next;
-         end loop;
-
-         B := B - 1;
-
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
+      C := Parent.Node.Children.First;
+      while C /= null loop
+         Process (Position => Cursor'(Parent.Container, Node => C));
+         C := C.Next;
+      end loop;
    end Iterate_Children;
 
    procedure Iterate_Children
@@ -1521,14 +1466,12 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      return Tree_Iterator_Interfaces.Reversible_Iterator'Class
    is
       C : constant Tree_Access := Container'Unrestricted_Access;
-      B : Natural renames C.Busy;
-
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= C then
+      if Checks and then Parent.Container /= C then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
@@ -1537,7 +1480,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
                           Container => C,
                           Subtree   => Parent.Node)
       do
-         B := B + 1;
+         Busy (C.TC);
       end return;
    end Iterate_Children;
 
@@ -1549,55 +1492,39 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      (Position : Cursor)
       return Tree_Iterator_Interfaces.Forward_Iterator'Class
    is
+      C : constant Tree_Access := Position.Container;
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
       --  Implement Vet for multiway trees???
       --  pragma Assert (Vet (Position), "bad subtree cursor");
 
-      declare
-         B : Natural renames Position.Container.Busy;
-      begin
-         return It : constant Subtree_Iterator :=
-           (Limited_Controlled with
-              Container => Position.Container,
-              Subtree   => Position.Node)
-         do
-            B := B + 1;
-         end return;
-      end;
+      return It : constant Subtree_Iterator :=
+        (Limited_Controlled with
+           Container => Position.Container,
+           Subtree   => Position.Node)
+      do
+         Busy (C.TC);
+      end return;
    end Iterate_Subtree;
 
    procedure Iterate_Subtree
      (Position  : Cursor;
       Process   : not null access procedure (Position : Cursor))
    is
+      Busy : With_Busy (Position.Container.TC'Unrestricted_Access);
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      declare
-         B : Natural renames Position.Container.Busy;
-
-      begin
-         B := B + 1;
-
-         if Is_Root (Position) then
-            Iterate_Children (Position.Container, Position.Node, Process);
-         else
-            Iterate_Subtree (Position.Container, Position.Node, Process);
-         end if;
-
-         B := B - 1;
-
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
+      if Is_Root (Position) then
+         Iterate_Children (Position.Container, Position.Node, Process);
+      else
+         Iterate_Subtree (Position.Container, Position.Node, Process);
+      end if;
    end Iterate_Subtree;
 
    procedure Iterate_Subtree
@@ -1631,7 +1558,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Node : Tree_Node_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
@@ -1665,10 +1592,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Source.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors of Source (tree is busy)";
-      end if;
+      TC_Check (Source.TC);
 
       Target.Clear;  -- checks busy bit
 
@@ -1700,7 +1624,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return No_Element;
       end if;
 
-      if Position.Container /= Object.Container then
+      if Checks and then Position.Container /= Object.Container then
          raise Program_Error with
            "Position cursor of Next designates wrong tree";
       end if;
@@ -1731,7 +1655,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return No_Element;
       end if;
 
-      if Position.Container /= Object.Container then
+      if Checks and then Position.Container /= Object.Container then
          raise Program_Error with
            "Position cursor of Next designates wrong tree";
       end if;
@@ -1811,11 +1735,11 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Element     : Element_Access;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then Parent.Container /= Container'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
@@ -1823,10 +1747,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
       declare
          --  The element allocator may need an accessibility check in the case
@@ -1886,7 +1807,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return No_Element;
       end if;
 
-      if Position.Container /= Object.Container then
+      if Checks and then Position.Container /= Object.Container then
          raise Program_Error with
            "Position cursor of Previous designates wrong tree";
       end if;
@@ -1916,6 +1837,20 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position := Previous_Sibling (Position);
    end Previous_Sibling;
 
+   ----------------------
+   -- Pseudo_Reference --
+   ----------------------
+
+   function Pseudo_Reference
+     (Container : aliased Tree'Class) return Reference_Control_Type
+   is
+      TC : constant Tamper_Counts_Access := Container.TC'Unrestricted_Access;
+   begin
+      return R : constant Reference_Control_Type := (Controlled with TC) do
+         Lock (TC.all);
+      end return;
+   end Pseudo_Reference;
+
    -------------------
    -- Query_Element --
    -------------------
@@ -1924,35 +1859,18 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      (Position : Cursor;
       Process  : not null access procedure (Element : Element_Type))
    is
+      T : Tree renames Position.Container.all'Unrestricted_Access.all;
+      Lock : With_Lock (T.TC'Unrestricted_Access);
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      declare
-         T : Tree renames Position.Container.all'Unrestricted_Access.all;
-         B : Natural renames T.Busy;
-         L : Natural renames T.Lock;
-
-      begin
-         B := B + 1;
-         L := L + 1;
-
-         Process (Position.Node.Element.all);
-
-         L := L - 1;
-         B := B - 1;
-
-      exception
-         when others =>
-            L := L - 1;
-            B := B - 1;
-            raise;
-      end;
+      Process (Position.Node.Element.all);
    end Query_Element;
 
    ----------
@@ -1991,7 +1909,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       begin
          Count_Type'Read (Stream, Count);
 
-         if Count < 0 then
+         if Checks and then Count < 0 then
             raise Program_Error with "attempt to read from corrupt stream";
          end if;
 
@@ -2043,7 +1961,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
 
       Count_Type'Read (Stream, Total_Count);
 
-      if Total_Count < 0 then
+      if Checks and then Total_Count < 0 then
          raise Program_Error with "attempt to read from corrupt stream";
       end if;
 
@@ -2055,7 +1973,7 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
 
       Read_Children (Root_Node (Container));
 
-      if Read_Count /= Total_Count then
+      if Checks and then Read_Count /= Total_Count then
          raise Program_Error with "attempt to read from corrupt stream";
       end if;
 
@@ -2095,21 +2013,22 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position  : Cursor) return Reference_Type
    is
    begin
-      if Position.Container = null then
+      if Checks and then Position.Container = null then
          raise Constraint_Error with
            "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with
            "Position cursor designates wrong container";
       end if;
 
-      if Position.Node = Root_Node (Container) then
+      if Checks and then Position.Node = Root_Node (Container) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      if Position.Node.Element = null then
+      if Checks and then Position.Node.Element = null then
          raise Program_Error with "Node has no element";
       end if;
 
@@ -2118,16 +2037,14 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       --                 "Position cursor in Constant_Reference is bad");
 
       declare
-         C : Tree renames Position.Container.all;
-         B : Natural renames C.Busy;
-         L : Natural renames C.Lock;
+         TC : constant Tamper_Counts_Access :=
+           Container.TC'Unrestricted_Access;
       begin
          return R : constant Reference_Type :=
            (Element => Position.Node.Element.all'Access,
-            Control => (Controlled with Position.Container))
+            Control => (Controlled with TC))
          do
-            B := B + 1;
-            L := L + 1;
+            Lock (TC.all);
          end return;
       end;
    end Reference;
@@ -2179,22 +2096,20 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       E, X : Element_Access;
 
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with "Position cursor not in container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      if Container.Lock > 0 then
-         raise Program_Error
-           with "attempt to tamper with elements (tree is locked)";
-      end if;
+      TE_Check (Container.TC);
 
       declare
          --  The element allocator may need an accessibility check in the case
@@ -2221,31 +2136,18 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
      (Parent  : Cursor;
       Process : not null access procedure (Position : Cursor))
    is
+      C : Tree_Node_Access;
+      Busy : With_Busy (Parent.Container.TC'Unrestricted_Access);
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      declare
-         B : Natural renames Parent.Container.Busy;
-         C : Tree_Node_Access;
-
-      begin
-         B := B + 1;
-
-         C := Parent.Node.Children.Last;
-         while C /= null loop
-            Process (Position => Cursor'(Parent.Container, Node => C));
-            C := C.Prev;
-         end loop;
-
-         B := B - 1;
-
-      exception
-         when others =>
-            B := B - 1;
-            raise;
-      end;
+      C := Parent.Node.Children.Last;
+      while C /= null loop
+         Process (Position => Cursor'(Parent.Container, Node => C));
+         C := C.Prev;
+      end loop;
    end Reverse_Iterate_Children;
 
    ----------
@@ -2280,32 +2182,34 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Count : Count_Type;
 
    begin
-      if Target_Parent = No_Element then
+      if Checks and then Target_Parent = No_Element then
          raise Constraint_Error with "Target_Parent cursor has no element";
       end if;
 
-      if Target_Parent.Container /= Target'Unrestricted_Access then
+      if Checks and then Target_Parent.Container /= Target'Unrestricted_Access
+      then
          raise Program_Error
            with "Target_Parent cursor not in Target container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Target'Unrestricted_Access then
+         if Checks and then Before.Container /= Target'Unrestricted_Access then
             raise Program_Error
               with "Before cursor not in Target container";
          end if;
 
-         if Before.Node.Parent /= Target_Parent.Node then
+         if Checks and then Before.Node.Parent /= Target_Parent.Node then
             raise Constraint_Error
               with "Before cursor not child of Target_Parent";
          end if;
       end if;
 
-      if Source_Parent = No_Element then
+      if Checks and then Source_Parent = No_Element then
          raise Constraint_Error with "Source_Parent cursor has no element";
       end if;
 
-      if Source_Parent.Container /= Source'Unrestricted_Access then
+      if Checks and then Source_Parent.Container /= Source'Unrestricted_Access
+      then
          raise Program_Error
            with "Source_Parent cursor not in Source container";
       end if;
@@ -2315,12 +2219,9 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
             return;
          end if;
 
-         if Target.Busy > 0 then
-            raise Program_Error
-              with "attempt to tamper with cursors (Target tree is busy)";
-         end if;
+         TC_Check (Target.TC);
 
-         if Is_Reachable (From => Target_Parent.Node,
+         if Checks and then Is_Reachable (From => Target_Parent.Node,
                           To   => Source_Parent.Node)
          then
             raise Constraint_Error
@@ -2335,15 +2236,8 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Target.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (Target tree is busy)";
-      end if;
-
-      if Source.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (Source tree is busy)";
-      end if;
+      TC_Check (Target.TC);
+      TC_Check (Source.TC);
 
       --  We cache the count of the nodes we have allocated, so that operation
       --  Node_Count can execute in O(1) time. But that means we must count the
@@ -2371,32 +2265,37 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Source_Parent   : Cursor)
    is
    begin
-      if Target_Parent = No_Element then
+      if Checks and then Target_Parent = No_Element then
          raise Constraint_Error with "Target_Parent cursor has no element";
       end if;
 
-      if Target_Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then
+        Target_Parent.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error
            with "Target_Parent cursor not in container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Container'Unrestricted_Access then
+         if Checks and then Before.Container /= Container'Unrestricted_Access
+         then
             raise Program_Error
               with "Before cursor not in container";
          end if;
 
-         if Before.Node.Parent /= Target_Parent.Node then
+         if Checks and then Before.Node.Parent /= Target_Parent.Node then
             raise Constraint_Error
               with "Before cursor not child of Target_Parent";
          end if;
       end if;
 
-      if Source_Parent = No_Element then
+      if Checks and then Source_Parent = No_Element then
          raise Constraint_Error with "Source_Parent cursor has no element";
       end if;
 
-      if Source_Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then
+        Source_Parent.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error
            with "Source_Parent cursor not in container";
       end if;
@@ -2405,12 +2304,9 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
-      if Is_Reachable (From => Target_Parent.Node,
+      if Checks and then Is_Reachable (From => Target_Parent.Node,
                        To   => Source_Parent.Node)
       then
          raise Constraint_Error
@@ -2467,33 +2363,33 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Subtree_Count : Count_Type;
 
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Target'Unrestricted_Access then
+      if Checks and then Parent.Container /= Target'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in Target container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Target'Unrestricted_Access then
+         if Checks and then Before.Container /= Target'Unrestricted_Access then
             raise Program_Error with "Before cursor not in Target container";
          end if;
 
-         if Before.Node.Parent /= Parent.Node then
+         if Checks and then Before.Node.Parent /= Parent.Node then
             raise Constraint_Error with "Before cursor not child of Parent";
          end if;
       end if;
 
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Source'Unrestricted_Access then
+      if Checks and then Position.Container /= Source'Unrestricted_Access then
          raise Program_Error with "Position cursor not in Source container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
@@ -2508,12 +2404,11 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
             end if;
          end if;
 
-         if Target.Busy > 0 then
-            raise Program_Error
-              with "attempt to tamper with cursors (Target tree is busy)";
-         end if;
+         TC_Check (Target.TC);
 
-         if Is_Reachable (From => Parent.Node, To => Position.Node) then
+         if Checks and then
+           Is_Reachable (From => Parent.Node, To => Position.Node)
+         then
             raise Constraint_Error with "Position is ancestor of Parent";
          end if;
 
@@ -2525,15 +2420,8 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if Target.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (Target tree is busy)";
-      end if;
-
-      if Source.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (Source tree is busy)";
-      end if;
+      TC_Check (Target.TC);
+      TC_Check (Source.TC);
 
       --  This is an unfortunate feature of this API: we must count the nodes
       --  in the subtree that we remove from the source tree, which is an O(n)
@@ -2567,33 +2455,35 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position  : Cursor)
    is
    begin
-      if Parent = No_Element then
+      if Checks and then Parent = No_Element then
          raise Constraint_Error with "Parent cursor has no element";
       end if;
 
-      if Parent.Container /= Container'Unrestricted_Access then
+      if Checks and then Parent.Container /= Container'Unrestricted_Access then
          raise Program_Error with "Parent cursor not in container";
       end if;
 
       if Before /= No_Element then
-         if Before.Container /= Container'Unrestricted_Access then
+         if Checks and then Before.Container /= Container'Unrestricted_Access
+         then
             raise Program_Error with "Before cursor not in container";
          end if;
 
-         if Before.Node.Parent /= Parent.Node then
+         if Checks and then Before.Node.Parent /= Parent.Node then
             raise Constraint_Error with "Before cursor not child of Parent";
          end if;
       end if;
 
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with "Position cursor not in container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
 
          --  Should this be PE instead?  Need ARG confirmation.  ???
 
@@ -2610,12 +2500,11 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          end if;
       end if;
 
-      if Container.Busy > 0 then
-         raise Program_Error
-           with "attempt to tamper with cursors (tree is busy)";
-      end if;
+      TC_Check (Container.TC);
 
-      if Is_Reachable (From => Parent.Node, To => Position.Node) then
+      if Checks and then
+        Is_Reachable (From => Parent.Node, To => Position.Node)
+      then
          raise Constraint_Error with "Position is ancestor of Parent";
       end if;
 
@@ -2664,15 +2553,15 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       I, J      : Cursor)
    is
    begin
-      if I = No_Element then
+      if Checks and then I = No_Element then
          raise Constraint_Error with "I cursor has no element";
       end if;
 
-      if I.Container /= Container'Unrestricted_Access then
+      if Checks and then I.Container /= Container'Unrestricted_Access then
          raise Program_Error with "I cursor not in container";
       end if;
 
-      if Is_Root (I) then
+      if Checks and then Is_Root (I) then
          raise Program_Error with "I cursor designates root";
       end if;
 
@@ -2680,22 +2569,19 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
          return;
       end if;
 
-      if J = No_Element then
+      if Checks and then J = No_Element then
          raise Constraint_Error with "J cursor has no element";
       end if;
 
-      if J.Container /= Container'Unrestricted_Access then
+      if Checks and then J.Container /= Container'Unrestricted_Access then
          raise Program_Error with "J cursor not in container";
       end if;
 
-      if Is_Root (J) then
+      if Checks and then Is_Root (J) then
          raise Program_Error with "J cursor designates root";
       end if;
 
-      if Container.Lock > 0 then
-         raise Program_Error
-           with "attempt to tamper with elements (tree is locked)";
-      end if;
+      TE_Check (Container.TC);
 
       declare
          EI : constant Element_Access := I.Node.Element;
@@ -2715,40 +2601,23 @@ package body Ada.Containers.Indefinite_Multiway_Trees is
       Position  : Cursor;
       Process   : not null access procedure (Element : in out Element_Type))
    is
+      T : Tree renames Position.Container.all'Unrestricted_Access.all;
+      Lock : With_Lock (T.TC'Unrestricted_Access);
    begin
-      if Position = No_Element then
+      if Checks and then Position = No_Element then
          raise Constraint_Error with "Position cursor has no element";
       end if;
 
-      if Position.Container /= Container'Unrestricted_Access then
+      if Checks and then Position.Container /= Container'Unrestricted_Access
+      then
          raise Program_Error with "Position cursor not in container";
       end if;
 
-      if Is_Root (Position) then
+      if Checks and then Is_Root (Position) then
          raise Program_Error with "Position cursor designates root";
       end if;
 
-      declare
-         T : Tree renames Position.Container.all'Unrestricted_Access.all;
-         B : Natural renames T.Busy;
-         L : Natural renames T.Lock;
-
-      begin
-         B := B + 1;
-         L := L + 1;
-
-         Process (Position.Node.Element.all);
-
-         L := L - 1;
-         B := B - 1;
-
-      exception
-         when others =>
-            L := L - 1;
-            B := B - 1;
-
-            raise;
-      end;
+      Process (Position.Node.Element.all);
    end Update_Element;
 
    -----------

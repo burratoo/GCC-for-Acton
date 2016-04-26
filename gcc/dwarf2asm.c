@@ -1,5 +1,5 @@
 /* Dwarf2 assembler output helper routines.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,19 +21,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "flags.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
+#include "tm_p.h"
 #include "stringpool.h"
 #include "varasm.h"
-#include "rtl.h"
 #include "output.h"
-#include "target.h"
 #include "dwarf2asm.h"
 #include "dwarf2.h"
-#include "splay-tree.h"
-#include "ggc.h"
-#include "tm_p.h"
+
+#ifndef XCOFF_DEBUGGING_INFO
+#define XCOFF_DEBUGGING_INFO 0
+#endif
 
 
 /* Output an unaligned integer with the given value and size.  Prefer not
@@ -149,6 +149,7 @@ dw2_asm_output_delta (int size, const char *lab1, const char *lab2,
   va_end (ap);
 }
 
+#ifdef ASM_OUTPUT_DWARF_VMS_DELTA
 /* Output the difference between two symbols in instruction units
    in a given size.  */
 
@@ -161,11 +162,6 @@ dw2_asm_output_vms_delta (int size ATTRIBUTE_UNUSED,
 
   va_start (ap, comment);
 
-#ifndef ASM_OUTPUT_DWARF_VMS_DELTA
-  /* VMS Delta is only special on ia64-vms, but this function also gets
-     called on alpha-vms so it has to do something sane.  */
-  dw2_asm_output_delta (size, lab1, lab2, comment);
-#else
   ASM_OUTPUT_DWARF_VMS_DELTA (asm_out_file, size, lab1, lab2);
   if (flag_debug_asm && comment)
     {
@@ -173,10 +169,10 @@ dw2_asm_output_vms_delta (int size ATTRIBUTE_UNUSED,
       vfprintf (asm_out_file, comment, ap);
     }
   fputc ('\n', asm_out_file);
-#endif
 
   va_end (ap);
 }
+#endif
 
 /* Output a section-relative reference to a LABEL, which was placed in
    BASE.  In general this can only be done for debugging symbols.
@@ -311,7 +307,11 @@ dw2_asm_output_nstring (const char *str, size_t orig_len,
 
   if (flag_debug_asm && comment)
     {
-      fputs ("\t.ascii \"", asm_out_file);
+      if (XCOFF_DEBUGGING_INFO)
+	fputs ("\t.byte \"", asm_out_file);
+      else
+	fputs ("\t.ascii \"", asm_out_file);
+
       for (i = 0; i < len; i++)
 	{
 	  int c = str[i];
@@ -390,7 +390,7 @@ size_of_encoded_value (int encoding)
   switch (encoding & 0x07)
     {
     case DW_EH_PE_absptr:
-      return POINTER_SIZE / BITS_PER_UNIT;
+      return POINTER_SIZE_UNITS;
     case DW_EH_PE_udata2:
       return 2;
     case DW_EH_PE_udata4:
@@ -790,9 +790,7 @@ dw2_asm_output_delta_sleb128 (const char *lab1 ATTRIBUTE_UNUSED,
 }
 #endif /* 0 */
 
-static int dw2_output_indirect_constant_1 (splay_tree_node, void *);
-
-static GTY((param1_is (char *), param2_is (tree))) splay_tree indirect_pool;
+static GTY(()) hash_map<const char *, tree> *indirect_pool;
 
 static GTY(()) int dw2_const_labelno;
 
@@ -802,16 +800,16 @@ static GTY(()) int dw2_const_labelno;
 # define USE_LINKONCE_INDIRECT 0
 #endif
 
-/* Comparison function for a splay tree in which the keys are strings.
-   K1 and K2 have the dynamic type "const char *".  Returns <0, 0, or
+/* Compare two std::pair<const char *, tree> by their first element.
+   Returns <0, 0, or
    >0 to indicate whether K1 is less than, equal to, or greater than
    K2, respectively.  */
 
 static int
-splay_tree_compare_strings (splay_tree_key k1, splay_tree_key k2)
+compare_strings (const void *a, const void *b)
 {
-  const char *s1 = (const char *)k1;
-  const char *s2 = (const char *)k2;
+  const char *s1 = ((const std::pair<const char *, tree> *) a)->first;
+  const char *s2 = ((const std::pair<const char *, tree> *) b)->first;
   int ret;
 
   if (s1 == s2)
@@ -836,23 +834,18 @@ splay_tree_compare_strings (splay_tree_key k1, splay_tree_key k2)
 rtx
 dw2_force_const_mem (rtx x, bool is_public)
 {
-  splay_tree_node node;
   const char *key;
   tree decl_id;
 
   if (! indirect_pool)
-    /* We use strcmp, rather than just comparing pointers, so that the
-       sort order will not depend on the host system.  */
-    indirect_pool = splay_tree_new_ggc (splay_tree_compare_strings,
-					ggc_alloc_splay_tree_str_tree_node_splay_tree_s,
-					ggc_alloc_splay_tree_str_tree_node_splay_tree_node_s);
+    indirect_pool = hash_map<const char *, tree>::create_ggc (64);
 
   gcc_assert (GET_CODE (x) == SYMBOL_REF);
 
   key = XSTR (x, 0);
-  node = splay_tree_lookup (indirect_pool, (splay_tree_key) key);
-  if (node)
-    decl_id = (tree) node->value;
+  tree *slot = indirect_pool->get (key);
+  if (slot)
+    decl_id = *slot;
   else
     {
       tree id;
@@ -881,26 +874,20 @@ dw2_force_const_mem (rtx x, bool is_public)
       if (id)
 	TREE_SYMBOL_REFERENCED (id) = 1;
 
-      splay_tree_insert (indirect_pool, (splay_tree_key) key,
-			 (splay_tree_value) decl_id);
+      indirect_pool->put (key, decl_id);
     }
 
   return gen_rtx_SYMBOL_REF (Pmode, IDENTIFIER_POINTER (decl_id));
 }
 
-/* A helper function for dw2_output_indirect_constants called through
-   splay_tree_foreach.  Emit one queued constant to memory.  */
+/* A helper function for dw2_output_indirect_constants.  Emit one queued
+   constant to memory.  */
 
 static int
-dw2_output_indirect_constant_1 (splay_tree_node node,
-				void *data ATTRIBUTE_UNUSED)
+dw2_output_indirect_constant_1 (const char *sym, tree id)
 {
-  const char *sym;
   rtx sym_ref;
-  tree id, decl;
-
-  sym = (const char *) node->key;
-  id = (tree) node->value;
+  tree decl;
 
   decl = build_decl (UNKNOWN_LOCATION, VAR_DECL, id, ptr_type_node);
   SET_DECL_ASSEMBLER_NAME (decl, id);
@@ -920,7 +907,7 @@ dw2_output_indirect_constant_1 (splay_tree_node node,
 
   sym_ref = gen_rtx_SYMBOL_REF (Pmode, sym);
   assemble_variable (decl, 1, 1, 1);
-  assemble_integer (sym_ref, POINTER_SIZE / BITS_PER_UNIT, POINTER_SIZE, 1);
+  assemble_integer (sym_ref, POINTER_SIZE_UNITS, POINTER_SIZE, 1);
 
   return 0;
 }
@@ -930,8 +917,18 @@ dw2_output_indirect_constant_1 (splay_tree_node node,
 void
 dw2_output_indirect_constants (void)
 {
-  if (indirect_pool)
-    splay_tree_foreach (indirect_pool, dw2_output_indirect_constant_1, NULL);
+  if (!indirect_pool)
+    return;
+
+  auto_vec<std::pair<const char *, tree> > temp (indirect_pool->elements ());
+  for (hash_map<const char *, tree>::iterator iter = indirect_pool->begin ();
+       iter != indirect_pool->end (); ++iter)
+    temp.quick_push (*iter);
+
+  temp.qsort (compare_strings);
+
+  for (unsigned int i = 0; i < temp.length (); i++)
+    dw2_output_indirect_constant_1 (temp[i].first, temp[i].second);
 }
 
 /* Like dw2_asm_output_addr_rtx, but encode the pointer as directed.
@@ -991,6 +988,13 @@ dw2_asm_output_encoded_addr_rtx (int encoding, rtx addr, bool is_public,
 	case DW_EH_PE_absptr:
 	  dw2_assemble_integer (size, addr);
 	  break;
+
+#ifdef ASM_OUTPUT_DWARF_DATAREL
+	case DW_EH_PE_datarel:
+	  gcc_assert (GET_CODE (addr) == SYMBOL_REF);
+	  ASM_OUTPUT_DWARF_DATAREL (asm_out_file, size, XSTR (addr, 0));
+	  break;
+#endif
 
 	case DW_EH_PE_pcrel:
 	  gcc_assert (GET_CODE (addr) == SYMBOL_REF);

@@ -30,11 +30,17 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
+/* Define to 1 if you have the `dl' library (-ldl). */
+#undef HAVE_LIBDL
+
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
 /* Define if pthread_{,attr_}{g,s}etaffinity_np is supported. */
 #undef HAVE_PTHREAD_AFFINITY_NP
+
+/* Define to 1 if you have the <pthread.h> header file. */
+#undef HAVE_PTHREAD_H
 
 /* Define to 1 if you have the <semaphore.h> header file. */
 #undef HAVE_SEMAPHORE_H
@@ -54,6 +60,9 @@
 /* Define to 1 if you have the `strtoull' function. */
 #undef HAVE_STRTOULL
 
+/* Define to 1 if the system has the type `struct _Mutex_Control'. */
+#undef HAVE_STRUCT__MUTEX_CONTROL
+
 /* Define to 1 if the target runtime linker supports binding the same symbol
    to different versions. */
 #undef HAVE_SYMVER_SYMBOL_RENAMING_RUNTIME_SUPPORT
@@ -66,6 +75,9 @@
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/sysctl.h> header file. */
+#undef HAVE_SYS_SYSCTL_H
 
 /* Define to 1 if you have the <sys/time.h> header file. */
 #undef HAVE_SYS_TIME_H
@@ -85,6 +97,9 @@
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
 #undef LT_OBJDIR
+
+/* Define to offload targets, separated by commas. */
+#undef OFFLOAD_TARGETS
 
 /* Name of package */
 #undef PACKAGE
@@ -106,6 +121,15 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Define to 1 if the HSA plugin is built, 0 if not. */
+#undef PLUGIN_HSA
+
+/* Define to 1 if the NVIDIA plugin is built, 0 if not. */
+#undef PLUGIN_NVPTX
+
+/* Define if all infrastructure, needed for plugins, is supported. */
+#undef PLUGIN_SUPPORT
 
 /* The size of `char', as computed by sizeof. */
 #undef SIZEOF_CHAR
@@ -130,6 +154,9 @@
 
 /* Define to 1 if you can safely include both <sys/time.h> and <time.h>. */
 #undef TIME_WITH_SYS_TIME
+
+/* Define to 1 if the target use emutls for thread-local storage. */
+#undef USE_EMUTLS
 
 /* Version number of package */
 #undef VERSION

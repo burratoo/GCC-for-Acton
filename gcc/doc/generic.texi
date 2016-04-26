@@ -1,4 +1,4 @@
-@c Copyright (C) 2004-2014 Free Software Foundation, Inc.
+@c Copyright (C) 2004-2016 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -53,6 +53,7 @@ seems inelegant.
 @node Deficiencies
 @section Deficiencies
 
+@c The spelling of "incomplet" and "incorrekt" below is intentional.
 There are many places in which this document is incomplet and incorrekt.
 It is, as of yet, only @emph{preliminary} documentation.
 
@@ -1818,6 +1819,7 @@ There are also several varieties of complex statements.
 * Jumps::
 * Cleanups::
 * OpenMP::
+* OpenACC::
 @end menu
 
 @node Basic Statements
@@ -1948,11 +1950,15 @@ this initialization replaces the @code{DECL_STMT}.  These variables
 will never require cleanups.  The scope of these variables is just the
 body
 
-Variable-length arrays (VLAs) complicate this process, as their
-size often refers to variables initialized earlier in the block.
-To handle this, we currently split the block at that point, and
-move the VLA into a new, inner @code{BIND_EXPR}.  This strategy
-may change in the future.
+Variable-length arrays (VLAs) complicate this process, as their size
+often refers to variables initialized earlier in the block and their
+initialization involves an explicit stack allocation.  To handle this,
+we add an indirection and replace them with a pointer to stack space
+allocated by means of @code{alloca}.  In most cases, we also arrange
+for this space to be reclaimed when the enclosing @code{BIND_EXPR} is
+exited, the exception to this being when there is an explicit call to
+@code{alloca} in the source code, in which case the stack is left
+depressed on exit of the @code{BIND_EXPR}.
 
 A C++ program will usually contain more @code{BIND_EXPR}s than
 there are syntactic blocks in the source code, since several C++
@@ -2092,8 +2098,8 @@ variables.
 
 @item OMP_FOR
 
-Represents @code{#pragma omp for [clause1 @dots{} clauseN]}.  It
-has 5 operands:
+Represents @code{#pragma omp for [clause1 @dots{} clauseN]}.  It has
+six operands:
 
 Operand @code{OMP_FOR_BODY} contains the loop body.
 
@@ -2183,10 +2189,9 @@ building code (@code{omp-low.c}).
 @item OMP_CONTINUE
 
 Similarly, this instruction does not represent an OpenMP
-directive, it is used by @code{OMP_FOR} and
+directive, it is used by @code{OMP_FOR} (and similar codes) as well as
 @code{OMP_SECTIONS} to mark the place where the code needs to
-loop to the next iteration (in the case of @code{OMP_FOR}) or
-the next section (in the case of @code{OMP_SECTIONS}).
+loop to the next iteration, or the next section, respectively.
 
 In some cases, @code{OMP_CONTINUE} is placed right before
 @code{OMP_RETURN}.  But if there are cleanups that need to
@@ -2229,6 +2234,67 @@ of variables are restricted to exactly one, accessed with
 same clause @code{C} need to be represented as multiple @code{C} clauses
 chained together.  This facilitates adding new clauses during
 compilation.
+
+@end table
+
+@node OpenACC
+@subsection OpenACC
+@tindex OACC_CACHE
+@tindex OACC_DATA
+@tindex OACC_DECLARE
+@tindex OACC_ENTER_DATA
+@tindex OACC_EXIT_DATA
+@tindex OACC_HOST_DATA
+@tindex OACC_KERNELS
+@tindex OACC_LOOP
+@tindex OACC_PARALLEL
+@tindex OACC_UPDATE
+
+All the statements starting with @code{OACC_} represent directives and
+clauses used by the OpenACC API @w{@uref{http://www.openacc.org/}}.
+
+@table @code
+@item OACC_CACHE
+
+Represents @code{#pragma acc cache (var @dots{})}.
+
+@item OACC_DATA
+
+Represents @code{#pragma acc data [clause1 @dots{} clauseN]}.
+
+@item OACC_DECLARE
+
+Represents @code{#pragma acc declare [clause1 @dots{} clauseN]}.
+
+@item OACC_ENTER_DATA
+
+Represents @code{#pragma acc enter data [clause1 @dots{} clauseN]}.
+
+@item OACC_EXIT_DATA
+
+Represents @code{#pragma acc exit data [clause1 @dots{} clauseN]}.
+
+@item OACC_HOST_DATA
+
+Represents @code{#pragma acc host_data [clause1 @dots{} clauseN]}.
+
+@item OACC_KERNELS
+
+Represents @code{#pragma acc kernels [clause1 @dots{} clauseN]}.
+
+@item OACC_LOOP
+
+Represents @code{#pragma acc loop [clause1 @dots{} clauseN]}.
+
+See the description of the @code{OMP_FOR} code.
+
+@item OACC_PARALLEL
+
+Represents @code{#pragma acc parallel [clause1 @dots{} clauseN]}.
+
+@item OACC_UPDATE
+
+Represents @code{#pragma acc update [clause1 @dots{} clauseN]}.
 
 @end table
 
@@ -2823,9 +2889,8 @@ or @code{access_protected_node}.  If bases are always public,
 @code{BINFO_BASE_ACCESSES} may be @code{NULL}.
 
 @code{BINFO_VIRTUAL_P} is used to specify whether the binfo is inherited
-virtually or not.  The other flags, @code{BINFO_MARKED_P} and
-@code{BINFO_FLAG_1} to @code{BINFO_FLAG_6} can be used for language
-specific use.
+virtually or not.  The other flags, @code{BINFO_FLAG_0} to
+@code{BINFO_FLAG_6}, can be used for language specific use.
 
 The following macros can be used on a tree node representing a class-type.
 

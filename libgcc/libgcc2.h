@@ -1,5 +1,5 @@
 /* Header file for libgcc2.c.  */
-/* Copyright (C) 2000-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2000-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -34,66 +34,59 @@ extern void __clear_cache (char *, char *);
 extern void __eprintf (const char *, const char *, unsigned int, const char *)
   __attribute__ ((__noreturn__));
 
-#ifndef LIBGCC2_LONG_DOUBLE_TYPE_SIZE
-#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE LONG_DOUBLE_TYPE_SIZE
+#ifdef __LIBGCC_HAS_SF_MODE__
+#define LIBGCC2_HAS_SF_MODE 1
+#else
+#define LIBGCC2_HAS_SF_MODE 0
 #endif
 
-#ifndef LIBGCC2_HAS_SF_MODE
-#define LIBGCC2_HAS_SF_MODE (BITS_PER_UNIT == 8)
+#ifdef __LIBGCC_HAS_DF_MODE__
+#define LIBGCC2_HAS_DF_MODE 1
+#else
+#define LIBGCC2_HAS_DF_MODE 0
 #endif
 
-#ifndef LIBGCC2_HAS_DF_MODE
-#define LIBGCC2_HAS_DF_MODE \
-  (BITS_PER_UNIT == 8 \
-   && (__SIZEOF_DOUBLE__ * __CHAR_BIT__ == 64 \
-       || LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 64))
+#ifdef __LIBGCC_HAS_XF_MODE__
+#define LIBGCC2_HAS_XF_MODE 1
+#else
+#define LIBGCC2_HAS_XF_MODE 0
 #endif
 
-#ifndef LIBGCC2_HAS_XF_MODE
-#define LIBGCC2_HAS_XF_MODE \
-  (BITS_PER_UNIT == 8 && LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 80)
+#ifdef __LIBGCC_HAS_TF_MODE__
+#define LIBGCC2_HAS_TF_MODE 1
+#else
+#define LIBGCC2_HAS_TF_MODE 0
 #endif
 
-#ifndef LIBGCC2_HAS_TF_MODE
-#define LIBGCC2_HAS_TF_MODE \
-  (BITS_PER_UNIT == 8 && LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 128)
-#endif
-
-#ifndef SF_SIZE
+#ifndef __LIBGCC_SF_MANT_DIG__
 #if LIBGCC2_HAS_SF_MODE
-#define SF_SIZE FLT_MANT_DIG
+#error __LIBGCC_SF_MANT_DIG__ not defined
 #else
-#define SF_SIZE 0
+#define __LIBGCC_SF_MANT_DIG__ 0
 #endif
 #endif
 
-#ifndef DF_SIZE
+#ifndef __LIBGCC_DF_MANT_DIG__
 #if LIBGCC2_HAS_DF_MODE
-#if __SIZEOF_DOUBLE__ * __CHAR_BIT__ == 64
-#define DF_SIZE DBL_MANT_DIG
-#elif LIBGCC2_LONG_DOUBLE_TYPE_SIZE == 64
-#define DF_SIZE LDBL_MANT_DIG
+#error __LIBGCC_DF_MANT_DIG__ not defined
 #else
-#define DF_SIZE 0
-#endif
-#else
-#define DF_SIZE 0
+#define __LIBGCC_DF_MANT_DIG__ 0
 #endif
 #endif
 
-#ifndef XF_SIZE
+#ifndef __LIBGCC_XF_MANT_DIG__
 #if LIBGCC2_HAS_XF_MODE
-#define XF_SIZE LDBL_MANT_DIG
+#error __LIBGCC_XF_MANT_DIG__ not defined
 #else
-#define XF_SIZE 0
+#define __LIBGCC_XF_MANT_DIG__ 0
 #endif
 #endif
 
-#ifndef TF_SIZE
+#ifndef __LIBGCC_TF_MANT_DIG__
 #if LIBGCC2_HAS_TF_MODE
-#define TF_SIZE LDBL_MANT_DIG
+#error __LIBGCC_TF_MANT_DIG__ not defined
 #else
-#define TF_SIZE 0
+#define __LIBGCC_TF_MANT_DIG__ 0
 #endif
 #endif
 
@@ -185,7 +178,7 @@ typedef int shift_count_type __attribute__((mode (__libgcc_shift_count__)));
    if it existed.  */
 
 #if LIBGCC2_UNITS_PER_WORD == 8
-#define W_TYPE_SIZE (8 * BITS_PER_UNIT)
+#define W_TYPE_SIZE (8 * __CHAR_BIT__)
 #define Wtype	DItype
 #define UWtype	UDItype
 #define HWtype	DItype
@@ -201,7 +194,7 @@ typedef int shift_count_type __attribute__((mode (__libgcc_shift_count__)));
 #endif
 #define COMPAT_SIMODE_TRAPPING_ARITHMETIC
 #elif LIBGCC2_UNITS_PER_WORD == 4
-#define W_TYPE_SIZE (4 * BITS_PER_UNIT)
+#define W_TYPE_SIZE (4 * __CHAR_BIT__)
 #define Wtype	SItype
 #define UWtype	USItype
 #define HWtype	SItype
@@ -216,7 +209,7 @@ typedef int shift_count_type __attribute__((mode (__libgcc_shift_count__)));
 #define __NDW(a,b)	__ ## a ## di ## b
 #endif
 #elif LIBGCC2_UNITS_PER_WORD == 2
-#define W_TYPE_SIZE (2 * BITS_PER_UNIT)
+#define W_TYPE_SIZE (2 * __CHAR_BIT__)
 #define Wtype	HItype
 #define UWtype	UHItype
 #define HWtype	HItype
@@ -231,7 +224,7 @@ typedef int shift_count_type __attribute__((mode (__libgcc_shift_count__)));
 #define __NDW(a,b)	__ ## a ## si ## b
 #endif
 #else
-#define W_TYPE_SIZE BITS_PER_UNIT
+#define W_TYPE_SIZE __CHAR_BIT__
 #define Wtype	QItype
 #define UWtype  UQItype
 #define HWtype	QItype

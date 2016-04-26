@@ -111,6 +111,15 @@ import (
 	"package_dddd" // comment
 )
 
+// print import paths as double-quoted strings
+// (we would like more test cases but the go/parser
+// already excludes most incorrect paths, and we don't
+// bother setting up test-ASTs manually)
+import (
+	`fmt`
+	"math"
+)
+
 // at least one empty line between declarations of different kind
 import _ "io"
 var _ int
@@ -713,6 +722,31 @@ var _ = T4{
 	b:                                       y,
 	c:                                       z,
 }
+
+
+// no alignment of map composite entries if they are not the first entry on a line
+var _ = T{0: 0} // not aligned
+var _ = T{0: 0, // not aligned
+	1: 1, // aligned
+	22: 22, // aligned
+	333: 333, 1234: 12, 12345: 0, // first on line aligned
+}
+
+
+// test cases form issue 8685
+// not aligned
+var _ = map[int]string{1: "spring", 2: "summer",
+					3:             "autumn", 4: "winter"}
+
+// not aligned
+var _ = map[string]string{"a": "spring", "b": "summer",
+	"c": "autumn", "d": "winter"}
+
+// aligned
+var _ = map[string]string{"a": "spring",
+"b": "summer",
+	"c": "autumn",
+"d": "winter"}
 
 
 func _() {

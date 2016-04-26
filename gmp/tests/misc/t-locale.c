@@ -1,6 +1,6 @@
 /* Test locale support, or attempt to do so.
 
-Copyright 2001, 2002, 2011 Free Software Foundation, Inc.
+Copyright 2001, 2002, 2011, 2014 Free Software Foundation, Inc.
 
 This file is part of the GNU MP Library test suite.
 
@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
 Public License for more details.
 
 You should have received a copy of the GNU General Public License along with
-the GNU MP Library test suite.  If not, see http://www.gnu.org/licenses/.  */
+the GNU MP Library test suite.  If not, see https://www.gnu.org/licenses/.  */
 
 #define _GNU_SOURCE    /* for DECIMAL_POINT in glibc langinfo.h */
 
@@ -55,6 +55,9 @@ const char *decimal_point;
 #if HAVE_LOCALECONV
 struct lconv *
 localeconv (void)
+#if defined __cplusplus && defined __GLIBC__
+  throw()
+#endif
 {
   static struct lconv  l;
   l.decimal_point = (char *) decimal_point;
@@ -66,6 +69,9 @@ localeconv (void)
 #if HAVE_NL_LANGINFO
 char *
 nl_langinfo (nl_item n)
+#if defined __cplusplus && defined __GLIBC__
+  throw()
+#endif
 {
 #if defined (DECIMAL_POINT)
   if (n == DECIMAL_POINT)

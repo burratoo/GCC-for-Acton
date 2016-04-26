@@ -1,5 +1,5 @@
 /* Definitions for GCC.  Part of the machine description for CRIS.
-   Copyright (C) 1998-2014 Free Software Foundation, Inc.
+   Copyright (C) 1998-2016 Free Software Foundation, Inc.
    Contributed by Axis Communications.  Written by Hans-Peter Nilsson.
 
 This file is part of GCC.
@@ -80,14 +80,6 @@ along with GCC; see the file COPYING3.  If not see
 /* Which CPU version this is.  The parsed and adjusted cris_cpu_str.  */
 extern int cris_cpu_version;
 
-/* Changing the order used to be necessary to put the fourth __make_dp
-   argument (a DImode parameter) in registers, to fit with the libfunc
-   parameter passing scheme used for intrinsic functions.  FIXME: Check
-   performance.  */
-#ifdef IN_LIBGCC2
-#define __make_dp(a,b,c,d) __cris_make_dp(d,a,b,c)
-#endif
-
 
 /* Node: Driver */
 
@@ -142,7 +134,7 @@ extern int cris_cpu_version;
    %{!metrax*:\
     %{!mcpu=*:\
      %{!mtune=*:-D__tune_v" CRIS_DEFAULT_TUNE "}\
-     -D__arch_v"CRIS_DEFAULT_TUNE\
+     -D__arch_v" CRIS_DEFAULT_TUNE \
    " -D__CRIS_arch_version=" CRIS_DEFAULT_TUNE "}}}"
 #endif
 
@@ -628,7 +620,7 @@ enum reg_class
 
 /* Node: Frame Layout */
 
-#define STACK_GROWS_DOWNWARD
+#define STACK_GROWS_DOWNWARD 1
 #define FRAME_GROWS_DOWNWARD 1
 
 /* It seems to be indicated in the code (at least 2.1) that this is
@@ -859,7 +851,7 @@ enum cris_symbol_type
 /* We don't want an .ident for gcc.  To avoid that but still support
    #ident, we override TARGET_ASM_OUTPUT_IDENT and, since the gcc .ident
    is its only use besides front-end .ident directives, we return if
-   the state if the cgraph is not CGRAPH_STATE_PARSING.  */
+   the state if the cgraph is not PARSING.  */
 #undef TARGET_ASM_OUTPUT_IDENT
 #define TARGET_ASM_OUTPUT_IDENT cris_asm_output_ident
 

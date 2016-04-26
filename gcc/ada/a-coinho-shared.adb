@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2013-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2013-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -24,6 +24,13 @@
 -- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
 -- <http://www.gnu.org/licenses/>.                                          --
 ------------------------------------------------------------------------------
+
+--  Note: special attention must be paid to the case of simultaneous access
+--  to internal shared objects and elements by different tasks. The Reference
+--  counter of internal shared object is the only component protected using
+--  atomic operations; other components and elements can be modified only when
+--  reference counter is equal to one (so there are no other references to this
+--  internal shared object and element).
 
 with Ada.Unchecked_Deallocation;
 
@@ -120,8 +127,10 @@ package body Ada.Containers.Indefinite_Holders is
          raise Program_Error with "attempt to tamper with elements";
       end if;
 
-      Unreference (Container.Reference);
-      Container.Reference := null;
+      if Container.Reference /= null then
+         Unreference (Container.Reference);
+         Container.Reference := null;
+      end if;
    end Clear;
 
    ------------------------

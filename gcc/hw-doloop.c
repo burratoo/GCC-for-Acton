@@ -1,6 +1,6 @@
 /* Code to analyze doloop loops in order for targets to perform late
    optimizations converting doloops to other forms of hardware loops.
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,22 +21,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "rtl.h"
-#include "flags.h"
-#include "expr.h"
-#include "hard-reg-set.h"
-#include "regs.h"
-#include "basic-block.h"
-#include "tm_p.h"
 #include "df.h"
-#include "cfgloop.h"
+#include "insn-config.h"
+#include "regs.h"
+#include "emit-rtl.h"
 #include "recog.h"
-#include "target.h"
+#include "cfgrtl.h"
 #include "hw-doloop.h"
 #include "dumpfile.h"
-
-#ifdef HAVE_doloop_end
 
 /* Dump information collected in LOOPS.  */
 static void
@@ -242,7 +236,7 @@ discover_loop (hwloop_info loop, basic_block tail_bb, rtx_insn *tail_insn, rtx r
   loop->loop_end = tail_insn;
   loop->iter_reg = reg;
   vec_alloc (loop->incoming, 2);
-  loop->start_label = JUMP_LABEL (tail_insn);
+  loop->start_label = as_a <rtx_insn *> (JUMP_LABEL (tail_insn));
 
   if (EDGE_COUNT (tail_bb->succs) != 2)
     {
@@ -360,7 +354,8 @@ discover_loops (bitmap_obstack *loop_stack, struct hw_doloop_hooks *hooks)
   FOR_EACH_BB_FN (bb, cfun)
     {
       rtx_insn *tail = BB_END (bb);
-      rtx insn, reg;
+      rtx_insn *insn;
+      rtx reg;
 
       while (tail && NOTE_P (tail) && tail != BB_HEAD (bb))
 	tail = PREV_INSN (tail);
@@ -378,7 +373,7 @@ discover_loops (bitmap_obstack *loop_stack, struct hw_doloop_hooks *hooks)
 
       /* There's a degenerate case we can handle - an empty loop consisting
 	 of only a back branch.  Handle that by deleting the branch.  */
-      insn = JUMP_LABEL (tail);
+      insn = JUMP_LABEL_AS_INSN (tail);
       while (insn && !NONDEBUG_INSN_P (insn))
 	insn = NEXT_INSN (insn);
       if (insn == tail)
@@ -668,4 +663,3 @@ reorg_loops (bool do_reorder, struct hw_doloop_hooks *hooks)
   if (dump_file)
     print_rtl (dump_file, get_insns ());
 }
-#endif

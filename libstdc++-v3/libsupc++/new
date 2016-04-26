@@ -1,6 +1,6 @@
 // The -*- C++ -*- dynamic memory management header.
 
-// Copyright (C) 1994-2014 Free Software Foundation, Inc.
+// Copyright (C) 1994-2016 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 //
@@ -79,24 +79,12 @@ namespace std
   };
 #endif
 
-  // We throw this exception for GNU VLAs of negative length in all C++
-  // dialects, so declare it if we aren't in strict conformance mode.
-#if __cplusplus > 201103L || !defined(__STRICT_ANSI__)
-  class bad_array_length : public bad_alloc
+  struct nothrow_t
   {
-  public:
-    bad_array_length() throw() { };
-
-    // This declaration is not useless:
-    // http://gcc.gnu.org/onlinedocs/gcc-3.0.2/gcc_6.html#SEC118
-    virtual ~bad_array_length() throw();
-
-    // See comment in eh_exception.cc.
-    virtual const char* what() const throw();
-  };
+#if __cplusplus >= 201103L
+    explicit nothrow_t() = default;
 #endif
-
-  struct nothrow_t { };
+  };
 
   extern const nothrow_t nothrow;
 
@@ -133,6 +121,12 @@ void operator delete(void*) _GLIBCXX_USE_NOEXCEPT
   __attribute__((__externally_visible__));
 void operator delete[](void*) _GLIBCXX_USE_NOEXCEPT
   __attribute__((__externally_visible__));
+#if __cpp_sized_deallocation
+void operator delete(void*, std::size_t) _GLIBCXX_USE_NOEXCEPT
+  __attribute__((__externally_visible__));
+void operator delete[](void*, std::size_t) _GLIBCXX_USE_NOEXCEPT
+  __attribute__((__externally_visible__));
+#endif
 void* operator new(std::size_t, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
   __attribute__((__externally_visible__));
 void* operator new[](std::size_t, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
@@ -141,6 +135,12 @@ void operator delete(void*, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
   __attribute__((__externally_visible__));
 void operator delete[](void*, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
   __attribute__((__externally_visible__));
+#if __cpp_sized_deallocation
+void operator delete(void*, std::size_t, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
+  __attribute__((__externally_visible__));
+void operator delete[](void*, std::size_t, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT
+  __attribute__((__externally_visible__));
+#endif
 
 // Default placement versions of operator new.
 inline void* operator new(std::size_t, void* __p) _GLIBCXX_USE_NOEXCEPT

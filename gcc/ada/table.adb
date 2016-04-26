@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -207,9 +207,11 @@ package body Table is
             end if;
          end if;
 
+         --  Do the intermediate calculation in size_t to avoid signed overflow
+
          New_Size :=
-           Memory.size_t ((Max - Min + 1) *
-                          (Table_Type'Component_Size / Storage_Unit));
+           Memory.size_t (Max - Min + 1) *
+                                    (Table_Type'Component_Size / Storage_Unit);
 
          if Table = null then
             Table := To_Pointer (Alloc (New_Size));
@@ -399,7 +401,11 @@ package body Table is
          Tree_Read_Data
            (Tree_Get_Table_Address,
              (Last_Val - Int (First) + 1) *
-               Table_Type'Component_Size / Storage_Unit);
+
+               --  Note the importance of parenthesizing the following division
+               --  to avoid the possibility of intermediate overflow.
+
+               (Table_Type'Component_Size / Storage_Unit));
       end Tree_Read;
 
       ----------------
@@ -415,7 +421,7 @@ package body Table is
          Tree_Write_Data
            (Tree_Get_Table_Address,
             (Last_Val - Int (First) + 1) *
-              Table_Type'Component_Size / Storage_Unit);
+              (Table_Type'Component_Size / Storage_Unit));
       end Tree_Write;
 
    begin

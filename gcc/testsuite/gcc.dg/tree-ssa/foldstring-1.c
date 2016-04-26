@@ -1,6 +1,8 @@
 /* { dg-do compile } */
 /* { dg-options "-O1 -fdump-tree-gimple" } */
 
+void blah (void);
+
 void
 arf ()
 {
@@ -8,4 +10,3 @@ arf ()
     blah ();
 }
 /* { dg-final { scan-tree-dump-times "= 0;" 1 "gimple"} } */
-/* { dg-final { cleanup-tree-dump "gimple" } } */

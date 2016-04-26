@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -127,7 +127,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef FLT_ROUNDS
 #define FLT_ROUNDS 1
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#if (defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) \
+     || (defined (__cplusplus) && __cplusplus >= 201103L)
 /* The floating-point expression evaluation method.
         -1  indeterminate
          0  evaluate all operations and constants just to the range and
@@ -178,21 +179,9 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef FLT_TRUE_MIN
 #undef DBL_TRUE_MIN
 #undef LDBL_TRUE_MIN
-#if __FLT_HAS_DENORM__
 #define FLT_TRUE_MIN	__FLT_DENORM_MIN__
-#else
-#define FLT_TRUE_MIN	__FLT_MIN__
-#endif
-#if __DBL_HAS_DENORM__
 #define DBL_TRUE_MIN	__DBL_DENORM_MIN__
-#else
-#define DBL_TRUE_MIN	__DBL_MIN__
-#endif
-#if __LDBL_HAS_DENORM__
 #define LDBL_TRUE_MIN	__LDBL_DENORM_MIN__
-#else
-#define LDBL_TRUE_MIN	__LDBL_MIN__
-#endif
 
 #endif /* C11 */
 

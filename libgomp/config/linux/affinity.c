@@ -1,7 +1,8 @@
-/* Copyright (C) 2006-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>.
 
-   This file is part of the GNU OpenMP Library (libgomp).
+   This file is part of the GNU Offloading and Multi Processing Library
+   (libgomp).
 
    Libgomp is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -351,6 +352,45 @@ gomp_affinity_print_place (void *p)
   if (len > 1)
     fprintf (stderr, ":%lu", len);
 }
+
+int
+omp_get_place_num_procs (int place_num)
+{
+  if (place_num < 0 || place_num >= gomp_places_list_len)
+    return 0;
+
+  cpu_set_t *cpusetp = (cpu_set_t *) gomp_places_list[place_num];
+  return gomp_cpuset_popcount (gomp_cpuset_size, cpusetp);
+}
+
+void
+omp_get_place_proc_ids (int place_num, int *ids)
+{
+  if (place_num < 0 || place_num >= gomp_places_list_len)
+    return;
+
+  cpu_set_t *cpusetp = (cpu_set_t *) gomp_places_list[place_num];
+  unsigned long i, max = 8 * gomp_cpuset_size;
+  for (i = 0; i < max; i++)
+    if (CPU_ISSET_S (i, gomp_cpuset_size, cpusetp))
+      *ids++ = i;
+}
+
+void
+gomp_get_place_proc_ids_8 (int place_num, int64_t *ids)
+{
+  if (place_num < 0 || place_num >= gomp_places_list_len)
+    return;
+
+  cpu_set_t *cpusetp = (cpu_set_t *) gomp_places_list[place_num];
+  unsigned long i, max = 8 * gomp_cpuset_size;
+  for (i = 0; i < max; i++)
+    if (CPU_ISSET_S (i, gomp_cpuset_size, cpusetp))
+      *ids++ = i;
+}
+
+ialias(omp_get_place_num_procs)
+ialias(omp_get_place_proc_ids)
 
 #else
 

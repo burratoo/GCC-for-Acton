@@ -1,5 +1,5 @@
 /* Handle types for the GNU compiler for the Java(TM) language.
-   Copyright (C) 1996-2014 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,16 +26,14 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "options.h"
 #include "tree.h"
-#include "stor-layout.h"
 #include "stringpool.h"
-#include "obstack.h"
-#include "flags.h"
-#include "java-tree.h"
-#include "jcf.h"
-#include "convert.h"
 #include "diagnostic-core.h"
-#include "ggc.h"
+#include "fold-const.h"
+#include "stor-layout.h"
+#include "java-tree.h"
+#include "convert.h"
 
 static tree convert_ieee_real_to_integer (tree, tree);
 static tree parse_signature_type (const unsigned char **,
@@ -157,7 +155,7 @@ convert (tree type, tree expr)
    then UNSIGNEDP selects between signed and unsigned types.  */
 
 tree
-java_type_for_mode (enum machine_mode mode, int unsignedp)
+java_type_for_mode (machine_mode mode, int unsignedp)
 {
   if (mode == TYPE_MODE (int_type_node))
     return unsignedp ? unsigned_int_type_node : int_type_node;
@@ -307,7 +305,7 @@ build_java_array_type (tree element_type, HOST_WIDE_INT length)
 		      FIELD_DECL, get_identifier ("data"), atype);
   DECL_CONTEXT (arfld) = t;
   DECL_CHAIN (fld) = arfld;
-  DECL_ALIGN (arfld) = TYPE_ALIGN (element_type);
+  SET_DECL_ALIGN (arfld, TYPE_ALIGN (element_type));
 
   /* We could layout_class, but that loads java.lang.Object prematurely.
    * This is called by the parser, and it is a bad idea to do load_class
@@ -477,7 +475,7 @@ build_java_argument_signature (tree type)
 	}
       obstack_1grow (&temporary_obstack, '\0');
 
-      sig = get_identifier (obstack_base (&temporary_obstack));
+      sig = get_identifier ((char *) obstack_base (&temporary_obstack));
       TYPE_ARGUMENT_SIGNATURE (type) = sig;
       obstack_free (&temporary_obstack, obstack_base (&temporary_obstack));
     }
@@ -554,7 +552,7 @@ build_java_signature (tree type)
 	    obstack_grow0 (&temporary_obstack,
 			   IDENTIFIER_POINTER (t), IDENTIFIER_LENGTH (t));
 
-	    sig = get_identifier (obstack_base (&temporary_obstack));
+	    sig = get_identifier ((char *) obstack_base (&temporary_obstack));
 	    obstack_free (&temporary_obstack,
 			  obstack_base (&temporary_obstack));
 	  }

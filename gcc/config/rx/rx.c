@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on Renesas RX processors.
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2016 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -25,37 +25,30 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
+#include "cfghooks.h"
+#include "df.h"
+#include "tm_p.h"
+#include "regs.h"
+#include "emit-rtl.h"
+#include "diagnostic-core.h"
 #include "varasm.h"
 #include "stor-layout.h"
 #include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"
-#include "conditions.h"
 #include "output.h"
-#include "insn-attr.h"
 #include "flags.h"
-#include "function.h"
+#include "explow.h"
 #include "expr.h"
-#include "optabs.h"
-#include "libfuncs.h"
-#include "recog.h"
-#include "diagnostic-core.h"
 #include "toplev.h"
-#include "reload.h"
-#include "df.h"
-#include "ggc.h"
-#include "tm_p.h"
-#include "debug.h"
-#include "target.h"
-#include "target-def.h"
 #include "langhooks.h"
 #include "opts.h"
-#include "cgraph.h"
 #include "builtins.h"
+
+/* This file should be included last.  */
+#include "target-def.h"
 
 static unsigned int rx_gp_base_regnum_val = INVALID_REGNUM;
 static unsigned int rx_pid_base_regnum_val = INVALID_REGNUM;
@@ -101,7 +94,7 @@ static void rx_print_operand (FILE *, rtx, int);
 #define CC_FLAG_C	(1 << 3)
 #define CC_FLAG_FP	(1 << 4)	/* Fake, to differentiate CC_Fmode.  */
 
-static unsigned int flags_from_mode (enum machine_mode mode);
+static unsigned int flags_from_mode (machine_mode mode);
 static unsigned int flags_from_code (enum rtx_code code);
 
 /* Return true if OP is a reference to an object in a PID data area.  */
@@ -148,7 +141,7 @@ rx_pid_data_operand (rtx op)
 static rtx
 rx_legitimize_address (rtx x,
 		       rtx oldx ATTRIBUTE_UNUSED,
-		       enum machine_mode mode ATTRIBUTE_UNUSED)
+		       machine_mode mode ATTRIBUTE_UNUSED)
 {
   if (rx_pid_data_operand (x) == PID_UNENCODED)
     {
@@ -180,7 +173,7 @@ rx_small_data_operand (rtx op)
 }
 
 static bool
-rx_is_legitimate_address (enum machine_mode mode, rtx x,
+rx_is_legitimate_address (machine_mode mode, rtx x,
 			  bool strict ATTRIBUTE_UNUSED)
 {
   if (RTX_OK_FOR_BASE (x, strict))
@@ -278,7 +271,7 @@ rx_is_legitimate_address (enum machine_mode mode, rtx x,
    or pre/post increment/decrement.  */
 
 bool
-rx_is_restricted_memory_address (rtx mem, enum machine_mode mode)
+rx_is_restricted_memory_address (rtx mem, machine_mode mode)
 {
   if (! rx_is_legitimate_address
       (mode, mem, reload_in_progress || reload_completed))
@@ -359,8 +352,6 @@ rx_mode_dependent_address_p (const_rtx addr, addr_space_t as ATTRIBUTE_UNUSED)
 	  return true;
 
 	case MULT:
-	  gcc_assert (REG_P (XEXP (addr, 0)));
-	  gcc_assert (CONST_INT_P (XEXP (addr, 1)));
 	  /* REG+REG*SCALE is always mode dependent.  */
 	  return true;
 
@@ -388,7 +379,7 @@ rx_mode_dependent_address_p (const_rtx addr, addr_space_t as ATTRIBUTE_UNUSED)
    reference whose address is ADDR.  */
 
 static void
-rx_print_operand_address (FILE * file, rtx addr)
+rx_print_operand_address (FILE * file, machine_mode /*mode*/, rtx addr)
 {
   switch (GET_CODE (addr))
     {
@@ -450,11 +441,18 @@ rx_print_operand_address (FILE * file, rtx addr)
 	  addr = XEXP (addr, 0);
 	  gcc_assert (XINT (addr, 1) == UNSPEC_CONST);
 
-	  /* FIXME: Putting this case label here is an appalling abuse of the C language.  */
-	case UNSPEC:
           addr = XVECEXP (addr, 0, 0);
 	  gcc_assert (CONST_INT_P (addr));
+	  fprintf (file, "#");
+	  output_addr_const (file, addr);
+	  break;
 	}
+      fprintf (file, "#");
+      output_addr_const (file, XEXP (addr, 0));
+      break;
+
+    case UNSPEC:
+      addr = XVECEXP (addr, 0, 0);
       /* Fall through.  */
     case LABEL_REF:
     case SYMBOL_REF:
@@ -469,7 +467,7 @@ rx_print_operand_address (FILE * file, rtx addr)
 static void
 rx_print_integer (FILE * file, HOST_WIDE_INT val)
 {
-  if (IN_RANGE (val, -64, 64))
+  if (val < 64)
     fprintf (file, HOST_WIDE_INT_PRINT_DEC, val);
   else
     fprintf (file,
@@ -552,7 +550,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
     case 'B':
       {
 	enum rtx_code code = GET_CODE (op);
-	enum machine_mode mode = GET_MODE (XEXP (op, 0));
+	machine_mode mode = GET_MODE (XEXP (op, 0));
 	const char *ret;
 
 	if (mode == CC_Fmode)
@@ -692,7 +690,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case MEM:
 	  if (! WORDS_BIG_ENDIAN)
 	    op = adjust_address (op, SImode, 4);
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -716,7 +714,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case MEM:
 	  if (WORDS_BIG_ENDIAN)
 	    op = adjust_address (op, SImode, 4);
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -848,11 +846,11 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	  }
 
 	case MEM:
-	  output_address (XEXP (op, 0));
+	  output_address (GET_MODE (op), XEXP (op, 0));
 	  break;
 
 	case PLUS:
-	  output_address (op);
+	  output_address (VOIDmode, op);
 	  break;
 
 	case REG:
@@ -869,10 +867,8 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case CONST_DOUBLE:
 	  {
 	    unsigned long val;
-	    REAL_VALUE_TYPE rv;
 
-	    REAL_VALUE_FROM_CONST_DOUBLE (rv, op);
-	    REAL_VALUE_TO_TARGET_SINGLE (rv, val);
+	    REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (op), val);
 	    if (print_hash)
 	      fprintf (file, "#");
 	    fprintf (file, TARGET_AS100_SYNTAX ? "0%lxH" : "0x%lx", val);
@@ -919,7 +915,7 @@ rx_print_operand (FILE * file, rtx op, int letter)
 	case SYMBOL_REF:
 	case LABEL_REF:
 	case CODE_LABEL:
-	  rx_print_operand_address (file, op);
+	  rx_print_operand_address (file, VOIDmode, op);
 	  break;
 
 	default:
@@ -1048,7 +1044,7 @@ rx_round_up (unsigned int value, unsigned int alignment)
    occupied by an argument of type TYPE and mode MODE.  */
 
 static unsigned int
-rx_function_arg_size (enum machine_mode mode, const_tree type)
+rx_function_arg_size (machine_mode mode, const_tree type)
 {
   unsigned int num_bytes;
 
@@ -1068,7 +1064,7 @@ rx_function_arg_size (enum machine_mode mode, const_tree type)
    variable parameter list.  */
 
 static rtx
-rx_function_arg (cumulative_args_t cum, enum machine_mode mode,
+rx_function_arg (cumulative_args_t cum, machine_mode mode,
 		 const_tree type, bool named)
 {
   unsigned int next_reg;
@@ -1106,14 +1102,14 @@ rx_function_arg (cumulative_args_t cum, enum machine_mode mode,
 }
 
 static void
-rx_function_arg_advance (cumulative_args_t cum, enum machine_mode mode,
+rx_function_arg_advance (cumulative_args_t cum, machine_mode mode,
 			 const_tree type, bool named ATTRIBUTE_UNUSED)
 {
   *get_cumulative_args (cum) += rx_function_arg_size (mode, type);
 }
 
 static unsigned int
-rx_function_arg_boundary (enum machine_mode mode ATTRIBUTE_UNUSED,
+rx_function_arg_boundary (machine_mode mode ATTRIBUTE_UNUSED,
 			  const_tree type ATTRIBUTE_UNUSED)
 {
   /* Older versions of the RX backend aligned all on-stack arguments
@@ -1140,13 +1136,15 @@ rx_function_value (const_tree ret_type,
 		   const_tree fn_decl_or_type ATTRIBUTE_UNUSED,
 		   bool       outgoing ATTRIBUTE_UNUSED)
 {
-  enum machine_mode mode = TYPE_MODE (ret_type);
+  machine_mode mode = TYPE_MODE (ret_type);
 
   /* RX ABI specifies that small integer types are
      promoted to int when returned by a function.  */
   if (GET_MODE_SIZE (mode) > 0
       && GET_MODE_SIZE (mode) < 4
       && ! COMPLEX_MODE_P (mode)
+      && ! VECTOR_TYPE_P (ret_type)
+      && ! VECTOR_MODE_P (mode)
       )
     return gen_rtx_REG (SImode, FUNC_RETURN_REGNUM);
     
@@ -1156,9 +1154,9 @@ rx_function_value (const_tree ret_type,
 /* TARGET_PROMOTE_FUNCTION_MODE must behave in the same way with
    regard to function returns as does TARGET_FUNCTION_VALUE.  */
 
-static enum machine_mode
+static machine_mode
 rx_promote_function_mode (const_tree type ATTRIBUTE_UNUSED,
-			  enum machine_mode mode,
+			  machine_mode mode,
 			  int * punsignedp ATTRIBUTE_UNUSED,
 			  const_tree funtype ATTRIBUTE_UNUSED,
 			  int for_return)
@@ -1166,6 +1164,8 @@ rx_promote_function_mode (const_tree type ATTRIBUTE_UNUSED,
   if (for_return != 1
       || GET_MODE_SIZE (mode) >= 4
       || COMPLEX_MODE_P (mode)
+      || VECTOR_MODE_P (mode)
+      || VECTOR_TYPE_P (type)
       || GET_MODE_SIZE (mode) < 1)
     return mode;
 
@@ -1535,8 +1535,12 @@ rx_get_stack_layout (unsigned int * lowest,
      has specified --fixed-<reg-name> on the command line and in such
      circumstances we do not want to touch the fixed registers at all.
 
+     Note also that the code in the prologue/epilogue handlers will
+     automatically merge multiple PUSHes of adjacent registers into a single
+     PUSHM.
+
      FIXME: Is it worth improving this heuristic ?  */
-  pushed_mask = (-1 << low) & ~(-1 << (high + 1));
+  pushed_mask = (HOST_WIDE_INT_M1U << low) & ~(HOST_WIDE_INT_M1U << (high + 1));
   unneeded_pushes = (pushed_mask & (~ save_mask)) & pushed_mask;
 
   if ((fixed_reg && fixed_reg <= high)
@@ -1601,14 +1605,13 @@ gen_rx_store_vector (unsigned int low, unsigned int high)
   vector = gen_rtx_PARALLEL (VOIDmode, rtvec_alloc (count));
 
   XVECEXP (vector, 0, 0) =
-    gen_rtx_SET (VOIDmode, stack_pointer_rtx,
+    gen_rtx_SET (stack_pointer_rtx,
 		 gen_rtx_MINUS (SImode, stack_pointer_rtx,
 				GEN_INT ((count - 1) * UNITS_PER_WORD)));
 
   for (i = 0; i < count - 1; i++)
     XVECEXP (vector, 0, i + 1) =
-      gen_rtx_SET (VOIDmode,
-		   gen_rtx_MEM (SImode,
+      gen_rtx_SET (gen_rtx_MEM (SImode,
 				gen_rtx_MINUS (SImode, stack_pointer_rtx,
 					       GEN_INT ((i + 1) * UNITS_PER_WORD))),
 		   gen_rtx_REG (SImode, high - i));
@@ -1643,7 +1646,7 @@ ok_for_max_constant (HOST_WIDE_INT val)
 
   /* rx_max_constant_size specifies the maximum number
      of bytes that can be used to hold a signed value.  */
-  return IN_RANGE (val, (-1 << (rx_max_constant_size * 8)),
+  return IN_RANGE (val, (HOST_WIDE_INT_M1U << (rx_max_constant_size * 8)),
 		        ( 1 << (rx_max_constant_size * 8)));
 }
 
@@ -1676,14 +1679,25 @@ gen_safe_add (rtx dest, rtx src, rtx val, bool is_frame_related)
 	   as the dwarf2out code cannot be expected to grok
 	   our unspec.  */
 	add_reg_note (insn, REG_FRAME_RELATED_EXPR,
-		      gen_rtx_SET (SImode, dest,
-				   gen_rtx_PLUS (SImode, src, val)));
+		      gen_rtx_SET (dest, gen_rtx_PLUS (SImode, src, val)));
       return;
     }
 
   if (is_frame_related)
     RTX_FRAME_RELATED_P (insn) = 1;
-  return;
+}
+
+static void
+push_regs (unsigned int high, unsigned int low)
+{
+  rtx insn;
+
+  if (low == high)
+    insn = emit_insn (gen_stack_push (gen_rtx_REG (SImode, low)));
+  else
+    insn = emit_insn (gen_stack_pushm (GEN_INT (((high - low) + 1) * UNITS_PER_WORD),
+				       gen_rx_store_vector (low, high)));
+  mark_frame_related (insn);
 }
 
 void
@@ -1695,7 +1709,6 @@ rx_expand_prologue (void)
   unsigned int low;
   unsigned int high;
   unsigned int reg;
-  rtx insn;
 
   /* Naked functions use their own, programmer provided prologues.  */
   if (is_naked_func (NULL_TREE))
@@ -1713,20 +1726,25 @@ rx_expand_prologue (void)
       for (reg = CC_REGNUM; reg --;)
 	if (mask & (1 << reg))
 	  {
-	    insn = emit_insn (gen_stack_push (gen_rtx_REG (SImode, reg)));
-	    mark_frame_related (insn);
+	    low = high = reg;
+
+	    /* Look for a span of registers.
+	       Note - we do not have to worry about -Os and whether
+	       it is better to use a single, longer PUSHM as
+	       rx_get_stack_layout has already done that for us.  */
+	    while (reg-- > 0)
+	      if ((mask & (1 << reg)) == 0)
+		break;
+	      else
+		--low;
+
+	    push_regs (high, low);
+	    if (reg == (unsigned) -1)
+	      break;
 	  }
     }
   else if (low)
-    {
-      if (high == low)
-	insn = emit_insn (gen_stack_push (gen_rtx_REG (SImode, low)));
-      else
-	insn = emit_insn (gen_stack_pushm (GEN_INT (((high - low) + 1)
-						    * UNITS_PER_WORD),
-					   gen_rx_store_vector (low, high)));
-      mark_frame_related (insn);
-    }
+    push_regs (high, low);
 
   if (MUST_SAVE_ACC_REGISTER)
     {
@@ -1806,7 +1824,7 @@ rx_expand_prologue (void)
 		      GEN_INT (- (HOST_WIDE_INT) frame_size), true);
       else
 	gen_safe_add (stack_pointer_rtx, frame_pointer_rtx, NULL_RTX,
-		      true);
+		      false /* False because the epilogue will use the FP not the SP.  */);
     }
 }
 
@@ -1934,13 +1952,12 @@ gen_rx_rtsd_vector (unsigned int adjust, unsigned int low, unsigned int high)
   vector = gen_rtx_PARALLEL (VOIDmode, rtvec_alloc (count));
 
   XVECEXP (vector, 0, 0) =
-    gen_rtx_SET (VOIDmode, stack_pointer_rtx,
+    gen_rtx_SET (stack_pointer_rtx,
 		 plus_constant (Pmode, stack_pointer_rtx, adjust));
 
   for (i = 0; i < count - 2; i++)
     XVECEXP (vector, 0, i + 1) =
-      gen_rtx_SET (VOIDmode,
-		   gen_rtx_REG (SImode, low + i),
+      gen_rtx_SET (gen_rtx_REG (SImode, low + i),
 		   gen_rtx_MEM (SImode,
 				i == 0 ? stack_pointer_rtx
 				: plus_constant (Pmode, stack_pointer_rtx,
@@ -1963,14 +1980,13 @@ gen_rx_popm_vector (unsigned int low, unsigned int high)
   vector = gen_rtx_PARALLEL (VOIDmode, rtvec_alloc (count));
 
   XVECEXP (vector, 0, 0) =
-    gen_rtx_SET (VOIDmode, stack_pointer_rtx,
+    gen_rtx_SET (stack_pointer_rtx,
 		 plus_constant (Pmode, stack_pointer_rtx,
 				(count - 1) * UNITS_PER_WORD));
 
   for (i = 0; i < count - 1; i++)
     XVECEXP (vector, 0, i + 1) =
-      gen_rtx_SET (VOIDmode,
-		   gen_rtx_REG (SImode, low + i),
+      gen_rtx_SET (gen_rtx_REG (SImode, low + i),
 		   gen_rtx_MEM (SImode,
 				i == 0 ? stack_pointer_rtx
 				: plus_constant (Pmode, stack_pointer_rtx,
@@ -2001,6 +2017,16 @@ rx_can_use_simple_return (void)
   return (register_mask == 0
 	  && (frame_size + stack_size) == 0
 	  && low == 0);
+}
+
+static void
+pop_regs (unsigned int high, unsigned int low)
+{
+  if (high == low)
+    emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
+  else
+    emit_insn (gen_stack_popm (GEN_INT (((high - low) + 1) * UNITS_PER_WORD),
+			       gen_rx_popm_vector (low, high)));
 }
 
 void
@@ -2115,16 +2141,16 @@ rx_expand_epilogue (bool is_sibcall)
 	{
 	  for (reg = 0; reg < CC_REGNUM; reg ++)
 	    if (register_mask & (1 << reg))
-	      emit_insn (gen_stack_pop (gen_rtx_REG (SImode, reg)));
+	      {
+		low = high = reg;
+		while (register_mask & (1 << high))
+		  high ++;
+		pop_regs (high - 1, low);
+		reg = high;
+	      }
 	}
       else if (low)
-	{
-	  if (high == low)
-	    emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
-	  else
-	    emit_insn (gen_stack_popm (GEN_INT (regs_size),
-				       gen_rx_popm_vector (low, high)));
-	}
+	pop_regs (high, low);
 
       if (is_fast_interrupt_func (NULL_TREE))
 	{
@@ -2249,7 +2275,7 @@ rx_in_small_data (const_tree decl)
    The only special thing we do here is to honor small data.  */
 
 static section *
-rx_select_rtx_section (enum machine_mode mode,
+rx_select_rtx_section (machine_mode mode,
 		       rtx x,
 		       unsigned HOST_WIDE_INT align)
 {
@@ -2555,7 +2581,7 @@ static rtx
 rx_expand_builtin (tree exp,
 		   rtx target,
 		   rtx subtarget ATTRIBUTE_UNUSED,
-		   enum machine_mode mode ATTRIBUTE_UNUSED,
+		   machine_mode mode ATTRIBUTE_UNUSED,
 		   int ignore ATTRIBUTE_UNUSED)
 {
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
@@ -2588,7 +2614,12 @@ rx_expand_builtin (tree exp,
 	(op, gen_mvtachi, true);
     case RX_BUILTIN_MVTACLO: return rx_expand_void_builtin_1_arg
 	(op, gen_mvtaclo, true);
-    case RX_BUILTIN_RMPA:    emit_insn (gen_rmpa ()); return NULL_RTX;
+    case RX_BUILTIN_RMPA:
+      if (rx_allow_string_insns)
+	emit_insn (gen_rmpa ());
+      else
+	error ("-mno-allow-string-insns forbids the generation of the RMPA instruction");
+      return NULL_RTX;
     case RX_BUILTIN_MVFC:    return rx_expand_builtin_mvfc (arg, target);
     case RX_BUILTIN_MVTC:    return rx_expand_builtin_mvtc (exp);
     case RX_BUILTIN_MVTIPL:  return rx_expand_builtin_mvtipl (op);
@@ -2653,7 +2684,7 @@ rx_elf_asm_destructor (rtx symbol, int priority)
 static tree
 rx_handle_func_attribute (tree * node,
 			  tree   name,
-			  tree   args,
+			  tree   args ATTRIBUTE_UNUSED,
 			  int    flags ATTRIBUTE_UNUSED,
 			  bool * no_add_attrs)
 {
@@ -2826,6 +2857,9 @@ rx_warn_func_return (tree decl)
 static bool
 rx_function_ok_for_sibcall (tree decl, tree exp ATTRIBUTE_UNUSED)
 {
+  if (TARGET_JSR)
+    return false;
+
   /* Do not allow indirect tailcalls.  The
      sibcall patterns do not support them.  */
   if (decl == NULL)
@@ -2850,7 +2884,7 @@ rx_file_start (void)
 static bool
 rx_is_ms_bitfield_layout (const_tree record_type ATTRIBUTE_UNUSED)
 {
-  /* The packed attribute overrides the MS behaviour.  */
+  /* The packed attribute overrides the MS behavior.  */
   return ! TYPE_PACKED (record_type);
 }
 
@@ -2858,7 +2892,7 @@ rx_is_ms_bitfield_layout (const_tree record_type ATTRIBUTE_UNUSED)
    operand on the RX.  X is already known to satisfy CONSTANT_P.  */
 
 bool
-rx_is_legitimate_constant (enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
+rx_is_legitimate_constant (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 {
   switch (GET_CODE (x))
     {
@@ -2907,7 +2941,7 @@ rx_is_legitimate_constant (enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 }
 
 static int
-rx_address_cost (rtx addr, enum machine_mode mode ATTRIBUTE_UNUSED,
+rx_address_cost (rtx addr, machine_mode mode ATTRIBUTE_UNUSED,
 		 addr_space_t as ATTRIBUTE_UNUSED, bool speed)
 {
   rtx a, b;
@@ -3029,7 +3063,7 @@ rx_trampoline_init (rtx tramp, tree fndecl, rtx chain)
 }
 
 static int
-rx_memory_move_cost (enum machine_mode mode ATTRIBUTE_UNUSED,
+rx_memory_move_cost (machine_mode mode ATTRIBUTE_UNUSED,
 		     reg_class_t regclass ATTRIBUTE_UNUSED,
 		     bool in)
 {
@@ -3039,7 +3073,7 @@ rx_memory_move_cost (enum machine_mode mode ATTRIBUTE_UNUSED,
 /* Convert a CC_MODE to the set of flags that it represents.  */
 
 static unsigned int
-flags_from_mode (enum machine_mode mode)
+flags_from_mode (machine_mode mode)
 {
   switch (mode)
     {
@@ -3060,7 +3094,7 @@ flags_from_mode (enum machine_mode mode)
 
 /* Convert a set of flags to a CC_MODE that can implement it.  */
 
-static enum machine_mode
+static machine_mode
 mode_from_flags (unsigned int f)
 {
   if (f & CC_FLAG_FP)
@@ -3108,8 +3142,8 @@ flags_from_code (enum rtx_code code)
 
 /* Return a CC_MODE of which both M1 and M2 are subsets.  */
 
-static enum machine_mode
-rx_cc_modes_compatible (enum machine_mode m1, enum machine_mode m2)
+static machine_mode
+rx_cc_modes_compatible (machine_mode m1, machine_mode m2)
 {
   unsigned f;
 
@@ -3128,7 +3162,7 @@ rx_cc_modes_compatible (enum machine_mode m1, enum machine_mode m2)
 
 /* Return the minimal CC mode needed to implement (CMP_CODE X Y).  */
 
-enum machine_mode
+machine_mode
 rx_select_cc_mode (enum rtx_code cmp_code, rtx x, rtx y)
 {
   if (GET_MODE_CLASS (GET_MODE (x)) == MODE_FLOAT)
@@ -3144,29 +3178,29 @@ rx_select_cc_mode (enum rtx_code cmp_code, rtx x, rtx y)
    CC_MODE, and use that in branches based on that compare.  */
 
 void
-rx_split_cbranch (enum machine_mode cc_mode, enum rtx_code cmp1,
+rx_split_cbranch (machine_mode cc_mode, enum rtx_code cmp1,
 		  rtx c1, rtx c2, rtx label)
 {
   rtx flags, x;
 
   flags = gen_rtx_REG (cc_mode, CC_REG);
   x = gen_rtx_COMPARE (cc_mode, c1, c2);
-  x = gen_rtx_SET (VOIDmode, flags, x);
+  x = gen_rtx_SET (flags, x);
   emit_insn (x);
 
   x = gen_rtx_fmt_ee (cmp1, VOIDmode, flags, const0_rtx);
   x = gen_rtx_IF_THEN_ELSE (VOIDmode, x, label, pc_rtx);
-  x = gen_rtx_SET (VOIDmode, pc_rtx, x);
+  x = gen_rtx_SET (pc_rtx, x);
   emit_jump_insn (x);
 }
 
 /* A helper function for matching parallels that set the flags.  */
 
 bool
-rx_match_ccmode (rtx insn, enum machine_mode cc_mode)
+rx_match_ccmode (rtx insn, machine_mode cc_mode)
 {
   rtx op1, flags;
-  enum machine_mode flags_mode;
+  machine_mode flags_mode;
 
   gcc_checking_assert (XVECLEN (PATTERN (insn), 0) == 2);
 
@@ -3207,15 +3241,15 @@ rx_align_for_label (rtx lab, int uses_threshold)
 }
 
 static int
-rx_max_skip_for_label (rtx lab)
+rx_max_skip_for_label (rtx_insn *lab)
 {
   int opsize;
-  rtx op;
+  rtx_insn *op;
 
   if (optimize_size)
     return 0;
 
-  if (lab == NULL_RTX)
+  if (lab == NULL)
     return 0;
 
   op = lab;
@@ -3237,7 +3271,7 @@ rx_max_skip_for_label (rtx lab)
 /* Compute the real length of the extending load-and-op instructions.  */
 
 int
-rx_adjust_insn_length (rtx insn, int current_length)
+rx_adjust_insn_length (rtx_insn *insn, int current_length)
 {
   rtx extend, mem, offset;
   bool zero;

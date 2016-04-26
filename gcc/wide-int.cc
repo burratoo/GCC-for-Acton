@@ -1,5 +1,5 @@
 /* Operations with very long integers.
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -22,10 +22,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "hwint.h"
-#include "wide-int.h"
 #include "tree.h"
-#include "dumpfile.h"
 
 
 #define HOST_BITS_PER_HALF_WIDE_INT 32
@@ -118,6 +115,20 @@ canonize (HOST_WIDE_INT *val, unsigned int len, unsigned int precision)
     }
 
   /* The number is 0 or -1.  */
+  return 1;
+}
+
+/* VAL[0] is the unsigned result of an operation.  Canonize it by adding
+   another 0 block if needed, and return number of blocks needed.  */
+
+static inline unsigned int
+canonize_uhwi (HOST_WIDE_INT *val, unsigned int precision)
+{
+  if (val[0] < 0 && precision > HOST_BITS_PER_WIDE_INT)
+    {
+      val[1] = 0;
+      return 2;
+    }
   return 1;
 }
 
@@ -229,7 +240,7 @@ wide_int
 wi::from_mpz (const_tree type, mpz_t x, bool wrap)
 {
   size_t count, numb;
-  int prec = TYPE_PRECISION (type);
+  unsigned int prec = TYPE_PRECISION (type);
   wide_int res = wide_int::create (prec);
 
   if (!wrap)
@@ -250,18 +261,37 @@ wi::from_mpz (const_tree type, mpz_t x, bool wrap)
     }
 
   /* Determine the number of unsigned HOST_WIDE_INTs that are required
-     for representing the value.  The code to calculate count is
+     for representing the absolute value.  The code to calculate count is
      extracted from the GMP manual, section "Integer Import and Export":
      http://gmplib.org/manual/Integer-Import-and-Export.html  */
-  numb = 8 * sizeof(HOST_WIDE_INT);
+  numb = CHAR_BIT * sizeof (HOST_WIDE_INT);
   count = (mpz_sizeinbase (x, 2) + numb - 1) / numb;
   HOST_WIDE_INT *val = res.write_val ();
-  mpz_export (val, &count, -1, sizeof (HOST_WIDE_INT), 0, 0, x);
+  /* Read the absolute value.
+
+     Write directly to the wide_int storage if possible, otherwise leave
+     GMP to allocate the memory for us.  It might be slightly more efficient
+     to use mpz_tdiv_r_2exp for the latter case, but the situation is
+     pathological and it seems safer to operate on the original mpz value
+     in all cases.  */
+  void *valres = mpz_export (count <= WIDE_INT_MAX_ELTS ? val : 0,
+			     &count, -1, sizeof (HOST_WIDE_INT), 0, 0, x);
   if (count < 1)
     {
       val[0] = 0;
       count = 1;
     }
+  count = MIN (count, BLOCKS_NEEDED (prec));
+  if (valres != val)
+    {
+      memcpy (val, valres, count * sizeof (HOST_WIDE_INT));
+      free (valres);
+    }
+  /* Zero-extend the absolute value to PREC bits.  */
+  if (count < BLOCKS_NEEDED (prec) && val[count - 1] < 0)
+    val[count++] = 0;
+  else
+    count = canonize (val, count, prec);
   res.set_len (count);
 
   if (mpz_sgn (x) < 0)
@@ -1198,30 +1228,32 @@ wi_unpack (unsigned HOST_HALF_WIDE_INT *result, const HOST_WIDE_INT *input,
     result[j++] = mask;
 }
 
-/* The inverse of wi_unpack.  IN_LEN is the the number of input
-   blocks.  The number of output blocks will be half this amount.  */
-static void
-wi_pack (unsigned HOST_WIDE_INT *result,
+/* The inverse of wi_unpack.  IN_LEN is the number of input
+   blocks and PRECISION is the precision of the result.  Return the
+   number of blocks in the canonicalized result.  */
+static unsigned int
+wi_pack (HOST_WIDE_INT *result,
 	 const unsigned HOST_HALF_WIDE_INT *input,
-	 unsigned int in_len)
+	 unsigned int in_len, unsigned int precision)
 {
   unsigned int i = 0;
   unsigned int j = 0;
+  unsigned int blocks_needed = BLOCKS_NEEDED (precision);
 
-  while (i + 2 < in_len)
+  while (i + 1 < in_len)
     {
-      result[j++] = (unsigned HOST_WIDE_INT)input[i]
-	| ((unsigned HOST_WIDE_INT)input[i + 1]
-	   << HOST_BITS_PER_HALF_WIDE_INT);
+      result[j++] = ((unsigned HOST_WIDE_INT) input[i]
+		     | ((unsigned HOST_WIDE_INT) input[i + 1]
+			<< HOST_BITS_PER_HALF_WIDE_INT));
       i += 2;
     }
 
   /* Handle the case where in_len is odd.   For this we zero extend.  */
   if (in_len & 1)
-    result[j++] = (unsigned HOST_WIDE_INT)input[i];
-  else
-    result[j++] = (unsigned HOST_WIDE_INT)input[i]
-      | ((unsigned HOST_WIDE_INT)input[i + 1] << HOST_BITS_PER_HALF_WIDE_INT);
+    result[j++] = (unsigned HOST_WIDE_INT) input[i];
+  else if (j < blocks_needed)
+    result[j++] = 0;
+  return canonize (result, j, precision);
 }
 
 /* Multiply Op1 by Op2.  If HIGH is set, only the upper half of the
@@ -1289,6 +1321,11 @@ wi::mul_internal (HOST_WIDE_INT *val, const HOST_WIDE_INT *op1val,
 	      return 1;
 	    }
 	  umul_ppmm (val[1], val[0], op1.ulow (), op2.ulow ());
+	  if (val[1] < 0 && prec > HOST_BITS_PER_WIDE_INT * 2)
+	    {
+	      val[2] = 0;
+	      return 3;
+	    }
 	  return 1 + (val[1] != 0 || val[0] < 0);
 	}
       /* Likewise if the output is a full single HWI, except that the
@@ -1439,19 +1476,8 @@ wi::mul_internal (HOST_WIDE_INT *val, const HOST_WIDE_INT *op1val,
 	  *overflow = true;
     }
 
-  if (high)
-    {
-      /* compute [prec] <- ([prec] * [prec]) >> [prec] */
-      wi_pack ((unsigned HOST_WIDE_INT *) val,
-	       &r[half_blocks_needed], half_blocks_needed);
-      return canonize (val, blocks_needed, prec);
-    }
-  else
-    {
-      /* compute [prec] <- ([prec] * [prec]) && ((1 << [prec]) - 1) */
-      wi_pack ((unsigned HOST_WIDE_INT *) val, r, half_blocks_needed);
-      return canonize (val, blocks_needed, prec);
-    }
+  int r_offset = high ? half_blocks_needed : 0;
+  return wi_pack (val, &r[r_offset], half_blocks_needed, prec);
 }
 
 /* Compute the population count of X.  */
@@ -1776,15 +1802,19 @@ wi::divmod_internal (HOST_WIDE_INT *quotient, unsigned int *remainder_len,
     {
       unsigned HOST_WIDE_INT o0 = dividend.to_uhwi ();
       unsigned HOST_WIDE_INT o1 = divisor.to_uhwi ();
+      unsigned int quotient_len = 1;
 
       if (quotient)
-	quotient[0] = o0 / o1;
+	{
+	  quotient[0] = o0 / o1;
+	  quotient_len = canonize_uhwi (quotient, dividend_prec);
+	}
       if (remainder)
 	{
 	  remainder[0] = o0 % o1;
-	  *remainder_len = 1;
+	  *remainder_len = canonize_uhwi (remainder, dividend_prec);
 	}
-      return 1;
+      return quotient_len;
     }
 
   /* Make the divisor and dividend positive and remember what we
@@ -1811,6 +1841,7 @@ wi::divmod_internal (HOST_WIDE_INT *quotient, unsigned int *remainder_len,
 	     divisor_blocks_needed, divisor_prec, sgn);
 
   m = dividend_blocks_needed;
+  b_dividend[m] = 0;
   while (m > 1 && b_dividend[m - 1] == 0)
     m--;
 
@@ -1825,8 +1856,7 @@ wi::divmod_internal (HOST_WIDE_INT *quotient, unsigned int *remainder_len,
   unsigned int quotient_len = 0;
   if (quotient)
     {
-      wi_pack ((unsigned HOST_WIDE_INT *) quotient, b_quotient, m);
-      quotient_len = canonize (quotient, (m + 1) / 2, dividend_prec);
+      quotient_len = wi_pack (quotient, b_quotient, m, dividend_prec);
       /* The quotient is neg if exactly one of the divisor or dividend is
 	 neg.  */
       if (dividend_neg != divisor_neg)
@@ -1837,8 +1867,7 @@ wi::divmod_internal (HOST_WIDE_INT *quotient, unsigned int *remainder_len,
 
   if (remainder)
     {
-      wi_pack ((unsigned HOST_WIDE_INT *) remainder, b_remainder, n);
-      *remainder_len = canonize (remainder, (n + 1) / 2, dividend_prec);
+      *remainder_len = wi_pack (remainder, b_remainder, n, dividend_prec);
       /* The remainder is always the same sign as the dividend.  */
       if (dividend_neg)
 	*remainder_len = wi::sub_large (remainder, zeros, 1, remainder,

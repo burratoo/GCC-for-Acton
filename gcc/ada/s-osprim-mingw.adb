@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1998-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -90,7 +90,15 @@ package body System.OS_Primitives is
    Signature : Signature_Type := 0;
    pragma Atomic (Signature);
 
-   procedure Get_Base_Time (Data : out Clock_Data);
+   function Monotonic_Clock return Duration;
+   pragma Export (Ada, Monotonic_Clock, "__gnat_monotonic_clock");
+   --  Return "absolute" time, represented as an offset relative to "the Unix
+   --  Epoch", which is Jan 1, 1970 00:00:00 UTC. This clock implementation is
+   --  immune to the system's clock changes. Export this function so that it
+   --  can be imported from s-taprop-mingw.adb without changing the shared
+   --  spec (s-osprim.ads).
+
+   procedure Get_Base_Time (Data : in out Clock_Data);
    --  Retrieve the base time and base ticks. These values will be used by
    --  clock to compute the current time by adding to it a fraction of the
    --  performance counter. This is for the implementation of a high-resolution
@@ -166,7 +174,7 @@ package body System.OS_Primitives is
    -- Get_Base_Time --
    -------------------
 
-   procedure Get_Base_Time (Data : out Clock_Data) is
+   procedure Get_Base_Time (Data : in out Clock_Data) is
 
       --  The resolution for GetSystemTime is 1 millisecond
 
@@ -216,6 +224,7 @@ package body System.OS_Primitives is
       --  base data (time, clock, ticks) have already been updated.
 
       if Sig /= Signature then
+         Unlock;
          return;
       end if;
 

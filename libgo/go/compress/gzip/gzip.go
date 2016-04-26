@@ -25,7 +25,7 @@ const (
 // A Writer is an io.WriteCloser.
 // Writes to a Writer are compressed and written to w.
 type Writer struct {
-	Header
+	Header      // written at first call to Write, Flush, or Close
 	w           io.Writer
 	level       int
 	wroteHeader bool
@@ -44,10 +44,7 @@ type Writer struct {
 // Writes may be buffered and not flushed until Close.
 //
 // Callers that wish to set the fields in Writer.Header must do so before
-// the first call to Write or Close. The Comment and Name header fields are
-// UTF-8 strings in Go, but the underlying format requires NUL-terminated ISO
-// 8859-1 (Latin-1). NUL or non-Latin-1 runes in those strings will lead to an
-// error on Write.
+// the first call to Write, Flush, or Close.
 func NewWriter(w io.Writer) *Writer {
 	z, _ := NewWriterLevel(w, DefaultCompression)
 	return z
@@ -245,7 +242,8 @@ func (z *Writer) Flush() error {
 	return z.err
 }
 
-// Close closes the Writer. It does not close the underlying io.Writer.
+// Close closes the Writer, flushing any unwritten data to the underlying
+// io.Writer, but does not close the underlying io.Writer.
 func (z *Writer) Close() error {
 	if z.err != nil {
 		return z.err

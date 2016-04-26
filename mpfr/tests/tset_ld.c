@@ -1,7 +1,7 @@
 /* Test file for mpfr_set_ld and mpfr_get_ld.
 
-Copyright 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 Free Software Foundation, Inc.
-Contributed by the AriC and Caramel projects, INRIA.
+Copyright 2002-2016 Free Software Foundation, Inc.
+Contributed by the AriC and Caramba projects, INRIA.
 
 This file is part of the GNU MPFR Library.
 
@@ -47,8 +47,11 @@ check_gcc33_bug (void)
 static int
 Isnan_ld (long double d)
 {
-  double e = (double) d;
-  if (DOUBLE_ISNAN (e))
+  /* Do not convert d to double as this can give an overflow, which
+     may confuse compilers without IEEE 754 support (such as clang
+     -fsanitize=undefined), or trigger a trap if enabled.
+     The DOUBLE_ISNAN macro should work fine on long double. */
+  if (DOUBLE_ISNAN (d))
     return 1;
   LONGDOUBLE_NAN_ACTION (d, goto yes);
   return 0;

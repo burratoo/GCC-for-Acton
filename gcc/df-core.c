@@ -1,5 +1,5 @@
 /* Allocation for dataflow support routines.
-   Copyright (C) 1999-2014 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Originally contributed by Michael P. Hayes
              (m.hayes@elec.canterbury.ac.nz, mhayes@redhat.com)
    Major rewrite contributed by Danny Berlin (dberlin@dberlin.org)
@@ -181,7 +181,7 @@ There are four ways of doing the incremental scanning:
    next call to df_analyze or df_process_deferred_rescans.
 
    This mode is also used by a few passes that still rely on note_uses,
-   note_stores and for_each_rtx instead of using the DF data.  This
+   note_stores and rtx iterators instead of using the DF data.  This
    can be said to fall under case 1c.
 
    To enable this mode, call df_set_flags (DF_DEFER_INSN_RESCAN).
@@ -377,22 +377,12 @@ are write-only operations.
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "rtl.h"
-#include "tm_p.h"
-#include "insn-config.h"
-#include "recog.h"
-#include "function.h"
-#include "regs.h"
-#include "alloc-pool.h"
-#include "flags.h"
-#include "hard-reg-set.h"
-#include "basic-block.h"
-#include "sbitmap.h"
-#include "bitmap.h"
 #include "df.h"
+#include "emit-rtl.h"
+#include "cfganal.h"
 #include "tree-pass.h"
-#include "params.h"
 #include "cfgloop.h"
 
 static void *df_get_bb_info (struct dataflow *, unsigned int);
@@ -633,7 +623,6 @@ void
 df_finish_pass (bool verify ATTRIBUTE_UNUSED)
 {
   int i;
-  int removed = 0;
 
 #ifdef ENABLE_DF_CHECKING
   int saved_flags;
@@ -649,21 +638,15 @@ df_finish_pass (bool verify ATTRIBUTE_UNUSED)
   saved_flags = df->changeable_flags;
 #endif
 
-  for (i = 0; i < df->num_problems_defined; i++)
+  /* We iterate over problems by index as each problem removed will
+     lead to problems_in_order to be reordered.  */
+  for (i = 0; i < DF_LAST_PROBLEM_PLUS1; i++)
     {
-      struct dataflow *dflow = df->problems_in_order[i];
-      struct df_problem *problem = dflow->problem;
+      struct dataflow *dflow = df->problems_by_index[i];
 
-      if (dflow->optional_p)
-	{
-	  gcc_assert (problem->remove_problem_fun);
-	  (problem->remove_problem_fun) ();
-	  df->problems_in_order[i] = NULL;
-	  df->problems_by_index[problem->id] = NULL;
-	  removed++;
-	}
+      if (dflow && dflow->optional_p)
+	df_remove_problem (dflow);
     }
-  df->num_problems_defined -= removed;
 
   /* Clear all of the flags.  */
   df->changeable_flags = 0;
@@ -692,10 +675,8 @@ df_finish_pass (bool verify ATTRIBUTE_UNUSED)
 #endif
 #endif
 
-#ifdef ENABLE_CHECKING
-  if (verify)
+  if (flag_checking && verify)
     df->changeable_flags |= DF_VERIFY_SCHEDULED;
-#endif
 }
 
 
@@ -1045,10 +1026,7 @@ df_worklist_dataflow_doublequeue (struct dataflow *dataflow,
       bitmap_iterator bi;
       unsigned int index;
 
-      /* Swap pending and worklist. */
-      bitmap temp = worklist;
-      worklist = pending;
-      pending = temp;
+      std::swap (pending, worklist);
 
       EXECUTE_IF_SET_IN_BITMAP (worklist, 0, index, bi)
 	{
@@ -1286,12 +1264,14 @@ df_analyze (void)
   for (i = 0; i < df->n_blocks; i++)
     bitmap_set_bit (current_all_blocks, df->postorder[i]);
 
-#ifdef ENABLE_CHECKING
-  /* Verify that POSTORDER_INVERTED only contains blocks reachable from
-     the ENTRY block.  */
-  for (i = 0; i < df->n_blocks_inverted; i++)
-    gcc_assert (bitmap_bit_p (current_all_blocks, df->postorder_inverted[i]));
-#endif
+  if (flag_checking)
+    {
+      /* Verify that POSTORDER_INVERTED only contains blocks reachable from
+	 the ENTRY block.  */
+      for (i = 0; i < df->n_blocks_inverted; i++)
+	gcc_assert (bitmap_bit_p (current_all_blocks,
+				  df->postorder_inverted[i]));
+    }
 
   /* Make sure that we have pruned any unreachable blocks from these
      sets.  */
@@ -1984,7 +1964,7 @@ df_bb_regno_last_def_find (basic_block bb, unsigned int regno)
    DF is the dataflow object.  */
 
 df_ref
-df_find_def (rtx insn, rtx reg)
+df_find_def (rtx_insn *insn, rtx reg)
 {
   df_ref def;
 
@@ -2003,7 +1983,7 @@ df_find_def (rtx insn, rtx reg)
 /* Return true if REG is defined in INSN, zero otherwise.  */
 
 bool
-df_reg_defined (rtx insn, rtx reg)
+df_reg_defined (rtx_insn *insn, rtx reg)
 {
   return df_find_def (insn, reg) != NULL;
 }
@@ -2013,7 +1993,7 @@ df_reg_defined (rtx insn, rtx reg)
    DF is the dataflow object.  */
 
 df_ref
-df_find_use (rtx insn, rtx reg)
+df_find_use (rtx_insn *insn, rtx reg)
 {
   df_ref use;
 
@@ -2036,7 +2016,7 @@ df_find_use (rtx insn, rtx reg)
 /* Return true if REG is referenced in INSN, zero otherwise.  */
 
 bool
-df_reg_used (rtx insn, rtx reg)
+df_reg_used (rtx_insn *insn, rtx reg)
 {
   return df_find_use (insn, reg) != NULL;
 }
@@ -2262,7 +2242,7 @@ df_dump_bottom (basic_block bb, FILE *file)
 
 /* Dump information about INSN just before or after dumping INSN itself.  */
 static void
-df_dump_insn_problem_data (const_rtx insn, FILE *file, bool top)
+df_dump_insn_problem_data (const rtx_insn *insn, FILE *file, bool top)
 {
   int i;
 
@@ -2290,7 +2270,7 @@ df_dump_insn_problem_data (const_rtx insn, FILE *file, bool top)
 /* Dump information about INSN before dumping INSN itself.  */
 
 void
-df_dump_insn_top (const_rtx insn, FILE *file)
+df_dump_insn_top (const rtx_insn *insn, FILE *file)
 {
   df_dump_insn_problem_data (insn,  file, /*top=*/true);
 }
@@ -2298,7 +2278,7 @@ df_dump_insn_top (const_rtx insn, FILE *file)
 /* Dump information about INSN after dumping INSN itself.  */
 
 void
-df_dump_insn_bottom (const_rtx insn, FILE *file)
+df_dump_insn_bottom (const rtx_insn *insn, FILE *file)
 {
   df_dump_insn_problem_data (insn,  file, /*top=*/false);
 }
@@ -2389,13 +2369,13 @@ df_insn_uid_debug (unsigned int uid,
 
 
 DEBUG_FUNCTION void
-df_insn_debug (rtx insn, bool follow_chain, FILE *file)
+df_insn_debug (rtx_insn *insn, bool follow_chain, FILE *file)
 {
   df_insn_uid_debug (INSN_UID (insn), follow_chain, file);
 }
 
 DEBUG_FUNCTION void
-df_insn_debug_regno (rtx insn, FILE *file)
+df_insn_debug_regno (rtx_insn *insn, FILE *file)
 {
   struct df_insn_info *insn_info = DF_INSN_INFO_GET (insn);
 
@@ -2454,7 +2434,7 @@ df_ref_debug (df_ref ref, FILE *file)
 /* Functions for debugging from GDB.  */
 
 DEBUG_FUNCTION void
-debug_df_insn (rtx insn)
+debug_df_insn (rtx_insn *insn)
 {
   df_insn_debug (insn, true, stderr);
   debug_rtx (insn);
@@ -2501,10 +2481,4 @@ debug_df_chain (struct df_link *link)
 {
   df_chain_dump (link, stderr);
   fputc ('\n', stderr);
-}
-
-rtx_insn *DF_REF_INSN (df_ref ref)
-{
-  rtx insn = ref->base.insn_info->insn;
-  return safe_as_a <rtx_insn *> (insn);
 }

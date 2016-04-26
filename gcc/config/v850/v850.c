@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for NEC V850 series
-   Copyright (C) 1996-2014 Free Software Foundation, Inc.
+   Copyright (C) 1996-2016 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
    This file is part of GCC.
@@ -21,37 +21,36 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
+#include "df.h"
+#include "tm_p.h"
 #include "stringpool.h"
+#include "insn-config.h"
+#include "regs.h"
+#include "emit-rtl.h"
+#include "recog.h"
+#include "diagnostic-core.h"
 #include "stor-layout.h"
 #include "varasm.h"
 #include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"
 #include "conditions.h"
 #include "output.h"
 #include "insn-attr.h"
-#include "flags.h"
-#include "recog.h"
 #include "expr.h"
-#include "function.h"
-#include "diagnostic-core.h"
-#include "ggc.h"
-#include "tm_p.h"
-#include "target.h"
-#include "target-def.h"
-#include "df.h"
-#include "opts.h"
+#include "cfgrtl.h"
 #include "builtins.h"
+
+/* This file should be included last.  */
+#include "target-def.h"
 
 #ifndef streq
 #define streq(a,b) (strcmp (a, b) == 0)
 #endif
 
-static void v850_print_operand_address (FILE *, rtx);
+static void v850_print_operand_address (FILE *, machine_mode, rtx);
 
 /* Names of the various data areas used on the v850.  */
 const char * GHS_default_section_names [(int) COUNT_OF_GHS_SECTION_KINDS];
@@ -110,7 +109,7 @@ v850_all_frame_related (rtx par)
 
 static bool
 v850_pass_by_reference (cumulative_args_t cum ATTRIBUTE_UNUSED,
-			enum machine_mode mode, const_tree type,
+			machine_mode mode, const_tree type,
 			bool named ATTRIBUTE_UNUSED)
 {
   unsigned HOST_WIDE_INT size;
@@ -131,7 +130,7 @@ v850_pass_by_reference (cumulative_args_t cum ATTRIBUTE_UNUSED,
    is NULL_RTX, the argument will be pushed.  */
 
 static rtx
-v850_function_arg (cumulative_args_t cum_v, enum machine_mode mode,
+v850_function_arg (cumulative_args_t cum_v, machine_mode mode,
 		   const_tree type, bool named)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
@@ -195,7 +194,7 @@ v850_function_arg (cumulative_args_t cum_v, enum machine_mode mode,
 /* Return the number of bytes which must be put into registers
    for values which are part in registers and part in memory.  */
 static int
-v850_arg_partial_bytes (cumulative_args_t cum_v, enum machine_mode mode,
+v850_arg_partial_bytes (cumulative_args_t cum_v, machine_mode mode,
                         tree type, bool named)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
@@ -239,7 +238,7 @@ v850_arg_partial_bytes (cumulative_args_t cum_v, enum machine_mode mode,
    (TYPE is null for libcalls where that information may not be available.)  */
 
 static void
-v850_function_arg_advance (cumulative_args_t cum_v, enum machine_mode mode,
+v850_function_arg_advance (cumulative_args_t cum_v, machine_mode mode,
 			   const_tree type, bool named ATTRIBUTE_UNUSED)
 {
   CUMULATIVE_ARGS *cum = get_cumulative_args (cum_v);
@@ -266,20 +265,17 @@ const_double_split (rtx x, HOST_WIDE_INT * p_high, HOST_WIDE_INT * p_low)
   if (GET_CODE (x) == CONST_DOUBLE)
     {
       long t[2];
-      REAL_VALUE_TYPE rv;
 
       switch (GET_MODE (x))
 	{
 	case DFmode:
-	  REAL_VALUE_FROM_CONST_DOUBLE (rv, x);
-	  REAL_VALUE_TO_TARGET_DOUBLE (rv, t);
+	  REAL_VALUE_TO_TARGET_DOUBLE (*CONST_DOUBLE_REAL_VALUE (x), t);
 	  *p_high = t[1];	/* since v850 is little endian */
 	  *p_low = t[0];	/* high is second word */
 	  return;
 
 	case SFmode:
-	  REAL_VALUE_FROM_CONST_DOUBLE (rv, x);
-	  REAL_VALUE_TO_TARGET_SINGLE (rv, *p_high);
+	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (x), *p_high);
 	  *p_low = 0;
 	  return;
 
@@ -344,13 +340,10 @@ const_costs (rtx r, enum rtx_code c)
 }
 
 static bool
-v850_rtx_costs (rtx x,
-                int codearg,
-                int outer_code ATTRIBUTE_UNUSED,
-		int opno ATTRIBUTE_UNUSED,
-                int * total, bool speed)
+v850_rtx_costs (rtx x, machine_mode mode, int outer_code,
+		int opno ATTRIBUTE_UNUSED, int *total, bool speed)
 {
-  enum rtx_code code = (enum rtx_code) codearg;
+  enum rtx_code code = GET_CODE (x);
 
   switch (code)
     {
@@ -374,9 +367,7 @@ v850_rtx_costs (rtx x,
 
     case MULT:
       if (TARGET_V850E
-	  && (   GET_MODE (x) == SImode
-	      || GET_MODE (x) == HImode
-	      || GET_MODE (x) == QImode))
+	  && (mode == SImode || mode == HImode || mode == QImode))
         {
 	  if (GET_CODE (XEXP (x, 1)) == REG)
 	    *total = 4;
@@ -549,10 +540,13 @@ v850_print_operand (FILE * file, rtx x, int code)
 	  fprintf (file, reg_names[REGNO (x) + 1]);
 	  break;
 	case MEM:
-	  x = XEXP (adjust_address (x, SImode, 4), 0);
-	  v850_print_operand_address (file, x);
-	  if (GET_CODE (x) == CONST_INT)
-	    fprintf (file, "[r0]");
+	  {
+	    machine_mode mode = GET_MODE (x);
+	    x = XEXP (adjust_address (x, SImode, 4), 0);
+	    v850_print_operand_address (file, mode, x);
+	    if (GET_CODE (x) == CONST_INT)
+	      fprintf (file, "[r0]");
+	  }
 	  break;
 	  
 	case CONST_INT:
@@ -626,10 +620,11 @@ v850_print_operand (FILE * file, rtx x, int code)
 	{
 	case MEM:
 	  if (GET_CODE (XEXP (x, 0)) == CONST_INT)
-	    output_address (gen_rtx_PLUS (SImode, gen_rtx_REG (SImode, 0),
+	    output_address (GET_MODE (x),
+			    gen_rtx_PLUS (SImode, gen_rtx_REG (SImode, 0),
 					  XEXP (x, 0)));
 	  else
-	    output_address (XEXP (x, 0));
+	    output_address (GET_MODE (x), XEXP (x, 0));
 	  break;
 
 	case REG:
@@ -647,7 +642,7 @@ v850_print_operand (FILE * file, rtx x, int code)
 	case CONST:
 	case LABEL_REF:
 	case CODE_LABEL:
-	  v850_print_operand_address (file, x);
+	  v850_print_operand_address (file, VOIDmode, x);
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -661,7 +656,7 @@ v850_print_operand (FILE * file, rtx x, int code)
 /* Output assembly language output for the address ADDR to FILE.  */
 
 static void
-v850_print_operand_address (FILE * file, rtx addr)
+v850_print_operand_address (FILE * file, machine_mode /*mode*/, rtx addr)
 {
   switch (GET_CODE (addr))
     {
@@ -792,10 +787,13 @@ v850_output_addr_const_extra (FILE * file, rtx x)
      nothing, since the table will not be used.
      (cf gcc.c-torture/compile/990801-1.c).  */
   if (GET_CODE (x) == MINUS
-      && GET_CODE (XEXP (x, 0)) == LABEL_REF
-      && GET_CODE (XEXP (XEXP (x, 0), 0)) == CODE_LABEL
-      && INSN_DELETED_P (XEXP (XEXP (x, 0), 0)))
-    return true;
+      && GET_CODE (XEXP (x, 0)) == LABEL_REF)
+    {
+      rtx_code_label *label
+	= dyn_cast<rtx_code_label *> (XEXP (XEXP (x, 0), 0));
+      if (label && label->deleted ())
+	return true;
+    }
 
   output_addr_const (file, x);
   return true;
@@ -898,11 +896,11 @@ output_move_single (rtx * operands)
 	return "%S0st%W0 %.,%0";
     }
 
-  fatal_insn ("output_move_single:", gen_rtx_SET (VOIDmode, dst, src));
+  fatal_insn ("output_move_single:", gen_rtx_SET (dst, src));
   return "";
 }
 
-enum machine_mode
+machine_mode
 v850_select_cc_mode (enum rtx_code cond, rtx op0, rtx op1 ATTRIBUTE_UNUSED)
 {
   if (GET_MODE_CLASS (GET_MODE (op0)) == MODE_FLOAT)
@@ -928,8 +926,8 @@ v850_select_cc_mode (enum rtx_code cond, rtx op0, rtx op1 ATTRIBUTE_UNUSED)
   return CCmode;
 }
 
-enum machine_mode
-v850_gen_float_compare (enum rtx_code cond, enum machine_mode mode ATTRIBUTE_UNUSED, rtx op0, rtx op1)
+machine_mode
+v850_gen_float_compare (enum rtx_code cond, machine_mode mode ATTRIBUTE_UNUSED, rtx op0, rtx op1)
 {
   if (GET_MODE (op0) == DFmode)
     {
@@ -992,7 +990,7 @@ v850_gen_float_compare (enum rtx_code cond, enum machine_mode mode ATTRIBUTE_UNU
 }
 
 rtx
-v850_gen_compare (enum rtx_code cond, enum machine_mode mode, rtx op0, rtx op1)
+v850_gen_compare (enum rtx_code cond, machine_mode mode, rtx op0, rtx op1)
 {
   if (GET_MODE_CLASS(GET_MODE (op0)) != MODE_FLOAT)
     {
@@ -1004,7 +1002,7 @@ v850_gen_compare (enum rtx_code cond, enum machine_mode mode, rtx op0, rtx op1)
       rtx cc_reg;
       mode = v850_gen_float_compare (cond, mode, op0, op1);
       cc_reg = gen_rtx_REG (mode, CC_REGNUM);
-      emit_insn (gen_rtx_SET(mode, cc_reg, gen_rtx_REG (mode, FCC_REGNUM)));  
+      emit_insn (gen_rtx_SET (cc_reg, gen_rtx_REG (mode, FCC_REGNUM)));
 
       return gen_rtx_fmt_ee (cond, mode, cc_reg, const0_rtx);
     }
@@ -1014,7 +1012,7 @@ v850_gen_compare (enum rtx_code cond, enum machine_mode mode, rtx op0, rtx op1)
    MODE and signedness UNSIGNEDP.  */
 
 static int
-ep_memory_offset (enum machine_mode mode, int unsignedp ATTRIBUTE_UNUSED)
+ep_memory_offset (machine_mode mode, int unsignedp ATTRIBUTE_UNUSED)
 {
   int max_offset = 0;
 
@@ -1055,7 +1053,7 @@ ep_memory_offset (enum machine_mode mode, int unsignedp ATTRIBUTE_UNUSED)
 /* Return true if OP is a valid short EP memory reference */
 
 int
-ep_memory_operand (rtx op, enum machine_mode mode, int unsigned_load)
+ep_memory_operand (rtx op, machine_mode mode, int unsigned_load)
 {
   rtx addr, op0, op1;
   int max_offset;
@@ -1114,15 +1112,15 @@ ep_memory_operand (rtx op, enum machine_mode mode, int unsigned_load)
    taking care to save and preserve the ep.  */
 
 static void
-substitute_ep_register (rtx first_insn,
-                        rtx last_insn,
+substitute_ep_register (rtx_insn *first_insn,
+                        rtx_insn *last_insn,
                         int uses,
                         int regno,
                         rtx * p_r1,
                         rtx * p_ep)
 {
   rtx reg = gen_rtx_REG (Pmode, regno);
-  rtx insn;
+  rtx_insn *insn;
 
   if (!*p_r1)
     {
@@ -1210,10 +1208,10 @@ Saved %d bytes (%d uses of register %s) in function %s, starting as insn %d, end
       && SET_SRC (PATTERN (insn)) == *p_r1)
     delete_insn (insn);
   else
-    emit_insn_before (gen_rtx_SET (Pmode, *p_r1, *p_ep), first_insn);
+    emit_insn_before (gen_rtx_SET (*p_r1, *p_ep), first_insn);
 
-  emit_insn_before (gen_rtx_SET (Pmode, *p_ep, reg), first_insn);
-  emit_insn_before (gen_rtx_SET (Pmode, *p_ep, *p_r1), last_insn);
+  emit_insn_before (gen_rtx_SET (*p_ep, reg), first_insn);
+  emit_insn_before (gen_rtx_SET (*p_ep, *p_r1), last_insn);
 }
 
 
@@ -1227,8 +1225,8 @@ v850_reorg (void)
   struct
   {
     int uses;
-    rtx first_insn;
-    rtx last_insn;
+    rtx_insn *first_insn;
+    rtx_insn *last_insn;
   }
   regs[FIRST_PSEUDO_REGISTER];
 
@@ -1236,7 +1234,7 @@ v850_reorg (void)
   int use_ep = FALSE;
   rtx r1 = NULL_RTX;
   rtx ep = NULL_RTX;
-  rtx insn;
+  rtx_insn *insn;
   rtx pattern;
 
   /* If not ep mode, just return now.  */
@@ -1246,8 +1244,8 @@ v850_reorg (void)
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     {
       regs[i].uses = 0;
-      regs[i].first_insn = NULL_RTX;
-      regs[i].last_insn = NULL_RTX;
+      regs[i].first_insn = NULL;
+      regs[i].last_insn = NULL;
     }
 
   for (insn = get_insns (); insn != NULL_RTX; insn = NEXT_INSN (insn))
@@ -1280,8 +1278,8 @@ v850_reorg (void)
 	  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 	    {
 	      regs[i].uses = 0;
-	      regs[i].first_insn = NULL_RTX;
-	      regs[i].last_insn = NULL_RTX;
+	      regs[i].first_insn = NULL;
+	      regs[i].last_insn = NULL;
 	    }
 	  break;
 
@@ -1376,7 +1374,7 @@ v850_reorg (void)
 		 for the register */
 	      if (GET_CODE (dest) == REG)
 		{
-		  enum machine_mode mode = GET_MODE (dest);
+		  machine_mode mode = GET_MODE (dest);
 		  int regno;
 		  int endregno;
 
@@ -1413,8 +1411,8 @@ v850_reorg (void)
 			  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 			    {
 			      regs[i].uses = 0;
-			      regs[i].first_insn = NULL_RTX;
-			      regs[i].last_insn = NULL_RTX;
+			      regs[i].first_insn = NULL;
+			      regs[i].last_insn = NULL;
 			    }
 			}
 		    }
@@ -1422,8 +1420,8 @@ v850_reorg (void)
 		  for (i = regno; i < endregno; i++)
 		    {
 		      regs[i].uses = 0;
-		      regs[i].first_insn = NULL_RTX;
-		      regs[i].last_insn = NULL_RTX;
+		      regs[i].first_insn = NULL;
+		      regs[i].last_insn = NULL;
 		    }
 		}
 	    }
@@ -1715,8 +1713,7 @@ expand_prologue (void)
 			  + (TARGET_DISABLE_CALLT ? (TARGET_LONG_CALLS ? 2 : 1) : 0)));
 
 	  XVECEXP (save_all, 0, 0)
-	    = gen_rtx_SET (VOIDmode,
-			   stack_pointer_rtx,
+	    = gen_rtx_SET (stack_pointer_rtx,
 			   gen_rtx_PLUS (Pmode,
 					 stack_pointer_rtx,
 					 GEN_INT(-alloc_stack)));
@@ -1724,8 +1721,7 @@ expand_prologue (void)
 	    {
 	      offset -= 4;
 	      XVECEXP (save_all, 0, i+1)
-		= gen_rtx_SET (VOIDmode,
-			       gen_rtx_MEM (Pmode,
+		= gen_rtx_SET (gen_rtx_MEM (Pmode,
 					    gen_rtx_PLUS (Pmode,
 							  stack_pointer_rtx,
 							  GEN_INT(offset))),
@@ -1873,17 +1869,16 @@ expand_epilogue (void)
 					  rtvec_alloc (num_restore + 2));
 	  XVECEXP (restore_all, 0, 0) = ret_rtx;
 	  XVECEXP (restore_all, 0, 1)
-	    = gen_rtx_SET (VOIDmode, stack_pointer_rtx,
-			    gen_rtx_PLUS (Pmode,
-					  stack_pointer_rtx,
-					  GEN_INT (alloc_stack)));
+	    = gen_rtx_SET (stack_pointer_rtx,
+			   gen_rtx_PLUS (Pmode,
+					 stack_pointer_rtx,
+					 GEN_INT (alloc_stack)));
 
 	  offset = alloc_stack - 4;
 	  for (i = 0; i < num_restore; i++)
 	    {
 	      XVECEXP (restore_all, 0, i+2)
-		= gen_rtx_SET (VOIDmode,
-			       restore_regs[i],
+		= gen_rtx_SET (restore_regs[i],
 			       gen_rtx_MEM (Pmode,
                                             gen_rtx_PLUS (Pmode,
                                                           stack_pointer_rtx,
@@ -1989,7 +1984,7 @@ expand_epilogue (void)
 
 /* Update the condition code from the insn.  */
 void
-notice_update_cc (rtx body, rtx insn)
+notice_update_cc (rtx body, rtx_insn *insn)
 {
   switch (get_attr_cc (insn))
     {
@@ -2973,7 +2968,7 @@ v850_select_section (tree exp,
 static bool
 v850_function_value_regno_p (const unsigned int regno)
 {
-  return (regno == 10);
+  return (regno == RV_REGNUM);
 }
 
 /* Worker function for TARGET_RETURN_IN_MEMORY.  */
@@ -2996,7 +2991,16 @@ v850_function_value (const_tree valtype,
                     const_tree fn_decl_or_type ATTRIBUTE_UNUSED,
                     bool outgoing ATTRIBUTE_UNUSED)
 {
-  return gen_rtx_REG (TYPE_MODE (valtype), 10);
+  return gen_rtx_REG (TYPE_MODE (valtype), RV_REGNUM);
+}
+
+/* Implement TARGET_LIBCALL_VALUE.  */
+
+static rtx
+v850_libcall_value (machine_mode mode,
+		    const_rtx func ATTRIBUTE_UNUSED)
+{
+  return gen_rtx_REG (mode, RV_REGNUM);
 }
 
 
@@ -3062,7 +3066,7 @@ v850_issue_rate (void)
 /* Implement TARGET_LEGITIMATE_CONSTANT_P.  */
 
 static bool
-v850_legitimate_constant_p (enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
+v850_legitimate_constant_p (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 {
   return (GET_CODE (x) == CONST_DOUBLE
 	  || !(GET_CODE (x) == CONST
@@ -3072,8 +3076,68 @@ v850_legitimate_constant_p (enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 	       && !CONST_OK_FOR_K (INTVAL (XEXP (XEXP (x, 0), 1)))));
 }
 
+/* Helper function for `v850_legitimate_address_p'.  */
+
+static bool
+v850_reg_ok_for_base_p (const_rtx reg, bool strict_p)
+{
+  if (strict_p)
+  {
+    return REGNO_OK_FOR_BASE_P (REGNO (reg));
+  } else {
+    return true;
+  }
+}
+
+/* Accept either REG or SUBREG where a register is valid.  */
+
+static bool
+v850_rtx_ok_for_base_p (const_rtx x, bool strict_p)
+{
+  return ((REG_P (x) && v850_reg_ok_for_base_p  (x, strict_p))
+	  || (SUBREG_P (x) && REG_P (SUBREG_REG (x))
+	      && v850_reg_ok_for_base_p (SUBREG_REG (x), strict_p)));
+}
+
+/* Implement TARGET_LEGITIMATE_ADDRESS_P.  */
+
+static bool
+v850_legitimate_address_p (machine_mode mode, rtx x, bool strict_p,
+			   addr_space_t as ATTRIBUTE_UNUSED)
+{
+  gcc_assert (ADDR_SPACE_GENERIC_P (as));
+
+  if (v850_rtx_ok_for_base_p (x, strict_p))
+    return true;
+  if (CONSTANT_ADDRESS_P (x)
+      && (mode == QImode || INTVAL (x) % 2 == 0)
+      && (GET_MODE_SIZE (mode) <= 4 || INTVAL (x) % 4 == 0))
+    return true;
+  if (GET_CODE (x) == LO_SUM
+      && REG_P (XEXP (x, 0))
+      && v850_reg_ok_for_base_p (XEXP (x, 0), strict_p)
+      && CONSTANT_P (XEXP (x, 1))
+      && (!CONST_INT_P (XEXP (x, 1))
+	  || ((mode == QImode || INTVAL (XEXP (x, 1)) % 2 == 0)
+	      && constraint_satisfied_p (XEXP (x, 1), CONSTRAINT_K)))
+      && GET_MODE_SIZE (mode) <= GET_MODE_SIZE (word_mode))
+    return true;
+  if (special_symbolref_operand (x, mode)
+      && (GET_MODE_SIZE (mode) <= GET_MODE_SIZE (word_mode)))
+    return true;
+  if (GET_CODE (x) == PLUS
+      && v850_rtx_ok_for_base_p (XEXP (x, 0), strict_p)
+      && constraint_satisfied_p (XEXP (x,1), CONSTRAINT_K)
+      && ((mode == QImode || INTVAL (XEXP (x, 1)) % 2 == 0)
+	   && CONST_OK_FOR_K (INTVAL (XEXP (x, 1))
+			      + (GET_MODE_NUNITS (mode) * UNITS_PER_WORD))))
+    return true;
+
+  return false;  
+}
+
 static int
-v850_memory_move_cost (enum machine_mode mode,
+v850_memory_move_cost (machine_mode mode,
 		       reg_class_t reg_class ATTRIBUTE_UNUSED,
 		       bool in)
 {
@@ -3092,7 +3156,7 @@ v850_memory_move_cost (enum machine_mode mode,
 }
 
 int
-v850_adjust_insn_length (rtx insn, int length)
+v850_adjust_insn_length (rtx_insn *insn, int length)
 {
   if (TARGET_V850E3V5_UP)
     {
@@ -3238,6 +3302,8 @@ v850_gen_movdi (rtx * operands)
 #define TARGET_FUNCTION_VALUE_REGNO_P v850_function_value_regno_p
 #undef  TARGET_FUNCTION_VALUE
 #define TARGET_FUNCTION_VALUE v850_function_value
+#undef  TARGET_LIBCALL_VALUE
+#define TARGET_LIBCALL_VALUE v850_libcall_value
 
 #undef  TARGET_PROMOTE_PROTOTYPES
 #define TARGET_PROMOTE_PROTOTYPES hook_bool_const_tree_true
@@ -3273,6 +3339,9 @@ v850_gen_movdi (rtx * operands)
 
 #undef  TARGET_LEGITIMATE_CONSTANT_P
 #define TARGET_LEGITIMATE_CONSTANT_P v850_legitimate_constant_p
+
+#undef  TARGET_ADDR_SPACE_LEGITIMATE_ADDRESS_P
+#define TARGET_ADDR_SPACE_LEGITIMATE_ADDRESS_P v850_legitimate_address_p
 
 #undef  TARGET_CAN_USE_DOLOOP_P
 #define TARGET_CAN_USE_DOLOOP_P can_use_doloop_if_innermost

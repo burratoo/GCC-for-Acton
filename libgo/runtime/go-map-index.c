@@ -8,6 +8,7 @@
 #include <stdlib.h>
 
 #include "runtime.h"
+#include "malloc.h"
 #include "go-alloc.h"
 #include "go-assert.h"
 #include "map.h"
@@ -21,7 +22,7 @@ __go_map_rehash (struct __go_map *map)
   const struct __go_type_descriptor *key_descriptor;
   uintptr_t key_offset;
   size_t key_size;
-  uintptr_t (*hashfn) (const void *, uintptr_t);
+  const FuncVal *hashfn;
   uintptr_t old_bucket_count;
   void **old_buckets;
   uintptr_t new_bucket_count;
@@ -54,7 +55,7 @@ __go_map_rehash (struct __go_map *map)
 
 	  /* We could speed up rehashing at the cost of memory space
 	     by caching the hash code.  */
-	  key_hash = hashfn (entry + key_offset, key_size);
+	  key_hash = __go_call_hashfn (hashfn, entry + key_offset, key_size);
 	  new_bucket_index = key_hash % new_bucket_count;
 
 	  next = *(char **) entry;
@@ -63,7 +64,8 @@ __go_map_rehash (struct __go_map *map)
 	}
     }
 
-  __go_free (old_buckets);
+  if (old_bucket_count * sizeof (void *) >= TinySize)
+    __go_free (old_buckets);
 
   map->__bucket_count = new_bucket_count;
   map->__buckets = new_buckets;
@@ -80,7 +82,7 @@ __go_map_index (struct __go_map *map, const void *key, _Bool insert)
   const struct __go_map_descriptor *descriptor;
   const struct __go_type_descriptor *key_descriptor;
   uintptr_t key_offset;
-  _Bool (*equalfn) (const void*, const void*, uintptr_t);
+  const FuncVal *equalfn;
   size_t key_hash;
   size_t key_size;
   size_t bucket_index;
@@ -101,13 +103,13 @@ __go_map_index (struct __go_map *map, const void *key, _Bool insert)
   __go_assert (key_size != -1UL);
   equalfn = key_descriptor->__equalfn;
 
-  key_hash = key_descriptor->__hashfn (key, key_size);
+  key_hash = __go_call_hashfn (key_descriptor->__hashfn, key, key_size);
   bucket_index = key_hash % map->__bucket_count;
 
   entry = (char *) map->__buckets[bucket_index];
   while (entry != NULL)
     {
-      if (equalfn (key, entry + key_offset, key_size))
+      if (__go_call_equalfn (equalfn, key, entry + key_offset, key_size))
 	return entry + descriptor->__val_offset;
       entry = *(char **) entry;
     }

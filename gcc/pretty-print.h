@@ -1,5 +1,5 @@
 /* Various declarations for language-independent pretty-print subroutines.
-   Copyright (C) 2002-2014 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -22,7 +22,6 @@ along with GCC; see the file COPYING3.  If not see
 #define GCC_PRETTY_PRINT_H
 
 #include "obstack.h"
-#include "input.h"
 #include "wide-int-print.h"
 
 /* Maximum number of format string arguments.  */
@@ -35,8 +34,11 @@ struct text_info
   const char *format_spec;
   va_list *args_ptr;
   int err_no;  /* for %m */
-  location_t *locus;
   void **x_data;
+  rich_location *m_richloc;
+
+  void set_location (unsigned int idx, location_t loc, bool caret_p);
+  location_t get_location (unsigned int index_of_location) const;
 };
 
 /* How often diagnostics are prefixed by their locations:
@@ -100,7 +102,49 @@ struct output_buffer
   /* This must be large enough to hold any printed integer or
      floating-point value.  */
   char digit_buffer[128];
+
+  /* Nonzero means that text should be flushed when
+     appropriate. Otherwise, text is buffered until either
+     pp_really_flush or pp_clear_output_area are called.  */
+  bool flush_p;
 };
+
+/* Finishes constructing a NULL-terminated character string representing
+   the buffered text.  */
+static inline const char *
+output_buffer_formatted_text (output_buffer *buff)
+{
+  obstack_1grow (buff->obstack, '\0');
+  return (const char *) obstack_base (buff->obstack);
+}
+
+/* Append to the output buffer a string specified by its
+   STARTing character and LENGTH.  */
+static inline void
+output_buffer_append_r (output_buffer *buff, const char *start, int length)
+{
+  gcc_checking_assert (start);
+  obstack_grow (buff->obstack, start, length);
+  for (int i = 0; i < length; i++)
+    if (start[i] == '\n')
+      buff->line_length = 0;
+    else
+      buff->line_length++;
+}
+
+/*  Return a pointer to the last character emitted in the
+    output_buffer.  A NULL pointer means no character available.  */
+static inline const char *
+output_buffer_last_position_in_text (const output_buffer *buff)
+{
+  const char *p = NULL;
+  struct obstack *text = buff->obstack;
+
+  if (obstack_base (text) != obstack_next_free (text))
+    p = ((const char *) obstack_next_free (text)) - 1;
+  return p;
+}
+
 
 /* The type of pretty-printer flags passed to clients.  */
 typedef unsigned int pp_flags;
@@ -132,7 +176,7 @@ struct pp_wrapping_mode_t
 /* Get or set the wrapping mode as a single entity.  */
 #define pp_wrapping_mode(PP) (PP)->wrapping
 
-/* The type of a hook that formats client-specific data onto a pretty_pinter.
+/* The type of a hook that formats client-specific data onto a pretty_printer.
    A client-supplied formatter returns true if everything goes well,
    otherwise it returns false.  */
 typedef bool (*printer_fn) (pretty_printer *, text_info *, const char *,
@@ -314,6 +358,7 @@ extern void pp_printf (pretty_printer *, const char *, ...)
 extern void pp_verbatim (pretty_printer *, const char *, ...)
      ATTRIBUTE_GCC_PPDIAG(2,3);
 extern void pp_flush (pretty_printer *);
+extern void pp_really_flush (pretty_printer *);
 extern void pp_format (pretty_printer *, text_info *);
 extern void pp_output_formatted_text (pretty_printer *);
 extern void pp_format_verbatim (pretty_printer *, text_info *);

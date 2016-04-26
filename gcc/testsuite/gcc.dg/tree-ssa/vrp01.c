@@ -1,6 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-O2 -fdump-tree-vrp1" } */
 
+int
 foo (int *p, int i)
 {
   int x;
@@ -25,4 +26,3 @@ foo (int *p, int i)
 }
 
 /* { dg-final { scan-tree-dump-times "Folding predicate p_.*to 1" 1 "vrp1" } } */
-/* { dg-final { cleanup-tree-dump "vrp1" } } */

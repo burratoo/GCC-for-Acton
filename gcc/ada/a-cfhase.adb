@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2010-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2010-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -35,8 +35,9 @@ with Ada.Containers.Prime_Numbers; use Ada.Containers.Prime_Numbers;
 
 with System; use type System.Address;
 
-package body Ada.Containers.Formal_Hashed_Sets is
-   pragma SPARK_Mode (Off);
+package body Ada.Containers.Formal_Hashed_Sets with
+  SPARK_Mode => Off
+is
 
    -----------------------
    -- Local Subprograms --
@@ -514,7 +515,7 @@ package body Ada.Containers.Formal_Hashed_Sets is
          end loop;
       end Find_Equivalent_Key;
 
-   --  Start of processing of Equivalent_Sets
+   --  Start of processing for Equivalent_Sets
 
    begin
       return Is_Equivalent (Left, Right);
@@ -1385,7 +1386,7 @@ package body Ada.Containers.Formal_Hashed_Sets is
       end;
    end Vet;
 
-   package body Generic_Keys is
+   package body Generic_Keys with SPARK_Mode => Off is
 
       -----------------------
       -- Local Subprograms --

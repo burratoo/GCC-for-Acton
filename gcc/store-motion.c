@@ -1,5 +1,5 @@
 /* Store motion via Lazy Code Motion on the reverse CFG.
-   Copyright (C) 1997-2014 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,28 +20,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "diagnostic-core.h"
-#include "toplev.h"
-
+#include "backend.h"
 #include "rtl.h"
 #include "tree.h"
-#include "tm_p.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "recog.h"
-#include "basic-block.h"
-#include "function.h"
-#include "expr.h"
-#include "except.h"
-#include "ggc.h"
-#include "intl.h"
-#include "tree-pass.h"
-#include "hash-table.h"
+#include "predict.h"
 #include "df.h"
+#include "toplev.h"
+
+#include "cfgrtl.h"
+#include "cfganal.h"
+#include "lcm.h"
+#include "cfgcleanup.h"
+#include "expr.h"
+#include "tree-pass.h"
 #include "dbgcnt.h"
+#include "rtl-iter.h"
 
 /* This pass implements downward store motion.
    As of May 1, 2009, the pass is not enabled by default on any target,
@@ -72,9 +65,9 @@ struct st_expr
   /* List of registers mentioned by the mem.  */
   rtx pattern_regs;
   /* INSN list of stores that are locally anticipatable.  */
-  rtx antic_stores;
+  rtx_insn_list *antic_stores;
   /* INSN list of stores that are locally available.  */
-  rtx avail_stores;
+  rtx_insn_list *avail_stores;
   /* Next in the list.  */
   struct st_expr * next;
   /* Store ID in the dataflow bitmaps.  */
@@ -107,23 +100,21 @@ static struct edge_list *edge_list;
 
 /* Hashtable helpers.  */
 
-struct st_expr_hasher : typed_noop_remove <st_expr>
+struct st_expr_hasher : nofree_ptr_hash <st_expr>
 {
-  typedef st_expr value_type;
-  typedef st_expr compare_type;
-  static inline hashval_t hash (const value_type *);
-  static inline bool equal (const value_type *, const compare_type *);
+  static inline hashval_t hash (const st_expr *);
+  static inline bool equal (const st_expr *, const st_expr *);
 };
 
 inline hashval_t
-st_expr_hasher::hash (const value_type *x)
+st_expr_hasher::hash (const st_expr *x)
 {
   int do_not_record_p = 0;
   return hash_rtx (x->pattern, GET_MODE (x->pattern), &do_not_record_p, NULL, false);
 }
 
 inline bool
-st_expr_hasher::equal (const value_type *ptr1, const compare_type *ptr2)
+st_expr_hasher::equal (const st_expr *ptr1, const st_expr *ptr2)
 {
   return exp_equiv_p (ptr1->pattern, ptr2->pattern, 0, true);
 }
@@ -156,8 +147,8 @@ st_expr_entry (rtx x)
   ptr->next         = store_motion_mems;
   ptr->pattern      = x;
   ptr->pattern_regs = NULL_RTX;
-  ptr->antic_stores = NULL_RTX;
-  ptr->avail_stores = NULL_RTX;
+  ptr->antic_stores = NULL;
+  ptr->avail_stores = NULL;
   ptr->reaching_reg = NULL_RTX;
   ptr->index        = 0;
   ptr->hash_index   = hash;
@@ -278,27 +269,20 @@ store_ops_ok (const_rtx x, int *regs_set)
   return true;
 }
 
-/* Helper for extract_mentioned_regs.  */
-
-static int
-extract_mentioned_regs_1 (rtx *loc, void *data)
-{
-  rtx *mentioned_regs_p = (rtx *) data;
-
-  if (REG_P (*loc))
-    *mentioned_regs_p = alloc_EXPR_LIST (0, *loc, *mentioned_regs_p);
-
-  return 0;
-}
-
 /* Returns a list of registers mentioned in X.
    FIXME: A regset would be prettier and less expensive.  */
 
-static rtx
+static rtx_expr_list *
 extract_mentioned_regs (rtx x)
 {
-  rtx mentioned_regs = NULL;
-  for_each_rtx (&x, extract_mentioned_regs_1, &mentioned_regs);
+  rtx_expr_list *mentioned_regs = NULL;
+  subrtx_var_iterator::array_type array;
+  FOR_EACH_SUBRTX_VAR (iter, array, x, NONCONST)
+    {
+      rtx x = *iter;
+      if (REG_P (x))
+	mentioned_regs = alloc_EXPR_LIST (0, x, mentioned_regs);
+    }
   return mentioned_regs;
 }
 
@@ -540,7 +524,7 @@ static void
 find_moveable_store (rtx_insn *insn, int *regs_set_before, int *regs_set_after)
 {
   struct st_expr * ptr;
-  rtx dest, set, tmp;
+  rtx dest, set;
   int check_anticipatable, check_available;
   basic_block bb = BLOCK_FOR_INSN (insn);
 
@@ -573,7 +557,8 @@ find_moveable_store (rtx_insn *insn, int *regs_set_before, int *regs_set_after)
      assumes that we can do this.  But sometimes the target machine has
      oddities like MEM read-modify-write instruction.  See for example
      PR24257.  */
-  if (!can_assign_to_reg_without_clobbers_p (SET_SRC (set)))
+  if (!can_assign_to_reg_without_clobbers_p (SET_SRC (set),
+					      GET_MODE (SET_SRC (set))))
     return;
 
   ptr = st_expr_entry (dest);
@@ -587,15 +572,16 @@ find_moveable_store (rtx_insn *insn, int *regs_set_before, int *regs_set_after)
     check_anticipatable = 1;
   else
     {
-      tmp = XEXP (ptr->antic_stores, 0);
+      rtx_insn *tmp = ptr->antic_stores->insn ();
       if (tmp != NULL_RTX
 	  && BLOCK_FOR_INSN (tmp) != bb)
 	check_anticipatable = 1;
     }
   if (check_anticipatable)
     {
+      rtx_insn *tmp;
       if (store_killed_before (dest, ptr->pattern_regs, insn, bb, regs_set_before))
-	tmp = NULL_RTX;
+	tmp = NULL;
       else
 	tmp = insn;
       ptr->antic_stores = alloc_INSN_LIST (tmp, ptr->antic_stores);
@@ -609,7 +595,7 @@ find_moveable_store (rtx_insn *insn, int *regs_set_before, int *regs_set_after)
     check_available = 1;
   else
     {
-      tmp = XEXP (ptr->avail_stores, 0);
+      rtx_insn *tmp = ptr->avail_stores->insn ();
       if (BLOCK_FOR_INSN (tmp) != bb)
 	check_available = 1;
     }
@@ -619,6 +605,7 @@ find_moveable_store (rtx_insn *insn, int *regs_set_before, int *regs_set_after)
 	 failed last time.  */
       if (LAST_AVAIL_CHECK_FAILURE (ptr))
 	{
+	  rtx_insn *tmp;
 	  for (tmp = BB_END (bb);
 	       tmp != insn && tmp != LAST_AVAIL_CHECK_FAILURE (ptr);
 	       tmp = PREV_INSN (tmp))
@@ -642,11 +629,8 @@ compute_store_table (void)
 {
   int ret;
   basic_block bb;
-#ifdef ENABLE_CHECKING
-  unsigned regno;
-#endif
   rtx_insn *insn;
-  rtx tmp;
+  rtx_insn *tmp;
   df_ref def;
   int *last_set_in, *already_set;
   struct st_expr * ptr, **prev_next_ptr_ptr;
@@ -690,19 +674,20 @@ compute_store_table (void)
 	      last_set_in[DF_REF_REGNO (def)] = 0;
 	}
 
-#ifdef ENABLE_CHECKING
-      /* last_set_in should now be all-zero.  */
-      for (regno = 0; regno < max_gcse_regno; regno++)
-	gcc_assert (!last_set_in[regno]);
-#endif
+      if (flag_checking)
+	{
+	  /* last_set_in should now be all-zero.  */
+	  for (unsigned regno = 0; regno < max_gcse_regno; regno++)
+	    gcc_assert (!last_set_in[regno]);
+	}
 
       /* Clear temporary marks.  */
       for (ptr = first_st_expr (); ptr != NULL; ptr = next_st_expr (ptr))
 	{
 	  LAST_AVAIL_CHECK_FAILURE (ptr) = NULL_RTX;
 	  if (ptr->antic_stores
-	      && (tmp = XEXP (ptr->antic_stores, 0)) == NULL_RTX)
-	    ptr->antic_stores = XEXP (ptr->antic_stores, 1);
+	      && (tmp = ptr->antic_stores->insn ()) == NULL_RTX)
+	    ptr->antic_stores = ptr->antic_stores->next ();
 	}
     }
 
@@ -790,7 +775,7 @@ insert_store (struct st_expr * expr, edge e)
     return 0;
 
   reg = expr->reaching_reg;
-  insn = as_a <rtx_insn *> (gen_move_insn (copy_rtx (expr->pattern), reg));
+  insn = gen_move_insn (copy_rtx (expr->pattern), reg);
 
   /* If we are inserting this expression on ALL predecessor edges of a BB,
      insert it at the start of the BB, and reset the insert bits on the other
@@ -924,13 +909,14 @@ remove_reachable_equiv_notes (basic_block bb, struct st_expr *smexpr)
 /* This routine will replace a store with a SET to a specified register.  */
 
 static void
-replace_store_insn (rtx reg, rtx del, basic_block bb, struct st_expr *smexpr)
+replace_store_insn (rtx reg, rtx_insn *del, basic_block bb,
+		    struct st_expr *smexpr)
 {
   rtx_insn *insn;
   rtx mem, note, set, ptr;
 
   mem = smexpr->pattern;
-  insn = as_a <rtx_insn *> (gen_move_insn (reg, SET_SRC (single_set (del))));
+  insn = gen_move_insn (reg, SET_SRC (single_set (del)));
 
   for (ptr = smexpr->antic_stores; ptr; ptr = XEXP (ptr, 1))
     if (XEXP (ptr, 0) == del)
@@ -988,16 +974,16 @@ replace_store_insn (rtx reg, rtx del, basic_block bb, struct st_expr *smexpr)
 static void
 delete_store (struct st_expr * expr, basic_block bb)
 {
-  rtx reg, i, del;
+  rtx reg;
 
   if (expr->reaching_reg == NULL_RTX)
     expr->reaching_reg = gen_reg_rtx_and_attrs (expr->pattern);
 
   reg = expr->reaching_reg;
 
-  for (i = expr->avail_stores; i; i = XEXP (i, 1))
+  for (rtx_insn_list *i = expr->avail_stores; i; i = i->next ())
     {
-      del = XEXP (i, 0);
+      rtx_insn *del = i->insn ();
       if (BLOCK_FOR_INSN (del) == bb)
 	{
 	  /* We know there is only one since we deleted redundant
@@ -1015,7 +1001,8 @@ build_store_vectors (void)
 {
   basic_block bb;
   int *regs_set_in_block;
-  rtx insn, st;
+  rtx_insn *insn;
+  rtx_insn_list *st;
   struct st_expr * ptr;
   unsigned int max_gcse_regno = max_reg_num ();
 
@@ -1031,9 +1018,9 @@ build_store_vectors (void)
 
   for (ptr = first_st_expr (); ptr != NULL; ptr = next_st_expr (ptr))
     {
-      for (st = ptr->avail_stores; st != NULL; st = XEXP (st, 1))
+      for (st = ptr->avail_stores; st != NULL; st = st->next ())
 	{
-	  insn = XEXP (st, 0);
+	  insn = st->insn ();
 	  bb = BLOCK_FOR_INSN (insn);
 
 	  /* If we've already seen an available expression in this block,
@@ -1045,15 +1032,15 @@ build_store_vectors (void)
 	      rtx r = gen_reg_rtx_and_attrs (ptr->pattern);
 	      if (dump_file)
 		fprintf (dump_file, "Removing redundant store:\n");
-	      replace_store_insn (r, XEXP (st, 0), bb, ptr);
+	      replace_store_insn (r, st->insn (), bb, ptr);
 	      continue;
 	    }
 	  bitmap_set_bit (st_avloc[bb->index], ptr->index);
 	}
 
-      for (st = ptr->antic_stores; st != NULL; st = XEXP (st, 1))
+      for (st = ptr->antic_stores; st != NULL; st = st->next ())
 	{
-	  insn = XEXP (st, 0);
+	  insn = st->insn ();
 	  bb = BLOCK_FOR_INSN (insn);
 	  bitmap_set_bit (st_antloc[bb->index], ptr->index);
 	}

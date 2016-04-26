@@ -1,5 +1,5 @@
 /* Data flow functions for trees.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -21,34 +21,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "hashtab.h"
+#include "backend.h"
+#include "rtl.h"
 #include "tree.h"
-#include "stor-layout.h"
-#include "tm_p.h"
-#include "basic-block.h"
-#include "langhooks.h"
-#include "flags.h"
-#include "function.h"
-#include "tree-pretty-print.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
 #include "gimple.h"
+#include "tree-pass.h"
+#include "ssa.h"
+#include "tree-pretty-print.h"
+#include "fold-const.h"
+#include "stor-layout.h"
+#include "langhooks.h"
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
-#include "gimple-ssa.h"
-#include "tree-phinodes.h"
-#include "ssa-iterators.h"
-#include "stringpool.h"
-#include "tree-ssanames.h"
-#include "expr.h"
 #include "tree-dfa.h"
-#include "tree-inline.h"
-#include "tree-pass.h"
-#include "params.h"
-#include "wide-int.h"
 
 /* Build and maintain data flow information for trees.  */
 
@@ -86,12 +71,12 @@ renumber_gimple_stmt_uids (void)
       gimple_stmt_iterator bsi;
       for (bsi = gsi_start_phis (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	{
-	  gimple stmt = gsi_stmt (bsi);
+	  gimple *stmt = gsi_stmt (bsi);
 	  gimple_set_uid (stmt, inc_gimple_stmt_max_uid (cfun));
 	}
       for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	{
-	  gimple stmt = gsi_stmt (bsi);
+	  gimple *stmt = gsi_stmt (bsi);
 	  gimple_set_uid (stmt, inc_gimple_stmt_max_uid (cfun));
 	}
     }
@@ -112,12 +97,12 @@ renumber_gimple_stmt_uids_in_blocks (basic_block *blocks, int n_blocks)
       gimple_stmt_iterator bsi;
       for (bsi = gsi_start_phis (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	{
-	  gimple stmt = gsi_stmt (bsi);
+	  gimple *stmt = gsi_stmt (bsi);
 	  gimple_set_uid (stmt, inc_gimple_stmt_max_uid (cfun));
 	}
       for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	{
-	  gimple stmt = gsi_stmt (bsi);
+	  gimple *stmt = gsi_stmt (bsi);
 	  gimple_set_uid (stmt, inc_gimple_stmt_max_uid (cfun));
 	}
     }
@@ -233,7 +218,7 @@ dump_dfa_stats (FILE *file)
   fprintf (file, fmt_str_1, "VDEF operands", dfa_stats.num_vdefs,
 	   SCALE (size), LABEL (size));
 
-  size = dfa_stats.num_phis * sizeof (struct gimple_statement_phi);
+  size = dfa_stats.num_phis * sizeof (struct gphi);
   total += size;
   fprintf (file, fmt_str_1, "PHI nodes", dfa_stats.num_phis,
 	   SCALE (size), LABEL (size));
@@ -282,20 +267,20 @@ collect_dfa_stats (struct dfa_stats_d *dfa_stats_p ATTRIBUTE_UNUSED)
   /* Walk all the statements in the function counting references.  */
   FOR_EACH_BB_FN (bb, cfun)
     {
-      gimple_stmt_iterator si;
-
-      for (si = gsi_start_phis (bb); !gsi_end_p (si); gsi_next (&si))
+      for (gphi_iterator si = gsi_start_phis (bb); !gsi_end_p (si);
+	   gsi_next (&si))
 	{
-	  gimple phi = gsi_stmt (si);
+	  gphi *phi = si.phi ();
 	  dfa_stats_p->num_phis++;
 	  dfa_stats_p->num_phi_args += gimple_phi_num_args (phi);
 	  if (gimple_phi_num_args (phi) > dfa_stats_p->max_num_phi_args)
 	    dfa_stats_p->max_num_phi_args = gimple_phi_num_args (phi);
 	}
 
-      for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
+      for (gimple_stmt_iterator si = gsi_start_bb (bb); !gsi_end_p (si);
+	   gsi_next (&si))
 	{
-	  gimple stmt = gsi_stmt (si);
+	  gimple *stmt = gsi_stmt (si);
 	  dfa_stats_p->num_defs += NUM_SSA_OPERANDS (stmt, SSA_OP_DEF);
 	  dfa_stats_p->num_uses += NUM_SSA_OPERANDS (stmt, SSA_OP_USE);
 	  dfa_stats_p->num_vdefs += gimple_vdef (stmt) ? 1 : 0;
@@ -322,7 +307,7 @@ ssa_default_def (struct function *fn, tree var)
 	      || TREE_CODE (var) == RESULT_DECL);
   in.var = (tree)&ind;
   ind.uid = DECL_UID (var);
-  return (tree) htab_find_with_hash (DEFAULT_DEFS (fn), &in, DECL_UID (var));
+  return DEFAULT_DEFS (fn)->find_with_hash ((tree)&in, DECL_UID (var));
 }
 
 /* Insert the pair VAR's UID, DEF into the default_defs hashtable
@@ -333,7 +318,6 @@ set_ssa_default_def (struct function *fn, tree var, tree def)
 {
   struct tree_decl_minimal ind;
   struct tree_ssa_name in;
-  void **loc;
 
   gcc_assert (TREE_CODE (var) == VAR_DECL
 	      || TREE_CODE (var) == PARM_DECL
@@ -342,25 +326,26 @@ set_ssa_default_def (struct function *fn, tree var, tree def)
   ind.uid = DECL_UID (var);
   if (!def)
     {
-      loc = htab_find_slot_with_hash (DEFAULT_DEFS (fn), &in,
-				      DECL_UID (var), NO_INSERT);
+      tree *loc = DEFAULT_DEFS (fn)->find_slot_with_hash ((tree)&in,
+							  DECL_UID (var),
+							  NO_INSERT);
       if (loc)
 	{
 	  SSA_NAME_IS_DEFAULT_DEF (*(tree *)loc) = false;
-	  htab_clear_slot (DEFAULT_DEFS (fn), loc);
+	  DEFAULT_DEFS (fn)->clear_slot (loc);
 	}
       return;
     }
   gcc_assert (TREE_CODE (def) == SSA_NAME && SSA_NAME_VAR (def) == var);
-  loc = htab_find_slot_with_hash (DEFAULT_DEFS (fn), &in,
-                                  DECL_UID (var), INSERT);
+  tree *loc = DEFAULT_DEFS (fn)->find_slot_with_hash ((tree)&in,
+						      DECL_UID (var), INSERT);
 
   /* Default definition might be changed by tail call optimization.  */
   if (*loc)
-    SSA_NAME_IS_DEFAULT_DEF (*(tree *) loc) = false;
+    SSA_NAME_IS_DEFAULT_DEF (*loc) = false;
 
    /* Mark DEF as the default definition for VAR.  */
-  *(tree *) loc = def;
+  *loc = def;
   SSA_NAME_IS_DEFAULT_DEF (def) = true;
 }
 
@@ -383,12 +368,14 @@ get_or_create_ssa_default_def (struct function *fn, tree var)
    base variable.  The access range is delimited by bit positions *POFFSET and
    *POFFSET + *PMAX_SIZE.  The access size is *PSIZE bits.  If either
    *PSIZE or *PMAX_SIZE is -1, they could not be determined.  If *PSIZE
-   and *PMAX_SIZE are equal, the access is non-variable.  */
+   and *PMAX_SIZE are equal, the access is non-variable.  If *PREVERSE is
+   true, the storage order of the reference is reversed.  */
 
 tree
 get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
 			 HOST_WIDE_INT *psize,
-			 HOST_WIDE_INT *pmax_size)
+			 HOST_WIDE_INT *pmax_size,
+			 bool *preverse)
 {
   offset_int bitsize = -1;
   offset_int maxsize;
@@ -396,14 +383,15 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
   offset_int bit_offset = 0;
   bool seen_variable_array_ref = false;
 
-  /* First get the final access size from just the outermost expression.  */
+  /* First get the final access size and the storage order from just the
+     outermost expression.  */
   if (TREE_CODE (exp) == COMPONENT_REF)
     size_tree = DECL_SIZE (TREE_OPERAND (exp, 1));
   else if (TREE_CODE (exp) == BIT_FIELD_REF)
     size_tree = TREE_OPERAND (exp, 1);
   else if (!VOID_TYPE_P (TREE_TYPE (exp)))
     {
-      enum machine_mode mode = TYPE_MODE (TREE_TYPE (exp));
+      machine_mode mode = TYPE_MODE (TREE_TYPE (exp));
       if (mode == BLKmode)
 	size_tree = TYPE_SIZE (TREE_TYPE (exp));
       else
@@ -412,6 +400,8 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
   if (size_tree != NULL_TREE
       && TREE_CODE (size_tree) == INTEGER_CST)
     bitsize = wi::to_offset (size_tree);
+
+  *preverse = reverse_storage_order_for_component_p (exp);
 
   /* Initially, maxsize is the same as the accessed element size.
      In the following it will only grow (or become -1).  */
@@ -598,15 +588,6 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
       exp = TREE_OPERAND (exp, 0);
     }
 
-  /* We need to deal with variable arrays ending structures.  */
-  if (seen_variable_array_ref
-      && maxsize != -1
-      && (TYPE_SIZE (TREE_TYPE (exp)) == NULL_TREE
-	  || TREE_CODE (TYPE_SIZE (TREE_TYPE (exp))) != INTEGER_CST
-	  || (bit_offset + maxsize
-	      == wi::to_offset (TYPE_SIZE (TREE_TYPE (exp))))))
-    maxsize = -1;
-
  done:
   if (!wi::fits_shwi_p (bitsize) || wi::neg_p (bitsize))
     {
@@ -631,9 +612,22 @@ get_ref_base_and_extent (tree exp, HOST_WIDE_INT *poffset,
 
   if (DECL_P (exp))
     {
+      if (flag_unconstrained_commons
+	  && TREE_CODE (exp) == VAR_DECL && DECL_COMMON (exp))
+	{
+	  tree sz_tree = TYPE_SIZE (TREE_TYPE (exp));
+	  /* If size is unknown, or we have read to the end, assume there
+	     may be more to the structure than we are told.  */
+	  if (TREE_CODE (TREE_TYPE (exp)) == ARRAY_TYPE
+	      || (seen_variable_array_ref
+		  && (sz_tree == NULL_TREE
+		      || TREE_CODE (sz_tree) != INTEGER_CST
+		      || (bit_offset + maxsize == wi::to_offset (sz_tree)))))
+	    maxsize = -1;
+	}
       /* If maxsize is unknown adjust it according to the size of the
          base decl.  */
-      if (maxsize == -1
+      else if (maxsize == -1
 	  && DECL_SIZE (exp)
 	  && TREE_CODE (DECL_SIZE (exp)) == INTEGER_CST)
 	maxsize = wi::to_offset (DECL_SIZE (exp)) - bit_offset;
@@ -815,7 +809,7 @@ get_addr_base_and_unit_offset (tree exp, HOST_WIDE_INT *poffset)
    SSA_NAME_OCCURS_IN_ABNORMAL_PHI set, otherwise false.  */
 
 bool
-stmt_references_abnormal_ssa_name (gimple stmt)
+stmt_references_abnormal_ssa_name (gimple *stmt)
 {
   ssa_op_iter oi;
   use_operand_p use_p;
@@ -830,12 +824,11 @@ stmt_references_abnormal_ssa_name (gimple stmt)
 }
 
 /* Pair of tree and a sorting index, for dump_enumerated_decls.  */
-struct GTY(()) numbered_tree_d
+struct GTY(()) numbered_tree
 {
   tree t;
   int num;
 };
-typedef struct numbered_tree_d numbered_tree;
 
 
 /* Compare two declarations references by their DECL_UID / sequence number.

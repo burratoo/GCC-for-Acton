@@ -1,7 +1,7 @@
 /* The tracer pass for the GNU compiler.
    Contributed by Jan Hubicka, SuSE Labs.
    Adapted to work on GIMPLE instead of RTL by Robert Kidd, UIUC.
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -36,29 +36,24 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
+#include "backend.h"
 #include "rtl.h"
-#include "hard-reg-set.h"
-#include "basic-block.h"
-#include "fibheap.h"
-#include "flags.h"
-#include "params.h"
-#include "coverage.h"
-#include "tree-pass.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
+#include "tree.h"
 #include "gimple.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
+#include "profile.h"
+#include "cfganal.h"
+#include "params.h"
 #include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
 #include "tree-inline.h"
 #include "cfgloop.h"
+#include "fibonacci_heap.h"
+#include "tracer.h"
 
 static int count_insns (basic_block);
-static bool ignore_bb_p (const_basic_block);
 static bool better_p (const_edge, const_edge);
 static edge find_best_successor (basic_block);
 static edge find_best_predecessor (basic_block);
@@ -90,21 +85,28 @@ bb_seen_p (basic_block bb)
 }
 
 /* Return true if we should ignore the basic block for purposes of tracing.  */
-static bool
+bool
 ignore_bb_p (const_basic_block bb)
 {
-  gimple g;
-
   if (bb->index < NUM_FIXED_BLOCKS)
     return true;
   if (optimize_bb_for_size_p (bb))
     return true;
 
-  /* A transaction is a single entry multiple exit region.  It must be
-     duplicated in its entirety or not at all.  */
-  g = last_stmt (CONST_CAST_BB (bb));
-  if (g && gimple_code (g) == GIMPLE_TRANSACTION)
-    return true;
+  if (gimple *g = last_stmt (CONST_CAST_BB (bb)))
+    {
+      /* A transaction is a single entry multiple exit region.  It
+	 must be duplicated in its entirety or not at all.  */
+      if (gimple_code (g) == GIMPLE_TRANSACTION)
+	return true;
+
+      /* An IFN_UNIQUE call must be duplicated as part of its group,
+	 or not at all.  */
+      if (is_gimple_call (g)
+	  && gimple_call_internal_p (g)
+	  && gimple_call_internal_unique_p (g))
+	return true;
+    }
 
   return false;
 }
@@ -115,7 +117,7 @@ static int
 count_insns (basic_block bb)
 {
   gimple_stmt_iterator gsi;
-  gimple stmt;
+  gimple *stmt;
   int n = 0;
 
   for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
@@ -224,18 +226,38 @@ find_trace (basic_block bb, basic_block *trace)
   return i;
 }
 
+/* Duplicate block BB2, placing it after BB in the CFG.  Return the
+   newly created block.  */
+basic_block
+transform_duplicate (basic_block bb, basic_block bb2)
+{
+  edge e;
+  basic_block copy;
+
+  e = find_edge (bb, bb2);
+
+  copy = duplicate_block (bb2, e, bb);
+  flush_pending_stmts (e);
+
+  add_phi_args_after_copy (&copy, 1, NULL);
+
+  return (copy);
+}
+
 /* Look for basic blocks in frequency order, construct traces and tail duplicate
    if profitable.  */
 
 static bool
 tail_duplicate (void)
 {
-  fibnode_t *blocks = XCNEWVEC (fibnode_t, last_basic_block_for_fn (cfun));
+  auto_vec<fibonacci_node<long, basic_block_def>*> blocks;
+  blocks.safe_grow_cleared (last_basic_block_for_fn (cfun));
+
   basic_block *trace = XNEWVEC (basic_block, n_basic_blocks_for_fn (cfun));
   int *counts = XNEWVEC (int, last_basic_block_for_fn (cfun));
   int ninsns = 0, nduplicated = 0;
   gcov_type weighted_insns = 0, traced_insns = 0;
-  fibheap_t heap = fibheap_new ();
+  fibonacci_heap<long, basic_block_def> heap (LONG_MIN);
   gcov_type cover_insns;
   int max_dup_insns;
   basic_block bb;
@@ -260,8 +282,7 @@ tail_duplicate (void)
     {
       int n = count_insns (bb);
       if (!ignore_bb_p (bb))
-	blocks[bb->index] = fibheap_insert (heap, -bb->frequency,
-					    bb);
+	blocks[bb->index] = heap.insert (-bb->frequency, bb);
 
       counts [bb->index] = n;
       ninsns += n;
@@ -276,9 +297,9 @@ tail_duplicate (void)
   max_dup_insns = (ninsns * PARAM_VALUE (TRACER_MAX_CODE_GROWTH) + 50) / 100;
 
   while (traced_insns < cover_insns && nduplicated < max_dup_insns
-         && !fibheap_empty (heap))
+         && !heap.empty ())
     {
-      basic_block bb = (basic_block) fibheap_extract_min (heap);
+      basic_block bb = heap.extract_min ();
       int n, pos;
 
       if (!bb)
@@ -296,7 +317,7 @@ tail_duplicate (void)
       traced_insns += bb->frequency * counts [bb->index];
       if (blocks[bb->index])
 	{
-	  fibheap_delete_node (heap, blocks[bb->index]);
+	  heap.delete_node (blocks[bb->index]);
 	  blocks[bb->index] = NULL;
 	}
 
@@ -306,7 +327,7 @@ tail_duplicate (void)
 
 	  if (blocks[bb2->index])
 	    {
-	      fibheap_delete_node (heap, blocks[bb2->index]);
+	      heap.delete_node (blocks[bb2->index]);
 	      blocks[bb2->index] = NULL;
 	    }
 	  traced_insns += bb2->frequency * counts [bb2->index];
@@ -318,23 +339,13 @@ tail_duplicate (void)
 		 entries or at least rotate the loop.  */
 	      && bb2->loop_father->header != bb2)
 	    {
-	      edge e;
-	      basic_block copy;
-
 	      nduplicated += counts [bb2->index];
-
-	      e = find_edge (bb, bb2);
-
-	      copy = duplicate_block (bb2, e, bb);
-	      flush_pending_stmts (e);
-
-	      add_phi_args_after_copy (&copy, 1, NULL);
+	      basic_block copy = transform_duplicate (bb, bb2);
 
 	      /* Reconsider the original copy of block we've duplicated.
 	         Removing the most common predecessor may make it to be
 	         head.  */
-	      blocks[bb2->index] =
-		fibheap_insert (heap, -bb2->frequency, bb2);
+	      blocks[bb2->index] = heap.insert (-bb2->frequency, bb2);
 
 	      if (dump_file)
 		fprintf (dump_file, "Duplicated %i as %i [%i]\n",
@@ -359,10 +370,8 @@ tail_duplicate (void)
 
   free_original_copy_tables ();
   sbitmap_free (bb_seen);
-  free (blocks);
   free (trace);
   free (counts);
-  fibheap_delete (heap);
 
   return changed;
 }

@@ -1,6 +1,6 @@
 // Nested Exception support header (nested_exception class) for -*- C++ -*-
 
-// Copyright (C) 2009-2014 Free Software Foundation, Inc.
+// Copyright (C) 2009-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -37,6 +37,7 @@
 #else
 
 #include <bits/c++config.h>
+#include <bits/move.h>
 
 #if ATOMIC_INT_LOCK_FREE < 2
 #  error This platform does not support exception propagation.
@@ -108,7 +109,7 @@ namespace std
 	{ throw static_cast<_Up&&>(__t); }
     };
 
-  template<typename _Tp, bool = __is_class(_Tp)>
+  template<typename _Tp, bool = __is_class(_Tp) && !__is_final(_Tp)>
     struct _Throw_with_nested_helper : _Throw_with_nested_impl<_Tp>
     { };
 
@@ -142,7 +143,8 @@ namespace std
     {
       static void _S_rethrow(const _Tp& __t)
       {
-	if (auto __tp = dynamic_cast<const nested_exception*>(&__t))
+	if (auto __tp =
+            dynamic_cast<const nested_exception*>(std::__addressof(__t)))
 	  __tp->rethrow_nested();
       }
     };

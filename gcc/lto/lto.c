@@ -1,5 +1,5 @@
 /* Top-level LTO routines.
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
@@ -21,45 +21,45 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "tm.h"
+#include "function.h"
+#include "bitmap.h"
+#include "basic-block.h"
+#include "tree.h"
+#include "gimple.h"
+#include "cfghooks.h"
+#include "alloc-pool.h"
+#include "tree-pass.h"
+#include "tree-streamer.h"
+#include "cgraph.h"
 #include "opts.h"
 #include "toplev.h"
-#include "tree.h"
 #include "stor-layout.h"
-#include "diagnostic-core.h"
-#include "tm.h"
-#include "cgraph.h"
-#include "tree-ssa-operands.h"
-#include "tree-pass.h"
-#include "langhooks.h"
-#include "bitmap.h"
-#include "hash-map.h"
-#include "inchash.h"
+#include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "common.h"
 #include "debug.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
-#include "gimple.h"
 #include "lto.h"
-#include "lto-tree.h"
-#include "lto-streamer.h"
 #include "lto-section-names.h"
-#include "tree-streamer.h"
 #include "splay-tree.h"
 #include "lto-partition.h"
-#include "data-streamer.h"
 #include "context.h"
 #include "pass_manager.h"
 #include "ipa-inline.h"
 #include "params.h"
+#include "ipa-utils.h"
+#include "gomp-constants.h"
+#include "lto-symtab.h"
+#include "stringpool.h"
+#include "fold-const.h"
 
 
 /* Number of parallel tasks to run, -1 if we want to use GNU Make jobserver.  */
 static int lto_parallelism;
 
 static GTY(()) tree first_personality_decl;
+
+static GTY(()) const unsigned char *lto_mode_identity_table;
 
 /* Returns a hash code for P.  */
 
@@ -236,6 +236,8 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
   uint32_t i, j;
 
   ix = *data++;
+  state->compressed = ix & 1;
+  ix /= 2;
   decl = streamer_tree_cache_get_tree (data_in->reader_cache, ix);
   if (!VAR_OR_FUNCTION_DECL_P (decl))
     {
@@ -247,13 +249,15 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
   for (i = 0; i < LTO_N_DECL_STREAMS; i++)
     {
       uint32_t size = *data++;
-      tree *decls = ggc_vec_alloc<tree> (size);
+      vec<tree, va_gc> *decls = NULL;
+      vec_alloc (decls, size);
 
       for (j = 0; j < size; j++)
-	decls[j] = streamer_tree_cache_get_tree (data_in->reader_cache, data[j]);
+	vec_safe_push (decls,
+		       streamer_tree_cache_get_tree (data_in->reader_cache,
+						     data[j]));
 
-      state->streams[i].size = size;
-      state->streams[i].trees = decls;
+      state->streams[i] = decls;
       data += size;
     }
 
@@ -280,12 +284,20 @@ static hashval_t
 hash_canonical_type (tree type)
 {
   inchash::hash hstate;
+  enum tree_code code;
+
+  /* We compute alias sets only for types that needs them.
+     Be sure we do not recurse to something else as we can not hash incomplete
+     types in a way they would have same hash value as compatible complete
+     types.  */
+  gcc_checking_assert (type_with_alias_set_p (type));
 
   /* Combine a few common features of types so that types are grouped into
      smaller sets; when searching for existing matching types to merge,
      only existing types having the same features as the new type will be
      checked.  */
-  hstate.add_int (TREE_CODE (type));
+  code = tree_code_for_canonical_type_merging (TREE_CODE (type));
+  hstate.add_int (code);
   hstate.add_int (TYPE_MODE (type));
 
   /* Incorporate common features of numerical types.  */
@@ -295,8 +307,9 @@ hash_canonical_type (tree type)
       || TREE_CODE (type) == OFFSET_TYPE
       || POINTER_TYPE_P (type))
     {
-      hstate.add_int (TYPE_UNSIGNED (type));
       hstate.add_int (TYPE_PRECISION (type));
+      if (!type_with_interoperable_signedness (type))
+        hstate.add_int (TYPE_UNSIGNED (type));
     }
 
   if (VECTOR_TYPE_P (type))
@@ -308,17 +321,15 @@ hash_canonical_type (tree type)
   if (TREE_CODE (type) == COMPLEX_TYPE)
     hstate.add_int (TYPE_UNSIGNED (type));
 
-  /* For pointer and reference types, fold in information about the type
-     pointed to but do not recurse to the pointed-to type.  */
-  if (POINTER_TYPE_P (type))
-    {
-      hstate.add_int (TYPE_ADDR_SPACE (TREE_TYPE (type)));
-      hstate.add_int (TREE_CODE (TREE_TYPE (type)));
-    }
+  /* Fortran's C_SIGNED_CHAR is !TYPE_STRING_FLAG but needs to be
+     interoperable with "signed char".  Unless all frontends are revisited to
+     agree on these types, we must ignore the flag completely.  */
 
-  /* For integer types hash only the string flag.  */
-  if (TREE_CODE (type) == INTEGER_TYPE)
-    hstate.add_int (TYPE_STRING_FLAG (type));
+  /* Fortran standard define C_PTR type that is compatible with every
+     C pointer.  For this reason we need to glob all pointers into one.
+     Still pointers in different address spaces are not compatible.  */
+  if (POINTER_TYPE_P (type))
+    hstate.add_int (TYPE_ADDR_SPACE (TREE_TYPE (type)));
 
   /* For array types hash the domain bounds and the string flag.  */
   if (TREE_CODE (type) == ARRAY_TYPE && TYPE_DOMAIN (type))
@@ -343,10 +354,6 @@ hash_canonical_type (tree type)
     {
       unsigned na;
       tree p;
-
-      /* For method types also incorporate their parent class.  */
-      if (TREE_CODE (type) == METHOD_TYPE)
-	iterative_hash_canonical_type (TYPE_METHOD_BASETYPE (type), hstate);
 
       iterative_hash_canonical_type (TREE_TYPE (type), hstate);
 
@@ -383,8 +390,14 @@ static void
 iterative_hash_canonical_type (tree type, inchash::hash &hstate)
 {
   hashval_t v;
+
+  /* All type variants have same TYPE_CANONICAL.  */
+  type = TYPE_MAIN_VARIANT (type);
+
+  if (!canonical_type_used_p (type))
+    v = hash_canonical_type (type);
   /* An already processed type.  */
-  if (TYPE_CANONICAL (type))
+  else if (TYPE_CANONICAL (type))
     {
       type = TYPE_CANONICAL (type);
       v = gimple_canonical_type_hash (type);
@@ -413,208 +426,6 @@ gimple_canonical_type_hash (const void *p)
 }
 
 
-/* The TYPE_CANONICAL merging machinery.  It should closely resemble
-   the middle-end types_compatible_p function.  It needs to avoid
-   claiming types are different for types that should be treated
-   the same with respect to TBAA.  Canonical types are also used
-   for IL consistency checks via the useless_type_conversion_p
-   predicate which does not handle all type kinds itself but falls
-   back to pointer-comparison of TYPE_CANONICAL for aggregates
-   for example.  */
-
-/* Return true iff T1 and T2 are structurally identical for what
-   TBAA is concerned.  */
-
-static bool
-gimple_canonical_types_compatible_p (tree t1, tree t2)
-{
-  /* Before starting to set up the SCC machinery handle simple cases.  */
-
-  /* Check first for the obvious case of pointer identity.  */
-  if (t1 == t2)
-    return true;
-
-  /* Check that we have two types to compare.  */
-  if (t1 == NULL_TREE || t2 == NULL_TREE)
-    return false;
-
-  /* If the types have been previously registered and found equal
-     they still are.  */
-  if (TYPE_CANONICAL (t1)
-      && TYPE_CANONICAL (t1) == TYPE_CANONICAL (t2))
-    return true;
-
-  /* Can't be the same type if the types don't have the same code.  */
-  if (TREE_CODE (t1) != TREE_CODE (t2))
-    return false;
-
-  /* Qualifiers do not matter for canonical type comparison purposes.  */
-
-  /* Void types and nullptr types are always the same.  */
-  if (TREE_CODE (t1) == VOID_TYPE
-      || TREE_CODE (t1) == NULLPTR_TYPE)
-    return true;
-
-  /* Can't be the same type if they have different mode.  */
-  if (TYPE_MODE (t1) != TYPE_MODE (t2))
-    return false;
-
-  /* Non-aggregate types can be handled cheaply.  */
-  if (INTEGRAL_TYPE_P (t1)
-      || SCALAR_FLOAT_TYPE_P (t1)
-      || FIXED_POINT_TYPE_P (t1)
-      || TREE_CODE (t1) == VECTOR_TYPE
-      || TREE_CODE (t1) == COMPLEX_TYPE
-      || TREE_CODE (t1) == OFFSET_TYPE
-      || POINTER_TYPE_P (t1))
-    {
-      /* Can't be the same type if they have different sign or precision.  */
-      if (TYPE_PRECISION (t1) != TYPE_PRECISION (t2)
-	  || TYPE_UNSIGNED (t1) != TYPE_UNSIGNED (t2))
-	return false;
-
-      if (TREE_CODE (t1) == INTEGER_TYPE
-	  && TYPE_STRING_FLAG (t1) != TYPE_STRING_FLAG (t2))
-	return false;
-
-      /* For canonical type comparisons we do not want to build SCCs
-	 so we cannot compare pointed-to types.  But we can, for now,
-	 require the same pointed-to type kind and match what
-	 useless_type_conversion_p would do.  */
-      if (POINTER_TYPE_P (t1))
-	{
-	  if (TYPE_ADDR_SPACE (TREE_TYPE (t1))
-	      != TYPE_ADDR_SPACE (TREE_TYPE (t2)))
-	    return false;
-
-	  if (TREE_CODE (TREE_TYPE (t1)) != TREE_CODE (TREE_TYPE (t2)))
-	    return false;
-	}
-
-      /* Tail-recurse to components.  */
-      if (TREE_CODE (t1) == VECTOR_TYPE
-	  || TREE_CODE (t1) == COMPLEX_TYPE)
-	return gimple_canonical_types_compatible_p (TREE_TYPE (t1),
-						    TREE_TYPE (t2));
-
-      return true;
-    }
-
-  /* Do type-specific comparisons.  */
-  switch (TREE_CODE (t1))
-    {
-    case ARRAY_TYPE:
-      /* Array types are the same if the element types are the same and
-	 the number of elements are the same.  */
-      if (!gimple_canonical_types_compatible_p (TREE_TYPE (t1), TREE_TYPE (t2))
-	  || TYPE_STRING_FLAG (t1) != TYPE_STRING_FLAG (t2)
-	  || TYPE_NONALIASED_COMPONENT (t1) != TYPE_NONALIASED_COMPONENT (t2))
-	return false;
-      else
-	{
-	  tree i1 = TYPE_DOMAIN (t1);
-	  tree i2 = TYPE_DOMAIN (t2);
-
-	  /* For an incomplete external array, the type domain can be
- 	     NULL_TREE.  Check this condition also.  */
-	  if (i1 == NULL_TREE && i2 == NULL_TREE)
-	    return true;
-	  else if (i1 == NULL_TREE || i2 == NULL_TREE)
-	    return false;
-	  else
-	    {
-	      tree min1 = TYPE_MIN_VALUE (i1);
-	      tree min2 = TYPE_MIN_VALUE (i2);
-	      tree max1 = TYPE_MAX_VALUE (i1);
-	      tree max2 = TYPE_MAX_VALUE (i2);
-
-	      /* The minimum/maximum values have to be the same.  */
-	      if ((min1 == min2
-		   || (min1 && min2
-		       && ((TREE_CODE (min1) == PLACEHOLDER_EXPR
-			    && TREE_CODE (min2) == PLACEHOLDER_EXPR)
-		           || operand_equal_p (min1, min2, 0))))
-		  && (max1 == max2
-		      || (max1 && max2
-			  && ((TREE_CODE (max1) == PLACEHOLDER_EXPR
-			       && TREE_CODE (max2) == PLACEHOLDER_EXPR)
-			      || operand_equal_p (max1, max2, 0)))))
-		return true;
-	      else
-		return false;
-	    }
-	}
-
-    case METHOD_TYPE:
-    case FUNCTION_TYPE:
-      /* Function types are the same if the return type and arguments types
-	 are the same.  */
-      if (!gimple_canonical_types_compatible_p (TREE_TYPE (t1), TREE_TYPE (t2)))
-	return false;
-
-      if (!comp_type_attributes (t1, t2))
-	return false;
-
-      if (TYPE_ARG_TYPES (t1) == TYPE_ARG_TYPES (t2))
-	return true;
-      else
-	{
-	  tree parms1, parms2;
-
-	  for (parms1 = TYPE_ARG_TYPES (t1), parms2 = TYPE_ARG_TYPES (t2);
-	       parms1 && parms2;
-	       parms1 = TREE_CHAIN (parms1), parms2 = TREE_CHAIN (parms2))
-	    {
-	      if (!gimple_canonical_types_compatible_p
-		     (TREE_VALUE (parms1), TREE_VALUE (parms2)))
-		return false;
-	    }
-
-	  if (parms1 || parms2)
-	    return false;
-
-	  return true;
-	}
-
-    case RECORD_TYPE:
-    case UNION_TYPE:
-    case QUAL_UNION_TYPE:
-      {
-	tree f1, f2;
-
-	/* For aggregate types, all the fields must be the same.  */
-	for (f1 = TYPE_FIELDS (t1), f2 = TYPE_FIELDS (t2);
-	     f1 || f2;
-	     f1 = TREE_CHAIN (f1), f2 = TREE_CHAIN (f2))
-	  {
-	    /* Skip non-fields.  */
-	    while (f1 && TREE_CODE (f1) != FIELD_DECL)
-	      f1 = TREE_CHAIN (f1);
-	    while (f2 && TREE_CODE (f2) != FIELD_DECL)
-	      f2 = TREE_CHAIN (f2);
-	    if (!f1 || !f2)
-	      break;
-	    /* The fields must have the same name, offset and type.  */
-	    if (DECL_NONADDRESSABLE_P (f1) != DECL_NONADDRESSABLE_P (f2)
-		|| !gimple_compare_field_offset (f1, f2)
-		|| !gimple_canonical_types_compatible_p
-		      (TREE_TYPE (f1), TREE_TYPE (f2)))
-	      return false;
-	  }
-
-	/* If one aggregate has more fields than the other, they
-	   are not the same.  */
-	if (f1 || f2)
-	  return false;
-
-	return true;
-      }
-
-    default:
-      gcc_unreachable ();
-    }
-}
-
 
 /* Returns nonzero if P1 and P2 are equal.  */
 
@@ -634,7 +445,9 @@ gimple_register_canonical_type_1 (tree t, hashval_t hash)
 {
   void **slot;
 
-  gcc_checking_assert (TYPE_P (t) && !TYPE_CANONICAL (t));
+  gcc_checking_assert (TYPE_P (t) && !TYPE_CANONICAL (t)
+		       && type_with_alias_set_p (t)
+		       && canonical_type_used_p (t));
 
   slot = htab_find_slot_with_hash (gimple_canonical_types, t, hash, INSERT);
   if (*slot)
@@ -667,10 +480,19 @@ gimple_register_canonical_type_1 (tree t, hashval_t hash)
 static void
 gimple_register_canonical_type (tree t)
 {
-  if (TYPE_CANONICAL (t))
+  if (TYPE_CANONICAL (t) || !type_with_alias_set_p (t)
+      || !canonical_type_used_p (t))
     return;
 
-  gimple_register_canonical_type_1 (t, hash_canonical_type (t));
+  /* Canonical types are same among all complete variants.  */
+  if (TYPE_CANONICAL (TYPE_MAIN_VARIANT (t)))
+    TYPE_CANONICAL (t) = TYPE_CANONICAL (TYPE_MAIN_VARIANT (t));
+  else
+    {
+      gimple_register_canonical_type_1 (TYPE_MAIN_VARIANT (t),
+					hash_canonical_type (TYPE_MAIN_VARIANT (t)));
+      TYPE_CANONICAL (t) = TYPE_CANONICAL (TYPE_MAIN_VARIANT (t));
+    }
 }
 
 /* Re-compute TYPE_CANONICAL for NODE and related types.  */
@@ -1047,7 +869,7 @@ lto_register_function_decl_in_symtab (struct data_in *data_in, tree decl,
 {
   /* If this variable has already been declared, queue the
      declaration for merging.  */
-  if (TREE_PUBLIC (decl) && !DECL_ABSTRACT (decl))
+  if (TREE_PUBLIC (decl) && !DECL_ABSTRACT_P (decl))
     register_resolution (data_in->file_data,
 			 decl, get_resolution (data_in, ix));
 }
@@ -1113,22 +935,20 @@ struct tree_scc
   tree entries[1];
 };
 
-struct tree_scc_hasher : typed_noop_remove <tree_scc>
+struct tree_scc_hasher : nofree_ptr_hash <tree_scc>
 {
-  typedef tree_scc value_type;
-  typedef tree_scc compare_type;
-  static inline hashval_t hash (const value_type *);
-  static inline bool equal (const value_type *, const compare_type *);
+  static inline hashval_t hash (const tree_scc *);
+  static inline bool equal (const tree_scc *, const tree_scc *);
 };
 
 hashval_t
-tree_scc_hasher::hash (const value_type *scc)
+tree_scc_hasher::hash (const tree_scc *scc)
 {
   return scc->hash;
 }
 
 bool
-tree_scc_hasher::equal (const value_type *scc1, const compare_type *scc2)
+tree_scc_hasher::equal (const tree_scc *scc1, const tree_scc *scc2)
 {
   if (scc1->hash != scc2->hash
       || scc1->len != scc2->len
@@ -1204,7 +1024,10 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
   compare_values (TREE_DEPRECATED);
   if (TYPE_P (t1))
     {
-      compare_values (TYPE_SATURATING);
+      if (AGGREGATE_TYPE_P (t1))
+	compare_values (TYPE_REVERSE_STORAGE_ORDER);
+      else
+	compare_values (TYPE_SATURATING);
       compare_values (TYPE_ADDR_SPACE);
     }
   else if (code == SSA_NAME)
@@ -1239,8 +1062,10 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       return false;
 
 
-  /* We don't want to compare locations, so there is nothing do compare
-     for TS_DECL_MINIMAL.  */
+  /* We want to compare locations up to the point where it makes
+     a difference for streaming - thus whether the decl is builtin or not.  */
+  if (CODE_CONTAINS_STRUCT (code, TS_DECL_MINIMAL))
+    compare_values (streamer_handle_as_builtin_p);
 
   if (CODE_CONTAINS_STRUCT (code, TS_DECL_COMMON))
     {
@@ -1248,7 +1073,7 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       compare_values (DECL_NONLOCAL);
       compare_values (DECL_VIRTUAL_P);
       compare_values (DECL_IGNORED_P);
-      compare_values (DECL_ABSTRACT);
+      compare_values (DECL_ABSTRACT_P);
       compare_values (DECL_ARTIFICIAL);
       compare_values (DECL_USER_ALIGN);
       compare_values (DECL_PRESERVE_P);
@@ -1332,7 +1157,6 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
     {
       compare_values (TYPE_MODE);
       compare_values (TYPE_STRING_FLAG);
-      compare_values (TYPE_NO_FORCE_BLK);
       compare_values (TYPE_NEEDS_CONSTRUCTING);
       if (RECORD_OR_UNION_TYPE_P (t1))
 	{
@@ -1347,7 +1171,9 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       compare_values (TYPE_READONLY);
       compare_values (TYPE_PRECISION);
       compare_values (TYPE_ALIGN);
-      compare_values (TYPE_ALIAS_SET);
+      /* Do not compare TYPE_ALIAS_SET.  Doing so introduce ordering issues
+         with calls to get_alias_set which may initialize it for streamed
+ 	 in types.  */
     }
 
   /* We don't want to compare locations, so there is nothing do compare
@@ -1364,7 +1190,8 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       return false;
 
   if (CODE_CONTAINS_STRUCT (code, TS_TARGET_OPTION))
-    gcc_unreachable ();
+    if (!cl_target_option_eq (TREE_TARGET_OPTION (t1), TREE_TARGET_OPTION (t2)))
+      return false;
 
   if (CODE_CONTAINS_STRUCT (code, TS_OPTIMIZATION))
     if (memcmp (TREE_OPTIMIZATION (t1), TREE_OPTIMIZATION (t2),
@@ -1488,6 +1315,7 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       compare_tree_edges (DECL_SIZE (t1), DECL_SIZE (t2));
       compare_tree_edges (DECL_SIZE_UNIT (t1), DECL_SIZE_UNIT (t2));
       compare_tree_edges (DECL_ATTRIBUTES (t1), DECL_ATTRIBUTES (t2));
+      compare_tree_edges (DECL_ABSTRACT_ORIGIN (t1), DECL_ABSTRACT_ORIGIN (t2));
       if ((code == VAR_DECL
 	   || code == PARM_DECL)
 	  && DECL_HAS_VALUE_EXPR_P (t1))
@@ -1540,8 +1368,8 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       compare_tree_edges (DECL_FUNCTION_PERSONALITY (t1),
 			  DECL_FUNCTION_PERSONALITY (t2));
       compare_tree_edges (DECL_VINDEX (t1), DECL_VINDEX (t2));
-      /* DECL_FUNCTION_SPECIFIC_TARGET is not yet created.  We compare
-         the attribute list instead.  */
+      compare_tree_edges (DECL_FUNCTION_SPECIFIC_TARGET (t1),
+			  DECL_FUNCTION_SPECIFIC_TARGET (t2));
       compare_tree_edges (DECL_FUNCTION_SPECIFIC_OPTIMIZATION (t1),
 			  DECL_FUNCTION_SPECIFIC_OPTIMIZATION (t2));
     }
@@ -1705,10 +1533,11 @@ cmp_tree (const void *p1_, const void *p2_)
    that was successful, otherwise return false.  */
 
 static bool
-unify_scc (struct streamer_tree_cache_d *cache, unsigned from,
+unify_scc (struct data_in *data_in, unsigned from,
 	   unsigned len, unsigned scc_entry_len, hashval_t scc_hash)
 {
   bool unified_p = false;
+  struct streamer_tree_cache_d *cache = data_in->reader_cache;
   tree_scc *scc
     = (tree_scc *) alloca (sizeof (tree_scc) + (len - 1) * sizeof (tree));
   scc->next = NULL;
@@ -1764,19 +1593,18 @@ unify_scc (struct streamer_tree_cache_d *cache, unsigned from,
 	  num_sccs_merged++;
 	  total_scc_size_merged += len;
 
-#ifdef ENABLE_CHECKING
-	  for (unsigned i = 0; i < len; ++i)
-	    {
-	      tree t = map[2*i+1];
-	      enum tree_code code = TREE_CODE (t);
-	      /* IDENTIFIER_NODEs should be singletons and are merged by the
-		 streamer.  The others should be singletons, too, and we
-		 should not merge them in any way.  */
-	      gcc_assert (code != TRANSLATION_UNIT_DECL
-			  && code != IDENTIFIER_NODE
-			  && !streamer_handle_as_builtin_p (t));
-	    }
-#endif
+	  if (flag_checking)
+	    for (unsigned i = 0; i < len; ++i)
+	      {
+		tree t = map[2*i+1];
+		enum tree_code code = TREE_CODE (t);
+		/* IDENTIFIER_NODEs should be singletons and are merged by the
+		   streamer.  The others should be singletons, too, and we
+		   should not merge them in any way.  */
+		gcc_assert (code != TRANSLATION_UNIT_DECL
+			    && code != IDENTIFIER_NODE
+			    && !streamer_handle_as_builtin_p (t));
+	      }
 
 	  /* Fixup the streamer cache with the prevailing nodes according
 	     to the tree node mapping computed by compare_tree_sccs.  */
@@ -1798,15 +1626,12 @@ unify_scc (struct streamer_tree_cache_d *cache, unsigned from,
 	    }
 
 	  /* Free the tree nodes from the read SCC.  */
+	  data_in->location_cache.revert_location_cache ();
 	  for (unsigned i = 0; i < len; ++i)
 	    {
-	      enum tree_code code;
 	      if (TYPE_P (scc->entries[i]))
 		num_merged_types++;
-	      code = TREE_CODE (scc->entries[i]);
-	      if (CODE_CONTAINS_STRUCT (code, TS_CONSTRUCTOR))
-		vec_free (CONSTRUCTOR_ELTS (scc->entries[i]));
-	      ggc_free (scc->entries[i]);
+	      free_node (scc->entries[i]);
 	    }
 
 	  break;
@@ -1850,7 +1675,7 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
   uint32_t num_decl_states;
 
   lto_input_block ib_main ((const char *) data + main_offset,
-			   header->main_size);
+			   header->main_size, decl_data->mode_table);
 
   data_in = lto_data_in_create (decl_data, (const char *) data + string_offset,
 				header->string_size, resolutions);
@@ -1891,9 +1716,13 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 
 	  /* Try to unify the SCC with already existing ones.  */
 	  if (!flag_ltrans
-	      && unify_scc (data_in->reader_cache, from,
+	      && unify_scc (data_in, from,
 			    len, scc_entry_len, scc_hash))
 	    continue;
+
+	  /* Tree merging failed, mark entries in location cache as
+	     permanent.  */
+	  data_in->location_cache.accept_location_cache ();
 
 	  bool seen_type = false;
 	  for (unsigned i = 0; i < len; ++i)
@@ -1911,25 +1740,26 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 	      /* Compute the canonical type of all types.
 		 ???  Should be able to assert that !TYPE_CANONICAL.  */
 	      if (TYPE_P (t) && !TYPE_CANONICAL (t))
-		gimple_register_canonical_type (t);
+		{
+		  gimple_register_canonical_type (t);
+		  if (odr_type_p (t))
+		    register_odr_type (t);
+		}
 	      /* Link shared INTEGER_CSTs into TYPE_CACHED_VALUEs of its
 		 type which is also member of this SCC.  */
 	      if (TREE_CODE (t) == INTEGER_CST
 		  && !TREE_OVERFLOW (t))
 		cache_integer_cst (t);
-	      /* Re-build DECL_FUNCTION_SPECIFIC_TARGET, we need that
-	         for both WPA and LTRANS stage.  */
-	      if (TREE_CODE (t) == FUNCTION_DECL)
-		{
-		  tree attr = lookup_attribute ("target", DECL_ATTRIBUTES (t));
-		  if (attr)
-		    targetm.target_option.valid_attribute_p
-			(t, NULL_TREE, TREE_VALUE (attr), 0);
-		}
 	      /* Register TYPE_DECLs with the debuginfo machinery.  */
 	      if (!flag_wpa
 		  && TREE_CODE (t) == TYPE_DECL)
-		debug_hooks->type_decl (t, !DECL_FILE_SCOPE_P (t));
+		{
+		  /* Dwarf2out needs location information.
+		     TODO: Moving this out of the streamer loop may noticealy
+		     improve ltrans linemap memory use.  */
+		  data_in->location_cache.apply_location_cache ();
+		  debug_hooks->type_decl (t, !DECL_FILE_SCOPE_P (t));
+		}
 	      if (!flag_ltrans)
 		{
 		  /* Register variables and functions with the
@@ -1955,6 +1785,7 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 	  gcc_assert (t && data_in->reader_cache->nodes.length () == from);
 	}
     }
+  data_in->location_cache.apply_location_cache ();
 
   /* Read in lto_in_decl_state objects.  */
   data_ptr = (const uint32_t *) ((const char*) data + decl_offset); 
@@ -1969,15 +1800,15 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 
   /* Read in per-function decl states and enter them in hash table.  */
   decl_data->function_decl_states =
-    htab_create_ggc (37, lto_hash_in_decl_state, lto_eq_in_decl_state, NULL);
+    hash_table<decl_state_hasher>::create_ggc (37);
 
   for (i = 1; i < num_decl_states; i++)
     {
       struct lto_in_decl_state *state = lto_new_in_decl_state ();
-      void **slot;
 
       data_ptr = lto_read_in_decl_state (data_in, data_ptr, state);
-      slot = htab_find_slot (decl_data->function_decl_states, state, INSERT);
+      lto_in_decl_state **slot
+	= decl_data->function_decl_states->find_slot (state, INSERT);
       gcc_assert (*slot == NULL);
       *slot = state;
     }
@@ -2120,7 +1951,7 @@ lto_section_with_id (const char *name, unsigned HOST_WIDE_INT *id)
 {
   const char *s;
 
-  if (strncmp (name, LTO_SECTION_NAME_PREFIX, strlen (LTO_SECTION_NAME_PREFIX)))
+  if (strncmp (name, section_name_prefix, strlen (section_name_prefix)))
     return 0;
   s = strrchr (name, '.');
   return s && sscanf (s, "." HOST_WIDE_INT_PRINT_HEX_PURE, id) == 1;
@@ -2197,6 +2028,11 @@ lto_file_finalize (struct lto_file_decl_data *file_data, lto_file *file)
 
   file_data->renaming_hash_table = lto_create_renaming_table ();
   file_data->file_name = file->filename;
+#ifdef ACCEL_COMPILER
+  lto_input_mode_table (file_data);
+#else
+  file_data->mode_table = lto_mode_identity_table;
+#endif
   data = lto_get_section_data (file_data, LTO_section_decls, NULL, &len);
   if (data == NULL)
     {
@@ -2215,8 +2051,9 @@ lto_create_files_from_ids (lto_file *file, struct lto_file_decl_data *file_data,
 			   int *count)
 {
   lto_file_finalize (file_data, file);
-  if (cgraph_dump_file)
-    fprintf (cgraph_dump_file, "Creating file %s with sub id " HOST_WIDE_INT_PRINT_HEX "\n", 
+  if (symtab->dump_file)
+    fprintf (symtab->dump_file,
+	     "Creating file %s with sub id " HOST_WIDE_INT_PRINT_HEX "\n",
 	     file_data->file_name, file_data->id);
   (*count)++;
   return 0;
@@ -2305,7 +2142,7 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
       fd = open (file_data->file_name, O_RDONLY|O_BINARY);
       if (fd == -1)
         {
-	  fatal_error ("Cannot open %s", file_data->file_name);
+	  fatal_error (input_location, "Cannot open %s", file_data->file_name);
 	  return NULL;
         }
       fd_name = xstrdup (file_data->file_name);
@@ -2326,7 +2163,7 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
 			  fd, computed_offset);
   if (result == MAP_FAILED)
     {
-      fatal_error ("Cannot map %s", file_data->file_name);
+      fatal_error (input_location, "Cannot map %s", file_data->file_name);
       return NULL;
     }
 
@@ -2337,7 +2174,7 @@ lto_read_section_data (struct lto_file_decl_data *file_data,
       || read (fd, result, len) != (ssize_t) len)
     {
       free (result);
-      fatal_error ("Cannot read %s", file_data->file_name);
+      fatal_error (input_location, "Cannot read %s", file_data->file_name);
       result = NULL;
     }
 #ifdef __MINGW32__
@@ -2451,7 +2288,7 @@ do_stream_out (char *temp_filename, lto_symtab_encoder_t encoder)
 {
   lto_file *file = lto_obj_file_open (temp_filename, true);
   if (!file)
-    fatal_error ("lto_obj_file_open() failed");
+    fatal_error (input_location, "lto_obj_file_open() failed");
   lto_set_current_out_file (file);
 
   ipa_write_optimization_summaries (encoder);
@@ -2474,12 +2311,13 @@ wait_for_child ()
 #endif
       int w = waitpid (0, &status, WUNTRACED | WCONTINUED);
       if (w == -1)
-	fatal_error ("waitpid failed");
+	fatal_error (input_location, "waitpid failed");
 
       if (WIFEXITED (status) && WEXITSTATUS (status))
-	fatal_error ("streaming subprocess failed");
+	fatal_error (input_location, "streaming subprocess failed");
       else if (WIFSIGNALED (status))
-	fatal_error ("streaming subprocess was killed by signal");
+	fatal_error (input_location,
+		     "streaming subprocess was killed by signal");
     }
   while (!WIFEXITED (status) && !WIFSIGNALED (status));
 }
@@ -2489,7 +2327,8 @@ wait_for_child ()
    Fork if that seems to help.  */
 
 static void
-stream_out (char *temp_filename, lto_symtab_encoder_t encoder, bool last)
+stream_out (char *temp_filename, lto_symtab_encoder_t encoder,
+	    bool ARG_UNUSED (last))
 {
 #ifdef HAVE_WORKING_FORK
   static int nruns;
@@ -2554,7 +2393,7 @@ lto_wpa_write_files (void)
 
   /* Open the LTRANS output list.  */
   if (!ltrans_output_list)
-    fatal_error ("no LTRANS output list filename provided");
+    fatal_error (input_location, "no LTRANS output list filename provided");
 
   timevar_push (TV_WHOPR_WPA);
 
@@ -2595,41 +2434,41 @@ lto_wpa_write_files (void)
 
       if (!quiet_flag)
 	fprintf (stderr, " %s (%s %i insns)", temp_filename, part->name, part->insns);
-      if (cgraph_dump_file)
+      if (symtab->dump_file)
 	{
           lto_symtab_encoder_iterator lsei;
 	  
-	  fprintf (cgraph_dump_file, "Writing partition %s to file %s, %i insns\n",
+	  fprintf (symtab->dump_file, "Writing partition %s to file %s, %i insns\n",
 		   part->name, temp_filename, part->insns);
-	  fprintf (cgraph_dump_file, "  Symbols in partition: ");
+	  fprintf (symtab->dump_file, "  Symbols in partition: ");
 	  for (lsei = lsei_start_in_partition (part->encoder); !lsei_end_p (lsei);
 	       lsei_next_in_partition (&lsei))
 	    {
 	      symtab_node *node = lsei_node (lsei);
-	      fprintf (cgraph_dump_file, "%s ", node->asm_name ());
+	      fprintf (symtab->dump_file, "%s ", node->asm_name ());
 	    }
-	  fprintf (cgraph_dump_file, "\n  Symbols in boundary: ");
+	  fprintf (symtab->dump_file, "\n  Symbols in boundary: ");
 	  for (lsei = lsei_start (part->encoder); !lsei_end_p (lsei);
 	       lsei_next (&lsei))
 	    {
 	      symtab_node *node = lsei_node (lsei);
 	      if (!lto_symtab_encoder_in_partition_p (part->encoder, node))
 		{
-	          fprintf (cgraph_dump_file, "%s ", node->asm_name ());
+		  fprintf (symtab->dump_file, "%s ", node->asm_name ());
 		  cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
 		  if (cnode
 		      && lto_symtab_encoder_encode_body_p (part->encoder, cnode))
-		    fprintf (cgraph_dump_file, "(body included)");
+		    fprintf (symtab->dump_file, "(body included)");
 		  else
 		    {
 		      varpool_node *vnode = dyn_cast <varpool_node *> (node);
 		      if (vnode
 			  && lto_symtab_encoder_encode_initializer_p (part->encoder, vnode))
-			fprintf (cgraph_dump_file, "(initializer included)");
+			fprintf (symtab->dump_file, "(initializer included)");
 		    }
 		}
 	    }
-	  fprintf (cgraph_dump_file, "\n");
+	  fprintf (symtab->dump_file, "\n");
 	}
       gcc_checking_assert (lto_symtab_encoder_size (part->encoder) || !i);
 
@@ -2641,13 +2480,14 @@ lto_wpa_write_files (void)
     }
   ltrans_output_list_stream = fopen (ltrans_output_list, "w");
   if (ltrans_output_list_stream == NULL)
-    fatal_error ("opening LTRANS output list %s: %m", ltrans_output_list);
+    fatal_error (input_location,
+		 "opening LTRANS output list %s: %m", ltrans_output_list);
   for (i = 0; i < n_sets; i++)
     {
       unsigned int len = strlen (temp_filenames[i]);
       if (fwrite (temp_filenames[i], 1, len, ltrans_output_list_stream) < len
 	  || fwrite ("\n", 1, 1, ltrans_output_list_stream) < 1)
-	fatal_error ("writing to LTRANS output list %s: %m",
+	fatal_error (input_location, "writing to LTRANS output list %s: %m",
 		     ltrans_output_list);
      free (temp_filenames[i]);
     }
@@ -2657,7 +2497,8 @@ lto_wpa_write_files (void)
 
   /* Close the LTRANS output list.  */
   if (fclose (ltrans_output_list_stream))
-    fatal_error ("closing LTRANS output list %s: %m", ltrans_output_list);
+    fatal_error (input_location,
+		 "closing LTRANS output list %s: %m", ltrans_output_list);
 
   free_ltrans_partitions();
   free (temp_filename);
@@ -2680,7 +2521,7 @@ lto_wpa_write_files (void)
 
 /* Ensure that TT isn't a replacable var of function decl.  */
 #define LTO_NO_PREVAIL(tt) \
-  gcc_assert (!(tt) || !VAR_OR_FUNCTION_DECL_P (tt))
+  gcc_checking_assert (!(tt) || !VAR_OR_FUNCTION_DECL_P (tt))
 
 /* Given a tree T replace all fields referring to variables or functions
    with their prevailing variant.  */
@@ -2692,7 +2533,10 @@ lto_fixup_prevailing_decls (tree t)
 
   gcc_checking_assert (code != TREE_BINFO);
   LTO_NO_PREVAIL (TREE_TYPE (t));
-  if (CODE_CONTAINS_STRUCT (code, TS_COMMON))
+  if (CODE_CONTAINS_STRUCT (code, TS_COMMON)
+      /* lto_symtab_prevail_decl use TREE_CHAIN to link to the prevailing decl.
+	 in the case T is a prevailed declaration we would ICE here. */
+      && !VAR_OR_FUNCTION_DECL_P (t))
     LTO_NO_PREVAIL (TREE_CHAIN (t));
   if (DECL_P (t))
     {
@@ -2787,33 +2631,23 @@ static void
 lto_fixup_state (struct lto_in_decl_state *state)
 {
   unsigned i, si;
-  struct lto_tree_ref_table *table;
 
   /* Although we only want to replace FUNCTION_DECLs and VAR_DECLs,
      we still need to walk from all DECLs to find the reachable
      FUNCTION_DECLs and VAR_DECLs.  */
   for (si = 0; si < LTO_N_DECL_STREAMS; si++)
     {
-      table = &state->streams[si];
-      for (i = 0; i < table->size; i++)
+      vec<tree, va_gc> *trees = state->streams[si];
+      for (i = 0; i < vec_safe_length (trees); i++)
 	{
-	  tree *tp = table->trees + i;
-	  if (VAR_OR_FUNCTION_DECL_P (*tp)
-	      && (TREE_PUBLIC (*tp) || DECL_EXTERNAL (*tp)))
-	    *tp = lto_symtab_prevailing_decl (*tp);
+	  tree t = (*trees)[i];
+	  if (flag_checking && TYPE_P (t))
+	    verify_type (t);
+	  if (VAR_OR_FUNCTION_DECL_P (t)
+	      && (TREE_PUBLIC (t) || DECL_EXTERNAL (t)))
+	    (*trees)[i] = lto_symtab_prevailing_decl (t);
 	}
     }
-}
-
-/* A callback of htab_traverse. Just extracts a state from SLOT
-   and calls lto_fixup_state. */
-
-static int
-lto_fixup_state_aux (void **slot, void *aux ATTRIBUTE_UNUSED)
-{
-  struct lto_in_decl_state *state = (struct lto_in_decl_state *) *slot;
-  lto_fixup_state (state);
-  return 1;
 }
 
 /* Fix the decls from all FILES. Replaces each decl with the corresponding
@@ -2835,7 +2669,11 @@ lto_fixup_decls (struct lto_file_decl_data **files)
       struct lto_in_decl_state *state = file->global_decl_state;
       lto_fixup_state (state);
 
-      htab_traverse (file->function_decl_states, lto_fixup_state_aux, NULL);
+      hash_table<decl_state_hasher>::iterator iter;
+      lto_in_decl_state *elt;
+      FOR_EACH_HASH_TABLE_ELEMENT (*file->function_decl_states, elt,
+				   lto_in_decl_state *, iter)
+	lto_fixup_state (elt);
     }
 }
 
@@ -2889,9 +2727,14 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
   struct lto_file_decl_data **decl_data;
   symtab_node *snode;
 
-  init_cgraph ();
+  symtab->initialize ();
 
   timevar_push (TV_IPA_LTO_DECL_IN);
+
+#ifdef ACCEL_COMPILER
+  section_name_prefix = OFFLOAD_SECTION_NAME_PREFIX;
+  lto_stream_offload_p = true;
+#endif
 
   real_file_decl_data
     = decl_data = ggc_cleared_vec_alloc<lto_file_decl_data_ptr> (nfiles + 1);
@@ -2906,7 +2749,8 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
 
       resolution = fopen (resolution_file_name, "r");
       if (resolution == NULL)
-	fatal_error ("could not open symbol resolution file: %m");
+	fatal_error (input_location,
+		     "could not open symbol resolution file: %m");
 
       t = fscanf (resolution, "%u", &num_objects);
       gcc_assert (t == 1);
@@ -2914,11 +2758,11 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
       /* True, since the plugin splits the archives.  */
       gcc_assert (num_objects == nfiles);
     }
-  cgraph_state = CGRAPH_LTO_STREAMING;
+  symtab->state = LTO_STREAMING;
 
   canonical_type_hash_cache = new hash_map<const_tree, hashval_t> (251);
-  gimple_canonical_types = htab_create_ggc (16381, gimple_canonical_type_hash,
-					    gimple_canonical_type_eq, 0);
+  gimple_canonical_types = htab_create (16381, gimple_canonical_type_hash,
+					gimple_canonical_type_eq, NULL);
   gcc_obstack_init (&tree_scc_hash_obstack);
   tree_scc_hash = new hash_table<tree_scc_hasher> (4096);
 
@@ -3011,6 +2855,8 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
   /* Read the symtab.  */
   input_symtab ();
 
+  input_offload_tables (!flag_ltrans);
+
   /* Store resolutions into the symbol table.  */
 
   ld_plugin_symbol_resolution_t *res;
@@ -3044,7 +2890,8 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
       /* If there were errors during symbol merging bail out, we have no
 	 good way to recover here.  */
       if (seen_error ())
-	fatal_error ("errors during merging of translation units");
+	fatal_error (input_location,
+		     "errors during merging of translation units");
 
       /* Fixup all decls.  */
       lto_fixup_decls (all_file_decl_data);
@@ -3078,23 +2925,30 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
 
   /* Finally merge the cgraph according to the decl merging decisions.  */
   timevar_push (TV_IPA_LTO_CGRAPH_MERGE);
-  if (cgraph_dump_file)
+  if (symtab->dump_file)
     {
-      fprintf (cgraph_dump_file, "Before merging:\n");
-      symtab_node::dump_table (cgraph_dump_file);
+      fprintf (symtab->dump_file, "Before merging:\n");
+      symtab_node::dump_table (symtab->dump_file);
     }
-  lto_symtab_merge_symbols ();
-  /* Removal of unreachable symbols is needed to make verify_symtab to pass;
-     we are still having duplicated comdat groups containing local statics.
-     We could also just remove them while merging.  */
-  symtab_remove_unreachable_nodes (true, dump_file);
+  if (!flag_ltrans)
+    {
+      lto_symtab_merge_symbols ();
+      /* Removal of unreachable symbols is needed to make verify_symtab to pass;
+	 we are still having duplicated comdat groups containing local statics.
+	 We could also just remove them while merging.  */
+      symtab->remove_unreachable_nodes (dump_file);
+    }
   ggc_collect ();
-  cgraph_state = CGRAPH_STATE_IPA_SSA;
+  symtab->state = IPA_SSA;
+  /* FIXME: Technically all node removals happening here are useless, because
+     WPA should not stream them.  */
+  if (flag_ltrans)
+    symtab->remove_unreachable_nodes (dump_file);
 
   timevar_pop (TV_IPA_LTO_CGRAPH_MERGE);
 
   /* Indicate that the cgraph is built and ready.  */
-  cgraph_function_flags_ready = true;
+  symtab->function_flags_ready = true;
 
   ggc_free (all_file_decl_data);
   all_file_decl_data = NULL;
@@ -3236,24 +3090,22 @@ do_whole_program_analysis (void)
       dump_memory_report (false);
     }
 
-  cgraph_function_flags_ready = true;
+  symtab->function_flags_ready = true;
 
-  if (cgraph_dump_file)
-    symtab_node::dump_table (cgraph_dump_file);
+  if (symtab->dump_file)
+    symtab_node::dump_table (symtab->dump_file);
   bitmap_obstack_initialize (NULL);
-  cgraph_state = CGRAPH_STATE_IPA_SSA;
+  symtab->state = IPA_SSA;
 
   execute_ipa_pass_list (g->get_passes ()->all_regular_ipa_passes);
-  symtab_remove_unreachable_nodes (false, dump_file);
 
-  if (cgraph_dump_file)
+  if (symtab->dump_file)
     {
-      fprintf (cgraph_dump_file, "Optimized ");
-      symtab_node::dump_table (cgraph_dump_file);
+      fprintf (symtab->dump_file, "Optimized ");
+      symtab_node::dump_table (symtab->dump_file);
     }
-#ifdef ENABLE_CHECKING
-  symtab_node::verify_symtab_nodes ();
-#endif
+
+  symtab_node::checking_verify_symtab_nodes ();
   bitmap_obstack_release (NULL);
 
   /* We are about to launch the final LTRANS phase, stop the WPA timer.  */
@@ -3367,6 +3219,44 @@ lto_init (void)
   memset (&lto_stats, 0, sizeof (lto_stats));
   bitmap_obstack_initialize (NULL);
   gimple_register_cfg_hooks ();
+#ifndef ACCEL_COMPILER
+  unsigned char *table
+    = ggc_vec_alloc<unsigned char> (MAX_MACHINE_MODE);
+  for (int m = 0; m < MAX_MACHINE_MODE; m++)
+    table[m] = m;
+  lto_mode_identity_table = table;
+#endif
+}
+
+/* Create artificial pointers for "omp declare target link" vars.  */
+
+static void
+offload_handle_link_vars (void)
+{
+#ifdef ACCEL_COMPILER
+  varpool_node *var;
+  FOR_EACH_VARIABLE (var)
+    if (lookup_attribute ("omp declare target link",
+			  DECL_ATTRIBUTES (var->decl)))
+      {
+	tree type = build_pointer_type (TREE_TYPE (var->decl));
+	tree link_ptr_var = make_node (VAR_DECL);
+	TREE_TYPE (link_ptr_var) = type;
+	TREE_USED (link_ptr_var) = 1;
+	TREE_STATIC (link_ptr_var) = 1;
+	DECL_MODE (link_ptr_var) = TYPE_MODE (type);
+	DECL_SIZE (link_ptr_var) = TYPE_SIZE (type);
+	DECL_SIZE_UNIT (link_ptr_var) = TYPE_SIZE_UNIT (type);
+	DECL_ARTIFICIAL (link_ptr_var) = 1;
+	tree var_name = DECL_ASSEMBLER_NAME (var->decl);
+	char *new_name
+	  = ACONCAT ((IDENTIFIER_POINTER (var_name), "_linkptr", NULL));
+	DECL_NAME (link_ptr_var) = get_identifier (new_name);
+	SET_DECL_ASSEMBLER_NAME (link_ptr_var, DECL_NAME (link_ptr_var));
+	SET_DECL_VALUE_EXPR (var->decl, build_simple_mem_ref (link_ptr_var));
+	DECL_HAS_VALUE_EXPR_P (var->decl) = 1;
+      }
+#endif
 }
 
 
@@ -3417,6 +3307,8 @@ lto_main (void)
 
   if (!seen_error ())
     {
+      offload_handle_link_vars ();
+
       /* If WPA is enabled analyze the whole call graph and create an
 	 optimization plan.  Otherwise, read in all the function
 	 bodies and continue with optimization.  */
@@ -3432,7 +3324,7 @@ lto_main (void)
 
 	  /* Let the middle end know that we have read and merged all of
 	     the input files.  */ 
-	  compile ();
+	  symtab->compile ();
 
 	  timevar_stop (TV_PHASE_OPT_GEN);
 
