@@ -1,5 +1,5 @@
 /* Target definitions for PowerPC running Darwin (Mac OS X).
-   Copyright (C) 1997-2014 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
    Contributed by Apple Computer Inc.
 
    This file is part of GCC.
@@ -93,7 +93,6 @@ extern int darwin_emit_branch_islands;
   %(cc1_cpu) \
   %{g: %{!fno-eliminate-unused-debug-symbols: -feliminate-unused-debug-symbols }} \
   %{static: %{Zdynamic: %e conflicting code gen style switches are used}}\
-  %{!mmacosx-version-min=*:-mmacosx-version-min=%(darwin_minversion)} \
   %{!mkernel:%{!static:%{!mdynamic-no-pic:-fPIC}}} \
   %{faltivec:-maltivec -include altivec.h} %{fno-altivec:-mno-altivec} \
   %<faltivec %<fno-altivec " \
@@ -123,17 +122,6 @@ extern int darwin_emit_branch_islands;
 /* crt2.o is at least partially required for 10.3.x and earlier.  */
 #define DARWIN_CRT2_SPEC \
   "%{!m64:%:version-compare(!> 10.4 mmacosx-version-min= crt2.o%s)}"
-
-/* Determine a minimum version based on compiler options.  */
-#define DARWIN_MINVERSION_SPEC					\
-  "%{m64:%{fgnu-runtime:10.4;					\
-	   ,objective-c|,objc-cpp-output:10.5;			\
-	   ,objective-c-header:10.5;				\
-	   ,objective-c++|,objective-c++-cpp-output:10.5;	\
-	   ,objective-c++-header|,objc++-cpp-output:10.5;	\
-	   :10.4};						\
-     shared-libgcc:10.3;					\
-     :10.1}"
 
 #undef SUBTARGET_EXTRA_SPECS
 #define SUBTARGET_EXTRA_SPECS			\
@@ -206,7 +194,11 @@ extern int darwin_emit_branch_islands;
     "vrsave", "vscr",							\
     "spe_acc", "spefscr",                                               \
     "sfp",								\
-    "tfhar", "tfiar", "texasr"						\
+    "tfhar", "tfiar", "texasr",						\
+    "rh0",  "rh1",  "rh2",  "rh3",  "rh4",  "rh5",  "rh6",  "rh7",	\
+    "rh8",  "rh9",  "rh10", "rh11", "rh12", "rh13", "rh14", "rh15",	\
+    "rh16", "rh17", "rh18", "rh19", "rh20", "rh21", "rh22", "rh23",	\
+    "rh24", "rh25", "rh26", "rh27", "rh28", "rh29", "rh30", "rh31"	\
 }
 
 /* This outputs NAME to FILE.  */
@@ -424,3 +416,7 @@ do {									\
 /* So far, there is no rs6000_fold_builtin, if one is introduced, then
    this will need to be modified similar to the x86 case.  */
 #define TARGET_FOLD_BUILTIN SUBTARGET_FOLD_BUILTIN
+
+/* Use standard DWARF numbering for DWARF debugging information.  */
+#define RS6000_USE_DWARF_NUMBERING
+

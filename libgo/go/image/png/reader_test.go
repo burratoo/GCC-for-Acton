@@ -6,12 +6,14 @@ package png
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -30,6 +32,7 @@ var filenames = []string{
 	"basn3p01",
 	"basn3p02",
 	"basn3p04",
+	"basn3p04-31i",
 	"basn3p08",
 	"basn3p08-trns",
 	"basn4a08",
@@ -186,6 +189,13 @@ func sng(w io.WriteCloser, filename string, png image.Image) {
 					c = 0
 				}
 			}
+			if c != 0 {
+				for c != 8/bitdepth {
+					b = b << uint(bitdepth)
+					c++
+				}
+				fmt.Fprintf(w, "%02x", b)
+			}
 		}
 		io.WriteString(w, "\n")
 	}
@@ -235,8 +245,8 @@ func TestReader(t *testing.T) {
 
 		// Compare the two, in SNG format, line by line.
 		for {
-			pdone := pb.Scan()
-			sdone := sb.Scan()
+			pdone := !pb.Scan()
+			sdone := !sb.Scan()
 			if pdone && sdone {
 				break
 			}
@@ -311,6 +321,105 @@ func TestPalettedDecodeConfig(t *testing.T) {
 	}
 }
 
+func TestInterlaced(t *testing.T) {
+	a, err := readPNG("testdata/gray-gradient.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := readPNG("testdata/gray-gradient.interlaced.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Fatalf("decodings differ:\nnon-interlaced:\n%#v\ninterlaced:\n%#v", a, b)
+	}
+}
+
+func TestIncompleteIDATOnRowBoundary(t *testing.T) {
+	// The following is an invalid 1x2 grayscale PNG image. The header is OK,
+	// but the zlib-compressed IDAT payload contains two bytes "\x02\x00",
+	// which is only one row of data (the leading "\x02" is a row filter).
+	const (
+		ihdr = "\x00\x00\x00\x0dIHDR\x00\x00\x00\x01\x00\x00\x00\x02\x08\x00\x00\x00\x00\xbc\xea\xe9\xfb"
+		idat = "\x00\x00\x00\x0eIDAT\x78\x9c\x62\x62\x00\x04\x00\x00\xff\xff\x00\x06\x00\x03\xfa\xd0\x59\xae"
+		iend = "\x00\x00\x00\x00IEND\xae\x42\x60\x82"
+	)
+	_, err := Decode(strings.NewReader(pngHeader + ihdr + idat + iend))
+	if err == nil {
+		t.Fatal("got nil error, want non-nil")
+	}
+}
+
+func TestMultipletRNSChunks(t *testing.T) {
+	/*
+		The following is a valid 1x1 paletted PNG image with a 1-element palette
+		containing color.NRGBA{0xff, 0x00, 0x00, 0x7f}:
+			0000000: 8950 4e47 0d0a 1a0a 0000 000d 4948 4452  .PNG........IHDR
+			0000010: 0000 0001 0000 0001 0803 0000 0028 cb34  .............(.4
+			0000020: bb00 0000 0350 4c54 45ff 0000 19e2 0937  .....PLTE......7
+			0000030: 0000 0001 7452 4e53 7f80 5cb4 cb00 0000  ....tRNS..\.....
+			0000040: 0e49 4441 5478 9c62 6200 0400 00ff ff00  .IDATx.bb.......
+			0000050: 0600 03fa d059 ae00 0000 0049 454e 44ae  .....Y.....IEND.
+			0000060: 4260 82                                  B`.
+		Dropping the tRNS chunk makes that color's alpha 0xff instead of 0x7f.
+	*/
+	const (
+		ihdr = "\x00\x00\x00\x0dIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x03\x00\x00\x00\x28\xcb\x34\xbb"
+		plte = "\x00\x00\x00\x03PLTE\xff\x00\x00\x19\xe2\x09\x37"
+		trns = "\x00\x00\x00\x01tRNS\x7f\x80\x5c\xb4\xcb"
+		idat = "\x00\x00\x00\x0eIDAT\x78\x9c\x62\x62\x00\x04\x00\x00\xff\xff\x00\x06\x00\x03\xfa\xd0\x59\xae"
+		iend = "\x00\x00\x00\x00IEND\xae\x42\x60\x82"
+	)
+	for i := 0; i < 4; i++ {
+		var b []byte
+		b = append(b, pngHeader...)
+		b = append(b, ihdr...)
+		b = append(b, plte...)
+		for j := 0; j < i; j++ {
+			b = append(b, trns...)
+		}
+		b = append(b, idat...)
+		b = append(b, iend...)
+
+		var want color.Color
+		m, err := Decode(bytes.NewReader(b))
+		switch i {
+		case 0:
+			if err != nil {
+				t.Errorf("%d tRNS chunks: %v", i, err)
+				continue
+			}
+			want = color.RGBA{0xff, 0x00, 0x00, 0xff}
+		case 1:
+			if err != nil {
+				t.Errorf("%d tRNS chunks: %v", i, err)
+				continue
+			}
+			want = color.NRGBA{0xff, 0x00, 0x00, 0x7f}
+		default:
+			if err == nil {
+				t.Errorf("%d tRNS chunks: got nil error, want non-nil", i)
+			}
+			continue
+		}
+		if got := m.At(0, 0); got != want {
+			t.Errorf("%d tRNS chunks: got %T %v, want %T %v", i, got, got, want, want)
+		}
+	}
+}
+
+func TestUnknownChunkLengthUnderflow(t *testing.T) {
+	data := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x06, 0xf4, 0x7c, 0x55, 0x04, 0x1a,
+		0xd3, 0x11, 0x9a, 0x73, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e, 0x00, 0x00,
+		0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0x07, 0xf4, 0x7c, 0x55, 0x04, 0x1a,
+		0xd3}
+	_, err := Decode(bytes.NewReader(data))
+	if err == nil {
+		t.Errorf("Didn't fail reading an unknown chunk with length 0xffffffff")
+	}
+}
+
 func benchmarkDecode(b *testing.B, filename string, bytesPerPixel int) {
 	b.StopTimer()
 	data, err := ioutil.ReadFile(filename)
@@ -347,4 +456,8 @@ func BenchmarkDecodePaletted(b *testing.B) {
 
 func BenchmarkDecodeRGB(b *testing.B) {
 	benchmarkDecode(b, "testdata/benchRGB.png", 4)
+}
+
+func BenchmarkDecodeInterlacing(b *testing.B) {
+	benchmarkDecode(b, "testdata/benchRGB-interlace.png", 4)
 }

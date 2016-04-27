@@ -1,6 +1,8 @@
 /* { dg-do compile } */
 /* { dg-options "-O3 -fdump-tree-ivcanon-details" } */
 int a[1];
+void test2 (void);
+void
 test(int c)
 { 
   int i=0,j;
@@ -18,4 +20,3 @@ test(int c)
    from the last iteration.  */
 /* { dg-final { scan-tree-dump "loop turned into non-loop; it never loops." "ivcanon"} } */
 /* { dg-final { scan-tree-dump "Last iteration exit edge was proved true." "ivcanon"} } */
-/* { dg-final { cleanup-tree-dump "ivcanon" } } */

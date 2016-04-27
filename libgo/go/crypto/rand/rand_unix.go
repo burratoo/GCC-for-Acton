@@ -20,6 +20,8 @@ import (
 	"time"
 )
 
+const urandomDevice = "/dev/urandom"
+
 // Easy implementation: read from /dev/urandom.
 // This is sufficient on Linux, OS X, and FreeBSD.
 
@@ -27,7 +29,7 @@ func init() {
 	if runtime.GOOS == "plan9" {
 		Reader = newReader(nil)
 	} else {
-		Reader = &devReader{name: "/dev/urandom"}
+		Reader = &devReader{name: urandomDevice}
 	}
 }
 
@@ -38,7 +40,14 @@ type devReader struct {
 	mu   sync.Mutex
 }
 
+// altGetRandom if non-nil specifies an OS-specific function to get
+// urandom-style randomness.
+var altGetRandom func([]byte) (ok bool)
+
 func (r *devReader) Read(b []byte) (n int, err error) {
+	if altGetRandom != nil && r.name == urandomDevice && altGetRandom(b) {
+		return len(b), nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.f == nil {
@@ -49,10 +58,26 @@ func (r *devReader) Read(b []byte) (n int, err error) {
 		if runtime.GOOS == "plan9" {
 			r.f = f
 		} else {
-			r.f = bufio.NewReader(f)
+			r.f = bufio.NewReader(hideAgainReader{f})
 		}
 	}
 	return r.f.Read(b)
+}
+
+var isEAGAIN func(error) bool // set by eagain.go on unix systems
+
+// hideAgainReader masks EAGAIN reads from /dev/urandom.
+// See golang.org/issue/9205
+type hideAgainReader struct {
+	r io.Reader
+}
+
+func (hr hideAgainReader) Read(p []byte) (n int, err error) {
+	n, err = hr.r.Read(p)
+	if err != nil && isEAGAIN != nil && isEAGAIN(err) {
+		err = nil
+	}
+	return
 }
 
 // Alternate pseudo-random implementation for use on

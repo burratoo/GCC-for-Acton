@@ -1,5 +1,5 @@
 /* Compute different info about registers.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -28,32 +28,34 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "hard-reg-set.h"
-#include "tree.h"
-#include "rtl.h"
-#include "expr.h"
-#include "tm_p.h"
-#include "flags.h"
-#include "basic-block.h"
-#include "regs.h"
-#include "addresses.h"
-#include "function.h"
-#include "insn-config.h"
-#include "recog.h"
-#include "reload.h"
-#include "diagnostic-core.h"
-#include "output.h"
-#include "hashtab.h"
+#include "backend.h"
 #include "target.h"
-#include "tree-pass.h"
+#include "rtl.h"
+#include "tree.h"
 #include "df.h"
+#include "tm_p.h"
+#include "insn-config.h"
+#include "regs.h"
 #include "ira.h"
+#include "recog.h"
+#include "diagnostic-core.h"
+#include "reload.h"
+#include "output.h"
+#include "tree-pass.h"
 
 /* Maximum register number used in this function, plus one.  */
 
 int max_regno;
 
+/* Used to cache the results of simplifiable_subregs.  SHAPE is the input
+   parameter and SIMPLIFIABLE_REGS is the result.  */
+struct simplifiable_subreg
+{
+  simplifiable_subreg (const subreg_shape &);
+
+  subreg_shape shape;
+  HARD_REG_SET simplifiable_regs;
+};
 
 struct target_hard_regs default_target_hard_regs;
 struct target_regs default_target_regs;
@@ -253,7 +255,7 @@ static void
 init_reg_sets_1 (void)
 {
   unsigned int i, j;
-  unsigned int /* enum machine_mode */ m;
+  unsigned int /* machine_mode */ m;
 
   restore_register_info ();
 
@@ -430,14 +432,12 @@ init_reg_sets_1 (void)
 	}
       else if (i == FRAME_POINTER_REGNUM)
 	;
-#if !HARD_FRAME_POINTER_IS_FRAME_POINTER
-      else if (i == HARD_FRAME_POINTER_REGNUM)
+      else if (!HARD_FRAME_POINTER_IS_FRAME_POINTER
+	       && i == HARD_FRAME_POINTER_REGNUM)
 	;
-#endif
-#if ARG_POINTER_REGNUM != FRAME_POINTER_REGNUM
-      else if (i == ARG_POINTER_REGNUM && fixed_regs[i])
+      else if (FRAME_POINTER_REGNUM != ARG_POINTER_REGNUM
+	       && i == ARG_POINTER_REGNUM && fixed_regs[i])
 	;
-#endif
       else if (!PIC_OFFSET_TABLE_REG_CALL_CLOBBERED
 	       && i == (unsigned) PIC_OFFSET_TABLE_REGNUM && fixed_regs[i])
 	;
@@ -469,11 +469,11 @@ init_reg_sets_1 (void)
       HARD_REG_SET ok_regs;
       CLEAR_HARD_REG_SET (ok_regs);
       for (j = 0; j < FIRST_PSEUDO_REGISTER; j++)
-	if (!fixed_regs [j] && HARD_REGNO_MODE_OK (j, (enum machine_mode) m))
+	if (!fixed_regs [j] && HARD_REGNO_MODE_OK (j, (machine_mode) m))
 	  SET_HARD_REG_BIT (ok_regs, j);
 
       for (i = 0; i < N_REG_CLASSES; i++)
-	if ((targetm.class_max_nregs ((reg_class_t) i, (enum machine_mode) m)
+	if ((targetm.class_max_nregs ((reg_class_t) i, (machine_mode) m)
 	     <= reg_class_size[i])
 	    && hard_reg_set_intersect_p (ok_regs, reg_class_contents[i]))
 	  {
@@ -496,7 +496,7 @@ init_reg_modes_target (void)
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     for (j = 0; j < MAX_MACHINE_MODE; j++)
-      hard_regno_nregs[i][j] = HARD_REGNO_NREGS (i, (enum machine_mode)j);
+      hard_regno_nregs[i][j] = HARD_REGNO_NREGS (i, (machine_mode)j);
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     {
@@ -548,7 +548,7 @@ init_fake_stack_mems (void)
   int i;
 
   for (i = 0; i < MAX_MACHINE_MODE; i++)
-    top_of_stack[i] = gen_rtx_MEM ((enum machine_mode) i, stack_pointer_rtx);
+    top_of_stack[i] = gen_rtx_MEM ((machine_mode) i, stack_pointer_rtx);
 }
 
 
@@ -556,7 +556,7 @@ init_fake_stack_mems (void)
    TO, using MODE.  */
 
 int
-register_move_cost (enum machine_mode mode, reg_class_t from, reg_class_t to)
+register_move_cost (machine_mode mode, reg_class_t from, reg_class_t to)
 {
   return targetm.register_move_cost (mode, from, to);
 }
@@ -564,7 +564,7 @@ register_move_cost (enum machine_mode mode, reg_class_t from, reg_class_t to)
 /* Compute cost of moving registers to/from memory.  */
 
 int
-memory_move_cost (enum machine_mode mode, reg_class_t rclass, bool in)
+memory_move_cost (machine_mode mode, reg_class_t rclass, bool in)
 {
   return targetm.memory_move_cost (mode, rclass, in);
 }
@@ -572,7 +572,7 @@ memory_move_cost (enum machine_mode mode, reg_class_t rclass, bool in)
 /* Compute extra cost of moving registers to/from memory due to reloads.
    Only needed if secondary reloads are required for memory moves.  */
 int
-memory_move_secondary_cost (enum machine_mode mode, reg_class_t rclass,
+memory_move_secondary_cost (machine_mode mode, reg_class_t rclass,
 			    bool in)
 {
   reg_class_t altclass;
@@ -609,12 +609,12 @@ memory_move_secondary_cost (enum machine_mode mode, reg_class_t rclass,
 /* Return a machine mode that is legitimate for hard reg REGNO and large
    enough to save nregs.  If we can't find one, return VOIDmode.
    If CALL_SAVED is true, only consider modes that are call saved.  */
-enum machine_mode
+machine_mode
 choose_hard_reg_mode (unsigned int regno ATTRIBUTE_UNUSED,
 		      unsigned int nregs, bool call_saved)
 {
-  unsigned int /* enum machine_mode */ m;
-  enum machine_mode found_mode = VOIDmode, mode;
+  unsigned int /* machine_mode */ m;
+  machine_mode found_mode = VOIDmode, mode;
 
   /* We first look for the largest integer mode that can be validly
      held in REGNO.  If none, we look for the largest floating-point mode.
@@ -662,7 +662,7 @@ choose_hard_reg_mode (unsigned int regno ATTRIBUTE_UNUSED,
   /* Iterate over all of the CCmodes.  */
   for (m = (unsigned int) CCmode; m < (unsigned int) NUM_MACHINE_MODES; ++m)
     {
-      mode = (enum machine_mode) m;
+      mode = (machine_mode) m;
       if ((unsigned) hard_regno_nregs[regno][mode] == nregs
 	  && HARD_REGNO_MODE_OK (regno, mode)
 	  && (! call_saved || ! HARD_REGNO_CALL_PART_CLOBBERED (regno, mode)))
@@ -1092,7 +1092,7 @@ reg_scan_mark_refs (rtx x, rtx_insn *insn)
       /* Count a set of the destination if it is a register.  */
       for (dest = SET_DEST (x);
 	   GET_CODE (dest) == SUBREG || GET_CODE (dest) == STRICT_LOW_PART
-	   || GET_CODE (dest) == ZERO_EXTEND;
+	   || GET_CODE (dest) == ZERO_EXTRACT;
 	   dest = XEXP (dest, 0))
 	;
 
@@ -1193,64 +1193,136 @@ reg_classes_intersect_p (reg_class_t c1, reg_class_t c2)
 }
 
 
+inline hashval_t
+simplifiable_subregs_hasher::hash (const simplifiable_subreg *value)
+{
+  return value->shape.unique_id ();
+}
+
+inline bool
+simplifiable_subregs_hasher::equal (const simplifiable_subreg *value,
+				    const subreg_shape *compare)
+{
+  return value->shape == *compare;
+}
+
+inline simplifiable_subreg::simplifiable_subreg (const subreg_shape &shape_in)
+  : shape (shape_in)
+{
+  CLEAR_HARD_REG_SET (simplifiable_regs);
+}
+
+/* Return the set of hard registers that are able to form the subreg
+   described by SHAPE.  */
+
+const HARD_REG_SET &
+simplifiable_subregs (const subreg_shape &shape)
+{
+  if (!this_target_hard_regs->x_simplifiable_subregs)
+    this_target_hard_regs->x_simplifiable_subregs
+      = new hash_table <simplifiable_subregs_hasher> (30);
+  simplifiable_subreg **slot
+    = (this_target_hard_regs->x_simplifiable_subregs
+       ->find_slot_with_hash (&shape, shape.unique_id (), INSERT));
+
+  if (!*slot)
+    {
+      simplifiable_subreg *info = new simplifiable_subreg (shape);
+      for (unsigned int i = 0; i < FIRST_PSEUDO_REGISTER; ++i)
+	if (HARD_REGNO_MODE_OK (i, shape.inner_mode)
+	    && simplify_subreg_regno (i, shape.inner_mode, shape.offset,
+				      shape.outer_mode) >= 0)
+	  SET_HARD_REG_BIT (info->simplifiable_regs, i);
+      *slot = info;
+    }
+  return (*slot)->simplifiable_regs;
+}
 
 /* Passes for keeping and updating info about modes of registers
    inside subregisters.  */
 
-#ifdef CANNOT_CHANGE_MODE_CLASS
+static HARD_REG_SET **valid_mode_changes;
+static obstack valid_mode_changes_obstack;
 
-static bitmap invalid_mode_changes;
+/* Restrict the choice of register for SUBREG_REG (SUBREG) based
+   on information about SUBREG.
+
+   If PARTIAL_DEF, SUBREG is a partial definition of a multipart inner
+   register and we want to ensure that the other parts of the inner
+   register are correctly preserved.  If !PARTIAL_DEF we need to
+   ensure that SUBREG itself can be formed.  */
 
 static void
-record_subregs_of_mode (rtx subreg, bitmap subregs_of_mode)
+record_subregs_of_mode (rtx subreg, bool partial_def)
 {
-  enum machine_mode mode;
   unsigned int regno;
 
   if (!REG_P (SUBREG_REG (subreg)))
     return;
 
   regno = REGNO (SUBREG_REG (subreg));
-  mode = GET_MODE (subreg);
-
   if (regno < FIRST_PSEUDO_REGISTER)
     return;
 
-  if (bitmap_set_bit (subregs_of_mode,
-		      regno * NUM_MACHINE_MODES + (unsigned int) mode))
+  subreg_shape shape (shape_of_subreg (subreg));
+  if (partial_def)
     {
-      unsigned int rclass;
-      for (rclass = 0; rclass < N_REG_CLASSES; rclass++)
-	if (!bitmap_bit_p (invalid_mode_changes,
-			   regno * N_REG_CLASSES + rclass)
-	    && CANNOT_CHANGE_MODE_CLASS (PSEUDO_REGNO_MODE (regno),
-					 mode, (enum reg_class) rclass))
-	  bitmap_set_bit (invalid_mode_changes,
-			  regno * N_REG_CLASSES + rclass);
+      /* The number of independently-accessible SHAPE.outer_mode values
+	 in SHAPE.inner_mode is GET_MODE_SIZE (SHAPE.inner_mode) / SIZE.
+	 We need to check that the assignment will preserve all the other
+	 SIZE-byte chunks in the inner register besides the one that
+	 includes SUBREG.
+
+	 In practice it is enough to check whether an equivalent
+	 SHAPE.inner_mode value in an adjacent SIZE-byte chunk can be formed.
+	 If the underlying registers are small enough, both subregs will
+	 be valid.  If the underlying registers are too large, one of the
+	 subregs will be invalid.
+
+	 This relies on the fact that we've already been passed
+	 SUBREG with PARTIAL_DEF set to false.  */
+      unsigned int size = MAX (REGMODE_NATURAL_SIZE (shape.inner_mode),
+			       GET_MODE_SIZE (shape.outer_mode));
+      gcc_checking_assert (size < GET_MODE_SIZE (shape.inner_mode));
+      if (shape.offset >= size)
+	shape.offset -= size;
+      else
+	shape.offset += size;
+    }
+
+  if (valid_mode_changes[regno])
+    AND_HARD_REG_SET (*valid_mode_changes[regno],
+		      simplifiable_subregs (shape));
+  else
+    {
+      valid_mode_changes[regno]
+	= XOBNEW (&valid_mode_changes_obstack, HARD_REG_SET);
+      COPY_HARD_REG_SET (*valid_mode_changes[regno],
+			 simplifiable_subregs (shape));
     }
 }
 
 /* Call record_subregs_of_mode for all the subregs in X.  */
 static void
-find_subregs_of_mode (rtx x, bitmap subregs_of_mode)
+find_subregs_of_mode (rtx x)
 {
   enum rtx_code code = GET_CODE (x);
   const char * const fmt = GET_RTX_FORMAT (code);
   int i;
 
   if (code == SUBREG)
-    record_subregs_of_mode (x, subregs_of_mode);
+    record_subregs_of_mode (x, false);
 
   /* Time for some deep diving.  */
   for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
     {
       if (fmt[i] == 'e')
-	find_subregs_of_mode (XEXP (x, i), subregs_of_mode);
+	find_subregs_of_mode (XEXP (x, i));
       else if (fmt[i] == 'E')
 	{
 	  int j;
 	  for (j = XVECLEN (x, i) - 1; j >= 0; j--)
-	    find_subregs_of_mode (XVECEXP (x, i, j), subregs_of_mode);
+	    find_subregs_of_mode (XVECEXP (x, i, j));
 	}
     }
 }
@@ -1260,46 +1332,41 @@ init_subregs_of_mode (void)
 {
   basic_block bb;
   rtx_insn *insn;
-  bitmap_obstack srom_obstack;
-  bitmap subregs_of_mode;
 
-  gcc_assert (invalid_mode_changes == NULL);
-  invalid_mode_changes = BITMAP_ALLOC (NULL);
-  bitmap_obstack_initialize (&srom_obstack);
-  subregs_of_mode = BITMAP_ALLOC (&srom_obstack);
+  gcc_obstack_init (&valid_mode_changes_obstack);
+  valid_mode_changes = XCNEWVEC (HARD_REG_SET *, max_reg_num ());
 
   FOR_EACH_BB_FN (bb, cfun)
     FOR_BB_INSNS (bb, insn)
       if (NONDEBUG_INSN_P (insn))
-        find_subregs_of_mode (PATTERN (insn), subregs_of_mode);
-
-  BITMAP_FREE (subregs_of_mode);
-  bitmap_obstack_release (&srom_obstack);
+	{
+	  find_subregs_of_mode (PATTERN (insn));
+	  df_ref def;
+	  FOR_EACH_INSN_DEF (def, insn)
+	    if (DF_REF_FLAGS_IS_SET (def, DF_REF_PARTIAL)
+		&& df_read_modify_subreg_p (DF_REF_REG (def)))
+	      record_subregs_of_mode (DF_REF_REG (def), true);
+	}
 }
 
-/* Return 1 if REGNO has had an invalid mode change in CLASS from FROM
-   mode.  */
-bool
-invalid_mode_change_p (unsigned int regno,
-		       enum reg_class rclass)
+const HARD_REG_SET *
+valid_mode_changes_for_regno (unsigned int regno)
 {
-  return bitmap_bit_p (invalid_mode_changes,
-		       regno * N_REG_CLASSES + (unsigned) rclass);
+  return valid_mode_changes[regno];
 }
 
 void
 finish_subregs_of_mode (void)
 {
-  BITMAP_FREE (invalid_mode_changes);
-}
-#else
-void
-init_subregs_of_mode (void)
-{
-}
-void
-finish_subregs_of_mode (void)
-{
+  XDELETEVEC (valid_mode_changes);
+  obstack_free (&valid_mode_changes_obstack, NULL);
 }
 
-#endif /* CANNOT_CHANGE_MODE_CLASS */
+/* Free all data attached to the structure.  This isn't a destructor because
+   we don't want to run on exit.  */
+
+void
+target_hard_regs::finalize ()
+{
+  delete x_simplifiable_subregs;
+}

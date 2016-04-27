@@ -1,5 +1,5 @@
 /* Tree-dumping functionality for intermediate representation.
-   Copyright (C) 1999-2014 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Written by Mark Mitchell <mark@codesourcery.com>
 
 This file is part of GCC.
@@ -21,17 +21,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
 #include "tree.h"
-#include "splay-tree.h"
-#include "filenames.h"
+#include "tree-pretty-print.h"
 #include "tree-dump.h"
 #include "langhooks.h"
 #include "tree-iterator.h"
-#include "tree-pretty-print.h"
 #include "tree-cfg.h"
-#include "wide-int.h"
-#include "wide-int-print.h"
 
 static unsigned int queue (dump_info_p, const_tree, int);
 static void dump_index (dump_info_p, unsigned int);

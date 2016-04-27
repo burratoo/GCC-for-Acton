@@ -1,5 +1,5 @@
 /* Various declarations for language-independent pretty-print subroutines.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -25,11 +25,30 @@ along with GCC; see the file COPYING3.  If not see
 #include "pretty-print.h"
 #include "diagnostic-color.h"
 
-#include <new>                    // For placement-new.
-
 #if HAVE_ICONV
 #include <iconv.h>
 #endif
+
+/* Overwrite the given location/range within this text_info's rich_location.
+   For use e.g. when implementing "+" in client format decoders.  */
+
+void
+text_info::set_location (unsigned int idx, location_t loc, bool show_caret_p)
+{
+  gcc_checking_assert (m_richloc);
+  m_richloc->set_range (line_table, idx, loc, show_caret_p);
+}
+
+location_t
+text_info::get_location (unsigned int index_of_location) const
+{
+  gcc_checking_assert (m_richloc);
+
+  if (index_of_location == 0)
+    return m_richloc->get_loc ();
+  else
+    return UNKNOWN_LOCATION;
+}
 
 // Default construct an output buffer.
 
@@ -40,7 +59,8 @@ output_buffer::output_buffer ()
     cur_chunk_array (),
     stream (stderr),
     line_length (),
-    digit_buffer ()
+    digit_buffer (),
+    flush_p (true)
 {
   obstack_init (&formatted_obstack);
   obstack_init (&chunk_obstack);
@@ -54,9 +74,6 @@ output_buffer::~output_buffer ()
   obstack_free (&formatted_obstack, NULL);
 }
 
-/* A pointer to the formatted diagnostic message.  */
-#define pp_formatted_text_data(PP) \
-   ((const char *) obstack_base (pp_buffer (PP)->obstack))
 
 /* Format an integer given by va_arg (ARG, type-specifier T) where
    type-specifier is a precision modifier as indicated by PREC.  F is
@@ -140,37 +157,48 @@ pp_write_text_as_dot_label_to_stream (pretty_printer *pp, bool for_record)
   const char *p = text;
   FILE *fp = pp_buffer (pp)->stream;
 
-  while (*p)
+  for (;*p; p++)
     {
+      bool escape_char;
       switch (*p)
 	{
 	/* Print newlines as a left-aligned newline.  */
 	case '\n':
-	  fputs ("\\l\\\n", fp);
+	  fputs ("\\l", fp);
+	  escape_char = true;
 	  break;
 
-	/* A pipe is only special for record-shape nodes.  */
+	/* The following characters are only special for record-shape nodes.  */
 	case '|':
-	  if (for_record)
-	    fputc ('\\', fp);
-	  fputc (*p, fp);
-	  break;
-
-	/* The following characters always have to be escaped
-	   for use in labels.  */
 	case '{':
 	case '}':
 	case '<':
 	case '>':
-	case '"':
 	case ' ':
-	  fputc ('\\', fp);
-	  /* fall through */
+	  escape_char = for_record;
+	  break;
+
+	/* The following characters always have to be escaped
+	   for use in labels.  */
+	case '\\':
+	  /* There is a bug in some (f.i. 2.36.0) versions of graphiz
+	     ( http://www.graphviz.org/mantisbt/view.php?id=2524 ) related to
+	     backslash as last char in label.  Let's avoid triggering it.  */
+	  gcc_assert (*(p + 1) != '\0');
+	  /* Fall through.  */
+	case '"':
+	  escape_char = true;
+	  break;
+
 	default:
-	  fputc (*p, fp);
+	  escape_char = false;
 	  break;
 	}
-      p++;
+
+      if (escape_char)
+	fputc ('\\', fp);
+
+      fputc (*p, fp);
     }
 
   pp_clear_output_area (pp);
@@ -224,8 +252,7 @@ pp_maybe_wrap_text (pretty_printer *pp, const char *start, const char *end)
 static inline void
 pp_append_r (pretty_printer *pp, const char *start, int length)
 {
-  obstack_grow (pp_buffer (pp)->obstack, start, length);
-  pp_buffer (pp)->line_length += length;
+  output_buffer_append_r (pp_buffer (pp), start, length);
 }
 
 /* Insert enough spaces into the output area of PRETTY-PRINTER to bring
@@ -628,10 +655,9 @@ pp_format (pretty_printer *pp, text_info *text)
       *formatters[argno] = XOBFINISH (&buffer->chunk_obstack, const char *);
     }
 
-#ifdef ENABLE_CHECKING
-  for (; argno < PP_NL_ARGMAX; argno++)
-    gcc_assert (!formatters[argno]);
-#endif
+  if (CHECKING_P)
+    for (; argno < PP_NL_ARGMAX; argno++)
+      gcc_assert (!formatters[argno]);
 
   /* Revert to normal obstack and wrapping mode.  */
   buffer->obstack = &buffer->formatted_obstack;
@@ -679,12 +705,25 @@ pp_format_verbatim (pretty_printer *pp, text_info *text)
   pp_wrapping_mode (pp) = oldmode;
 }
 
-/* Flush the content of BUFFER onto the attached stream.  */
+/* Flush the content of BUFFER onto the attached stream.  This
+   function does nothing unless pp->output_buffer->flush_p.  */
 void
 pp_flush (pretty_printer *pp)
 {
-  pp_write_text_to_stream (pp);
   pp_clear_state (pp);
+  if (!pp->buffer->flush_p)
+    return;
+  pp_write_text_to_stream (pp);
+  fflush (pp_buffer (pp)->stream);
+}
+
+/* Flush the content of BUFFER onto the attached stream independently
+   of the value of pp->output_buffer->flush_p.  */
+void
+pp_really_flush (pretty_printer *pp)
+{
+  pp_clear_state (pp);
+  pp_write_text_to_stream (pp);
   fflush (pp_buffer (pp)->stream);
 }
 
@@ -812,8 +851,7 @@ pp_append_text (pretty_printer *pp, const char *start, const char *end)
 const char *
 pp_formatted_text (pretty_printer *pp)
 {
-  obstack_1grow (pp_buffer (pp)->obstack, '\0');
-  return pp_formatted_text_data (pp);
+  return output_buffer_formatted_text (pp_buffer (pp));
 }
 
 /*  Return a pointer to the last character emitted in PRETTY-PRINTER's
@@ -821,12 +859,7 @@ pp_formatted_text (pretty_printer *pp)
 const char *
 pp_last_position_in_text (const pretty_printer *pp)
 {
-  const char *p = NULL;
-  struct obstack *text = pp_buffer (pp)->obstack;
-
-  if (obstack_base (text) != obstack_next_free (text))
-    p = ((const char *) obstack_next_free (text)) - 1;
-  return p;
+  return output_buffer_last_position_in_text (pp_buffer (pp));
 }
 
 /* Return the amount of characters PRETTY-PRINTER can accept to
@@ -849,7 +882,6 @@ pp_printf (pretty_printer *pp, const char *msg, ...)
   text.err_no = errno;
   text.args_ptr = &ap;
   text.format_spec = msg;
-  text.locus = NULL;
   pp_format (pp, &text);
   pp_output_formatted_text (pp);
   va_end (ap);
@@ -867,7 +899,6 @@ pp_verbatim (pretty_printer *pp, const char *msg, ...)
   text.err_no = errno;
   text.args_ptr = &ap;
   text.format_spec = msg;
-  text.locus = NULL;
   pp_format_verbatim (pp, &text);
   va_end (ap);
 }
@@ -903,7 +934,8 @@ pp_character (pretty_printer *pp, int c)
 void
 pp_string (pretty_printer *pp, const char *str)
 {
-  pp_maybe_wrap_text (pp, str, str + (str ? strlen (str) : 0));
+  gcc_checking_assert (str);
+  pp_maybe_wrap_text (pp, str, str + strlen (str));
 }
 
 /* Maybe print out a whitespace if needed.  */

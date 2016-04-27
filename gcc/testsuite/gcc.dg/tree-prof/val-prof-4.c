@@ -3,6 +3,7 @@ unsigned int a[1000];
 unsigned int b = 999;
 unsigned int c = 1002;
 unsigned int d = 1003;
+int
 main ()
 {
   int i;
@@ -28,5 +29,3 @@ main ()
    didn't get optimized out.  */
 /* { dg-final-use { scan-tree-dump "if \\(n_\[0-9\]* \\>" "optimized"} } */
 /* { dg-final-use { scan-tree-dump-not "Invalid sum" "optimized"} } */
-/* { dg-final-use { cleanup-tree-dump "optimized" } } */
-/* { dg-final-use { cleanup-ipa-dump "profile" } } */

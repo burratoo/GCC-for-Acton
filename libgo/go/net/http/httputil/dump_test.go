@@ -5,6 +5,7 @@
 package httputil
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -71,7 +72,7 @@ var dumpTests = []dumpTest{
 
 		WantDumpOut: "GET /foo HTTP/1.1\r\n" +
 			"Host: example.com\r\n" +
-			"User-Agent: Go 1.1 package http\r\n" +
+			"User-Agent: Go-http-client/1.1\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 	},
 
@@ -83,7 +84,7 @@ var dumpTests = []dumpTest{
 
 		WantDumpOut: "GET /foo HTTP/1.1\r\n" +
 			"Host: example.com\r\n" +
-			"User-Agent: Go 1.1 package http\r\n" +
+			"User-Agent: Go-http-client/1.1\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 	},
 
@@ -105,11 +106,43 @@ var dumpTests = []dumpTest{
 
 		WantDumpOut: "POST / HTTP/1.1\r\n" +
 			"Host: post.tld\r\n" +
-			"User-Agent: Go 1.1 package http\r\n" +
+			"User-Agent: Go-http-client/1.1\r\n" +
 			"Content-Length: 6\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 
 		NoBody: true,
+	},
+
+	// Request with Body > 8196 (default buffer size)
+	{
+		Req: http.Request{
+			Method: "POST",
+			URL: &url.URL{
+				Scheme: "http",
+				Host:   "post.tld",
+				Path:   "/",
+			},
+			ContentLength: 8193,
+			ProtoMajor:    1,
+			ProtoMinor:    1,
+		},
+
+		Body: bytes.Repeat([]byte("a"), 8193),
+
+		WantDumpOut: "POST / HTTP/1.1\r\n" +
+			"Host: post.tld\r\n" +
+			"User-Agent: Go-http-client/1.1\r\n" +
+			"Content-Length: 8193\r\n" +
+			"Accept-Encoding: gzip\r\n\r\n" +
+			strings.Repeat("a", 8193),
+	},
+
+	{
+		Req: *mustReadRequest("GET http://foo.com/ HTTP/1.1\r\n" +
+			"User-Agent: blah\r\n\r\n"),
+		NoBody: true,
+		WantDump: "GET http://foo.com/ HTTP/1.1\r\n" +
+			"User-Agent: blah\r\n\r\n",
 	},
 }
 
@@ -125,6 +158,8 @@ func TestDumpRequest(t *testing.T) {
 				tt.Req.Body = ioutil.NopCloser(bytes.NewReader(b))
 			case func() io.ReadCloser:
 				tt.Req.Body = b()
+			default:
+				t.Fatalf("Test %d: unsupported Body of %T", i, tt.Body)
 			}
 		}
 		setBody()
@@ -159,7 +194,9 @@ func TestDumpRequest(t *testing.T) {
 		}
 	}
 	if dg := runtime.NumGoroutine() - numg0; dg > 4 {
-		t.Errorf("Unexpectedly large number of new goroutines: %d new", dg)
+		buf := make([]byte, 4096)
+		buf = buf[:runtime.Stack(buf, true)]
+		t.Errorf("Unexpectedly large number of new goroutines: %d new: %s", dg, buf)
 	}
 }
 
@@ -179,6 +216,14 @@ func mustNewRequest(method, url string, body io.Reader) *http.Request {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		panic(fmt.Sprintf("NewRequest(%q, %q, %p) err = %v", method, url, body, err))
+	}
+	return req
+}
+
+func mustReadRequest(s string) *http.Request {
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(s)))
+	if err != nil {
+		panic(err)
 	}
 	return req
 }

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -215,30 +215,16 @@ package body Switch.C is
             else
                declare
                   Runtime_Dir : String_Access;
-
                begin
                   if System.OS_Lib.Is_Absolute_Path
                        (Switch_Chars (Ptr + 4 .. Max))
                   then
                      Runtime_Dir :=
-                       new String'
-                         (System.OS_Lib.Normalize_Pathname
-                            (Switch_Chars (Ptr + 4 .. Max)));
-
+                       new String'(System.OS_Lib.Normalize_Pathname
+                                      (Switch_Chars (Ptr + 4 .. Max)));
                   else
                      Runtime_Dir :=
                        new String'(Switch_Chars (Ptr + 4 .. Max));
-                  end if;
-
-                  --  Check that this is the first time --RTS is specified
-                  --  or if it is not the first time, the same path has been
-                  --  specified.
-
-                  if RTS_Specified = null then
-                     RTS_Specified := Runtime_Dir;
-
-                  elsif  RTS_Specified.all /= Runtime_Dir.all then
-                     Osint.Fail ("--RTS cannot be specified multiple times");
                   end if;
 
                   --  Valid --RTS switch
@@ -252,13 +238,27 @@ package body Switch.C is
                   RTS_Lib_Path_Name :=
                     Get_RTS_Search_Dir (Runtime_Dir.all, Objects);
 
-                  if RTS_Src_Path_Name /= null
+                  if RTS_Specified /= null then
+                     if RTS_Src_Path_Name = null
+                       or else RTS_Lib_Path_Name = null
+                       or else
+                         System.OS_Lib.Normalize_Pathname
+                           (RTS_Specified.all) /=
+                         System.OS_Lib.Normalize_Pathname
+                           (RTS_Lib_Path_Name.all)
+                     then
+                        Osint.Fail
+                          ("--RTS cannot be specified multiple times");
+                     end if;
+
+                  elsif RTS_Src_Path_Name /= null
                     and then RTS_Lib_Path_Name /= null
                   then
                      --  Store the -fRTS switch (Note: Store_Compilation_Switch
                      --  changes -fRTS back into --RTS for the actual output).
 
                      Store_Compilation_Switch (Switch_Chars);
+                     RTS_Specified := new String'(RTS_Lib_Path_Name.all);
 
                   elsif RTS_Src_Path_Name = null
                     and then RTS_Lib_Path_Name = null
@@ -577,6 +577,19 @@ package body Switch.C is
                      Ptr := Ptr + 1;
                      Check_Float_Overflow := not Machine_Overflows_On_Target;
 
+                  --  -gnateg (generate C code)
+
+                  when 'g' =>
+                     --  Special check, -gnateg must occur after -gnatc
+
+                     if Operating_Mode /= Check_Semantics then
+                        Osint.Fail
+                          ("gnateg requires previous occurrence of -gnatc");
+                     end if;
+
+                     Generate_C_Code := True;
+                     Ptr := Ptr + 1;
+
                   --  -gnateG (save preprocessor output)
 
                   when 'G' =>
@@ -822,6 +835,7 @@ package body Switch.C is
             when 'g' =>
                Ptr := Ptr + 1;
                GNAT_Mode := True;
+               GNAT_Mode_Config := True;
                Identifier_Character_Set := 'n';
                System_Extend_Unit := Empty;
                Warning_Mode := Treat_As_Error;

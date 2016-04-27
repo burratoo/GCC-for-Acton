@@ -260,7 +260,7 @@ package Prj.Tree is
    --  For each function the condition of validity is specified. If an access
    --  function is called with invalid arguments, then exception
    --  Assertion_Error is raised if assertions are enabled, otherwise the
-   --  behaviour is not defined and may result in a crash.
+   --  behavior is not defined and may result in a crash.
 
    function Name_Of
      (Node    : Project_Node_Id;
@@ -268,6 +268,12 @@ package Prj.Tree is
    pragma Inline (Name_Of);
    --  Valid for all non empty nodes. May return No_Name for nodes that have
    --  no names.
+
+   function Display_Name_Of
+     (Node    : Project_Node_Id;
+      In_Tree : Project_Node_Tree_Ref) return Name_Id;
+   pragma Inline (Display_Name_Of);
+   --  Valid only for N_Project node. Returns the display name of the project.
 
    function Kind_Of
      (Node    : Project_Node_Id;
@@ -727,7 +733,7 @@ package Prj.Tree is
    --  Foe each Set_* procedure the condition of validity is specified. If an
    --  access function is called with invalid arguments, then exception
    --  Assertion_Error is raised if assertions are enabled, otherwise the
-   --  behaviour is not defined and may result in a crash.
+   --  behavior is not defined and may result in a crash.
 
    --  These are very low-level, and manipulate the tree itself directly. You
    --  should look at the Create_* procedure instead if you want to use higher
@@ -738,7 +744,14 @@ package Prj.Tree is
       In_Tree : Project_Node_Tree_Ref;
       To      : Name_Id);
    pragma Inline (Set_Name_Of);
-   --  Valid for all non empty nodes.
+   --  Valid for all non empty nodes
+
+   procedure Set_Display_Name_Of
+     (Node    : Project_Node_Id;
+      In_Tree : Project_Node_Tree_Ref;
+      To      : Name_Id);
+   pragma Inline (Set_Display_Name_Of);
+   --  Valid only for N_Project nodes
 
    procedure Set_Kind_Of
      (Node    : Project_Node_Id;
@@ -1159,6 +1172,9 @@ package Prj.Tree is
          Directory : Path_Name_Type := No_Path;
          --  Only for N_Project
 
+         Display_Name : Name_Id := No_Name;
+         --  Only for N_Project
+
          Expr_Kind : Variable_Kind := Undefined;
          --  See below for what Project_Node_Kind it is used
 
@@ -1479,9 +1495,6 @@ package Prj.Tree is
          Name : Name_Id;
          --  Name of the project
 
-         Display_Name : Name_Id;
-         --  The name of the project as it appears in the .gpr file
-
          Node : Project_Node_Id;
          --  Node of the project in table Project_Nodes
 
@@ -1502,7 +1515,6 @@ package Prj.Tree is
 
       No_Project_Name_And_Node : constant Project_Name_And_Node :=
         (Name           => No_Name,
-         Display_Name   => No_Name,
          Node           => Empty_Node,
          Resolved_Path  => No_Path,
          Extended       => True,

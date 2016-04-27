@@ -7,8 +7,10 @@ package fmt_test
 import (
 	"bytes"
 	. "fmt"
+	"internal/race"
 	"io"
 	"math"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -108,6 +110,20 @@ func (p *P) String() string {
 var barray = [5]renamedUint8{1, 2, 3, 4, 5}
 var bslice = barray[:]
 
+type byteStringer byte
+
+func (byteStringer) String() string { return "X" }
+
+var byteStringerSlice = []byteStringer{97, 98, 99, 100}
+
+type byteFormatter byte
+
+func (byteFormatter) Format(f State, _ rune) {
+	Fprint(f, "X")
+}
+
+var byteFormatterSlice = []byteFormatter{97, 98, 99, 100}
+
 var b byte
 
 var fmtTests = []struct {
@@ -121,23 +137,33 @@ var fmtTests = []struct {
 
 	// basic string
 	{"%s", "abc", "abc"},
+	{"%q", "abc", `"abc"`},
 	{"%x", "abc", "616263"},
+	{"%x", "\xff\xf0\x0f\xff", "fff00fff"},
+	{"%X", "\xff\xf0\x0f\xff", "FFF00FFF"},
 	{"%x", "xyz", "78797a"},
 	{"%X", "xyz", "78797A"},
-	{"%q", "abc", `"abc"`},
+	{"% x", "xyz", "78 79 7a"},
+	{"% X", "xyz", "78 79 7A"},
+	{"%#x", "xyz", "0x78797a"},
+	{"%#X", "xyz", "0X78797A"},
+	{"%# x", "xyz", "0x78 0x79 0x7a"},
+	{"%# X", "xyz", "0X78 0X79 0X7A"},
 
 	// basic bytes
 	{"%s", []byte("abc"), "abc"},
+	{"%q", []byte("abc"), `"abc"`},
 	{"%x", []byte("abc"), "616263"},
-	{"% x", []byte("abc\xff"), "61 62 63 ff"},
-	{"%#x", []byte("abc\xff"), "0x610x620x630xff"},
-	{"%#X", []byte("abc\xff"), "0X610X620X630XFF"},
-	{"%# x", []byte("abc\xff"), "0x61 0x62 0x63 0xff"},
-	{"%# X", []byte("abc\xff"), "0X61 0X62 0X63 0XFF"},
-	{"% X", []byte("abc\xff"), "61 62 63 FF"},
+	{"%x", []byte("\xff\xf0\x0f\xff"), "fff00fff"},
+	{"%X", []byte("\xff\xf0\x0f\xff"), "FFF00FFF"},
 	{"%x", []byte("xyz"), "78797a"},
 	{"%X", []byte("xyz"), "78797A"},
-	{"%q", []byte("abc"), `"abc"`},
+	{"% x", []byte("xyz"), "78 79 7a"},
+	{"% X", []byte("xyz"), "78 79 7A"},
+	{"%#x", []byte("xyz"), "0x78797a"},
+	{"%#X", []byte("xyz"), "0X78797A"},
+	{"%# x", []byte("xyz"), "0x78 0x79 0x7a"},
+	{"%# X", []byte("xyz"), "0X78 0X79 0X7A"},
 
 	// escaped strings
 	{"%#q", `abc`, "`abc`"},
@@ -176,9 +202,18 @@ var fmtTests = []struct {
 	{"%.5s", "日本語日本語", "日本語日本"},
 	{"%.5s", []byte("日本語日本語"), "日本語日本"},
 	{"%.5q", "abcdefghijklmnopqrstuvwxyz", `"abcde"`},
+	{"%.5x", "abcdefghijklmnopqrstuvwxyz", `6162636465`},
+	{"%.5q", []byte("abcdefghijklmnopqrstuvwxyz"), `"abcde"`},
+	{"%.5x", []byte("abcdefghijklmnopqrstuvwxyz"), `6162636465`},
 	{"%.3q", "日本語日本語", `"日本語"`},
 	{"%.3q", []byte("日本語日本語"), `"日本語"`},
+	{"%.1q", "日本語", `"日"`},
+	{"%.1q", []byte("日本語"), `"日"`},
+	{"%.1x", "日本語", `e6`},
+	{"%.1X", []byte("日本語"), `E6`},
 	{"%10.1q", "日本語日本語", `       "日"`},
+	{"%3c", '⌘', "  ⌘"},
+	{"%5q", '\u2026', `  '…'`},
 	{"%10v", nil, "     <nil>"},
 	{"%-10v", nil, "<nil>     "},
 
@@ -361,6 +396,8 @@ var fmtTests = []struct {
 	{"%v", &slice, "&[1 2 3 4 5]"},
 	{"%v", &islice, "&[1 hello 2.5 <nil>]"},
 	{"%v", &bslice, "&[1 2 3 4 5]"},
+	{"%v", []byte{1}, "[1]"},
+	{"%v", []byte{}, "[]"},
 
 	// complexes with %v
 	{"%v", 1 + 2i, "(1+2i)"},
@@ -379,7 +416,7 @@ var fmtTests = []struct {
 	{"%s", I(23), `<23>`},
 	{"%q", I(23), `"<23>"`},
 	{"%x", I(23), `3c32333e`},
-	{"%#x", I(23), `0x3c0x320x330x3e`},
+	{"%#x", I(23), `0x3c32333e`},
 	{"%# x", I(23), `0x3c 0x32 0x33 0x3e`},
 	{"%d", I(23), `23`}, // Stringer applies only to string formats.
 
@@ -414,6 +451,32 @@ var fmtTests = []struct {
 	{"%d", []int{1, 2, 15}, `[1 2 15]`},
 	{"%d", []byte{1, 2, 15}, `[1 2 15]`},
 	{"%q", []string{"a", "b"}, `["a" "b"]`},
+	{"% 02x", []byte{1}, "01"},
+	{"% 02x", []byte{1, 2, 3}, "01 02 03"},
+	// Padding with byte slices.
+	{"%x", []byte{}, ""},
+	{"%02x", []byte{}, "00"},
+	{"% 02x", []byte{}, "00"},
+	{"%08x", []byte{0xab}, "000000ab"},
+	{"% 08x", []byte{0xab}, "000000ab"},
+	{"%08x", []byte{0xab, 0xcd}, "0000abcd"},
+	{"% 08x", []byte{0xab, 0xcd}, "000ab cd"},
+	{"%8x", []byte{0xab}, "      ab"},
+	{"% 8x", []byte{0xab}, "      ab"},
+	{"%8x", []byte{0xab, 0xcd}, "    abcd"},
+	{"% 8x", []byte{0xab, 0xcd}, "   ab cd"},
+	// Same for strings
+	{"%x", "", ""},
+	{"%02x", "", "00"},
+	{"% 02x", "", "00"},
+	{"%08x", "\xab", "000000ab"},
+	{"% 08x", "\xab", "000000ab"},
+	{"%08x", "\xab\xcd", "0000abcd"},
+	{"% 08x", "\xab\xcd", "000ab cd"},
+	{"%8x", "\xab", "      ab"},
+	{"% 8x", "\xab", "      ab"},
+	{"%8x", "\xab\xcd", "    abcd"},
+	{"% 8x", "\xab\xcd", "   ab cd"},
 
 	// renamings
 	{"%v", renamedBool(true), "true"},
@@ -495,6 +558,8 @@ var fmtTests = []struct {
 	{"%s", nil, "%!s(<nil>)"},
 	{"%T", nil, "<nil>"},
 	{"%-1", 100, "%!(NOVERB)%!(EXTRA int=100)"},
+	{"%017091901790959340919092959340919017929593813360", 0, "%!(NOVERB)%!(EXTRA int=0)"},
+	{"%184467440737095516170v", 0, "%!(NOVERB)%!(EXTRA int=0)"},
 
 	// The "<nil>" show up because maps are printed by
 	// first obtaining a list of keys and then looking up
@@ -512,6 +577,15 @@ var fmtTests = []struct {
 	{"%0100d", -1, zeroFill("-", 99, "1")},
 	{"%0.100f", 1.0, zeroFill("1.", 100, "")},
 	{"%0.100f", -1.0, zeroFill("-1.", 100, "")},
+
+	// Used to panic: integer function didn't look at f.prec, f.unicode, f.width or sign.
+	{"%#.80x", 42, "0x0000000000000000000000000000000000000000000000000000000000000000000000000000002a"},
+	{"%.80U", 42, "U+0000000000000000000000000000000000000000000000000000000000000000000000000000002A"},
+	{"%#.80U", '日', "U+000000000000000000000000000000000000000000000000000000000000000000000000000065E5 '日'"},
+	{"%.65d", -44, "-00000000000000000000000000000000000000000000000000000000000000044"},
+	{"%+.65d", 44, "+00000000000000000000000000000000000000000000000000000000000000044"},
+	{"% .65d", 44, " 00000000000000000000000000000000000000000000000000000000000000044"},
+	{"%  +.65d", 44, "+00000000000000000000000000000000000000000000000000000000000000044"},
 
 	// Comparison of padding rules with C printf.
 	/*
@@ -623,6 +697,35 @@ var fmtTests = []struct {
 	{"%+010.2f", -104.66 + 440.51i, "(-000104.66+000440.51i)"},
 	{"%+010.2f", +104.66 - 440.51i, "(+000104.66-000440.51i)"},
 	{"%+010.2f", -104.66 - 440.51i, "(-000104.66-000440.51i)"},
+
+	// []T where type T is a byte with a Stringer method.
+	{"%v", byteStringerSlice, "[X X X X]"},
+	{"%s", byteStringerSlice, "abcd"},
+	{"%q", byteStringerSlice, "\"abcd\""},
+	{"%x", byteStringerSlice, "61626364"},
+	{"%#v", byteStringerSlice, "[]fmt_test.byteStringer{0x61, 0x62, 0x63, 0x64}"},
+
+	// And the same for Formatter.
+	{"%v", byteFormatterSlice, "[X X X X]"},
+	{"%s", byteFormatterSlice, "abcd"},
+	{"%q", byteFormatterSlice, "\"abcd\""},
+	{"%x", byteFormatterSlice, "61626364"},
+	// This next case seems wrong, but the docs say the Formatter wins here.
+	{"%#v", byteFormatterSlice, "[]fmt_test.byteFormatter{X, X, X, X}"},
+
+	// reflect.Value handled specially in Go 1.5, making it possible to
+	// see inside non-exported fields (which cannot be accessed with Interface()).
+	// Issue 8965.
+	{"%v", reflect.ValueOf(A{}).Field(0).String(), "<int Value>"}, // Equivalent to the old way.
+	{"%v", reflect.ValueOf(A{}).Field(0), "0"},                    // Sees inside the field.
+
+	// verbs apply to the extracted value too.
+	{"%s", reflect.ValueOf("hello"), "hello"},
+	{"%q", reflect.ValueOf("hello"), `"hello"`},
+	{"%#04x", reflect.ValueOf(256), "0x0100"},
+
+	// invalid reflect.Value doesn't crash.
+	{"%v", reflect.Value{}, "<invalid reflect.Value>"},
 }
 
 // zeroFill generates zero-filled strings of the specified width. The length
@@ -672,7 +775,7 @@ func TestSprintf(t *testing.T) {
 // thing as if done by hand with two singleton prints.
 func TestComplexFormatting(t *testing.T) {
 	var yesNo = []bool{true, false}
-	var signs = []float64{1, 0, -1}
+	var values = []float64{1, 0, -1, math.Inf(1), math.Inf(-1), math.NaN()}
 	for _, plus := range yesNo {
 		for _, zero := range yesNo {
 			for _, space := range yesNo {
@@ -697,10 +800,10 @@ func TestComplexFormatting(t *testing.T) {
 					imagFmt += "+"
 					imagFmt += "10.2"
 					imagFmt += string(char)
-					for _, realSign := range signs {
-						for _, imagSign := range signs {
-							one := Sprintf(realFmt, complex(realSign, imagSign))
-							two := Sprintf("("+realFmt+imagFmt+"i)", realSign, imagSign)
+					for _, realValue := range values {
+						for _, imagValue := range values {
+							one := Sprintf(realFmt, complex(realValue, imagValue))
+							two := Sprintf("("+realFmt+imagFmt+"i)", realValue, imagValue)
 							if one != two {
 								t.Error(f, one, two)
 							}
@@ -749,6 +852,11 @@ var reorderTests = []struct {
 	{"%d %d %d %#[1]o %#o %#o %#o", SE{11, 12, 13}, "11 12 13 013 014 015 %!o(MISSING)"},
 	{"%[5]d %[2]d %d", SE{1, 2, 3}, "%!d(BADINDEX) 2 3"},
 	{"%d %[3]d %d", SE{1, 2}, "1 %!d(BADINDEX) 2"}, // Erroneous index does not affect sequence.
+	{"%.[]", SE{}, "%!](BADINDEX)"},                // Issue 10675
+	{"%.-3d", SE{42}, "%!-(int=42)3d"},             // TODO: Should this set return better error messages?
+	{"%2147483648d", SE{42}, "%!(NOVERB)%!(EXTRA int=42)"},
+	{"%-2147483648d", SE{42}, "%!(NOVERB)%!(EXTRA int=42)"},
+	{"%.2147483648d", SE{42}, "%!(NOVERB)%!(EXTRA int=42)"},
 }
 
 func TestReorder(t *testing.T) {
@@ -819,7 +927,34 @@ func BenchmarkManyArgs(b *testing.B) {
 	})
 }
 
+func BenchmarkFprintInt(b *testing.B) {
+	var buf bytes.Buffer
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		Fprint(&buf, 123456)
+	}
+}
+
+func BenchmarkFprintfBytes(b *testing.B) {
+	data := []byte(string("0123456789"))
+	var buf bytes.Buffer
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		Fprintf(&buf, "%s", data)
+	}
+}
+
+func BenchmarkFprintIntNoAlloc(b *testing.B) {
+	var x interface{} = 123456
+	var buf bytes.Buffer
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		Fprint(&buf, x)
+	}
+}
+
 var mallocBuf bytes.Buffer
+var mallocPointer *int // A pointer so we know the interface value won't allocate.
 
 // gccgo numbers are different because gccgo does not have escape
 // analysis yet.
@@ -833,21 +968,25 @@ var mallocTest = []struct {
 	{5, `Sprintf("%x")`, func() { Sprintf("%x", 7) }},
 	{5, `Sprintf("%s")`, func() { Sprintf("%s", "hello") }},
 	{5, `Sprintf("%x %x")`, func() { Sprintf("%x %x", 7, 112) }},
-	// For %g we use a float32, not float64, to guarantee passing the argument
-	// does not need to allocate memory to store the result in a pointer-sized word.
-	{20, `Sprintf("%g")`, func() { Sprintf("%g", float32(3.14159)) }},
-	{5, `Fprintf(buf, "%x %x %x")`, func() { mallocBuf.Reset(); Fprintf(&mallocBuf, "%x %x %x", 7, 8, 9) }},
+	{20, `Sprintf("%g")`, func() { Sprintf("%g", float32(3.14159)) }}, // TODO: Can this be 1?
 	{5, `Fprintf(buf, "%s")`, func() { mallocBuf.Reset(); Fprintf(&mallocBuf, "%s", "hello") }},
+	// If the interface value doesn't need to allocate, amortized allocation overhead should be zero.
+	{5, `Fprintf(buf, "%x %x %x")`, func() {
+		mallocBuf.Reset()
+		Fprintf(&mallocBuf, "%x %x %x", mallocPointer, mallocPointer, mallocPointer)
+	}},
 }
 
 var _ bytes.Buffer
 
 func TestCountMallocs(t *testing.T) {
-	if testing.Short() {
+	switch {
+	case testing.Short():
 		t.Skip("skipping malloc count in short mode")
-	}
-	if runtime.GOMAXPROCS(0) > 1 {
+	case runtime.GOMAXPROCS(0) > 1:
 		t.Skip("skipping; GOMAXPROCS>1")
+	case race.Enabled:
+		t.Skip("skipping malloc count under race detector")
 	}
 	for _, mt := range mallocTest {
 		mallocs := testing.AllocsPerRun(100, mt.fn)
@@ -859,7 +998,7 @@ func TestCountMallocs(t *testing.T) {
 
 type flagPrinter struct{}
 
-func (*flagPrinter) Format(f State, c rune) {
+func (flagPrinter) Format(f State, c rune) {
 	s := "%"
 	for i := 0; i < 128; i++ {
 		if f.Flag(i) {
@@ -905,11 +1044,12 @@ func TestFlagParser(t *testing.T) {
 }
 
 func TestStructPrinter(t *testing.T) {
-	var s struct {
+	type T struct {
 		a string
 		b string
 		c int
 	}
+	var s T
 	s.a = "abc"
 	s.b = "def"
 	s.c = 123
@@ -919,12 +1059,35 @@ func TestStructPrinter(t *testing.T) {
 	}{
 		{"%v", "{abc def 123}"},
 		{"%+v", "{a:abc b:def c:123}"},
+		{"%#v", `fmt_test.T{a:"abc", b:"def", c:123}`},
 	}
 	for _, tt := range tests {
 		out := Sprintf(tt.fmt, s)
 		if out != tt.out {
-			t.Errorf("Sprintf(%q, &s) = %q, want %q", tt.fmt, out, tt.out)
+			t.Errorf("Sprintf(%q, s) = %#q, want %#q", tt.fmt, out, tt.out)
 		}
+		// The same but with a pointer.
+		out = Sprintf(tt.fmt, &s)
+		if out != "&"+tt.out {
+			t.Errorf("Sprintf(%q, &s) = %#q, want %#q", tt.fmt, out, "&"+tt.out)
+		}
+	}
+}
+
+func TestSlicePrinter(t *testing.T) {
+	slice := []int{}
+	s := Sprint(slice)
+	if s != "[]" {
+		t.Errorf("empty slice printed as %q not %q", s, "[]")
+	}
+	slice = []int{1, 2, 3}
+	s = Sprint(slice)
+	if s != "[1 2 3]" {
+		t.Errorf("slice: got %q expected %q", s, "[1 2 3]")
+	}
+	s = Sprint(&slice)
+	if s != "&[1 2 3]" {
+		t.Errorf("&slice: got %q expected %q", s, "&[1 2 3]")
 	}
 }
 
@@ -954,6 +1117,12 @@ func TestMapPrinter(t *testing.T) {
 	a := []string{"1:one", "2:two", "3:three"}
 	presentInMap(Sprintf("%v", m1), a, t)
 	presentInMap(Sprint(m1), a, t)
+	// Pointer to map prints the same but with initial &.
+	if !strings.HasPrefix(Sprint(&m1), "&") {
+		t.Errorf("no initial & for address of map")
+	}
+	presentInMap(Sprintf("%v", &m1), a, t)
+	presentInMap(Sprint(&m1), a, t)
 }
 
 func TestEmptyMap(t *testing.T) {
@@ -1016,25 +1185,38 @@ var startests = []struct {
 	out string
 }{
 	{"%*d", args(4, 42), "  42"},
+	{"%-*d", args(4, 42), "42  "},
+	{"%*d", args(-4, 42), "42  "},
+	{"%-*d", args(-4, 42), "42  "},
 	{"%.*d", args(4, 42), "0042"},
 	{"%*.*d", args(8, 4, 42), "    0042"},
 	{"%0*d", args(4, 42), "0042"},
-	{"%-*d", args(4, 42), "42  "},
+	// Some non-int types for width. (Issue 10732).
+	{"%0*d", args(uint(4), 42), "0042"},
+	{"%0*d", args(uint64(4), 42), "0042"},
+	{"%0*d", args('\x04', 42), "0042"},
+	{"%0*d", args(uintptr(4), 42), "0042"},
 
 	// erroneous
 	{"%*d", args(nil, 42), "%!(BADWIDTH)42"},
+	{"%*d", args(int(1e7), 42), "%!(BADWIDTH)42"},
+	{"%*d", args(int(-1e7), 42), "%!(BADWIDTH)42"},
 	{"%.*d", args(nil, 42), "%!(BADPREC)42"},
+	{"%.*d", args(-1, 42), "%!(BADPREC)42"},
+	{"%.*d", args(int(1e7), 42), "%!(BADPREC)42"},
+	{"%.*d", args(uint(1e7), 42), "%!(BADPREC)42"},
+	{"%.*d", args(uint64(1<<63), 42), "%!(BADPREC)42"},   // Huge negative (-inf).
+	{"%.*d", args(uint64(1<<64-1), 42), "%!(BADPREC)42"}, // Small negative (-1).
 	{"%*d", args(5, "foo"), "%!d(string=  foo)"},
 	{"%*% %d", args(20, 5), "% 5"},
 	{"%*", args(4), "%!(NOVERB)"},
-	{"%*d", args(int32(4), 42), "%!(BADWIDTH)42"},
 }
 
 func TestWidthAndPrecision(t *testing.T) {
-	for _, tt := range startests {
+	for i, tt := range startests {
 		s := Sprintf(tt.fmt, tt.in...)
 		if s != tt.out {
-			t.Errorf("%q: got %q expected %q", tt.fmt, s, tt.out)
+			t.Errorf("#%d: %q: got %q expected %q", i, tt.fmt, s, tt.out)
 		}
 	}
 }
@@ -1084,10 +1266,10 @@ var panictests = []struct {
 }
 
 func TestPanics(t *testing.T) {
-	for _, tt := range panictests {
+	for i, tt := range panictests {
 		s := Sprintf(tt.fmt, tt.in)
 		if s != tt.out {
-			t.Errorf("%q: got %q expected %q", tt.fmt, s, tt.out)
+			t.Errorf("%d: %q: got %q expected %q", i, tt.fmt, s, tt.out)
 		}
 	}
 }
@@ -1141,9 +1323,80 @@ func TestNilDoesNotBecomeTyped(t *testing.T) {
 	type B struct{}
 	var a *A = nil
 	var b B = B{}
-	got := Sprintf("%s %s %s %s %s", nil, a, nil, b, nil)
+	got := Sprintf("%s %s %s %s %s", nil, a, nil, b, nil) // go vet should complain about this line.
 	const expect = "%!s(<nil>) %!s(*fmt_test.A=<nil>) %!s(<nil>) {} %!s(<nil>)"
 	if got != expect {
 		t.Errorf("expected:\n\t%q\ngot:\n\t%q", expect, got)
+	}
+}
+
+var formatterFlagTests = []struct {
+	in  string
+	val interface{}
+	out string
+}{
+	// scalar values with the (unused by fmt) 'a' verb.
+	{"%a", flagPrinter{}, "[%a]"},
+	{"%-a", flagPrinter{}, "[%-a]"},
+	{"%+a", flagPrinter{}, "[%+a]"},
+	{"%#a", flagPrinter{}, "[%#a]"},
+	{"% a", flagPrinter{}, "[% a]"},
+	{"%0a", flagPrinter{}, "[%0a]"},
+	{"%1.2a", flagPrinter{}, "[%1.2a]"},
+	{"%-1.2a", flagPrinter{}, "[%-1.2a]"},
+	{"%+1.2a", flagPrinter{}, "[%+1.2a]"},
+	{"%-+1.2a", flagPrinter{}, "[%+-1.2a]"},
+	{"%-+1.2abc", flagPrinter{}, "[%+-1.2a]bc"},
+	{"%-1.2abc", flagPrinter{}, "[%-1.2a]bc"},
+
+	// composite values with the 'a' verb
+	{"%a", [1]flagPrinter{}, "[[%a]]"},
+	{"%-a", [1]flagPrinter{}, "[[%-a]]"},
+	{"%+a", [1]flagPrinter{}, "[[%+a]]"},
+	{"%#a", [1]flagPrinter{}, "[[%#a]]"},
+	{"% a", [1]flagPrinter{}, "[[% a]]"},
+	{"%0a", [1]flagPrinter{}, "[[%0a]]"},
+	{"%1.2a", [1]flagPrinter{}, "[[%1.2a]]"},
+	{"%-1.2a", [1]flagPrinter{}, "[[%-1.2a]]"},
+	{"%+1.2a", [1]flagPrinter{}, "[[%+1.2a]]"},
+	{"%-+1.2a", [1]flagPrinter{}, "[[%+-1.2a]]"},
+	{"%-+1.2abc", [1]flagPrinter{}, "[[%+-1.2a]]bc"},
+	{"%-1.2abc", [1]flagPrinter{}, "[[%-1.2a]]bc"},
+
+	// simple values with the 'v' verb
+	{"%v", flagPrinter{}, "[%v]"},
+	{"%-v", flagPrinter{}, "[%-v]"},
+	{"%+v", flagPrinter{}, "[%+v]"},
+	{"%#v", flagPrinter{}, "[%#v]"},
+	{"% v", flagPrinter{}, "[% v]"},
+	{"%0v", flagPrinter{}, "[%0v]"},
+	{"%1.2v", flagPrinter{}, "[%1.2v]"},
+	{"%-1.2v", flagPrinter{}, "[%-1.2v]"},
+	{"%+1.2v", flagPrinter{}, "[%+1.2v]"},
+	{"%-+1.2v", flagPrinter{}, "[%+-1.2v]"},
+	{"%-+1.2vbc", flagPrinter{}, "[%+-1.2v]bc"},
+	{"%-1.2vbc", flagPrinter{}, "[%-1.2v]bc"},
+
+	// composite values with the 'v' verb.
+	{"%v", [1]flagPrinter{}, "[[%v]]"},
+	{"%-v", [1]flagPrinter{}, "[[%-v]]"},
+	{"%+v", [1]flagPrinter{}, "[[%+v]]"},
+	{"%#v", [1]flagPrinter{}, "[1]fmt_test.flagPrinter{[%#v]}"},
+	{"% v", [1]flagPrinter{}, "[[% v]]"},
+	{"%0v", [1]flagPrinter{}, "[[%0v]]"},
+	{"%1.2v", [1]flagPrinter{}, "[[%1.2v]]"},
+	{"%-1.2v", [1]flagPrinter{}, "[[%-1.2v]]"},
+	{"%+1.2v", [1]flagPrinter{}, "[[%+1.2v]]"},
+	{"%-+1.2v", [1]flagPrinter{}, "[[%+-1.2v]]"},
+	{"%-+1.2vbc", [1]flagPrinter{}, "[[%+-1.2v]]bc"},
+	{"%-1.2vbc", [1]flagPrinter{}, "[[%-1.2v]]bc"},
+}
+
+func TestFormatterFlags(t *testing.T) {
+	for _, tt := range formatterFlagTests {
+		s := Sprintf(tt.in, tt.val)
+		if s != tt.out {
+			t.Errorf("Sprintf(%q, %T) = %q, want %q", tt.in, tt.val, s, tt.out)
+		}
 	}
 }

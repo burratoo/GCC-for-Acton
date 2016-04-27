@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -136,7 +136,7 @@ package Sinput is
 
    --  The licensing status is determined either by the presence of a
    --  specific pragma License, or by scanning the header for a predefined
-   --  file, or any file if compiling in -gnatg mode.
+   --  statement, or any file if compiling in -gnatg mode.
 
    -----------------------
    -- Source File Table --
@@ -431,7 +431,7 @@ package Sinput is
    Current_Source_File : Source_File_Index := No_Source_File;
    --  Source_File table index of source file currently being scanned.
    --  Initialized so that some tools (such as gprbuild) can be built with
-   --  -gnatVa and pragma Initialized_Scalars without problems.
+   --  -gnatVa and pragma Initialize_Scalars without problems.
 
    Current_Source_Unit : Unit_Number_Type;
    --  Unit number of source file currently being scanned. The special value
@@ -536,18 +536,17 @@ package Sinput is
    --  The caller has checked that a Line_Terminator character precedes P so
    --  that there definitely is a previous line in the source buffer.
 
-   procedure Build_Location_String (Loc : Source_Ptr);
+   procedure Build_Location_String
+     (Buf : in out Bounded_String;
+      Loc : Source_Ptr);
    --  This function builds a string literal of the form "name:line", where
    --  name is the file name corresponding to Loc, and line is the line number.
-   --  In the event that instantiations are involved, additional suffixes of
-   --  the same form are appended after the separating string " instantiated at
-   --  ". The returned string is appended to the Name_Buffer, terminated by
-   --  ASCII.NUL, with Name_Length indicating the length not including the
-   --  terminating Nul.
+   --  If instantiations are involved, additional suffixes of the same form are
+   --  appended after the separating string " instantiated at ". The returned
+   --  string is appended to Buf.
 
    function Build_Location_String (Loc : Source_Ptr) return String;
-   --  Functional form returning a string, which does not include a terminating
-   --  null character. The contents of Name_Buffer is destroyed.
+   --  Functional form returning a String
 
    procedure Check_For_BOM;
    --  Check if the current source starts with a BOM. Scan_Ptr needs to be at
@@ -608,7 +607,7 @@ package Sinput is
    function Num_Source_Lines (S : Source_File_Index) return Nat;
    --  Returns the number of source lines (this is equivalent to reading
    --  the value of Last_Source_Line, but returns Nat rather than a
-   --  physical line number.
+   --  physical line number).
 
    procedure Register_Source_Ref_Pragma
      (File_Name          : File_Name_Type;

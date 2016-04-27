@@ -1,5 +1,5 @@
 /* All matcher functions.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Steven Bosscher
 
 This file is part of GCC.
@@ -69,6 +69,8 @@ match gfc_match_assignment (void);
 match gfc_match_if (gfc_statement *);
 match gfc_match_else (void);
 match gfc_match_elseif (void);
+match gfc_match_event_post (void);
+match gfc_match_event_wait (void);
 match gfc_match_critical (void);
 match gfc_match_block (void);
 match gfc_match_associate (void);
@@ -107,6 +109,7 @@ match gfc_match_namelist (void);
 match gfc_match_module (void);
 match gfc_match_equivalence (void);
 match gfc_match_st_function (void);
+match gfc_match_ptr_fcn_assign (void);
 match gfc_match_case (void);
 match gfc_match_select (void);
 match gfc_match_select_type (void);
@@ -121,6 +124,23 @@ match gfc_match_forall (gfc_statement *);
 gfc_common_head *gfc_get_common (const char *, int);
 
 /* openmp.c.  */
+
+/* OpenACC directive matchers.  */
+match gfc_match_oacc_atomic (void);
+match gfc_match_oacc_cache (void);
+match gfc_match_oacc_wait (void);
+match gfc_match_oacc_update (void);
+match gfc_match_oacc_declare (void);
+match gfc_match_oacc_loop (void);
+match gfc_match_oacc_host_data (void);
+match gfc_match_oacc_data (void);
+match gfc_match_oacc_kernels (void);
+match gfc_match_oacc_kernels_loop (void);
+match gfc_match_oacc_parallel (void);
+match gfc_match_oacc_parallel_loop (void);
+match gfc_match_oacc_enter_data (void);
+match gfc_match_oacc_exit_data (void);
+match gfc_match_oacc_routine (void);
 
 /* OpenMP directive matchers.  */
 match gfc_match_omp_eos (void);
@@ -187,6 +207,7 @@ match gfc_match_generic (void);
 match gfc_match_function_decl (void);
 match gfc_match_entry (void);
 match gfc_match_subroutine (void);
+match gfc_match_submod_proc (void);
 match gfc_match_derived_decl (void);
 match gfc_match_final_decl (void);
 
@@ -275,6 +296,7 @@ match gfc_match_expr (gfc_expr **);
 
 /* module.c.  */
 match gfc_match_use (void);
+match gfc_match_submodule (void);
 void gfc_use_modules (void);
 
 #endif  /* GFC_MATCH_H  */

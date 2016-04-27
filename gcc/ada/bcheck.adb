@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -57,7 +57,7 @@ package body Bcheck is
    procedure Check_Consistent_Restrictions;
    procedure Check_Consistent_Restriction_No_Default_Initialization;
    procedure Check_Consistent_SSO_Default;
-   procedure Check_Consistent_Zero_Cost_Exception_Handling;
+   procedure Check_Consistent_Exception_Handling;
 
    procedure Consistency_Error_Msg (Msg : String);
    --  Produce an error or a warning message, depending on whether an
@@ -89,8 +89,10 @@ package body Bcheck is
          Check_Consistent_SSO_Default;
       end if;
 
-      if Zero_Cost_Exceptions_Specified then
-         Check_Consistent_Zero_Cost_Exception_Handling;
+      if Zero_Cost_Exceptions_Specified
+        or else Frontend_Exceptions_Specified
+      then
+         Check_Consistent_Exception_Handling;
       end if;
 
       Check_Consistent_Normalize_Scalars;
@@ -172,7 +174,7 @@ package body Bcheck is
                goto Continue;
             end if;
 
-            Src := Source_Id (Get_Name_Table_Info (Sdep.Table (D).Sfile));
+            Src := Source_Id (Get_Name_Table_Int (Sdep.Table (D).Sfile));
 
             --  If the time stamps match, or all checksums match, then we
             --  are OK, otherwise we have a definite error.
@@ -448,12 +450,13 @@ package body Bcheck is
    ---------------------------------------------------
 
    --  The rule here is that if a unit has dynamic elaboration checks,
-   --  then any unit it withs must meeting one of the following criteria:
+   --  then any unit it withs must meet one of the following criteria:
 
    --    1. There is a pragma Elaborate_All for the with'ed unit
    --    2. The with'ed unit was compiled with dynamic elaboration checks
    --    3. The with'ed unit has pragma Preelaborate or Pure
    --    4. It is an internal GNAT unit (including children of GNAT)
+   --    5. It is an interface of a Stand-Alone Library
 
    procedure Check_Consistent_Dynamic_Elaboration_Checking is
    begin
@@ -469,12 +472,12 @@ package body Bcheck is
                         WR : With_Record renames Withs.Table (W);
 
                      begin
-                        if Get_Name_Table_Info (WR.Uname) /= 0 then
+                        if Get_Name_Table_Int (WR.Uname) /= 0 then
                            declare
                               WU : Unit_Record renames
                                      Units.Table
                                        (Unit_Id
-                                         (Get_Name_Table_Info (WR.Uname)));
+                                         (Get_Name_Table_Int (WR.Uname)));
 
                            begin
                               --  Case 1. Elaborate_All for with'ed unit
@@ -495,6 +498,11 @@ package body Bcheck is
                               --  Case 4. With'ed unit is internal file
 
                               elsif Is_Internal_File_Name (WU.Sfile) then
+                                 null;
+
+                              --  Case 5. With'ed unit is a SAL interface
+
+                              elsif WU.SAL_Interface then
                                  null;
 
                               --  Issue warning, not one of the safe cases
@@ -665,9 +673,9 @@ package body Bcheck is
    -- Check_Consistent_Normalize_Scalars --
    ----------------------------------------
 
-   --  The rule is that if any unit is compiled with Normalized_Scalars,
+   --  The rule is that if any unit is compiled with Normalize_Scalars,
    --  then all other units in the partition must also be compiled with
-   --  Normalized_Scalars in effect.
+   --  Normalize_Scalars in effect.
 
    --  There is some issue as to whether this consistency check is desirable,
    --  it is certainly required at the moment by the RM. We should keep a watch
@@ -1005,23 +1013,27 @@ package body Bcheck is
             for J in ALIs.First .. ALIs.Last loop
                declare
                   A : ALIs_Record renames ALIs.Table (J);
-
                begin
                   for K in A.First_Unit .. A.Last_Unit loop
                      declare
                         U : Unit_Record renames Units.Table (K);
                      begin
-                        for L in U.First_With .. U.Last_With loop
-                           if Same_Unit
-                             (Withs.Table (L).Uname, ND_Unit)
-                           then
-                              Error_Msg_File_1 := U.Sfile;
-                              Error_Msg_Name_1 := ND_Unit;
-                              Consistency_Error_Msg
-                                ("file { violates restriction " &
-                                 "No_Dependence => %");
-                           end if;
-                        end loop;
+                        --  Exclude runtime units from this check since the
+                        --  user does not care how a runtime unit is
+                        --  implemented.
+
+                        if not Is_Internal_File_Name (U.Sfile) then
+                           for L in U.First_With .. U.Last_With loop
+                              if Same_Unit (Withs.Table (L).Uname, ND_Unit)
+                              then
+                                 Error_Msg_File_1 := U.Sfile;
+                                 Error_Msg_Name_1 := ND_Unit;
+                                 Consistency_Error_Msg
+                                   ("file { violates restriction " &
+                                    "No_Dependence => %");
+                              end if;
+                           end loop;
+                        end if;
                      end;
                   end loop;
                end;
@@ -1074,7 +1086,7 @@ package body Bcheck is
                      if AFN /= No_File then
                         declare
                            WAI : constant ALI_Id :=
-                             ALI_Id (Get_Name_Table_Info (AFN));
+                             ALI_Id (Get_Name_Table_Int (AFN));
                            WTE : ALIs_Record renames ALIs.Table (WAI);
 
                         begin
@@ -1103,16 +1115,28 @@ package body Bcheck is
    -- Check_Consistent_SSO_Default --
    ----------------------------------
 
+   --  This routine checks for a consistent SSO default setting. Note that
+   --  internal units are excluded from this check, since we don't in any
+   --  case allow the pragma to affect types in internal units, and there
+   --  is thus no requirement to recompile the run-time with the default set.
+
    procedure Check_Consistent_SSO_Default is
       Default : Character;
 
    begin
       Default := ALIs.Table (ALIs.First).SSO_Default;
 
+      --  The default must be set from a non-internal unit
+
+      pragma Assert
+        (not Is_Internal_File_Name (ALIs.Table (ALIs.First).Sfile));
+
       --  Check all entries match the default above from the first entry
 
       for A1 in ALIs.First + 1 .. ALIs.Last loop
-         if ALIs.Table (A1).SSO_Default /= Default then
+         if not Is_Internal_File_Name (ALIs.Table (A1).Sfile)
+           and then ALIs.Table (A1).SSO_Default /= Default
+         then
             Default := '?';
             exit;
          end if;
@@ -1158,7 +1182,9 @@ package body Bcheck is
       Write_Eol;
 
       for A1 in ALIs.First .. ALIs.Last loop
-         if ALIs.Table (A1).SSO_Default = ' ' then
+         if not Is_Internal_File_Name (ALIs.Table (A1).Sfile)
+           and then ALIs.Table (A1).SSO_Default = ' '
+         then
             Write_Str ("  ");
             Write_Name (ALIs.Table (A1).Sfile);
             Write_Eol;
@@ -1166,27 +1192,30 @@ package body Bcheck is
       end loop;
    end Check_Consistent_SSO_Default;
 
-   ---------------------------------------------------
-   -- Check_Consistent_Zero_Cost_Exception_Handling --
-   ---------------------------------------------------
+   -----------------------------------------
+   -- Check_Consistent_Exception_Handling --
+   -----------------------------------------
 
-   --  Check consistent zero cost exception handling. The rule is that
-   --  all units must have the same exception handling mechanism.
+   --  All units must have the same exception handling mechanism.
 
-   procedure Check_Consistent_Zero_Cost_Exception_Handling is
+   procedure Check_Consistent_Exception_Handling is
    begin
       Check_Mechanism : for A1 in ALIs.First + 1 .. ALIs.Last loop
-         if ALIs.Table (A1).Zero_Cost_Exceptions /=
-            ALIs.Table (ALIs.First).Zero_Cost_Exceptions
+         if (ALIs.Table (A1).Zero_Cost_Exceptions /=
+              ALIs.Table (ALIs.First).Zero_Cost_Exceptions)
+           or else
+            (ALIs.Table (A1).Frontend_Exceptions /=
+              ALIs.Table (ALIs.First).Frontend_Exceptions)
          then
             Error_Msg_File_1 := ALIs.Table (A1).Sfile;
             Error_Msg_File_2 := ALIs.Table (ALIs.First).Sfile;
 
-            Consistency_Error_Msg ("{ and { compiled with different "
-                                            & "exception handling mechanisms");
+            Consistency_Error_Msg
+              ("{ and { compiled with different exception handling "
+               & "mechanisms");
          end if;
       end loop Check_Mechanism;
-   end Check_Consistent_Zero_Cost_Exception_Handling;
+   end Check_Consistent_Exception_Handling;
 
    -------------------------------
    -- Check_Duplicated_Subunits --
@@ -1211,7 +1240,7 @@ package body Bcheck is
 
                declare
                   Unit : constant Unit_Name_Type := Name_Find;
-                  Info : constant Int := Get_Name_Table_Info (Unit);
+                  Info : constant Int := Get_Name_Table_Int (Unit);
 
                begin
                   if Info /= 0 then

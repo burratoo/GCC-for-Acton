@@ -1,5 +1,5 @@
 /* Pragma handling for GCC for Renesas / SuperH SH.
-   Copyright (C) 1993-2014 Free Software Foundation, Inc.
+   Copyright (C) 1993-2016 Free Software Foundation, Inc.
    Contributed by Joern Rennecke <joern.rennecke@st.com>.
 
 This file is part of GCC.
@@ -21,14 +21,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
+#include "target.h"
+#include "c-family/c-common.h"
+#include "tm_p.h"
 #include "stringpool.h"
 #include "attribs.h"
-#include "tm_p.h"
-#include "cpplib.h"
-#include "c-family/c-common.h"
-#include "target.h"
 
 /* Handle machine specific pragmas to be semi-compatible with Renesas
    compiler.  */
@@ -140,6 +137,11 @@ sh_cpu_cpp_builtins (cpp_reader* pfile)
     builtin_define ("__HITACHI__");
   if (TARGET_FMOVD)
     builtin_define ("__FMOVD_ENABLED__");
+  if (TARGET_FDPIC)
+    {
+      builtin_define ("__SH_FDPIC__");
+      builtin_define ("__FDPIC__");
+    }
   builtin_define (TARGET_LITTLE_ENDIAN
 		  ? "__LITTLE_ENDIAN__" : "__BIG_ENDIAN__");
 

@@ -1,5 +1,5 @@
 /* Iterator routines for manipulating GENERIC and GIMPLE tree statements.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod  <amacleod@redhat.com>
 
 This file is part of GCC.
@@ -23,7 +23,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tree.h"
 #include "tree-iterator.h"
-#include "ggc.h"
 
 
 /* This is a cache of STATEMENT_LIST nodes.  We create and destroy them

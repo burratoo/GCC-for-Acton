@@ -1,5 +1,5 @@
 /* Discovery of auto-inc and auto-dec instructions.
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -21,24 +21,20 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
+#include "backend.h"
+#include "target.h"
 #include "rtl.h"
-#include "tm_p.h"
-#include "hard-reg-set.h"
-#include "basic-block.h"
+#include "tree.h"
+#include "predict.h"
+#include "df.h"
 #include "insn-config.h"
-#include "regs.h"
-#include "flags.h"
-#include "function.h"
-#include "except.h"
-#include "diagnostic-core.h"
+#include "emit-rtl.h"
 #include "recog.h"
+#include "cfgrtl.h"
 #include "expr.h"
 #include "tree-pass.h"
-#include "df.h"
 #include "dbgcnt.h"
-#include "target.h"
+#include "print-rtl.h"
 
 /* This pass was originally removed from flow.c. However there is
    almost nothing that remains of that code.
@@ -110,7 +106,6 @@ along with GCC; see the file COPYING3.  If not see
   before the ref or +c if the increment was after the ref, then if we
   can do the combination but switch the pre/post bit.  */
 
-#ifdef AUTO_INC_DEC
 
 enum form
 {
@@ -432,24 +427,6 @@ move_dead_notes (rtx_insn *to_insn, rtx_insn *from_insn, rtx pattern)
     }
 }
 
-
-/* Create a mov insn DEST_REG <- SRC_REG and insert it before
-   NEXT_INSN.  */
-
-static rtx_insn *
-insert_move_insn_before (rtx_insn *next_insn, rtx dest_reg, rtx src_reg)
-{
-  rtx_insn *insns;
-
-  start_sequence ();
-  emit_move_insn (dest_reg, src_reg);
-  insns = get_insns ();
-  end_sequence ();
-  emit_insn_before (insns, next_insn);
-  return insns;
-}
-
-
 /* Change mem_insn.mem_loc so that uses NEW_ADDR which has an
    increment of INC_REG.  To have reached this point, the change is a
    legitimate one from a dataflow point of view.  The only questions
@@ -472,7 +449,7 @@ attempt_change (rtx new_addr, rtx inc_reg)
   rtx_insn *mov_insn = NULL;
   int regno;
   rtx mem = *mem_insn.mem_loc;
-  enum machine_mode mode = GET_MODE (mem);
+  machine_mode mode = GET_MODE (mem);
   rtx new_mem;
   int old_cost = 0;
   int new_cost = 0;
@@ -481,9 +458,22 @@ attempt_change (rtx new_addr, rtx inc_reg)
   PUT_MODE (mem_tmp, mode);
   XEXP (mem_tmp, 0) = new_addr;
 
-  old_cost = (set_src_cost (mem, speed)
+  old_cost = (set_src_cost (mem, mode, speed)
 	      + set_rtx_cost (PATTERN (inc_insn.insn), speed));
-  new_cost = set_src_cost (mem_tmp, speed);
+
+  new_cost = set_src_cost (mem_tmp, mode, speed);
+
+  /* In the FORM_PRE_ADD and FORM_POST_ADD cases we emit an extra move
+     whose cost we should account for.  */
+  if (inc_insn.form == FORM_PRE_ADD
+      || inc_insn.form == FORM_POST_ADD)
+    {
+      start_sequence ();
+      emit_move_insn (inc_insn.reg_res, inc_insn.reg0);
+      mov_insn = get_insns ();
+      end_sequence ();
+      new_cost += seq_cost (mov_insn, speed);
+    }
 
   /* The first item of business is to see if this is profitable.  */
   if (old_cost < new_cost)
@@ -515,8 +505,8 @@ attempt_change (rtx new_addr, rtx inc_reg)
       /* Replace the addition with a move.  Do it at the location of
 	 the addition since the operand of the addition may change
 	 before the memory reference.  */
-      mov_insn = insert_move_insn_before (inc_insn.insn,
-					  inc_insn.reg_res, inc_insn.reg0);
+      gcc_assert (mov_insn);
+      emit_insn_before (mov_insn, inc_insn.insn);
       move_dead_notes (mov_insn, inc_insn.insn, inc_insn.reg0);
 
       regno = REGNO (inc_insn.reg_res);
@@ -541,8 +531,8 @@ attempt_change (rtx new_addr, rtx inc_reg)
       break;
 
     case FORM_POST_ADD:
-      mov_insn = insert_move_insn_before (mem_insn.insn,
-					  inc_insn.reg_res, inc_insn.reg0);
+      gcc_assert (mov_insn);
+      emit_insn_before (mov_insn, mem_insn.insn);
       move_dead_notes (mov_insn, inc_insn.insn, inc_insn.reg0);
 
       /* Do not move anything to the mov insn because the instruction
@@ -612,7 +602,7 @@ try_merge (void)
   /* The width of the mem being accessed.  */
   int size = GET_MODE_SIZE (GET_MODE (mem));
   rtx_insn *last_insn = NULL;
-  enum machine_mode reg_mode = GET_MODE (inc_reg);
+  machine_mode reg_mode = GET_MODE (inc_reg);
 
   switch (inc_insn.form)
     {
@@ -754,28 +744,6 @@ get_next_ref (int regno, basic_block bb, rtx_insn **next_array)
 }
 
 
-/* Reverse the operands in a mem insn.  */
-
-static void
-reverse_mem (void)
-{
-  rtx tmp = mem_insn.reg1;
-  mem_insn.reg1 = mem_insn.reg0;
-  mem_insn.reg0 = tmp;
-}
-
-
-/* Reverse the operands in a inc insn.  */
-
-static void
-reverse_inc (void)
-{
-  rtx tmp = inc_insn.reg1;
-  inc_insn.reg1 = inc_insn.reg0;
-  inc_insn.reg0 = tmp;
-}
-
-
 /* Return true if INSN is of a form "a = b op c" where a and b are
    regs.  op is + if c is a reg and +|- if c is a const.  Fill in
    INC_INSN with what is found.
@@ -844,7 +812,7 @@ parse_add_or_inc (rtx_insn *insn, bool before_mem)
 	{
 	  /* Reverse the two operands and turn *_ADD into *_INC since
 	     a = c + a.  */
-	  reverse_inc ();
+	  std::swap (inc_insn.reg0, inc_insn.reg1);
 	  inc_insn.form = before_mem ? FORM_PRE_INC : FORM_POST_INC;
 	  return true;
 	}
@@ -1004,7 +972,7 @@ find_inc (bool first_try)
 	 find this.  Only try it once though.  */
       if (first_try && !mem_insn.reg1_is_const)
 	{
-	  reverse_mem ();
+	  std::swap (mem_insn.reg0, mem_insn.reg1);
 	  return find_inc (false);
 	}
       else
@@ -1105,7 +1073,7 @@ find_inc (bool first_try)
 		    return false;
 
 		  if (!rtx_equal_p (mem_insn.reg0, inc_insn.reg0))
-		    reverse_inc ();
+		    std::swap (inc_insn.reg0, inc_insn.reg1);
 		}
 
 	      other_insn
@@ -1155,7 +1123,7 @@ find_inc (bool first_try)
 		  /* See comment above on find_inc (false) call.  */
 		  if (first_try)
 		    {
-		      reverse_mem ();
+		      std::swap (mem_insn.reg0, mem_insn.reg1);
 		      return find_inc (false);
 		    }
 		  else
@@ -1174,7 +1142,7 @@ find_inc (bool first_try)
 	    {
 	      /* We know that mem_insn.reg0 must equal inc_insn.reg1
 		 or else we would not have found the inc insn.  */
-	      reverse_mem ();
+	      std::swap (mem_insn.reg0, mem_insn.reg1);
 	      if (!rtx_equal_p (mem_insn.reg0, inc_insn.reg0))
 		{
 		  /* See comment above on find_inc (false) call.  */
@@ -1213,7 +1181,7 @@ find_inc (bool first_try)
 	    {
 	      if (first_try)
 		{
-		  reverse_mem ();
+		  std::swap (mem_insn.reg0, mem_insn.reg1);
 		  return find_inc (false);
 		}
 	      else
@@ -1457,8 +1425,6 @@ merge_in_block (int max_reg, basic_block bb)
     }
 }
 
-#endif
-
 /* Discover auto-inc auto-dec instructions.  */
 
 namespace {
@@ -1486,11 +1452,10 @@ public:
   /* opt_pass methods: */
   virtual bool gate (function *)
     {
-#ifdef AUTO_INC_DEC
+      if (!AUTO_INC_DEC)
+	return false;
+
       return (optimize > 0 && flag_auto_inc_dec);
-#else
-      return false;
-#endif
     }
 
 
@@ -1501,7 +1466,9 @@ public:
 unsigned int
 pass_inc_dec::execute (function *fun ATTRIBUTE_UNUSED)
 {
-#ifdef AUTO_INC_DEC
+  if (!AUTO_INC_DEC)
+    return 0;
+
   basic_block bb;
   int max_reg = max_reg_num ();
 
@@ -1524,7 +1491,7 @@ pass_inc_dec::execute (function *fun ATTRIBUTE_UNUSED)
   free (reg_next_def);
 
   mem_tmp = NULL;
-#endif
+
   return 0;
 }
 

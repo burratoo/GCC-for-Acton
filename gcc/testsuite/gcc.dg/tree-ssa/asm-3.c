@@ -12,6 +12,9 @@
 #endif
 #endif
 
+void foo (int);
+void bar (int);
+
 static inline int source(void)
 {
   register int hardreg __asm__(REGISTER);
@@ -33,4 +36,3 @@ void test(void)
 /* In particular, hardreg should *not* appear in the call to bar.  */
 /* { dg-final { scan-tree-dump-times "bar \[(\]\[^\n\r\]*_.\[)\]" 1 "optimized" } } */
 
-/* { dg-final { cleanup-tree-dump "optimized" } } */

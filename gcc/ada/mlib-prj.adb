@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2001-2014, AdaCore                     --
+--                     Copyright (C) 2001-2015, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1515,8 +1515,7 @@ package body MLib.Prj is
                                           ALIs.Append (new String'(ALI_Path));
 
                                           --  Find out if for this ALI file,
-                                          --  libgnarl or libdecgnat is
-                                          --  necessary.
+                                          --  libgnarl is necessary.
 
                                           Check_Libs (ALI_Path, True);
                                        end if;
@@ -1806,7 +1805,7 @@ package body MLib.Prj is
                      Delete := False;
 
                      if (The_Build_Mode = Static
-                          and then Name (1 .. Last) =  Archive_Name)
+                          and then Name (1 .. Last) = Archive_Name)
                        or else
                          ((The_Build_Mode = Dynamic
                             or else
@@ -2384,7 +2383,7 @@ package body MLib.Prj is
             --  Ignore -lacton as it be added later, because they are also
             --  needed for non Stand-Alone shared libraries.
 
-            --  Also ignore the shared libraries which are :
+            --  Also ignore the shared libraries which are:
 
             --  -lacton-<version> -lacton_<version>  (8 + version'length chars)
 

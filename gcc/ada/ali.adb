@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -72,11 +72,11 @@ package body ALI is
       --  These two loops are empty and harmless the first time in.
 
       for J in ALIs.First .. ALIs.Last loop
-         Set_Name_Table_Info (ALIs.Table (J).Afile, 0);
+         Set_Name_Table_Int (ALIs.Table (J).Afile, 0);
       end loop;
 
       for J in Units.First .. Units.Last loop
-         Set_Name_Table_Info (Units.Table (J).Uname, 0);
+         Set_Name_Table_Int (Units.Table (J).Uname, 0);
       end loop;
 
       --  Free argument table strings
@@ -112,6 +112,7 @@ package body ALI is
       Locking_Policy_Specified               := ' ';
       No_Normalize_Scalars_Specified         := False;
       No_Object_Specified                    := False;
+      GNATprove_Mode_Specified               := False;
       Normalize_Scalars_Specified            := False;
       Partition_Elaboration_Policy_Specified := ' ';
       Queuing_Policy_Specified               := ' ';
@@ -119,6 +120,7 @@ package body ALI is
       Static_Elaboration_Model_Used          := False;
       Task_Dispatching_Policy_Specified      := No_Name;
       Unreserve_All_Interrupts_Specified     := False;
+      Frontend_Exceptions_Specified          := False;
       Zero_Cost_Exceptions_Specified         := False;
    end Initialize_ALI;
 
@@ -385,7 +387,7 @@ package body ALI is
          Write_Str ("make sure you are using consistent versions " &
 
          --  Split the following line so that it can easily be transformed for
-         --  e.g. JVM/.NET back-ends where the compiler has a different name.
+         --  other back-ends where the compiler might have a different name.
 
                     "of gcc/gnatbind");
 
@@ -867,7 +869,7 @@ package body ALI is
 
       ALIs.Increment_Last;
       Id := ALIs.Last;
-      Set_Name_Table_Info (F, Int (Id));
+      Set_Name_Table_Int (F, Int (Id));
 
       ALIs.Table (Id) := (
         Afile                        => F,
@@ -877,6 +879,7 @@ package body ALI is
         First_Specific_Dispatching   => Specific_Dispatching.Last + 1,
         First_Unit                   => No_Unit_Id,
         Global_Start_Phase           => No_Global_Start_Phase,
+        GNATprove_Mode               => False,
         Last_Interrupt_State         => Interrupt_States.Last,
         Last_Sdep                    => No_Sdep_Id,
         Last_Specific_Dispatching    => Specific_Dispatching.Last,
@@ -901,6 +904,7 @@ package body ALI is
         Unit_Exception_Table         => False,
         Ver                          => (others => ' '),
         Ver_Len                      => 0,
+        Frontend_Exceptions          => False,
         Zero_Cost_Exceptions         => False);
 
       --  Now we acquire the input lines from the ALI file. Note that the
@@ -1100,6 +1104,25 @@ package body ALI is
                Partition_Elaboration_Policy_Specified := Getc;
                ALIs.Table (Id).Partition_Elaboration_Policy :=
                  Partition_Elaboration_Policy_Specified;
+
+            --  Processing for FX
+
+            elsif C = 'F' then
+               C := Getc;
+
+               if C = 'X' then
+                  ALIs.Table (Id).Frontend_Exceptions := True;
+                  Frontend_Exceptions_Specified := True;
+               else
+                  Fatal_Error_Ignore;
+               end if;
+
+            --  Processing for GP
+
+            elsif C = 'G' then
+               Checkc ('P');
+               GNATprove_Mode_Specified := True;
+               ALIs.Table (Id).GNATprove_Mode := True;
 
             --  Processing for Gx
 
@@ -1714,6 +1737,7 @@ package body ALI is
             UL.Shared_Passive           := False;
             UL.RCI                      := False;
             UL.Remote_Types             := False;
+            UL.Serious_Errors           := False;
             UL.Has_RACW                 := False;
             UL.Init_Scalars             := False;
             UL.Is_Generic               := False;
@@ -1747,7 +1771,7 @@ package body ALI is
          --  Check for duplicated unit in different files
 
          declare
-            Info : constant Int := Get_Name_Table_Info
+            Info : constant Int := Get_Name_Table_Int
                                      (Units.Table (Units.Last).Uname);
          begin
             if Info /= 0
@@ -1795,7 +1819,7 @@ package body ALI is
             end if;
          end;
 
-         Set_Name_Table_Info
+         Set_Name_Table_Int
            (Units.Table (Units.Last).Uname, Int (Units.Last));
 
          --  Scan out possible version and other parameters
@@ -1966,10 +1990,14 @@ package body ALI is
 
                Check_At_End_Of_Field;
 
+            --  SE/SP/SU parameters
+
             elsif C = 'S' then
                C := Getc;
 
-               if C = 'P' then
+               if C = 'E' then
+                  Units.Table (Units.Last).Serious_Errors := True;
+               elsif C = 'P' then
                   Units.Table (Units.Last).Shared_Passive := True;
                elsif C = 'U' then
                   Units.Table (Units.Last).Unit_Kind := 's';

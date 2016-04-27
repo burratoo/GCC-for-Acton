@@ -1,5 +1,5 @@
 /* Predicate functions of Andes NDS32 cpu for GNU compiler
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GCC.
@@ -23,34 +23,15 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "varasm.h"
-#include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"	/* Required by recog.h.  */
-#include "conditions.h"
-#include "output.h"
-#include "insn-attr.h"		/* For DFA state_t.  */
-#include "insn-codes.h"		/* For CODE_FOR_xxx.  */
-#include "reload.h"		/* For push_reload().  */
-#include "flags.h"
-#include "function.h"
-#include "expr.h"
-#include "recog.h"
-#include "diagnostic-core.h"
-#include "df.h"
-#include "tm_p.h"
-#include "tm-constrs.h"
-#include "optabs.h"		/* For GEN_FCN.  */
+#include "backend.h"
 #include "target.h"
-#include "target-def.h"
-#include "langhooks.h"		/* For add_builtin_function().  */
-#include "ggc.h"
-#include "builtins.h"
+#include "rtl.h"
+#include "tree.h"
+#include "tm_p.h"
+#include "optabs.h"		/* For GEN_FCN.  */
+#include "emit-rtl.h"
+#include "recog.h"
+#include "tm-constrs.h"
 
 /* ------------------------------------------------------------------------ */
 
@@ -173,12 +154,13 @@ nds32_valid_multiple_load_store (rtx op, bool load_p)
      3. The last element must be stack adjustment rtx.
    See the prologue/epilogue implementation for details.  */
 bool
-nds32_valid_stack_push_pop (rtx op, bool push_p)
+nds32_valid_stack_push_pop_p (rtx op, bool push_p)
 {
   int index;
   int total_count;
   int rest_count;
   int first_regno;
+  int save_fp, save_gp, save_lp;
   rtx elt;
   rtx elt_reg;
   rtx elt_mem;
@@ -234,14 +216,18 @@ nds32_valid_stack_push_pop (rtx op, bool push_p)
         The $sp adjustment rtx, $fp push rtx, $gp push rtx,
         and $lp push rtx are excluded.  */
 
+  /* Detect whether we have $fp, $gp, or $lp in the parallel rtx.  */
+  save_fp = reg_mentioned_p (gen_rtx_REG (SImode, FP_REGNUM), op);
+  save_gp = reg_mentioned_p (gen_rtx_REG (SImode, GP_REGNUM), op);
+  save_lp = reg_mentioned_p (gen_rtx_REG (SImode, LP_REGNUM), op);
   /* Exclude last $sp adjustment rtx.  */
   rest_count = total_count - 1;
   /* Exclude $fp, $gp, and $lp if they are in the parallel rtx.  */
-  if (cfun->machine->fp_size)
+  if (save_fp)
     rest_count--;
-  if (cfun->machine->gp_size)
+  if (save_gp)
     rest_count--;
-  if (cfun->machine->lp_size)
+  if (save_lp)
     rest_count--;
 
   if (rest_count > 0)
@@ -275,7 +261,7 @@ nds32_valid_stack_push_pop (rtx op, bool push_p)
 
   /* Check $fp/$gp/$lp one by one.
      We use 'push_p' to pick up reg rtx and mem rtx.  */
-  if (cfun->machine->fp_size)
+  if (save_fp)
     {
       elt = XVECEXP (op, 0, index);
       elt_mem = push_p ? SET_DEST (elt) : SET_SRC (elt);
@@ -287,7 +273,7 @@ nds32_valid_stack_push_pop (rtx op, bool push_p)
           || REGNO (elt_reg) != FP_REGNUM)
         return false;
     }
-  if (cfun->machine->gp_size)
+  if (save_gp)
     {
       elt = XVECEXP (op, 0, index);
       elt_mem = push_p ? SET_DEST (elt) : SET_SRC (elt);
@@ -299,7 +285,7 @@ nds32_valid_stack_push_pop (rtx op, bool push_p)
           || REGNO (elt_reg) != GP_REGNUM)
         return false;
     }
-  if (cfun->machine->lp_size)
+  if (save_lp)
     {
       elt = XVECEXP (op, 0, index);
       elt_mem = push_p ? SET_DEST (elt) : SET_SRC (elt);

@@ -1,5 +1,5 @@
 /* Structure layout test generator.
-   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2011, 2012
+   Copyright (C) 2004-2014
    Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>.
 
@@ -44,7 +44,7 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 const char *dg_options[] = {
-"/* { dg-options \"%s-I%s\" } */\n",
+"/* { dg-options \"%s-I%s -Wno-abi\" } */\n",
 "/* { dg-options \"%s-I%s -mno-mmx -Wno-abi\" { target i?86-*-* x86_64-*-* } } */\n",
 "/* { dg-options \"%s-I%s -fno-common\" { target hppa*-*-hpux* powerpc*-*-darwin* *-*-mingw32* *-*-cygwin* } } */\n",
 "/* { dg-options \"%s-I%s -mno-mmx -fno-common -Wno-abi\" { target i?86-*-darwin* x86_64-*-darwin* i?86-*-mingw32* x86_64-*-mingw32* i?86-*-cygwin* } } */\n",
@@ -605,8 +605,11 @@ getrandll (void)
   return ret;
 }
 
+/* Generate a subfield.  The object pointed to by FLEX is set to a non-zero
+   value when the generated field is a flexible array member.  When set, it
+   prevents subsequent fields from being generated (a flexible array mem*/
 int
-subfield (struct entry *e, char *letter)
+subfield (struct entry *e, char *letter, int *flex)
 {
   int i, type;
   char buf[20];
@@ -625,7 +628,10 @@ subfield (struct entry *e, char *letter)
       if (e[0].etype == ETYPE_STRUCT_ARRAY || e[0].etype == ETYPE_UNION_ARRAY)
 	{
 	  if (e[0].arr_len == 255)
-	    snprintf (buf, 20, "%c[]", *letter);
+	    {
+	      *flex = 1;
+ 	      snprintf (buf, 20, "%c[]", *letter);
+	    }
 	  else
 	    snprintf (buf, 20, "%c[%d]", *letter, e[0].arr_len);
 	  /* If this is an array type, do not put aligned attributes on
@@ -657,8 +663,8 @@ subfield (struct entry *e, char *letter)
 	  break;
 	}
 
-      for (i = 1; i <= e[0].len; )
-	i += subfield (e + i, letter);
+      for (i = 1; !*flex && i <= e[0].len; )
+	i += subfield (e + i, letter, flex);
 
       switch (type)
 	{
@@ -680,7 +686,10 @@ subfield (struct entry *e, char *letter)
       if (e[0].etype == ETYPE_ARRAY)
 	{
 	  if (e[0].arr_len == 255)
-	    snprintf (buf, 20, "%c[]", *letter);
+	    {
+	      *flex = 1;
+ 	      snprintf (buf, 20, "%c[]", *letter);
+	    }
 	  else
 	    snprintf (buf, 20, "%c[%d]", *letter, e[0].arr_len);
 	}
@@ -1157,8 +1166,11 @@ output (struct entry *e)
   else
     fprintf (outfile, "U(%d,", idx);
   c = 'a';
+
+  int flex = 0;
   for (i = 1; i <= e[0].len; )
-    i += subfield (e + i, &c);
+    i += subfield (e + i, &c, &flex);
+  
   fputs (",", outfile);
   c = 'a';
   for (i = 1; i <= e[0].len; )

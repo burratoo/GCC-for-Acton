@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2013-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2013-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -29,12 +29,12 @@
 -- <http://www.gnu.org/licenses/>.                                          --
 ------------------------------------------------------------------------------
 
---  Missing documentation: what is this unit all about??? From its name it
---  is some variation of a-coinho.ads/adb, but documentation needs to be
---  HERE explaining that ???
+--  This is an optimized version of Indefinite_Holders using copy-on-write.
+--  It is used on platforms that support atomic built-ins.
 
 private with Ada.Finalization;
 private with Ada.Streams;
+
 private with System.Atomic_Counters;
 
 generic
@@ -42,6 +42,7 @@ generic
    with function "=" (Left, Right : Element_Type) return Boolean is <>;
 
 package Ada.Containers.Indefinite_Holders is
+   pragma Annotate (CodePeer, Skip_Analysis);
    pragma Preelaborate (Indefinite_Holders);
    pragma Remote_Types (Indefinite_Holders);
 
@@ -145,10 +146,14 @@ private
    pragma Inline (Finalize);
 
    type Constant_Reference_Type
-      (Element : not null access constant Element_Type) is
-   record
-      Control : Reference_Control_Type;
-   end record;
+     (Element : not null access constant Element_Type) is
+      record
+         Control : Reference_Control_Type :=
+           raise Program_Error with "uninitialized reference";
+         --  The RM says, "The default initialization of an object of
+         --  type Constant_Reference_Type or Reference_Type propagates
+         --  Program_Error."
+      end record;
 
    procedure Write
      (Stream : not null access Root_Stream_Type'Class;
@@ -163,7 +168,11 @@ private
    for Constant_Reference_Type'Read use Read;
 
    type Reference_Type (Element : not null access Element_Type) is record
-      Control : Reference_Control_Type;
+      Control : Reference_Control_Type :=
+        raise Program_Error with "uninitialized reference";
+      --  The RM says, "The default initialization of an object of
+      --  type Constant_Reference_Type or Reference_Type propagates
+      --  Program_Error."
    end record;
 
    procedure Write

@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.  Log dumping infrastructure.
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,7 +21,6 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_SEL_SCHED_DUMP_H
 #define GCC_SEL_SCHED_DUMP_H
 
-#include "sel-sched-ir.h"
 
 
 /* These values control the dumping of control flow graph to the .dot file.  */
@@ -196,7 +195,7 @@ extern bool sched_dump_to_dot_p;
 
 /* Functions from sel-sched-dump.c.  */
 extern void sel_print (const char *fmt, ...) ATTRIBUTE_PRINTF_1;
-extern const char * sel_print_insn (const_rtx, int);
+extern const char * sel_print_insn (const rtx_insn *, int);
 extern void free_sel_dump_data (void);
 
 extern void block_start (void);

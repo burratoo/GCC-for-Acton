@@ -1,6 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-O2 -ftree-vectorize -msse2 -mno-sse3 -fdump-tree-vect-details" } */
 
+int abs (int);
 
 void test (short* a, short* b)
 {
@@ -11,4 +12,3 @@ void test (short* a, short* b)
 
 
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */

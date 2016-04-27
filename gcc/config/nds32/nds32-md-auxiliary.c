@@ -1,6 +1,6 @@
 /* Auxiliary functions for output asm template or expand rtl
    pattern of Andes NDS32 cpu for GNU compiler
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GCC.
@@ -24,34 +24,15 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "varasm.h"
-#include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"	/* Required by recog.h.  */
-#include "conditions.h"
-#include "output.h"
-#include "insn-attr.h"		/* For DFA state_t.  */
-#include "insn-codes.h"		/* For CODE_FOR_xxx.  */
-#include "reload.h"		/* For push_reload().  */
-#include "flags.h"
-#include "function.h"
-#include "expr.h"
-#include "recog.h"
-#include "diagnostic-core.h"
-#include "df.h"
-#include "tm_p.h"
-#include "tm-constrs.h"
-#include "optabs.h"		/* For GEN_FCN.  */
+#include "backend.h"
 #include "target.h"
-#include "target-def.h"
-#include "langhooks.h"		/* For add_builtin_function().  */
-#include "ggc.h"
-#include "builtins.h"
+#include "rtl.h"
+#include "tree.h"
+#include "tm_p.h"
+#include "optabs.h"		/* For GEN_FCN.  */
+#include "recog.h"
+#include "output.h"
+#include "tm-constrs.h"
 
 /* ------------------------------------------------------------------------ */
 
@@ -77,7 +58,7 @@ nds32_byte_to_size (int byte)
 enum nds32_16bit_address_type
 nds32_mem_format (rtx op)
 {
-  enum machine_mode mode_test;
+  machine_mode mode_test;
   int val;
   int regno;
 
@@ -563,17 +544,44 @@ nds32_output_32bit_load_s (rtx *operands, int byte)
 /* Function to output stack push operation.
    We need to deal with normal stack push multiple or stack v3push.  */
 const char *
-nds32_output_stack_push (void)
+nds32_output_stack_push (rtx par_rtx)
 {
   /* A string pattern for output_asm_insn().  */
   char pattern[100];
   /* The operands array which will be used in output_asm_insn().  */
   rtx operands[3];
+  /* Pick up varargs first regno and last regno for further use.  */
+  int rb_va_args = cfun->machine->va_args_first_regno;
+  int re_va_args = cfun->machine->va_args_last_regno;
+  int last_argument_regno = NDS32_FIRST_GPR_REGNUM
+			    + NDS32_MAX_GPR_REGS_FOR_ARGS
+			    - 1;
   /* Pick up callee-saved first regno and last regno for further use.  */
-  int rb_regno = cfun->machine->callee_saved_regs_first_regno;
-  int re_regno = cfun->machine->callee_saved_regs_last_regno;
+  int rb_callee_saved = cfun->machine->callee_saved_first_gpr_regno;
+  int re_callee_saved = cfun->machine->callee_saved_last_gpr_regno;
 
-  if (TARGET_V3PUSH)
+  /* First we need to check if we are pushing argument registers not used
+     for the named arguments.  If so, we have to create 'smw.adm' (push.s)
+     instruction.  */
+  if (reg_mentioned_p (gen_rtx_REG (SImode, last_argument_regno), par_rtx))
+    {
+      /* Set operands[0] and operands[1].  */
+      operands[0] = gen_rtx_REG (SImode, rb_va_args);
+      operands[1] = gen_rtx_REG (SImode, re_va_args);
+      /* Create assembly code pattern: "Rb, Re, { }".  */
+      snprintf (pattern, sizeof (pattern), "push.s\t%s", "%0, %1, { }");
+      /* We use output_asm_insn() to output assembly code by ourself.  */
+      output_asm_insn (pattern, operands);
+      return "";
+    }
+
+  /* If we step here, we are going to do v3push or multiple push operation.  */
+
+  /* The v3push/v3pop instruction should only be applied on
+     none-isr and none-variadic function.  */
+  if (TARGET_V3PUSH
+      && !nds32_isr_function_p (current_function_decl)
+      && (cfun->machine->va_args_size == 0))
     {
       /* For stack v3push:
            operands[0]: Re
@@ -583,13 +591,13 @@ nds32_output_stack_push (void)
       int sp_adjust;
 
       /* Set operands[0].  */
-      operands[0] = gen_rtx_REG (SImode, re_regno);
+      operands[0] = gen_rtx_REG (SImode, re_callee_saved);
 
       /* Check if we can generate 'push25 Re,imm8u',
          otherwise, generate 'push25 Re,0'.  */
       sp_adjust = cfun->machine->local_size
 		  + cfun->machine->out_args_size
-		  + cfun->machine->callee_saved_area_padding_bytes;
+		  + cfun->machine->callee_saved_area_gpr_padding_bytes;
       if (satisfies_constraint_Iu08 (GEN_INT (sp_adjust))
 	  && NDS32_DOUBLE_WORD_ALIGN_P (sp_adjust))
 	operands[1] = GEN_INT (sp_adjust);
@@ -611,8 +619,8 @@ nds32_output_stack_push (void)
       int push_en4_only_p = 0;
 
       /* Set operands[0] and operands[1].  */
-      operands[0] = gen_rtx_REG (SImode, rb_regno);
-      operands[1] = gen_rtx_REG (SImode, re_regno);
+      operands[0] = gen_rtx_REG (SImode, rb_callee_saved);
+      operands[1] = gen_rtx_REG (SImode, re_callee_saved);
 
       /* 'smw.adm $sp,[$sp],$sp,0' means push nothing.  */
       if (!cfun->machine->fp_size
@@ -650,17 +658,23 @@ nds32_output_stack_push (void)
 /* Function to output stack pop operation.
    We need to deal with normal stack pop multiple or stack v3pop.  */
 const char *
-nds32_output_stack_pop (void)
+nds32_output_stack_pop (rtx par_rtx ATTRIBUTE_UNUSED)
 {
   /* A string pattern for output_asm_insn().  */
   char pattern[100];
   /* The operands array which will be used in output_asm_insn().  */
   rtx operands[3];
   /* Pick up callee-saved first regno and last regno for further use.  */
-  int rb_regno = cfun->machine->callee_saved_regs_first_regno;
-  int re_regno = cfun->machine->callee_saved_regs_last_regno;
+  int rb_callee_saved = cfun->machine->callee_saved_first_gpr_regno;
+  int re_callee_saved = cfun->machine->callee_saved_last_gpr_regno;
 
-  if (TARGET_V3PUSH)
+  /* If we step here, we are going to do v3pop or multiple pop operation.  */
+
+  /* The v3push/v3pop instruction should only be applied on
+     none-isr and none-variadic function.  */
+  if (TARGET_V3PUSH
+      && !nds32_isr_function_p (current_function_decl)
+      && (cfun->machine->va_args_size == 0))
     {
       /* For stack v3pop:
            operands[0]: Re
@@ -670,7 +684,7 @@ nds32_output_stack_pop (void)
       int sp_adjust;
 
       /* Set operands[0].  */
-      operands[0] = gen_rtx_REG (SImode, re_regno);
+      operands[0] = gen_rtx_REG (SImode, re_callee_saved);
 
       /* Check if we can generate 'pop25 Re,imm8u',
          otherwise, generate 'pop25 Re,0'.
@@ -681,7 +695,7 @@ nds32_output_stack_pop (void)
          and then use 'pop25 Re,0'.  */
       sp_adjust = cfun->machine->local_size
 		  + cfun->machine->out_args_size
-		  + cfun->machine->callee_saved_area_padding_bytes;
+		  + cfun->machine->callee_saved_area_gpr_padding_bytes;
       if (satisfies_constraint_Iu08 (GEN_INT (sp_adjust))
 	  && NDS32_DOUBLE_WORD_ALIGN_P (sp_adjust)
 	  && !cfun->calls_alloca)
@@ -704,8 +718,8 @@ nds32_output_stack_pop (void)
       int pop_en4_only_p = 0;
 
       /* Set operands[0] and operands[1].  */
-      operands[0] = gen_rtx_REG (SImode, rb_regno);
-      operands[1] = gen_rtx_REG (SImode, re_regno);
+      operands[0] = gen_rtx_REG (SImode, rb_callee_saved);
+      operands[1] = gen_rtx_REG (SImode, re_callee_saved);
 
       /* 'lmw.bim $sp,[$sp],$sp,0' means pop nothing.  */
       if (!cfun->machine->fp_size
@@ -770,10 +784,10 @@ nds32_output_stack_pop (void)
 const char *
 nds32_output_casesi_pc_relative (rtx *operands)
 {
-  enum machine_mode mode;
+  machine_mode mode;
   rtx diff_vec;
 
-  diff_vec = PATTERN (NEXT_INSN (operands[1]));
+  diff_vec = PATTERN (NEXT_INSN (as_a <rtx_insn *> (operands[1])));
 
   gcc_assert (GET_CODE (diff_vec) == ADDR_DIFF_VEC);
 

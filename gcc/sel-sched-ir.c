@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.  Selective scheduler and pipeliner.
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,29 +20,26 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "diagnostic-core.h"
+#include "backend.h"
+#include "cfghooks.h"
+#include "tree.h"
 #include "rtl.h"
+#include "df.h"
 #include "tm_p.h"
-#include "hard-reg-set.h"
-#include "regs.h"
-#include "function.h"
-#include "flags.h"
+#include "cfgrtl.h"
+#include "cfganal.h"
+#include "cfgbuild.h"
 #include "insn-config.h"
 #include "insn-attr.h"
-#include "except.h"
 #include "recog.h"
 #include "params.h"
 #include "target.h"
 #include "sched-int.h"
-#include "ggc.h"
-#include "tree.h"
-#include "vec.h"
-#include "langhooks.h"
-#include "rtlhooks-def.h"
 #include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
 
 #ifdef INSN_SCHEDULING
+#include "regset.h"
+#include "cfgloop.h"
 #include "sel-sched-ir.h"
 /* We don't have to use it except for sel_print_insn.  */
 #include "sel-sched-dump.h"
@@ -56,7 +53,7 @@ vec<sel_region_bb_info_def>
     sel_region_bb_info = vNULL;
 
 /* A pool for allocating all lists.  */
-alloc_pool sched_lists_pool;
+object_allocator<_list_node> sched_lists_pool ("sel-sched-lists");
 
 /* This contains information about successors for compute_av_set.  */
 struct succs_info current_succs;
@@ -207,7 +204,7 @@ blist_add (blist_t *lp, insn_t to, ilist_t ptr, deps_t dc)
   _list_add (lp);
   bnd = BLIST_BND (*lp);
 
-  SET_BND_TO (bnd) = to;
+  BND_TO (bnd) = to;
   BND_PTR (bnd) = ptr;
   BND_AV (bnd) = NULL;
   BND_AV1 (bnd) = NULL;
@@ -262,7 +259,7 @@ init_fence_for_scheduling (fence_t f)
 /* Add new fence consisting of INSN and STATE to the list pointed to by LP.  */
 static void
 flist_add (flist_t *lp, insn_t insn, state_t state, deps_t dc, void *tc,
-           insn_t last_scheduled_insn, vec<rtx, va_gc> *executing_insns,
+           insn_t last_scheduled_insn, vec<rtx_insn *, va_gc> *executing_insns,
            int *ready_ticks, int ready_ticks_size, insn_t sched_next,
            int cycle, int cycle_issued_insns, int issue_more,
            bool starts_cycle_p, bool after_stall_p)
@@ -614,11 +611,11 @@ init_fences (insn_t old_fence)
 		 state_create (),
 		 create_deps_context () /* dc */,
 		 create_target_context (true) /* tc */,
-		 NULL_RTX /* last_scheduled_insn */,
+		 NULL /* last_scheduled_insn */,
                  NULL, /* executing_insns */
                  XCNEWVEC (int, ready_ticks_size), /* ready_ticks */
                  ready_ticks_size,
-                 NULL_RTX /* sched_next */,
+                 NULL /* sched_next */,
 		 1 /* cycle */, 0 /* cycle_issued_insns */,
 		 issue_rate, /* issue_more */
 		 1 /* starts_cycle_p */, 0 /* after_stall_p */);
@@ -637,7 +634,8 @@ init_fences (insn_t old_fence)
 static void
 merge_fences (fence_t f, insn_t insn,
 	      state_t state, deps_t dc, void *tc,
-              rtx last_scheduled_insn, vec<rtx, va_gc> *executing_insns,
+              rtx_insn *last_scheduled_insn,
+	      vec<rtx_insn *, va_gc> *executing_insns,
               int *ready_ticks, int ready_ticks_size,
 	      rtx sched_next, int cycle, int issue_more, bool after_stall_p)
 {
@@ -802,9 +800,10 @@ merge_fences (fence_t f, insn_t insn,
    other parameters.  */
 static void
 add_to_fences (flist_tail_t new_fences, insn_t insn,
-               state_t state, deps_t dc, void *tc, rtx last_scheduled_insn,
-               vec<rtx, va_gc> *executing_insns, int *ready_ticks,
-               int ready_ticks_size, rtx sched_next, int cycle,
+               state_t state, deps_t dc, void *tc,
+	       rtx_insn *last_scheduled_insn,
+               vec<rtx_insn *, va_gc> *executing_insns, int *ready_ticks,
+               int ready_ticks_size, rtx_insn *sched_next, int cycle,
                int cycle_issued_insns, int issue_rate,
 	       bool starts_cycle_p, bool after_stall_p)
 {
@@ -866,9 +865,9 @@ add_clean_fence_to_fences (flist_tail_t new_fences, insn_t succ, fence_t fence)
   add_to_fences (new_fences,
                  succ, state_create (), create_deps_context (),
                  create_target_context (true),
-                 NULL_RTX, NULL,
+                 NULL, NULL,
                  XCNEWVEC (int, ready_ticks_size), ready_ticks_size,
-                 NULL_RTX, FENCE_CYCLE (fence) + 1,
+                 NULL, FENCE_CYCLE (fence) + 1,
                  0, issue_rate, 1, FENCE_AFTER_STALL_P (fence));
 }
 
@@ -949,7 +948,6 @@ return_regset_to_pool (regset rs)
   regset_pool.v[regset_pool.n++] = rs;
 }
 
-#ifdef ENABLE_CHECKING
 /* This is used as a qsort callback for sorting regset pool stacks.
    X and XX are addresses of two regsets.  They are never equal.  */
 static int
@@ -963,44 +961,42 @@ cmp_v_in_regset_pool (const void *x, const void *xx)
     return -1;
   gcc_unreachable ();
 }
-#endif
 
-/*  Free the regset pool possibly checking for memory leaks.  */
+/* Free the regset pool possibly checking for memory leaks.  */
 void
 free_regset_pool (void)
 {
-#ifdef ENABLE_CHECKING
-  {
-    regset *v = regset_pool.v;
-    int i = 0;
-    int n = regset_pool.n;
+  if (flag_checking)
+    {
+      regset *v = regset_pool.v;
+      int i = 0;
+      int n = regset_pool.n;
 
-    regset *vv = regset_pool.vv;
-    int ii = 0;
-    int nn = regset_pool.nn;
+      regset *vv = regset_pool.vv;
+      int ii = 0;
+      int nn = regset_pool.nn;
 
-    int diff = 0;
+      int diff = 0;
 
-    gcc_assert (n <= nn);
+      gcc_assert (n <= nn);
 
-    /* Sort both vectors so it will be possible to compare them.  */
-    qsort (v, n, sizeof (*v), cmp_v_in_regset_pool);
-    qsort (vv, nn, sizeof (*vv), cmp_v_in_regset_pool);
+      /* Sort both vectors so it will be possible to compare them.  */
+      qsort (v, n, sizeof (*v), cmp_v_in_regset_pool);
+      qsort (vv, nn, sizeof (*vv), cmp_v_in_regset_pool);
 
-    while (ii < nn)
-      {
-        if (v[i] == vv[ii])
-          i++;
-        else
-          /* VV[II] was lost.  */
-          diff++;
+      while (ii < nn)
+	{
+	  if (v[i] == vv[ii])
+	    i++;
+	  else
+	    /* VV[II] was lost.  */
+	    diff++;
 
-        ii++;
-      }
+	  ii++;
+	}
 
-    gcc_assert (diff == regset_pool.diff);
-  }
-#endif
+      gcc_assert (diff == regset_pool.diff);
+    }
 
   /* If not true - we have a memory leak.  */
   gcc_assert (regset_pool.diff == 0);
@@ -1036,16 +1032,17 @@ static vinsn_t nop_vinsn = NULL;
 insn_t
 get_nop_from_pool (insn_t insn)
 {
+  rtx nop_pat;
   insn_t nop;
   bool old_p = nop_pool.n != 0;
   int flags;
 
   if (old_p)
-    nop = nop_pool.v[--nop_pool.n];
+    nop_pat = nop_pool.v[--nop_pool.n];
   else
-    nop = nop_pattern;
+    nop_pat = nop_pattern;
 
-  nop = emit_insn_before (nop, insn);
+  nop = emit_insn_before (nop_pat, insn);
 
   if (old_p)
     flags = INSN_INIT_TODO_SSID;
@@ -1066,10 +1063,10 @@ return_nop_to_pool (insn_t nop, bool full_tidying)
   sel_remove_insn (nop, false, full_tidying);
 
   /* We'll recycle this nop.  */
-  INSN_DELETED_P (nop) = 0;
+  nop->set_undeleted ();
 
   if (nop_pool.n == nop_pool.s)
-    nop_pool.v = XRESIZEVEC (rtx, nop_pool.v,
+    nop_pool.v = XRESIZEVEC (rtx_insn *, nop_pool.v,
                              (nop_pool.s = 2 * nop_pool.s + 1));
   nop_pool.v[nop_pool.n++] = nop;
 }
@@ -1119,8 +1116,8 @@ skip_unspecs_callback (const_rtx *xx, const_rtx *yy, rtx *nx, rtx* ny)
    to support ia64 speculation.  When changes are needed, new rtx X and new mode
    NMODE are written, and the callback returns true.  */
 static int
-hash_with_unspec_callback (const_rtx x, enum machine_mode mode ATTRIBUTE_UNUSED,
-                           rtx *nx, enum machine_mode* nmode)
+hash_with_unspec_callback (const_rtx x, machine_mode mode ATTRIBUTE_UNUSED,
+                           rtx *nx, machine_mode* nmode)
 {
   if (GET_CODE (x) == UNSPEC
       && targetm.sched.skip_rtx_p
@@ -1179,7 +1176,7 @@ vinsn_init (vinsn_t vi, insn_t insn, bool force_unique_p)
   hash_rtx_callback_function hrcf;
   int insn_class;
 
-  SET_VINSN_INSN_RTX (vi) = insn;
+  VINSN_INSN_RTX (vi) = insn;
   VINSN_COUNT (vi) = 0;
   vi->cost = -1;
 
@@ -1306,7 +1303,7 @@ vinsn_cond_branch_p (vinsn_t vi)
 
 /* Return latency of INSN.  */
 static int
-sel_insn_rtx_cost (rtx insn)
+sel_insn_rtx_cost (rtx_insn *insn)
 {
   int cost;
 
@@ -1401,7 +1398,7 @@ sel_gen_insn_from_expr_after (expr_t expr, vinsn_t vinsn, int seqno,
 
   /* The insn may come from the transformation cache, which may hold already
      deleted insns, so mark it as not deleted.  */
-  INSN_DELETED_P (insn) = 0;
+  insn->set_undeleted ();
 
   add_insn_after (insn, after, BLOCK_FOR_INSN (insn));
 
@@ -1432,7 +1429,7 @@ sel_move_insn (expr_t expr, int seqno, insn_t after)
   /* Update links from insn to bb and vice versa.  */
   df_insn_change_bb (insn, bb);
   if (BB_END (bb) == after)
-    SET_BB_END (bb) = insn;
+    BB_END (bb) = insn;
 
   prepare_insn_expr (insn, seqno);
   return insn;
@@ -1874,12 +1871,16 @@ merge_expr (expr_t to, expr_t from, insn_t split_point)
   /* Make sure that speculative pattern is propagated into exprs that
      have non-speculative one.  This will provide us with consistent
      speculative bits and speculative patterns inside expr.  */
-  if ((EXPR_SPEC_DONE_DS (from) != 0
-       && EXPR_SPEC_DONE_DS (to) == 0)
-      /* Do likewise for volatile insns, so that we always retain
-	 the may_trap_p bit on the resulting expression.  */
-      || (VINSN_MAY_TRAP_P (EXPR_VINSN (from))
-	  && !VINSN_MAY_TRAP_P (EXPR_VINSN (to))))
+  if (EXPR_SPEC_DONE_DS (to) == 0
+      && (EXPR_SPEC_DONE_DS (from) != 0
+	  /* Do likewise for volatile insns, so that we always retain
+	     the may_trap_p bit on the resulting expression.  However,
+	     avoid propagating the trapping bit into the instructions
+	     already speculated.  This would result in replacing the
+	     speculative pattern with the non-speculative one and breaking
+	     the speculation support.  */
+	  || (!VINSN_MAY_TRAP_P (EXPR_VINSN (to))
+	      && VINSN_MAY_TRAP_P (EXPR_VINSN (from)))))
     change_vinsn_in_expr (to, EXPR_VINSN (from));
 
   merge_expr_data (to, from, split_point);
@@ -2653,6 +2654,23 @@ maybe_downgrade_id_to_use (idata_t id, insn_t insn)
     IDATA_TYPE (id) = USE;
 }
 
+/* Setup implicit register clobbers calculated by sched-deps for INSN
+   before reload and save them in ID.  */
+static void
+setup_id_implicit_regs (idata_t id, insn_t insn)
+{
+  if (reload_completed)
+    return;
+
+  HARD_REG_SET temp;
+  unsigned regno;
+  hard_reg_set_iterator hrsi;
+
+  get_implicit_reg_pending_clobbers (&temp, insn);
+  EXECUTE_IF_SET_IN_HARD_REG_SET (temp, 0, regno, hrsi)
+    SET_REGNO_REG_SET (IDATA_REG_SETS (id), regno);
+}
+
 /* Setup register sets describing INSN in ID.  */
 static void
 setup_id_reg_sets (idata_t id, insn_t insn)
@@ -2707,6 +2725,9 @@ setup_id_reg_sets (idata_t id, insn_t insn)
 	}
     }
 
+  /* Also get implicit reg clobbers from sched-deps.  */
+  setup_id_implicit_regs (id, insn);
+
   return_regset_to_pool (tmp);
 }
 
@@ -2738,20 +2759,18 @@ deps_init_id (idata_t id, insn_t insn, bool force_unique_p)
   deps_init_id_data.force_use_p = false;
 
   init_deps (dc, false);
-
   memcpy (&deps_init_id_sched_deps_info,
 	  &const_deps_init_id_sched_deps_info,
 	  sizeof (deps_init_id_sched_deps_info));
-
   if (spec_info != NULL)
     deps_init_id_sched_deps_info.generate_spec_deps = 1;
-
   sched_deps_info = &deps_init_id_sched_deps_info;
 
   deps_analyze_insn (dc, insn);
+  /* Implicit reg clobbers received from sched-deps separately.  */
+  setup_id_implicit_regs (id, insn);
 
   free_deps (dc);
-
   deps_init_id_data.id = NULL;
 }
 
@@ -2774,7 +2793,7 @@ struct sched_scan_info_def
 
   /* This hook makes scheduler frontend to initialize its internal data
      structures for the passed insn.  */
-  void (*init_insn) (rtx);
+  void (*init_insn) (insn_t);
 };
 
 /* A driver function to add a set of basic blocks (BBS) to the
@@ -2798,7 +2817,7 @@ sched_scan (const struct sched_scan_info_def *ssi, bb_vec_t bbs)
   if (ssi->init_insn)
     FOR_EACH_VEC_ELT (bbs, i, bb)
       {
-	rtx insn;
+	rtx_insn *insn;
 
 	FOR_BB_INSNS (bb, insn)
 	  ssi->init_insn (insn);
@@ -2937,7 +2956,7 @@ init_global_and_expr_for_insn (insn_t insn)
 
   if (NOTE_INSN_BASIC_BLOCK_P (insn))
     {
-      init_global_data.prev_insn = NULL_RTX;
+      init_global_data.prev_insn = NULL;
       return;
     }
 
@@ -2954,7 +2973,7 @@ init_global_and_expr_for_insn (insn_t insn)
       init_global_data.prev_insn = insn;
     }
   else
-    init_global_data.prev_insn = NULL_RTX;
+    init_global_data.prev_insn = NULL;
 
   if (GET_CODE (PATTERN (insn)) == ASM_INPUT
       || asm_noperands (PATTERN (insn)) >= 0)
@@ -3579,7 +3598,7 @@ sel_insn_is_speculation_check (rtx insn)
 /* Extracts machine mode MODE and destination location DST_LOC
    for given INSN.  */
 void
-get_dest_and_mode (rtx insn, rtx *dst_loc, enum machine_mode *mode)
+get_dest_and_mode (rtx insn, rtx *dst_loc, machine_mode *mode)
 {
   rtx pat = PATTERN (insn);
 
@@ -3617,7 +3636,6 @@ insn_is_the_only_one_in_bb_p (insn_t insn)
   return sel_bb_head_p (insn) && sel_bb_end_p (insn);
 }
 
-#ifdef ENABLE_CHECKING
 /* Check that the region we're scheduling still has at most one
    backedge.  */
 static void
@@ -3638,7 +3656,6 @@ verify_backedges (void)
       gcc_assert (n <= 1);
     }
 }
-#endif
 
 
 /* Functions to work with control flow.  */
@@ -3883,10 +3900,12 @@ tidy_control_flow (basic_block xbb, bool full_tidying)
 	sel_recompute_toporder ();
     }
 
-#ifdef ENABLE_CHECKING
-  verify_backedges ();
-  verify_dominators (CDI_DOMINATORS);
-#endif
+  /* TODO: use separate flag for CFG checking.  */
+  if (flag_checking)
+    {
+      verify_backedges ();
+      verify_dominators (CDI_DOMINATORS);
+    }
 
   return changed;
 }
@@ -3978,10 +3997,10 @@ sel_luid_for_non_insn (rtx x)
 /*  Find the proper seqno for inserting at INSN by successors.
     Return -1 if no successors with positive seqno exist.  */
 static int
-get_seqno_by_succs (rtx insn)
+get_seqno_by_succs (rtx_insn *insn)
 {
   basic_block bb = BLOCK_FOR_INSN (insn);
-  rtx tmp = insn, end = BB_END (bb);
+  rtx_insn *tmp = insn, *end = BB_END (bb);
   int seqno;
   insn_t succ = NULL;
   succ_iterator si;
@@ -4080,18 +4099,21 @@ get_seqno_for_a_jump (insn_t insn, int old_seqno)
 /*  Find the proper seqno for inserting at INSN.  Returns -1 if no predecessors
     with positive seqno exist.  */
 int
-get_seqno_by_preds (rtx insn)
+get_seqno_by_preds (rtx_insn *insn)
 {
   basic_block bb = BLOCK_FOR_INSN (insn);
-  rtx tmp = insn, head = BB_HEAD (bb);
+  rtx_insn *tmp = insn, *head = BB_HEAD (bb);
   insn_t *preds;
   int n, i, seqno;
 
-  while (tmp != head)
+  /* Loop backwards from INSN to HEAD including both.  */
+  while (1)
     {
-      tmp = PREV_INSN (tmp);
       if (INSN_P (tmp))
-        return INSN_SEQNO (tmp);
+	return INSN_SEQNO (tmp);
+      if (tmp == head)
+	break;
+      tmp = PREV_INSN (tmp);
     }
 
   cfg_preds (bb, &preds, &n);
@@ -4405,51 +4427,17 @@ free_data_sets (basic_block bb)
   free_av_set (bb);
 }
 
-/* Exchange lv sets of TO and FROM.  */
-static void
-exchange_lv_sets (basic_block to, basic_block from)
-{
-  {
-    regset to_lv_set = BB_LV_SET (to);
-
-    BB_LV_SET (to) = BB_LV_SET (from);
-    BB_LV_SET (from) = to_lv_set;
-  }
-
-  {
-    bool to_lv_set_valid_p = BB_LV_SET_VALID_P (to);
-
-    BB_LV_SET_VALID_P (to) = BB_LV_SET_VALID_P (from);
-    BB_LV_SET_VALID_P (from) = to_lv_set_valid_p;
-  }
-}
-
-
-/* Exchange av sets of TO and FROM.  */
-static void
-exchange_av_sets (basic_block to, basic_block from)
-{
-  {
-    av_set_t to_av_set = BB_AV_SET (to);
-
-    BB_AV_SET (to) = BB_AV_SET (from);
-    BB_AV_SET (from) = to_av_set;
-  }
-
-  {
-    int to_av_level = BB_AV_LEVEL (to);
-
-    BB_AV_LEVEL (to) = BB_AV_LEVEL (from);
-    BB_AV_LEVEL (from) = to_av_level;
-  }
-}
-
 /* Exchange data sets of TO and FROM.  */
 void
 exchange_data_sets (basic_block to, basic_block from)
 {
-  exchange_lv_sets (to, from);
-  exchange_av_sets (to, from);
+  /* Exchange lv sets of TO and FROM.  */
+  std::swap (BB_LV_SET (from), BB_LV_SET (to));
+  std::swap (BB_LV_SET_VALID_P (from), BB_LV_SET_VALID_P (to));
+
+  /* Exchange av sets of TO and FROM.  */
+  std::swap (BB_AV_SET (from), BB_AV_SET (to));
+  std::swap (BB_AV_LEVEL (from), BB_AV_LEVEL (to));
 }
 
 /* Copy data sets of FROM to TO.  */
@@ -4545,9 +4533,7 @@ sel_bb_head (basic_block bb)
     }
   else
     {
-      insn_t note;
-
-      note = bb_note (bb);
+      rtx_note *note = bb_note (bb);
       head = next_nonnote_insn (note);
 
       if (head && (BARRIER_P (head) || BLOCK_FOR_INSN (head) != bb))
@@ -4602,7 +4588,7 @@ in_current_region_p (basic_block bb)
 
 /* Return the block which is a fallthru bb of a conditional jump JUMP.  */
 basic_block
-fallthru_bb_of_jump (rtx jump)
+fallthru_bb_of_jump (const rtx_insn *jump)
 {
   if (!JUMP_P (jump))
     return NULL;
@@ -4623,7 +4609,7 @@ static void
 init_bb (basic_block bb)
 {
   remove_notes (bb_note (bb), BB_END (bb));
-  SET_BB_NOTE_LIST (bb) = note_list;
+  BB_NOTE_LIST (bb) = note_list;
 }
 
 void
@@ -4658,7 +4644,7 @@ sel_restore_notes (void)
 	{
 	  note_list = BB_NOTE_LIST (first);
 	  restore_other_notes (NULL, first);
-	  SET_BB_NOTE_LIST (first) = NULL_RTX;
+	  BB_NOTE_LIST (first) = NULL;
 
 	  FOR_BB_INSNS (first, insn)
 	    if (NONDEBUG_INSN_P (insn))
@@ -4947,7 +4933,7 @@ recompute_rev_top_order (void)
 void
 clear_outdated_rtx_info (basic_block bb)
 {
-  rtx insn;
+  rtx_insn *insn;
 
   FOR_BB_INSNS (bb, insn)
     if (INSN_P (insn))
@@ -4968,7 +4954,7 @@ clear_outdated_rtx_info (basic_block bb)
 static void
 return_bb_to_pool (basic_block bb)
 {
-  rtx note = bb_note (bb);
+  rtx_note *note = bb_note (bb);
 
   gcc_assert (NOTE_BASIC_BLOCK (note) == bb
 	      && bb->aux == NULL);
@@ -5013,9 +4999,6 @@ alloc_sched_pools (void)
   succs_info_pool.size = succs_size;
   succs_info_pool.top = -1;
   succs_info_pool.max_top = -1;
-
-  sched_lists_pool = create_alloc_pool ("sel-sched-lists",
-                                        sizeof (struct _list_node), 500);
 }
 
 /* Free the pools.  */
@@ -5024,7 +5007,7 @@ free_sched_pools (void)
 {
   int i;
 
-  free_alloc_pool (sched_lists_pool);
+  sched_lists_pool.release ();
   gcc_assert (succs_info_pool.top == -1);
   for (i = 0; i <= succs_info_pool.max_top; i++)
     {
@@ -5266,8 +5249,8 @@ move_bb_info (basic_block merge_bb, basic_block empty_bb)
 {
   if (in_current_region_p (merge_bb))
     concat_note_lists (BB_NOTE_LIST (empty_bb),
-		       &SET_BB_NOTE_LIST (merge_bb));
-  SET_BB_NOTE_LIST (empty_bb) = NULL_RTX;
+		       &BB_NOTE_LIST (merge_bb));
+  BB_NOTE_LIST (empty_bb) = NULL;
 
 }
 
@@ -5355,7 +5338,8 @@ sel_create_basic_block (void *headp, void *endp, basic_block after)
     new_bb = orig_cfg_hooks.create_basic_block (headp, endp, after);
   else
     {
-      new_bb = create_basic_block_structure ((rtx) headp, (rtx) endp,
+      new_bb = create_basic_block_structure ((rtx_insn *) headp,
+					     (rtx_insn *) endp,
 					     new_bb_note, after);
       new_bb->aux = NULL;
     }
@@ -5756,7 +5740,7 @@ create_insn_rtx_from_pattern (rtx pattern, rtx label)
 /* Create a new vinsn for INSN_RTX.  FORCE_UNIQUE_P is true when the vinsn
    must not be clonable.  */
 vinsn_t
-create_vinsn_from_insn_rtx (rtx insn_rtx, bool force_unique_p)
+create_vinsn_from_insn_rtx (rtx_insn *insn_rtx, bool force_unique_p)
 {
   gcc_assert (INSN_P (insn_rtx) && !INSN_IN_STREAM_P (insn_rtx));
 
@@ -6185,7 +6169,7 @@ make_regions_from_the_rest (void)
 
   FOR_EACH_BB_FN (bb, cfun)
     {
-      if (bb->loop_father && !bb->loop_father->num == 0
+      if (bb->loop_father && bb->loop_father->num != 0
 	  && !(bb->flags & BB_IRREDUCIBLE_LOOP))
 	loop_hdr[bb->index] = bb->loop_father->num;
     }
@@ -6444,37 +6428,6 @@ sel_remove_loop_preheader (void)
     /* Store preheader within the father's loop structure.  */
     SET_LOOP_PREHEADER_BLOCKS (loop_outer (current_loop_nest),
 			       preheader_blocks);
-}
-
-rtx_insn *VINSN_INSN_RTX (vinsn_t vi)
-{
-  return safe_as_a <rtx_insn *> (vi->insn_rtx);
-}
-
-rtx& SET_VINSN_INSN_RTX (vinsn_t vi)
-{
-  return vi->insn_rtx;
-}
-
-rtx_insn *BB_NOTE_LIST (basic_block bb)
-{
-  rtx note_list = SEL_REGION_BB_INFO (bb)->note_list;
-  return safe_as_a <rtx_insn *> (note_list);
-}
-
-rtx& SET_BB_NOTE_LIST (basic_block bb)
-{
-  return SEL_REGION_BB_INFO (bb)->note_list;
-}
-
-rtx_insn *BND_TO (bnd_t bnd)
-{
-  return safe_as_a <rtx_insn *> (bnd->to);
-}
-
-insn_t& SET_BND_TO (bnd_t bnd)
-{
-  return bnd->to;
 }
 
 #endif

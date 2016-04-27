@@ -13,6 +13,7 @@
 	Only methods that satisfy these criteria will be made available for remote access;
 	other methods will be ignored:
 
+		- the method's type is exported.
 		- the method is exported.
 		- the method has two arguments, both exported (or builtin) types.
 		- the method's second argument is a pointer.
@@ -216,7 +217,7 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 
 // Register publishes in the server the set of methods of the
 // receiver value that satisfy the following conditions:
-//	- exported method
+//	- exported method of exported type
 //	- two arguments, both of exported type
 //	- the second argument is a pointer
 //	- one return value, of type error
@@ -395,6 +396,7 @@ type gobServerCodec struct {
 	dec    *gob.Decoder
 	enc    *gob.Encoder
 	encBuf *bufio.Writer
+	closed bool
 }
 
 func (c *gobServerCodec) ReadRequestHeader(r *Request) error {
@@ -407,15 +409,32 @@ func (c *gobServerCodec) ReadRequestBody(body interface{}) error {
 
 func (c *gobServerCodec) WriteResponse(r *Response, body interface{}) (err error) {
 	if err = c.enc.Encode(r); err != nil {
+		if c.encBuf.Flush() == nil {
+			// Gob couldn't encode the header. Should not happen, so if it does,
+			// shut down the connection to signal that the connection is broken.
+			log.Println("rpc: gob error encoding response:", err)
+			c.Close()
+		}
 		return
 	}
 	if err = c.enc.Encode(body); err != nil {
+		if c.encBuf.Flush() == nil {
+			// Was a gob problem encoding the body but the header has been written.
+			// Shut down the connection to signal that the connection is broken.
+			log.Println("rpc: gob error encoding body:", err)
+			c.Close()
+		}
 		return
 	}
 	return c.encBuf.Flush()
 }
 
 func (c *gobServerCodec) Close() error {
+	if c.closed {
+		// Only call c.rwc.Close once; otherwise the semantics are undefined.
+		return nil
+	}
+	c.closed = true
 	return c.rwc.Close()
 }
 
@@ -426,7 +445,12 @@ func (c *gobServerCodec) Close() error {
 // connection.  To use an alternate codec, use ServeCodec.
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 	buf := bufio.NewWriter(conn)
-	srv := &gobServerCodec{conn, gob.NewDecoder(conn), gob.NewEncoder(buf), buf}
+	srv := &gobServerCodec{
+		rwc:    conn,
+		dec:    gob.NewDecoder(conn),
+		enc:    gob.NewEncoder(buf),
+		encBuf: buf,
+	}
 	server.ServeCodec(srv)
 }
 
@@ -587,13 +611,15 @@ func (server *Server) readRequestHeader(codec ServerCodec) (service *service, mt
 }
 
 // Accept accepts connections on the listener and serves requests
-// for each incoming connection.  Accept blocks; the caller typically
-// invokes it in a go statement.
+// for each incoming connection. Accept blocks until the listener
+// returns a non-nil error. The caller typically invokes Accept in a
+// go statement.
 func (server *Server) Accept(lis net.Listener) {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
-			log.Fatal("rpc.Serve: accept:", err.Error()) // TODO(r): exit?
+			log.Print("rpc.Serve: accept:", err.Error())
+			return
 		}
 		go server.ServeConn(conn)
 	}

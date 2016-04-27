@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -30,14 +30,14 @@
 ------------------------------------------------------------------------------
 
 --  This package contains definitions for initial sizes and growth increments
---  for the various dynamic arrays used for principle compiler data strcutures.
+--  for the various dynamic arrays used for the main compiler data structures.
 --  The indicated initial size is allocated for the start of each file, and
 --  the increment factor is a percentage used to increase the table size when
 --  it needs expanding (e.g. a value of 100 = 100% increase = double)
 
---  Note: the initial values here are multiplied by Table_Factor, as set
---  by the -gnatTnn switch. This variable is defined in Opt, as is the
---  default value for the table factor.
+--  Note: the initial values here are multiplied by Table_Factor as set by the
+--  -gnatTnn switch. This variable is defined in Opt, as is the default value
+--  for the table factor.
 
 package Alloc is
 
@@ -64,14 +64,17 @@ package Alloc is
    File_Name_Chars_Initial          : constant := 10_000;  -- Osint
    File_Name_Chars_Increment        : constant := 100;
 
-   Inlined_Bodies_Initial           : constant := 50;      -- Inline
-   Inlined_Bodies_Increment         : constant := 200;
+   In_Out_Warnings_Initial          : constant := 100;     -- Sem_Warn
+   In_Out_Warnings_Increment        : constant := 100;
+
+   Ignored_Ghost_Units_Initial      : constant := 20;      -- Sem_Util
+   Ignored_Ghost_Units_Increment    : constant := 50;
 
    Inlined_Initial                  : constant := 100;     -- Inline
    Inlined_Increment                : constant := 100;
 
-   In_Out_Warnings_Initial          : constant := 100;     -- Sem_Warn
-   In_Out_Warnings_Increment        : constant := 100;
+   Inlined_Bodies_Initial           : constant := 50;      -- Inline
+   Inlined_Bodies_Increment         : constant := 200;
 
    Interp_Map_Initial               : constant := 200;     -- Sem_Type
    Interp_Map_Increment             : constant := 100;

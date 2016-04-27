@@ -20,18 +20,28 @@ enum {
 // The cached value is a uint32 in which the low bit
 // is the "crash" setting and the top 31 bits are the
 // gotraceback value.
-static uint32 traceback_cache = ~(uint32)0;
+enum {
+	tracebackCrash = 1 << 0,
+	tracebackAll = 1 << 1,
+	tracebackShift = 2,
+};
+static uint32 traceback_cache = 2 << tracebackShift;
+static uint32 traceback_env;
 
-// The GOTRACEBACK environment variable controls the
-// behavior of a Go program that is crashing and exiting.
-//	GOTRACEBACK=0   suppress all tracebacks
-//	GOTRACEBACK=1   default behavior - show tracebacks but exclude runtime frames
-//	GOTRACEBACK=2   show tracebacks including runtime frames
-//	GOTRACEBACK=crash   show tracebacks including runtime frames, then crash (core dump etc)
+extern volatile intgo runtime_MemProfileRate
+  __asm__ (GOSYM_PREFIX "runtime.MemProfileRate");
+
+
+// gotraceback returns the current traceback settings.
+//
+// If level is 0, suppress all tracebacks.
+// If level is 1, show tracebacks, but exclude runtime frames.
+// If level is 2, show tracebacks including runtime frames.
+// If all is set, print all goroutine stacks. Otherwise, print just the current goroutine.
+// If crash is set, crash (core dump, etc) after tracebacking.
 int32
 runtime_gotraceback(bool *crash)
 {
-	const byte *p;
 	uint32 x;
 
 	if(crash != nil)
@@ -39,28 +49,16 @@ runtime_gotraceback(bool *crash)
 	if(runtime_m()->traceback != 0)
 		return runtime_m()->traceback;
 	x = runtime_atomicload(&traceback_cache);
-	if(x == ~(uint32)0) {
-		p = runtime_getenv("GOTRACEBACK");
-		if(p == nil)
-			p = (const byte*)"";
-		if(p[0] == '\0')
-			x = 1<<1;
-		else if(runtime_strcmp((const char *)p, "crash") == 0)
-			x = (2<<1) | 1;
-		else
-			x = runtime_atoi(p)<<1;	
-		runtime_atomicstore(&traceback_cache, x);
-	}
 	if(crash != nil)
-		*crash = x&1;
-	return x>>1;
+		*crash = x&tracebackCrash;
+	return x>>tracebackShift;
 }
 
 static int32	argc;
 static byte**	argv;
 
-extern Slice os_Args __asm__ (GOSYM_PREFIX "os.Args");
-extern Slice syscall_Envs __asm__ (GOSYM_PREFIX "syscall.Envs");
+static Slice args;
+Slice envs;
 
 void (*runtime_sysargs)(int32, uint8**);
 
@@ -92,9 +90,9 @@ runtime_goargs(void)
 	s = runtime_malloc(argc*sizeof s[0]);
 	for(i=0; i<argc; i++)
 		s[i] = runtime_gostringnocopy((const byte*)argv[i]);
-	os_Args.__values = (void*)s;
-	os_Args.__count = argc;
-	os_Args.__capacity = argc;
+	args.__values = (void*)s;
+	args.__count = argc;
+	args.__capacity = argc;
 }
 
 void
@@ -109,28 +107,45 @@ runtime_goenvs_unix(void)
 	s = runtime_malloc(n*sizeof s[0]);
 	for(i=0; i<n; i++)
 		s[i] = runtime_gostringnocopy(argv[argc+1+i]);
-	syscall_Envs.__values = (void*)s;
-	syscall_Envs.__count = n;
-	syscall_Envs.__capacity = n;
+	envs.__values = (void*)s;
+	envs.__count = n;
+	envs.__capacity = n;
+}
 
-	traceback_cache = ~(uint32)0;
+// Called from the syscall package.
+Slice runtime_envs(void) __asm__ (GOSYM_PREFIX "syscall.runtime_envs");
+
+Slice
+runtime_envs()
+{
+	return envs;
+}
+
+Slice os_runtime_args(void) __asm__ (GOSYM_PREFIX "os.runtime_args");
+
+Slice
+os_runtime_args()
+{
+	return args;
 }
 
 int32
-runtime_atoi(const byte *p)
+runtime_atoi(const byte *p, intgo len)
 {
 	int32 n;
 
 	n = 0;
-	while('0' <= *p && *p <= '9')
+	while(len > 0 && '0' <= *p && *p <= '9') {
 		n = n*10 + *p++ - '0';
+		len--;
+	}
 	return n;
 }
 
 static struct root_list runtime_roots =
 { nil,
-  { { &syscall_Envs, sizeof syscall_Envs },
-    { &os_Args, sizeof os_Args },
+  { { &envs, sizeof envs },
+    { &args, sizeof args },
     { nil, 0 } },
 };
 
@@ -196,6 +211,14 @@ runtime_cputicks(void)
   uint32 low, high;
   asm("rdtsc" : "=a" (low), "=d" (high));
   return (int64)(((uint64)high << 32) | (uint64)low);
+#elif defined (__s390__) || defined (__s390x__)
+  uint64 clock = 0;
+  /* stckf may not write the return variable in case of a clock error, so make
+     it read-write to prevent that the initialisation is optimised out.
+     Note: Targets below z9-109 will crash when executing store clock fast, i.e.
+     we don't support Go for machines older than that.  */
+  asm volatile(".insn s,0xb27c0000,%0" /* stckf */ : "+Q" (clock) : : "cc" );
+  return (int64)clock;
 #else
   // FIXME: implement for other processors.
   return 0;
@@ -290,40 +313,105 @@ runtime_signalstack(byte *p, int32 n)
 		*(int *)0xf1 = 0xf1;
 }
 
+void setTraceback(String level)
+  __asm__ (GOSYM_PREFIX "runtime_debug.SetTraceback");
+
+void setTraceback(String level) {
+	uint32 t;
+
+	if (level.len == 4 && __builtin_memcmp(level.str, "none", 4) == 0) {
+		t = 0;
+	} else if (level.len == 0 || (level.len == 6 && __builtin_memcmp(level.str, "single", 6) == 0)) {
+		t = 1 << tracebackShift;
+	} else if (level.len == 3 && __builtin_memcmp(level.str, "all", 3) == 0) {
+		t = (1<<tracebackShift) | tracebackAll;
+	} else if (level.len == 6 && __builtin_memcmp(level.str, "system", 6) == 0) {
+		t = (2<<tracebackShift) | tracebackAll;
+	} else if (level.len == 5 && __builtin_memcmp(level.str, "crash", 5) == 0) {
+		t = (2<<tracebackShift) | tracebackAll | tracebackCrash;
+	} else {
+		t = (runtime_atoi(level.str, level.len)<<tracebackShift) | tracebackAll;
+	}
+
+	t |= traceback_env;
+
+	runtime_atomicstore(&traceback_cache, t);
+}
+
 DebugVars	runtime_debug;
 
+// Holds variables parsed from GODEBUG env var,
+// except for "memprofilerate" since there is an
+// existing var for that value which is int
+// instead of in32 and might have an
+// initial value.
 static struct {
 	const char* name;
 	int32*	value;
 } dbgvar[] = {
 	{"allocfreetrace", &runtime_debug.allocfreetrace},
+	{"cgocheck", &runtime_debug.cgocheck},
 	{"efence", &runtime_debug.efence},
+	{"gccheckmark", &runtime_debug.gccheckmark},
+	{"gcpacertrace", &runtime_debug.gcpacertrace},
+	{"gcshrinkstackoff", &runtime_debug.gcshrinkstackoff},
+	{"gcstackbarrieroff", &runtime_debug.gcstackbarrieroff},
+	{"gcstackbarrierall", &runtime_debug.gcstackbarrierall},
+	{"gcstoptheworld", &runtime_debug.gcstoptheworld},
 	{"gctrace", &runtime_debug.gctrace},
 	{"gcdead", &runtime_debug.gcdead},
+	{"invalidptr", &runtime_debug.invalidptr},
+	{"sbrk", &runtime_debug.sbrk},
+	{"scavenge", &runtime_debug.scavenge},
 	{"scheddetail", &runtime_debug.scheddetail},
 	{"schedtrace", &runtime_debug.schedtrace},
+	{"wbshadow", &runtime_debug.wbshadow},
 };
 
 void
 runtime_parsedebugvars(void)
 {
-	const byte *p;
+	String s;
+	const byte *p, *pn;
+	intgo len;
 	intgo i, n;
-
-	p = runtime_getenv("GODEBUG");
-	if(p == nil)
+	
+	s = runtime_getenv("GODEBUG");
+	if(s.len == 0)
 		return;
+	p = s.str;
+	len = s.len;
 	for(;;) {
 		for(i=0; i<(intgo)nelem(dbgvar); i++) {
 			n = runtime_findnull((const byte*)dbgvar[i].name);
-			if(runtime_mcmp(p, dbgvar[i].name, n) == 0 && p[n] == '=')
-				*dbgvar[i].value = runtime_atoi(p+n+1);
+			if(len > n && runtime_mcmp(p, "memprofilerate", n) == 0 && p[n] == '=')
+				// Set the MemProfileRate directly since it
+				// is an int, not int32, and should only lbe
+				// set here if specified by GODEBUG
+				runtime_MemProfileRate = runtime_atoi(p+n+1, len-(n+1));
+			else if(len > n && runtime_mcmp(p, dbgvar[i].name, n) == 0 && p[n] == '=')
+				*dbgvar[i].value = runtime_atoi(p+n+1, len-(n+1));
 		}
-		p = (const byte *)runtime_strstr((const char *)p, ",");
-		if(p == nil)
+		pn = (const byte *)runtime_strstr((const char *)p, ",");
+		if(pn == nil || pn - p >= len)
 			break;
-		p++;
+		len -= (pn - p) - 1;
+		p = pn + 1;
 	}
+
+	setTraceback(runtime_getenv("GOTRACEBACK"));
+	traceback_env = traceback_cache;
+}
+
+// SetTracebackEnv is like runtime/debug.SetTraceback, but it raises
+// the "environment" traceback level, so later calls to
+// debug.SetTraceback (e.g., from testing timeouts) can't lower it.
+void SetTracebackEnv(String level)
+  __asm__ (GOSYM_PREFIX "runtime.SetTracebackEnv");
+
+void SetTracebackEnv(String level) {
+	setTraceback(level);
+	traceback_env = traceback_cache;
 }
 
 // Poor mans 64-bit division.

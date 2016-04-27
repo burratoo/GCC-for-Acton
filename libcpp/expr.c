@@ -1,5 +1,5 @@
 /* Parse C expressions for cpplib.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
    Contributed by Per Bothner, 1994.
 
 This program is free software; you can redistribute it and/or modify it
@@ -63,6 +63,8 @@ static struct op *reduce (cpp_reader *, struct op *, enum cpp_ttype);
 static unsigned int interpret_float_suffix (cpp_reader *, const uchar *, size_t);
 static unsigned int interpret_int_suffix (cpp_reader *, const uchar *, size_t);
 static void check_promotion (cpp_reader *, const struct op *);
+
+static cpp_num parse_has_include (cpp_reader *, enum include_type);
 
 /* Token type abuse to create unary plus and minus operators.  */
 #define CPP_UPLUS ((enum cpp_ttype) (CPP_LAST_CPP_OP + 1))
@@ -305,6 +307,8 @@ cpp_userdef_char_remove_type (enum cpp_ttype type)
     return CPP_CHAR16;
   else if (type == CPP_CHAR32_USERDEF)
     return CPP_CHAR32;
+  else if (type == CPP_UTF8CHAR_USERDEF)
+    return CPP_UTF8CHAR;
   else
     return type;
 }
@@ -323,6 +327,8 @@ cpp_userdef_char_add_type (enum cpp_ttype type)
     return CPP_CHAR16_USERDEF;
   else if (type == CPP_CHAR32)
     return CPP_CHAR32_USERDEF;
+  else if (type == CPP_UTF8CHAR)
+    return CPP_UTF8CHAR_USERDEF;
   else
     return type;
 }
@@ -348,7 +354,8 @@ cpp_userdef_char_p (enum cpp_ttype type)
   if (type == CPP_CHAR_USERDEF
    || type == CPP_WCHAR_USERDEF
    || type == CPP_CHAR16_USERDEF
-   || type == CPP_CHAR32_USERDEF)
+   || type == CPP_CHAR32_USERDEF
+   || type == CPP_UTF8CHAR_USERDEF)
     return true;
   else
     return false;
@@ -540,9 +547,16 @@ cpp_classify_number (cpp_reader *pfile, const cpp_token *token,
 	SYNTAX_ERROR_AT (virtual_location,
 			 "no digits in hexadecimal floating constant");
 
-      if (radix == 16 && CPP_PEDANTIC (pfile) && !CPP_OPTION (pfile, c99))
-	cpp_error_with_line (pfile, CPP_DL_PEDWARN, virtual_location, 0,
-			     "use of C99 hexadecimal floating constant");
+      if (radix == 16 && CPP_PEDANTIC (pfile)
+	  && !CPP_OPTION (pfile, extended_numbers))
+	{
+	  if (CPP_OPTION (pfile, cplusplus))
+	    cpp_error_with_line (pfile, CPP_DL_PEDWARN, virtual_location, 0,
+				 "use of C++1z hexadecimal floating constant");
+	  else
+	    cpp_error_with_line (pfile, CPP_DL_PEDWARN, virtual_location, 0,
+				 "use of C99 hexadecimal floating constant");
+	}
 
       if (float_flag == AFTER_EXPON)
 	{
@@ -687,9 +701,9 @@ cpp_classify_number (cpp_reader *pfile, const cpp_token *token,
       && CPP_PEDANTIC (pfile))
     cpp_error_with_line (pfile, CPP_DL_PEDWARN, virtual_location, 0,
 			 CPP_OPTION (pfile, cplusplus)
-			 ? "binary constants are a C++14 feature "
-			   "or GCC extension"
-			 : "binary constants are a GCC extension");
+			 ? N_("binary constants are a C++14 feature "
+			      "or GCC extension")
+			 : N_("binary constants are a GCC extension"));
 
   if (radix == 10)
     result |= CPP_N_DECIMAL;
@@ -1020,6 +1034,7 @@ eval_token (cpp_reader *pfile, const cpp_token *token,
     case CPP_CHAR:
     case CPP_CHAR16:
     case CPP_CHAR32:
+    case CPP_UTF8CHAR:
       {
 	cppchar_t cc = cpp_interpret_charconst (pfile, token,
 						&temp, &unsignedp);
@@ -1041,6 +1056,10 @@ eval_token (cpp_reader *pfile, const cpp_token *token,
     case CPP_NAME:
       if (token->val.node.node == pfile->spec_nodes.n_defined)
 	return parse_defined (pfile);
+      else if (token->val.node.node == pfile->spec_nodes.n__has_include__)
+	return parse_has_include (pfile, IT_INCLUDE);
+      else if (token->val.node.node == pfile->spec_nodes.n__has_include_next__)
+	return parse_has_include (pfile, IT_INCLUDE_NEXT);
       else if (CPP_OPTION (pfile, cplusplus)
 	       && (token->val.node.node == pfile->spec_nodes.n_true
 		   || token->val.node.node == pfile->spec_nodes.n_false))
@@ -1201,6 +1220,7 @@ _cpp_parse_expr (cpp_reader *pfile, bool is_if)
 	case CPP_WCHAR:
 	case CPP_CHAR16:
 	case CPP_CHAR32:
+	case CPP_UTF8CHAR:
 	case CPP_NAME:
 	case CPP_HASH:
 	  if (!want_value)
@@ -1873,8 +1893,8 @@ num_binary_op (cpp_reader *pfile, cpp_num lhs, cpp_num rhs, enum cpp_ttype op)
     default: /* case CPP_COMMA: */
       if (CPP_PEDANTIC (pfile) && (!CPP_OPTION (pfile, c99)
 				   || !pfile->state.skip_eval))
-	cpp_error (pfile, CPP_DL_PEDWARN,
-		   "comma operator in operand of #if");
+	cpp_pedwarning (pfile, CPP_W_PEDANTIC,
+			"comma operator in operand of #if");
       lhs = rhs;
       break;
     }
@@ -2064,4 +2084,73 @@ num_div_op (cpp_reader *pfile, cpp_num lhs, cpp_num rhs, enum cpp_ttype op,
     lhs = num_negate (lhs, precision);
 
   return lhs;
+}
+
+/* Handle meeting "__has_include__" in a preprocessor expression.  */
+static cpp_num
+parse_has_include (cpp_reader *pfile, enum include_type type)
+{
+  cpp_num result;
+  bool paren = false;
+  cpp_hashnode *node = 0;
+  const cpp_token *token;
+  bool bracket = false;
+  char *fname = 0;
+
+  result.unsignedp = false;
+  result.high = 0;
+  result.overflow = false;
+  result.low = 0;
+
+  pfile->state.in__has_include__++;
+
+  token = cpp_get_token (pfile);
+  if (token->type == CPP_OPEN_PAREN)
+    {
+      paren = true;
+      token = cpp_get_token (pfile);
+    }
+
+  if (token->type == CPP_STRING || token->type == CPP_HEADER_NAME)
+    {
+      if (token->type == CPP_HEADER_NAME)
+	bracket = true;
+      fname = XNEWVEC (char, token->val.str.len - 1);
+      memcpy (fname, token->val.str.text + 1, token->val.str.len - 2);
+      fname[token->val.str.len - 2] = '\0';
+      node = token->val.node.node;
+    }
+  else if (token->type == CPP_LESS)
+    {
+      bracket = true;
+      fname = _cpp_bracket_include (pfile);
+    }
+  else
+    cpp_error (pfile, CPP_DL_ERROR,
+	       "operator \"__has_include__\" requires a header string");
+
+  if (fname)
+    {
+      int angle_brackets = (bracket ? 1 : 0);
+
+      if (_cpp_has_header (pfile, fname, angle_brackets, type))
+	result.low = 1;
+      else
+	result.low = 0;
+
+      XDELETEVEC (fname);
+    }
+
+  if (paren && cpp_get_token (pfile)->type != CPP_CLOSE_PAREN)
+    cpp_error (pfile, CPP_DL_ERROR,
+	       "missing ')' after \"__has_include__\"");
+
+  /* A possible controlling macro of the form #if !__has_include__ ().
+     _cpp_parse_expr checks there was no other junk on the line.  */
+  if (node)
+    pfile->mi_ind_cmacro = node;
+
+  pfile->state.in__has_include__--;
+
+  return result;
 }

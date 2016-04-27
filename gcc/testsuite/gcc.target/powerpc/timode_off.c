@@ -1,4 +1,5 @@
 /* { dg-do assemble { target { lp64 } } } */
+/* { dg-skip-if "do not override -mcpu" { powerpc*-*-* } { "-mcpu=*" } { "-mcpu=power5" } } */
 /* { dg-options "-O2 -fno-align-functions -mtraceback=no -save-temps -mcpu=power5" } */
 
 typedef int TImode __attribute__ ((mode (TI)));
@@ -54,4 +55,3 @@ TImode r20 (void *x) { return *(TImode *) (x + 32748); }
 
 /* { dg-final { object-size text <= 700 } } */
 /* { dg-final { scan-assembler-not "(st|l)fd" } } */
-/* { dg-final { cleanup-saved-temps "timode_off" } } */

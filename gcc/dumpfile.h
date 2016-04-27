@@ -1,5 +1,5 @@
 /* Definitions for the shared dumpfile.
-   Copyright (C) 2004-2014 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,7 +21,6 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_DUMPFILE_H
 #define GCC_DUMPFILE_H 1
 
-#include "line-map.h"
 
 /* Different tree dump places.  When you add new tree dump places,
    extend the DUMP_FILES array in dumpfile.c.  */
@@ -118,6 +117,13 @@ struct dump_file_info
   int pstate;                   /* state of pass-specific stream */
   int alt_state;                /* state of the -fopt-info stream */
   int num;                      /* dump file number */
+  bool owns_strings;            /* fields "suffix", "swtch", "glob" can be
+				   const strings, or can be dynamically
+				   allocated, needing free.  */
+  bool graph_dump_initialized;  /* When a given dump file is being initialized,
+				   this flag is set to true if the corresponding
+				   TDF_graph dump file has also been
+				   initialized.  */
 };
 
 /* In dumpfile.c */
@@ -131,8 +137,8 @@ extern void dump_printf_loc (int, source_location,
 extern void dump_basic_block (int, basic_block, int);
 extern void dump_generic_expr_loc (int, source_location, int, tree);
 extern void dump_generic_expr (int, int, tree);
-extern void dump_gimple_stmt_loc (int, source_location, int, gimple, int);
-extern void dump_gimple_stmt (int, int, gimple, int);
+extern void dump_gimple_stmt_loc (int, source_location, int, gimple *, int);
+extern void dump_gimple_stmt (int, int, gimple *, int);
 extern void print_combine_total_stats (void);
 extern bool enable_rtl_dump_file (void);
 
@@ -164,19 +170,31 @@ class dump_manager
 public:
 
   dump_manager ();
+  ~dump_manager ();
 
+  /* Register a dumpfile.
+
+     TAKE_OWNERSHIP determines whether callee takes ownership of strings
+     SUFFIX, SWTCH, and GLOB. */
   unsigned int
   dump_register (const char *suffix, const char *swtch, const char *glob,
-		 int flags, int optgroup_flags);
+		 int flags, int optgroup_flags,
+		 bool take_ownership);
 
   /* Return the dump_file_info for the given phase.  */
   struct dump_file_info *
   get_dump_file_info (int phase) const;
 
+  struct dump_file_info *
+  get_dump_file_info_by_switch (const char *swtch) const;
+
   /* Return the name of the dump file for the given phase.
      If the dump is not enabled, returns NULL.  */
   char *
   get_dump_file_name (int phase) const;
+
+  char *
+  get_dump_file_name (struct dump_file_info *dfi) const;
 
   int
   dump_switch_p (const char *arg);

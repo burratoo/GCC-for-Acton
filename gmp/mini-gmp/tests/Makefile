@@ -1,6 +1,6 @@
 # Note: Requires GNU make
 
-# Copyright 2011, 2012 Free Software Foundation, Inc.
+# Copyright 2011, 2012, 2014 Free Software Foundation, Inc.
 #
 # This file is part of the GNU MP Library test suite.
 #
@@ -15,7 +15,7 @@
 # Public License for more details.
 #
 # You should have received a copy of the GNU General Public License along with
-# the GNU MP Library test suite.  If not, see http://www.gnu.org/licenses/.
+# the GNU MP Library test suite.  If not, see https://www.gnu.org/licenses/.
 
 srcdir=.
 MINI_GMP_DIR=..
@@ -30,7 +30,7 @@ LIBS = -lgmp -lm -lmcheck
 CHECK_PROGRAMS = t-add t-sub t-mul t-invert t-div t-div_2exp \
 	t-double t-cmp_d t-gcd t-lcm t-import t-comb t-signed \
 	t-sqrt t-root t-powm t-logops t-bitops t-scan t-str \
-	t-reuse
+	t-reuse t-aorsmul t-limbs t-cong t-pprime_p
 
 MISC_OBJS = hex-random.o mini-random.o testutils.o
 

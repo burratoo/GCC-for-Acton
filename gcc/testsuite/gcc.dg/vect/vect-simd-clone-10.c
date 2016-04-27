@@ -1,4 +1,3 @@
-/* { dg-do run } */
 /* { dg-require-effective-target vect_simd_clones } */
 /* { dg-additional-options "-fopenmp-simd" } */
 /* { dg-additional-options "-mavx" { target avx_runtime } } */
@@ -82,4 +81,3 @@ main ()
   return 0;
 }
 
-/* { dg-final { cleanup-tree-dump "vect" } } */

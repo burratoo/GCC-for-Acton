@@ -52,6 +52,10 @@ var writeSetCookiesTests = []struct {
 		&Cookie{Name: "cookie-8", Value: "eight", Domain: "::1"},
 		"cookie-8=eight",
 	},
+	{
+		&Cookie{Name: "cookie-9", Value: "expiring", Expires: time.Unix(1257894000, 0)},
+		"cookie-9=expiring; Expires=Tue, 10 Nov 2009 23:00:00 GMT",
+	},
 	// The "special" cookies have values containing commas or spaces which
 	// are disallowed by RFC 6265 but are common in the wild.
 	{
@@ -89,6 +93,18 @@ var writeSetCookiesTests = []struct {
 	{
 		&Cookie{Name: "empty-value", Value: ""},
 		`empty-value=`,
+	},
+	{
+		nil,
+		``,
+	},
+	{
+		&Cookie{Name: ""},
+		``,
+	},
+	{
+		&Cookie{Name: "\t"},
+		``,
 	},
 }
 
@@ -313,6 +329,14 @@ var readCookiesTests = []struct {
 			{Name: "c2", Value: "v2"},
 		},
 	},
+	{
+		Header{"Cookie": {`Cookie-1="v$1"; c2="v2"`}},
+		"",
+		[]*Cookie{
+			{Name: "Cookie-1", Value: "v$1"},
+			{Name: "c2", Value: "v2"},
+		},
+	},
 }
 
 func TestReadCookies(t *testing.T) {
@@ -323,6 +347,30 @@ func TestReadCookies(t *testing.T) {
 				t.Errorf("#%d readCookies:\nhave: %s\nwant: %s\n", i, toJSON(c), toJSON(tt.Cookies))
 				continue
 			}
+		}
+	}
+}
+
+func TestSetCookieDoubleQuotes(t *testing.T) {
+	res := &Response{Header: Header{}}
+	res.Header.Add("Set-Cookie", `quoted0=none; max-age=30`)
+	res.Header.Add("Set-Cookie", `quoted1="cookieValue"; max-age=31`)
+	res.Header.Add("Set-Cookie", `quoted2=cookieAV; max-age="32"`)
+	res.Header.Add("Set-Cookie", `quoted3="both"; max-age="33"`)
+	got := res.Cookies()
+	want := []*Cookie{
+		{Name: "quoted0", Value: "none", MaxAge: 30},
+		{Name: "quoted1", Value: "cookieValue", MaxAge: 31},
+		{Name: "quoted2", Value: "cookieAV"},
+		{Name: "quoted3", Value: "both"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d cookies, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Name != w.Name || g.Value != w.Value || g.MaxAge != w.MaxAge {
+			t.Errorf("cookie #%d:\ngot  %v\nwant %v", i, g, w)
 		}
 	}
 }

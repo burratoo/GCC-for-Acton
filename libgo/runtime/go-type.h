@@ -54,12 +54,14 @@ struct String;
 #define GO_STRUCT 25
 #define GO_UNSAFE_POINTER 26
 
+#define GO_DIRECT_IFACE (1 << 5)
+#define GO_GC_PROG (1 << 6)
 #define GO_NO_POINTERS (1 << 7)
 
-#define GO_CODE_MASK 0x7f
+#define GO_CODE_MASK 0x1f
 
 /* For each Go type the compiler constructs one of these structures.
-   This is used for type reflectin, interfaces, maps, and reference
+   This is used for type reflection, interfaces, maps, and reference
    counting.  */
 
 struct __go_type_descriptor
@@ -87,11 +89,14 @@ struct __go_type_descriptor
      size of this type, and returns a hash code.  We pass the size
      explicitly becaues it means that we can share a single instance
      of this function for various different types.  */
-  uintptr_t (*__hashfn) (const void *, uintptr_t);
+  const FuncVal *__hashfn;
 
   /* This function takes two pointers to values of this type, and the
      size of this type, and returns whether the values are equal.  */
-  _Bool (*__equalfn) (const void *, const void *, uintptr_t);
+  const FuncVal *__equalfn;
+
+  /* The garbage collection data. */
+  const uintptr *__gc;
 
   /* A string describing this type.  This is only used for
      debugging.  */
@@ -103,11 +108,6 @@ struct __go_type_descriptor
   /* The descriptor for the type which is a pointer to this type.
      This may be NULL.  */
   const struct __go_type_descriptor *__pointer_to_this;
-
-  /* A pointer to a zero value for this type.  All types will point to
-     the same zero value, go$zerovalue, which is a common variable so
-     that it will be large enough.  */
-  void *__zero;
 };
 
 /* The information we store for each method of a type.  */
@@ -307,7 +307,27 @@ struct __go_struct_type
 static inline _Bool
 __go_is_pointer_type (const struct __go_type_descriptor *td)
 {
-  return td->__code == GO_PTR || td->__code == GO_UNSAFE_POINTER;
+  return ((td->__code & GO_CODE_MASK) == GO_PTR
+	  || (td->__code & GO_CODE_MASK) == GO_UNSAFE_POINTER);
+}
+
+/* Call a type hash function, given the __hashfn value.  */
+
+static inline uintptr_t
+__go_call_hashfn (const FuncVal *hashfn, const void *p, uintptr_t size)
+{
+  uintptr_t (*h) (const void *, uintptr_t) = (void *) hashfn->fn;
+  return __builtin_call_with_static_chain (h (p, size), hashfn);
+}
+
+/* Call a type equality function, given the __equalfn value.  */
+
+static inline _Bool
+__go_call_equalfn (const FuncVal *equalfn, const void *p1, const void *p2,
+		   uintptr_t size)
+{
+  _Bool (*e) (const void *, const void *, uintptr_t) = (void *) equalfn->fn;
+  return __builtin_call_with_static_chain (e (p1, p2, size), equalfn);
 }
 
 extern _Bool
@@ -315,16 +335,28 @@ __go_type_descriptors_equal(const struct __go_type_descriptor*,
 			    const struct __go_type_descriptor*);
 
 extern uintptr_t __go_type_hash_identity (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_identity_descriptor;
 extern _Bool __go_type_equal_identity (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_identity_descriptor;
 extern uintptr_t __go_type_hash_string (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_string_descriptor;
 extern _Bool __go_type_equal_string (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_string_descriptor;
 extern uintptr_t __go_type_hash_float (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_float_descriptor;
 extern _Bool __go_type_equal_float (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_float_descriptor;
 extern uintptr_t __go_type_hash_complex (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_complex_descriptor;
 extern _Bool __go_type_equal_complex (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_complex_descriptor;
 extern uintptr_t __go_type_hash_interface (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_interface_descriptor;
 extern _Bool __go_type_equal_interface (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_interface_descriptor;
 extern uintptr_t __go_type_hash_error (const void *, uintptr_t);
+extern const FuncVal __go_type_hash_error_descriptor;
 extern _Bool __go_type_equal_error (const void *, const void *, uintptr_t);
+extern const FuncVal __go_type_equal_error_descriptor;
 
 #endif /* !defined(LIBGO_GO_TYPE_H) */

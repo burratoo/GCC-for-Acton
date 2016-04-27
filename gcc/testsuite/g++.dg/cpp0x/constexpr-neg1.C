@@ -5,12 +5,12 @@
 constexpr int square(int x);	// { dg-message "never defined" }
 
 // error: pixel is a type
-constexpr struct pixel {
+constexpr struct pixel {        // { dg-error "constexpr" }
   int x;
   int y;
   // OK: declaration
   constexpr pixel(int);
-};				// { dg-error "constexpr" }
+};
 constexpr pixel::pixel(int a)
 // OK: definition
   : x(square(a)), y(square(a))	// { dg-error "square" }
@@ -29,18 +29,18 @@ int next(constexpr int x) {	// { dg-error "parameter" }
 extern constexpr int memsz;	// { dg-error "definition" }
 
 // error: return type is void
-constexpr void f(int x)		// { dg-error "void" }
+constexpr void f(int x)		// { dg-error "void" "" { target c++11_only } }
 { /* ... */ }
 // error: use of decrement
 constexpr int prev(int x)
-{ return --x; }			// { dg-error "-- x" }
+{ return --x; }			// { dg-error "-- x" "" { target c++11_only } }
 
 // error: body not just return expr
 constexpr int g(int x, int n) {
   int r = 1;
   while (--n > 0) r *= x;
   return r;
-} // { dg-error "body of constexpr function" }
+} // { dg-error "body of constexpr function" "" { target c++11_only } }
 
 class debug_flag {
 public:

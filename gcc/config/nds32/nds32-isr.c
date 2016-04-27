@@ -1,5 +1,5 @@
 /* Subroutines used for ISR of Andes NDS32 cpu for GNU compiler
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GCC.
@@ -23,34 +23,12 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "varasm.h"
-#include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"	/* Required by recog.h.  */
-#include "conditions.h"
-#include "output.h"
-#include "insn-attr.h"		/* For DFA state_t.  */
-#include "insn-codes.h"		/* For CODE_FOR_xxx.  */
-#include "reload.h"		/* For push_reload().  */
-#include "flags.h"
-#include "function.h"
-#include "expr.h"
-#include "recog.h"
-#include "diagnostic-core.h"
-#include "df.h"
-#include "tm_p.h"
-#include "tm-constrs.h"
-#include "optabs.h"		/* For GEN_FCN.  */
+#include "backend.h"
 #include "target.h"
-#include "target-def.h"
-#include "langhooks.h"		/* For add_builtin_function().  */
-#include "ggc.h"
-#include "builtins.h"
+#include "rtl.h"
+#include "tree.h"
+#include "diagnostic-core.h"
+#include "output.h"
 
 /* ------------------------------------------------------------------------ */
 
@@ -572,6 +550,30 @@ nds32_asm_file_end_for_isr (void)
 	  fprintf (asm_out_file, "\t! ------------------------------------\n");
 	}
     }
+}
+
+/* Return true if FUNC is a isr function.  */
+bool
+nds32_isr_function_p (tree func)
+{
+  tree t_intr;
+  tree t_excp;
+  tree t_reset;
+
+  tree attrs;
+
+  if (TREE_CODE (func) != FUNCTION_DECL)
+    abort ();
+
+  attrs = DECL_ATTRIBUTES (func);
+
+  t_intr  = lookup_attribute ("interrupt", attrs);
+  t_excp  = lookup_attribute ("exception", attrs);
+  t_reset = lookup_attribute ("reset", attrs);
+
+  return ((t_intr != NULL_TREE)
+	  || (t_excp != NULL_TREE)
+	  || (t_reset != NULL_TREE));
 }
 
 /* ------------------------------------------------------------------------ */

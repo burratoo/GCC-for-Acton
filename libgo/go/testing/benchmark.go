@@ -33,6 +33,17 @@ type InternalBenchmark struct {
 
 // B is a type passed to Benchmark functions to manage benchmark
 // timing and to specify the number of iterations to run.
+//
+// A benchmark ends when its Benchmark function returns or calls any of the methods
+// FailNow, Fatal, Fatalf, SkipNow, Skip, or Skipf. Those methods must be called
+// only from the goroutine running the Benchmark function.
+// The other reporting methods, such as the variations of Log and Error,
+// may be called simultaneously from multiple goroutines.
+//
+// Like in tests, benchmark logs are accumulated during execution
+// and dumped to standard error when done. Unlike in tests, benchmark logs
+// are always printed, so as not to hide output whose existence may be
+// affecting benchmark results.
 type B struct {
 	common
 	N                int
@@ -157,7 +168,7 @@ func roundDown10(n int) int {
 	return result
 }
 
-// roundUp rounds x up to a number of the form [1eX, 2eX, 5eX].
+// roundUp rounds x up to a number of the form [1eX, 2eX, 3eX, 5eX].
 func roundUp(n int) int {
 	base := roundDown10(n)
 	switch {
@@ -165,6 +176,8 @@ func roundUp(n int) int {
 		return base
 	case n <= (2 * base):
 		return 2 * base
+	case n <= (3 * base):
+		return 3 * base
 	case n <= (5 * base):
 		return 5 * base
 	default:
@@ -180,10 +193,10 @@ func (b *B) run() BenchmarkResult {
 }
 
 // launch launches the benchmark function.  It gradually increases the number
-// of benchmark iterations until the benchmark runs for a second in order
-// to get a reasonable measurement.  It prints timing information in this form
+// of benchmark iterations until the benchmark runs for the requested benchtime.
+// It prints timing information in this form
 //		testing.BenchmarkHello	100000		19 ns/op
-// launch is run by the fun function as a separate goroutine.
+// launch is run by the run function as a separate goroutine.
 func (b *B) launch() {
 	// Run the benchmark for a single iteration in case it's expensive.
 	n := 1
@@ -199,16 +212,16 @@ func (b *B) launch() {
 	d := *benchTime
 	for !b.failed && b.duration < d && n < 1e9 {
 		last := n
-		// Predict iterations/sec.
+		// Predict required iterations.
 		if b.nsPerOp() == 0 {
 			n = 1e9
 		} else {
 			n = int(d.Nanoseconds() / b.nsPerOp())
 		}
-		// Run more iterations than we think we'll need for a second (1.5x).
+		// Run more iterations than we think we'll need (1.2x).
 		// Don't grow too fast in case we had timing errors previously.
 		// Be sure to run at least one more than last time.
-		n = max(min(n+n/2, 100*last), last+1)
+		n = max(min(n+n/5, 100*last), last+1)
 		// Round up to something easy to read.
 		n = roundUp(n)
 		b.runN(n)
@@ -278,6 +291,14 @@ func (r BenchmarkResult) MemString() string {
 		r.AllocedBytesPerOp(), r.AllocsPerOp())
 }
 
+// benchmarkName returns full name of benchmark including procs suffix.
+func benchmarkName(name string, n int) string {
+	if n != 1 {
+		return fmt.Sprintf("%s-%d", name, n)
+	}
+	return name
+}
+
 // An internal function but exported because it is cross-package; part of the implementation
 // of the "go test" command.
 func RunBenchmarks(matchString func(pat, str string) (bool, error), benchmarks []InternalBenchmark) {
@@ -285,15 +306,30 @@ func RunBenchmarks(matchString func(pat, str string) (bool, error), benchmarks [
 	if len(*matchBenchmarks) == 0 {
 		return
 	}
+	// Collect matching benchmarks and determine longest name.
+	maxprocs := 1
+	for _, procs := range cpuList {
+		if procs > maxprocs {
+			maxprocs = procs
+		}
+	}
+	maxlen := 0
+	var bs []InternalBenchmark
 	for _, Benchmark := range benchmarks {
 		matched, err := matchString(*matchBenchmarks, Benchmark.Name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "testing: invalid regexp for -test.bench: %s\n", err)
 			os.Exit(1)
 		}
-		if !matched {
-			continue
+		if matched {
+			bs = append(bs, Benchmark)
+			benchName := benchmarkName(Benchmark.Name, maxprocs)
+			if l := len(benchName); l > maxlen {
+				maxlen = l
+			}
 		}
+	}
+	for _, Benchmark := range bs {
 		for _, procs := range cpuList {
 			runtime.GOMAXPROCS(procs)
 			b := &B{
@@ -302,11 +338,8 @@ func RunBenchmarks(matchString func(pat, str string) (bool, error), benchmarks [
 				},
 				benchmark: Benchmark,
 			}
-			benchName := Benchmark.Name
-			if procs != 1 {
-				benchName = fmt.Sprintf("%s-%d", Benchmark.Name, procs)
-			}
-			fmt.Printf("%s\t", benchName)
+			benchName := benchmarkName(Benchmark.Name, procs)
+			fmt.Printf("%-*s\t", maxlen, benchName)
 			r := b.run()
 			if b.failed {
 				// The output could be very long here, but probably isn't.

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2000-2014, AdaCore                     --
+--                     Copyright (C) 2000-2015, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -927,7 +927,7 @@ package body GNAT.Expect is
          --  This loop runs until the call to Expect raises Process_Died
 
          loop
-            Expect (Process, Result, ".+");
+            Expect (Process, Result, ".+", Timeout => -1);
 
             declare
                NOutput : String_Access;
@@ -1348,17 +1348,22 @@ package body GNAT.Expect is
 
       Portable_Execvp (Pid.Pid'Access, Cmd & ASCII.NUL, Args);
 
-      --  The following commands are not executed on Unix systems, and are only
-      --  required for Windows systems. We are now in the parent process.
+      --  The following lines are only required for Windows systems and will
+      --  not be executed on Unix systems, but we use the same condition as
+      --  above to avoid warnings on uninitialized variables on Unix systems.
+      --  We are now in the parent process.
 
-      --  Restore the old descriptors
+      if No_Fork_On_Target then
 
-      Dup2 (Input,  GNAT.OS_Lib.Standin);
-      Dup2 (Output, GNAT.OS_Lib.Standout);
-      Dup2 (Error,  GNAT.OS_Lib.Standerr);
-      Close (Input);
-      Close (Output);
-      Close (Error);
+         --  Restore the old descriptors
+
+         Dup2 (Input,  GNAT.OS_Lib.Standin);
+         Dup2 (Output, GNAT.OS_Lib.Standout);
+         Dup2 (Error,  GNAT.OS_Lib.Standerr);
+         Close (Input);
+         Close (Output);
+         Close (Error);
+      end if;
    end Set_Up_Child_Communications;
 
    ---------------------------

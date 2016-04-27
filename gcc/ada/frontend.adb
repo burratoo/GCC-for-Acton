@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,8 +31,10 @@ with CStand;
 with Debug;    use Debug;
 with Elists;
 with Exp_Dbug;
+with Exp_Unst;
 with Fmap;
 with Fname.UF;
+with Ghost;    use Ghost;
 with Inline;   use Inline;
 with Lib;      use Lib;
 with Lib.Load; use Lib.Load;
@@ -62,7 +64,6 @@ with Sinfo;    use Sinfo;
 with Sinput;   use Sinput;
 with Sinput.L; use Sinput.L;
 with SCIL_LL;  use SCIL_LL;
-with Targparm; use Targparm;
 with Tbuild;   use Tbuild;
 with Types;    use Types;
 
@@ -337,12 +338,12 @@ begin
      --  unit failed to load, to avoid cascaded inconsistencies that can lead
      --  to a compiler crash.
 
-     and then not Fatal_Error (Main_Unit)
+     and then Fatal_Error (Main_Unit) /= Error_Detected
    then
-      --  Pragmas that require some semantic activity, such as
-      --  Interrupt_State, cannot be processed until the main unit
-      --  is installed, because they require a compilation unit on
-      --  which to attach with_clauses, etc. So analyze them now.
+      --  Pragmas that require some semantic activity, such as Interrupt_State,
+      --  cannot be processed until the main unit is installed, because they
+      --  require a compilation unit on which to attach with_clauses, etc. So
+      --  analyze them now.
 
       declare
          Prag : Node_Id;
@@ -350,7 +351,14 @@ begin
       begin
          Prag := First (Config_Pragmas);
          while Present (Prag) loop
-            if Delay_Config_Pragma_Analyze (Prag) then
+
+            --  Guard against the case where a configuration pragma may be
+            --  split into multiple pragmas and the original rewritten as a
+            --  null statement.
+
+            if Nkind (Prag) = N_Pragma
+              and then Delay_Config_Pragma_Analyze (Prag)
+            then
                Analyze_Pragma (Prag);
             end if;
 
@@ -380,7 +388,7 @@ begin
 
       --  Following steps are skipped if we had a fatal error during parsing
 
-      if not Fatal_Error (Main_Unit) then
+      if Fatal_Error (Main_Unit) /= Error_Detected then
 
          --  Reset Operating_Mode to Check_Semantics for subunits. We cannot
          --  actually generate code for subunits, so we suppress expansion.
@@ -414,15 +422,24 @@ begin
                Analyze_Inlined_Bodies;
             end if;
 
-            --  Remove entities from program that do not have any
-            --  execution time references.
+            --  Remove entities from program that do not have any execution
+            --  time references.
 
             if Debug_Flag_UU then
                Collect_Garbage_Entities;
             end if;
 
             Check_Elab_Calls;
+
+            --  Remove any ignored Ghost code as it must not appear in the
+            --  executable.
+
+            Remove_Ignored_Ghost_Code;
          end if;
+
+         --  At this stage we can unnest subprogram bodies if required
+
+         Exp_Unst.Unnest_Subprograms (Cunit (Main_Unit));
 
          --  List library units if requested
 
@@ -440,14 +457,9 @@ begin
       end if;
    end if;
 
-   --  Qualify all entity names in inner packages, package bodies, etc.,
-   --  except when compiling for the VM back-ends, which depend on having
-   --  unqualified names in certain cases and handles the generation of
-   --  qualified names when needed.
+   --  Qualify all entity names in inner packages, package bodies, etc.
 
-   if VM_Target = No_VM then
-      Exp_Dbug.Qualify_All_Entity_Names;
-   end if;
+   Exp_Dbug.Qualify_All_Entity_Names;
 
    --  SCIL backend requirement. Check that SCIL nodes associated with
    --  dispatching calls reference subprogram calls.
@@ -463,8 +475,8 @@ begin
 
    Sprint.Source_Dump;
 
-   --  Check again for configuration pragmas that appear in the context of
-   --  the main unit. These pragmas only affect the main unit, and the
+   --  Check again for configuration pragmas that appear in the context
+   --  of the main unit. These pragmas only affect the main unit, and the
    --  corresponding flag is reset after each call to Semantics, but they
    --  may affect the generated ali for the unit, and therefore the flag
    --  must be set properly after compilation. Currently we only check for

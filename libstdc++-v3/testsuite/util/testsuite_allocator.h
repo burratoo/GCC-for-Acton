@@ -1,7 +1,7 @@
 // -*- C++ -*-
 // Testing allocator for the C++ library testsuite.
 //
-// Copyright (C) 2002-2014 Free Software Foundation, Inc.
+// Copyright (C) 2002-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -119,6 +119,8 @@ namespace __gnu_test
       tracker_allocator() = default;
       tracker_allocator(const tracker_allocator&) = default;
       tracker_allocator(tracker_allocator&&) = default;
+      tracker_allocator& operator=(const tracker_allocator&) = default;
+      tracker_allocator& operator=(tracker_allocator&&) = default;
 
       // Perfect forwarding constructor.
       template<typename... _Args>
@@ -209,7 +211,7 @@ namespace __gnu_test
     {
       const Alloc1& alloc1 = lhs;
       const Alloc2& alloc2 = rhs;
-      return lhs == rhs;
+      return alloc1 == alloc2;
     }
 
   template<class T1, class Alloc1, class T2, class Alloc2>
@@ -491,7 +493,7 @@ namespace __gnu_test
       SimpleAllocator() noexcept { }
 
       template <class T>
-        SimpleAllocator(const SimpleAllocator<T>& other) { }
+        SimpleAllocator(const SimpleAllocator<T>&) { }
 
       Tp *allocate(std::size_t n)
       { return std::allocator<Tp>().allocate(n); }
@@ -575,6 +577,7 @@ namespace __gnu_test
 
       T& operator*() const { return *value; }
       T* operator->() const { return value; }
+      T& operator[](difference_type n) const { return value[n]; }
 
       Derived& operator++() { ++value; return derived(); }
       Derived operator++(int) { Derived tmp(derived()); ++value; return tmp; }

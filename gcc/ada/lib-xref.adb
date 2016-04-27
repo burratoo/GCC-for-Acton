@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1998-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -66,7 +66,7 @@ package body Lib.Xref is
 
       Loc : Source_Ptr;
       --  Location of reference (Original_Location (Sloc field of N parameter
-      --  to Generate_Reference). Set to No_Location for the case of a
+      --  to Generate_Reference)). Set to No_Location for the case of a
       --  defining occurrence.
 
       Typ : Character;
@@ -192,7 +192,7 @@ package body Lib.Xref is
          Set_Has_Xref_Entry (Key.Ent);
 
       --  It was already in Xref_Set, so throw away the tentatively-added
-      --  entry
+      --  entry.
 
       else
          Xrefs.Decrement_Last;
@@ -415,6 +415,7 @@ package body Lib.Xref is
 
       function Get_Through_Renamings (E : Entity_Id) return Entity_Id is
          Result : Entity_Id := E;
+
       begin
          while Present (Result)
            and then Is_Object (Result)
@@ -422,6 +423,7 @@ package body Lib.Xref is
          loop
             Result := Get_Enclosing_Object (Renamed_Object (Result));
          end loop;
+
          return Result;
       end Get_Through_Renamings;
 
@@ -620,7 +622,7 @@ package body Lib.Xref is
 
       --  Do not generate references if we are within a postcondition sub-
       --  program, because the reference does not comes from source, and the
-      --  pre-analysis of the aspect has already created an entry for the ali
+      --  pre-analysis of the aspect has already created an entry for the ALI
       --  file at the proper source location.
 
       if Chars (Current_Scope) = Name_uPostconditions then
@@ -646,11 +648,11 @@ package body Lib.Xref is
       --  initialized type.
 
       if not In_Extended_Main_Source_Unit (N) then
-         if Typ = 'e'
-           or else Typ = 'I'
-           or else Typ = 'p'
-           or else Typ = 'i'
-           or else Typ = 'k'
+         if Typ = 'e' or else
+            Typ = 'I' or else
+            Typ = 'p' or else
+            Typ = 'i' or else
+            Typ = 'k'
            or else (Typ = 'b' and then Is_Generic_Instance (E))
 
             --  Allow the generation of references to reads, writes and calls
@@ -1071,7 +1073,7 @@ package body Lib.Xref is
             end if;
 
             Add_Entry
-              ((Ent      => Ent,
+              ((Ent       => Ent,
                 Loc       => Ref,
                 Typ       => Actual_Typ,
                 Eun       => Get_Code_Unit (Def),
@@ -1118,7 +1120,7 @@ package body Lib.Xref is
               and then In_Extended_Main_Source_Unit (N)
             then
                --  Handle case in which the full-view and partial-view of the
-               --  first private entity are swapped
+               --  first private entity are swapped.
 
                declare
                   First_Private : Entity_Id := First_Private_Entity (E);
@@ -1172,8 +1174,7 @@ package body Lib.Xref is
       while Present (Formal) loop
          if Ekind (Formal) = E_In_Parameter then
 
-            if Nkind (Parameter_Type (Parent (Formal)))
-              = N_Access_Definition
+            if Nkind (Parameter_Type (Parent (Formal))) = N_Access_Definition
             then
                Generate_Reference (E, Formal, '^', False);
             else
@@ -1662,6 +1663,15 @@ package body Lib.Xref is
          J := 1;
          while J <= Xrefs.Last loop
             Ent := Xrefs.Table (J).Key.Ent;
+
+            --  Do not generate reference information for an ignored Ghost
+            --  entity because neither the entity nor its references will
+            --  appear in the final tree.
+
+            if Is_Ignored_Ghost_Entity (Ent) then
+               goto Orphan_Continue;
+            end if;
+
             Get_Type_Reference (Ent, Tref, L, R);
 
             if Present (Tref)
@@ -1744,6 +1754,7 @@ package body Lib.Xref is
                end;
             end if;
 
+            <<Orphan_Continue>>
             J := J + 1;
          end loop;
       end Handle_Orphan_Type_References;
@@ -1752,7 +1763,6 @@ package body Lib.Xref is
       --  references, so we can sort them, and output them.
 
       Output_Refs : declare
-
          Nrefs : constant Nat := Xrefs.Last;
          --  Number of references in table
 
@@ -2114,6 +2124,15 @@ package body Lib.Xref is
 
             begin
                Ent := XE.Key.Ent;
+
+               --  Do not generate reference information for an ignored Ghost
+               --  entity because neither the entity nor its references will
+               --  appear in the final tree.
+
+               if Is_Ignored_Ghost_Entity (Ent) then
+                  goto Continue;
+               end if;
+
                Ctyp := Xref_Entity_Letters (Ekind (Ent));
 
                --  Skip reference if it is the only reference to an entity,
@@ -2471,7 +2490,7 @@ package body Lib.Xref is
                      --  Write out information about generic parent, if entity
                      --  is an instance.
 
-                     if  Is_Generic_Instance (XE.Key.Ent) then
+                     if Is_Generic_Instance (XE.Key.Ent) then
                         declare
                            Gen_Par : constant Entity_Id :=
                                        Generic_Parent

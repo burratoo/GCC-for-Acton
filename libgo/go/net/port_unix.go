@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin dragonfly freebsd linux nacl netbsd openbsd solaris
+// +build darwin dragonfly freebsd linux netbsd openbsd solaris
 
 // Read system port mappings from /etc/services
 
@@ -69,5 +69,5 @@ func goLookupPort(network, service string) (port int, err error) {
 			return
 		}
 	}
-	return 0, &AddrError{"unknown port", network + "/" + service}
+	return 0, &AddrError{Err: "unknown port", Addr: network + "/" + service}
 }

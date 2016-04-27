@@ -8,12 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	. "time"
 )
+
+// Go runtime uses different Windows timers for time.Now and sleeping.
+// These can tick at different frequencies and can arrive out of sync.
+// The effect can be seen, for example, as time.Sleep(100ms) is actually
+// shorter then 100ms when measured as difference between time.Now before and
+// after time.Sleep call. This was observed on Windows XP SP3 (windows/386).
+// windowsInaccuracy is to ignore such errors.
+const windowsInaccuracy = 17 * Millisecond
 
 func TestSleep(t *testing.T) {
 	const delay = 100 * Millisecond
@@ -23,8 +31,12 @@ func TestSleep(t *testing.T) {
 	}()
 	start := Now()
 	Sleep(delay)
+	delayadj := delay
+	if runtime.GOOS == "windows" {
+		delayadj -= windowsInaccuracy
+	}
 	duration := Now().Sub(start)
-	if duration < delay {
+	if duration < delayadj {
 		t.Fatalf("Sleep(%s) slept for only %s", delay, duration)
 	}
 }
@@ -150,10 +162,14 @@ func TestAfter(t *testing.T) {
 	const delay = 100 * Millisecond
 	start := Now()
 	end := <-After(delay)
-	if duration := Now().Sub(start); duration < delay {
+	delayadj := delay
+	if runtime.GOOS == "windows" {
+		delayadj -= windowsInaccuracy
+	}
+	if duration := Now().Sub(start); duration < delayadj {
 		t.Fatalf("After(%s) slept for only %d ns", delay, duration)
 	}
-	if min := start.Add(delay); end.Before(min) {
+	if min := start.Add(delayadj); end.Before(min) {
 		t.Fatalf("After(%s) expect >= %s, got %s", delay, min, end)
 	}
 }
@@ -207,10 +223,11 @@ func TestAfterStop(t *testing.T) {
 func TestAfterQueuing(t *testing.T) {
 	// This test flakes out on some systems,
 	// so we'll try it a few times before declaring it a failure.
-	const attempts = 3
+	const attempts = 5
 	err := errors.New("!=nil")
 	for i := 0; i < attempts && err != nil; i++ {
-		if err = testAfterQueuing(t); err != nil {
+		delta := Duration(20+i*50) * Millisecond
+		if err = testAfterQueuing(t, delta); err != nil {
 			t.Logf("attempt %v failed: %v", i, err)
 		}
 	}
@@ -231,11 +248,7 @@ func await(slot int, result chan<- afterResult, ac <-chan Time) {
 	result <- afterResult{slot, <-ac}
 }
 
-func testAfterQueuing(t *testing.T) error {
-	Delta := 100 * Millisecond
-	if testing.Short() {
-		Delta = 20 * Millisecond
-	}
+func testAfterQueuing(t *testing.T, delta Duration) error {
 	// make the result channel buffered because we don't want
 	// to depend on channel queueing semantics that might
 	// possibly change in the future.
@@ -243,18 +256,25 @@ func testAfterQueuing(t *testing.T) error {
 
 	t0 := Now()
 	for _, slot := range slots {
-		go await(slot, result, After(Duration(slot)*Delta))
+		go await(slot, result, After(Duration(slot)*delta))
 	}
-	sort.Ints(slots)
-	for _, slot := range slots {
+	var order []int
+	var times []Time
+	for range slots {
 		r := <-result
-		if r.slot != slot {
-			return fmt.Errorf("after slot %d, expected %d", r.slot, slot)
+		order = append(order, r.slot)
+		times = append(times, r.t)
+	}
+	for i := range order {
+		if i > 0 && order[i] < order[i-1] {
+			return fmt.Errorf("After calls returned out of order: %v", order)
 		}
-		dt := r.t.Sub(t0)
-		target := Duration(slot) * Delta
-		if dt < target-Delta/2 || dt > target+Delta*10 {
-			return fmt.Errorf("After(%s) arrived at %s, expected [%s,%s]", target, dt, target-Delta/2, target+Delta*10)
+	}
+	for i, t := range times {
+		dt := t.Sub(t0)
+		target := Duration(order[i]) * delta
+		if dt < target-delta/2 || dt > target+delta*10 {
+			return fmt.Errorf("After(%s) arrived at %s, expected [%s,%s]", target, dt, target-delta/2, target+delta*10)
 		}
 	}
 	return nil
@@ -367,6 +387,10 @@ func TestOverflowSleep(t *testing.T) {
 // Test that a panic while deleting a timer does not leave
 // the timers mutex held, deadlocking a ticker.Stop in a defer.
 func TestIssue5745(t *testing.T) {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm" {
+		t.Skipf("skipping on %s/%s, see issue 10043", runtime.GOOS, runtime.GOARCH)
+	}
+
 	ticker := NewTicker(Hour)
 	defer func() {
 		// would deadlock here before the fix due to
@@ -388,7 +412,27 @@ func TestOverflowRuntimeTimer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode, see issue 6874")
 	}
-	if err := CheckRuntimeTimerOverflow(); err != nil {
-		t.Fatalf(err.Error())
+	// This may hang forever if timers are broken. See comment near
+	// the end of CheckRuntimeTimerOverflow in internal_test.go.
+	CheckRuntimeTimerOverflow()
+}
+
+func checkZeroPanicString(t *testing.T) {
+	e := recover()
+	s, _ := e.(string)
+	if want := "called on uninitialized Timer"; !strings.Contains(s, want) {
+		t.Errorf("panic = %v; want substring %q", e, want)
 	}
+}
+
+func TestZeroTimerResetPanics(t *testing.T) {
+	defer checkZeroPanicString(t)
+	var tr Timer
+	tr.Reset(1)
+}
+
+func TestZeroTimerStopPanics(t *testing.T) {
+	defer checkZeroPanicString(t)
+	var tr Timer
+	tr.Stop()
 }

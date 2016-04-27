@@ -38,7 +38,7 @@ func (s *Scope) Lookup(name string) *Object {
 // Insert attempts to insert a named object obj into the scope s.
 // If the scope already contains an object alt with the same name,
 // Insert leaves the scope unchanged and returns alt. Otherwise
-// it inserts obj and returns nil."
+// it inserts obj and returns nil.
 //
 func (s *Scope) Insert(obj *Object) (alt *Object) {
 	if alt = s.Objects[obj.Name]; alt == nil {
@@ -80,7 +80,7 @@ type Object struct {
 	Name string      // declared name
 	Decl interface{} // corresponding Field, XxxSpec, FuncDecl, LabeledStmt, AssignStmt, Scope; or nil
 	Data interface{} // object-specific data; or nil
-	Type interface{} // place holder for type information; may be nil
+	Type interface{} // placeholder for type information; may be nil
 }
 
 // NewObj creates a new object of a given kind and name.

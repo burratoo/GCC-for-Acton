@@ -6,6 +6,8 @@
    ssa graph.  */
 
 extern __SIZE_TYPE__ strlen (const char *);
+extern void bar (__SIZE_TYPE__);
+extern int bla (void);
 
 void foo(int i)
 {
@@ -31,4 +33,3 @@ middle:
 
 /* There should be no calls to strlen.  */
 /* { dg-final { scan-tree-dump-times "strlen" 0 "fab1"} } */
-/* { dg-final { cleanup-tree-dump "fab1" } } */

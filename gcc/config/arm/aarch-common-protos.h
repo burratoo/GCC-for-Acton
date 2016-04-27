@@ -1,6 +1,6 @@
 /* Functions and structures shared between arm and aarch64.
 
-   Copyright (C) 1991-2014 Free Software Foundation, Inc.
+   Copyright (C) 1991-2016 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -23,10 +23,12 @@
 #ifndef GCC_AARCH_COMMON_PROTOS_H
 #define GCC_AARCH_COMMON_PROTOS_H
 
-extern int aarch_crypto_can_dual_issue (rtx, rtx);
+extern int aarch_accumulator_forwarding (rtx_insn *, rtx_insn *);
+extern int aarch_crypto_can_dual_issue (rtx_insn *, rtx_insn *);
+extern int aarch_forward_to_shift_is_not_shifted_reg (rtx_insn *, rtx_insn *);
 extern bool aarch_rev16_p (rtx);
-extern bool aarch_rev16_shleft_mask_imm_p (rtx, enum machine_mode);
-extern bool aarch_rev16_shright_mask_imm_p (rtx, enum machine_mode);
+extern bool aarch_rev16_shleft_mask_imm_p (rtx, machine_mode);
+extern bool aarch_rev16_shright_mask_imm_p (rtx, machine_mode);
 extern int arm_early_load_addr_dep (rtx, rtx);
 extern int arm_early_store_addr_dep (rtx, rtx);
 extern int arm_mac_accumulator_is_mul_result (rtx, rtx);
@@ -102,6 +104,8 @@ struct mem_cost_table
   const int storef;		/* SFmode.  */
   const int stored;		/* DFmode.  */
   const int store_unaligned;	/* Extra for unaligned stores.  */
+  const int loadv;		/* Vector load.  */
+  const int storev;		/* Vector store.  */
 };
 
 struct fp_cost_table

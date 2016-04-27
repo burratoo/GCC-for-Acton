@@ -1,4 +1,4 @@
-
+// Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -57,7 +57,6 @@
 #include "malloc.h"
 #include "mgc0.h"
 #include "chan.h"
-#include "race.h"
 #include "go-type.h"
 
 // Map gccgo field names to gc field names.
@@ -72,6 +71,7 @@ typedef struct __go_map Hmap;
 #define string __reflection
 #define KindPtr GO_PTR
 #define KindNoPointers GO_NO_POINTERS
+#define kindMask GO_CODE_MASK
 // PtrType aka __go_ptr_type
 #define elem __element_type
 
@@ -133,8 +133,8 @@ clearpools(void)
 
 	// clear sync.Pool's
 	if(poolcleanup != nil) {
-		__go_set_closure(poolcleanup);
-		poolcleanup->fn();
+		__builtin_call_with_static_chain(poolcleanup->fn(),
+						 poolcleanup);
 	}
 
 	for(pp=runtime_allp; (p=*pp) != nil; pp++) {
@@ -181,7 +181,7 @@ struct Finalizer
 	FuncVal *fn;
 	void *arg;
 	const struct __go_func_type *ft;
-	const struct __go_ptr_type *ot;
+	const PtrType *ot;
 };
 
 typedef struct FinBlock FinBlock;
@@ -402,8 +402,6 @@ struct BufferList
 	byte pad[CacheLineSize];
 };
 static BufferList bufferList[MaxGcproc];
-
-static Type *itabtype;
 
 static void enqueue(Obj obj, Workbuf **_wbuf, Obj **_wp, uintptr *_nobj);
 
@@ -649,23 +647,22 @@ flushobjbuf(Scanbuf *sbuf)
 // Program that scans the whole block and treats every block element as a potential pointer
 static uintptr defaultProg[2] = {PtrSize, GC_DEFAULT_PTR};
 
-#if 0
 // Hchan program
 static uintptr chanProg[2] = {0, GC_CHAN};
-#endif
 
 // Local variables of a program fragment or loop
 typedef struct Frame Frame;
 struct Frame {
 	uintptr count, elemsize, b;
-	uintptr *loop_or_ret;
+	const uintptr *loop_or_ret;
 };
 
 // Sanity check for the derived type info objti.
 static void
 checkptr(void *obj, uintptr objti)
 {
-	uintptr type, tisize, i, x;
+	uintptr *pc1, type, tisize, i, j, x;
+	const uintptr *pc2;
 	byte *objstart;
 	Type *t;
 	MSpan *s;
@@ -703,9 +700,8 @@ checkptr(void *obj, uintptr objti)
 		(runtime_strcmp((const char *)t->string->str, (const char*)"unsafe.Pointer") &&
 		// Runtime and gc think differently about closures.
 		 runtime_strstr((const char *)t->string->str, (const char*)"struct { F uintptr") != (const char *)t->string->str)) {
-#if 0
 		pc1 = (uintptr*)objti;
-		pc2 = (uintptr*)t->gc;
+		pc2 = (const uintptr*)t->__gc;
 		// A simple best-effort check until first GC_END.
 		for(j = 1; pc1[j] != GC_END && pc2[j] != GC_END; j++) {
 			if(pc1[j] != pc2[j]) {
@@ -714,7 +710,6 @@ checkptr(void *obj, uintptr objti)
 				runtime_throw("invalid gc type info");
 			}
 		}
-#endif
 	}
 }					
 
@@ -728,11 +723,10 @@ static void
 scanblock(Workbuf *wbuf, bool keepworking)
 {
 	byte *b, *arena_start, *arena_used;
-	uintptr n, i, end_b, elemsize, size, ti, objti, count, /* type, */ nobj;
-	uintptr *pc, precise_type, nominal_size;
-#if 0
-	uintptr *chan_ret, chancap;
-#endif
+	uintptr n, i, end_b, elemsize, size, ti, objti, count, type, nobj;
+	uintptr precise_type, nominal_size;
+	const uintptr *pc, *chan_ret;
+	uintptr chancap;
 	void *obj;
 	const Type *t, *et;
 	Slice *sliceptr;
@@ -742,10 +736,8 @@ scanblock(Workbuf *wbuf, bool keepworking)
 	Scanbuf sbuf;
 	Eface *eface;
 	Iface *iface;
-#if 0
 	Hchan *chan;
-	ChanType *chantype;
-#endif
+	const ChanType *chantype;
 	Obj *wp;
 
 	if(sizeof(Workbuf) % WorkbufSize != 0)
@@ -782,11 +774,9 @@ scanblock(Workbuf *wbuf, bool keepworking)
 	sbuf.nobj = nobj;
 
 	// (Silence the compiler)
-#if 0
 	chan = nil;
 	chantype = nil;
 	chan_ret = nil;
-#endif
 
 	goto next_block;
 
@@ -800,7 +790,7 @@ scanblock(Workbuf *wbuf, bool keepworking)
 			runtime_xadd64(&gcstats.obj.cnt, 1);
 		}
 
-		if(ti != 0 && false) {
+		if(ti != 0) {
 			if(Debug > 1) {
 				runtime_printf("scanblock %p %D ti %p\n", b, (int64)n, ti);
 			}
@@ -826,11 +816,10 @@ scanblock(Workbuf *wbuf, bool keepworking)
 					runtime_throw("invalid gc type info");
 				}
 			}
-		} else if(UseSpanType && false) {
+		} else if(UseSpanType) {
 			if(CollectStats)
 				runtime_xadd64(&gcstats.obj.notype, 1);
 
-#if 0
 			type = runtime_gettype(b);
 			if(type != 0) {
 				if(CollectStats)
@@ -839,13 +828,13 @@ scanblock(Workbuf *wbuf, bool keepworking)
 				t = (Type*)(type & ~(uintptr)(PtrSize-1));
 				switch(type & (PtrSize-1)) {
 				case TypeInfo_SingleObject:
-					pc = (uintptr*)t->gc;
+					pc = (const uintptr*)t->__gc;
 					precise_type = true;  // type information about 'b' is precise
 					stack_top.count = 1;
 					stack_top.elemsize = pc[0];
 					break;
 				case TypeInfo_Array:
-					pc = (uintptr*)t->gc;
+					pc = (const uintptr*)t->__gc;
 					if(pc[0] == 0)
 						goto next_block;
 					precise_type = true;  // type information about 'b' is precise
@@ -855,7 +844,7 @@ scanblock(Workbuf *wbuf, bool keepworking)
 					break;
 				case TypeInfo_Chan:
 					chan = (Hchan*)b;
-					chantype = (ChanType*)t;
+					chantype = (const ChanType*)t;
 					chan_ret = nil;
 					pc = chanProg;
 					break;
@@ -872,7 +861,6 @@ scanblock(Workbuf *wbuf, bool keepworking)
 				if(Debug > 1)
 					runtime_printf("scanblock %p %D unknown type\n", b, (int64)n);
 			}
-#endif
 		} else {
 			pc = defaultProg;
 			if(Debug > 1)
@@ -954,24 +942,22 @@ scanblock(Workbuf *wbuf, bool keepworking)
 
 			// eface->__object
 			if((byte*)eface->__object >= arena_start && (byte*)eface->__object < arena_used) {
-				if(t->__size <= sizeof(void*)) {
+				if(__go_is_pointer_type(t)) {
 					if((t->__code & KindNoPointers))
 						continue;
 
 					obj = eface->__object;
-					if((t->__code & ~KindNoPointers) == KindPtr) {
+					if((t->__code & kindMask) == KindPtr) {
 						// Only use type information if it is a pointer-containing type.
 						// This matches the GC programs written by cmd/gc/reflect.c's
 						// dgcsym1 in case TPTR32/case TPTR64. See rationale there.
 						et = ((const PtrType*)t)->elem;
 						if(!(et->__code & KindNoPointers))
-							// objti = (uintptr)((const PtrType*)t)->elem->gc;
-							objti = 0;
+							objti = (uintptr)((const PtrType*)t)->elem->__gc;
 					}
 				} else {
 					obj = eface->__object;
-					// objti = (uintptr)t->gc;
-					objti = 0;
+					objti = (uintptr)t->__gc;
 				}
 			}
 			break;
@@ -986,33 +972,30 @@ scanblock(Workbuf *wbuf, bool keepworking)
 			
 			// iface->tab
 			if((byte*)iface->tab >= arena_start && (byte*)iface->tab < arena_used) {
-				*sbuf.ptr.pos++ = (PtrTarget){iface->tab, /* (uintptr)itabtype->gc */ 0};
+				*sbuf.ptr.pos++ = (PtrTarget){iface->tab, 0};
 				if(sbuf.ptr.pos == sbuf.ptr.end)
 					flushptrbuf(&sbuf);
 			}
 
 			// iface->data
 			if((byte*)iface->__object >= arena_start && (byte*)iface->__object < arena_used) {
-				// t = iface->tab->type;
-				t = nil;
-				if(t->__size <= sizeof(void*)) {
+				t = (const Type*)iface->tab[0];
+				if(__go_is_pointer_type(t)) {
 					if((t->__code & KindNoPointers))
 						continue;
 
 					obj = iface->__object;
-					if((t->__code & ~KindNoPointers) == KindPtr) {
+					if((t->__code & kindMask) == KindPtr) {
 						// Only use type information if it is a pointer-containing type.
 						// This matches the GC programs written by cmd/gc/reflect.c's
 						// dgcsym1 in case TPTR32/case TPTR64. See rationale there.
 						et = ((const PtrType*)t)->elem;
 						if(!(et->__code & KindNoPointers))
-							// objti = (uintptr)((const PtrType*)t)->elem->gc;
-							objti = 0;
+							objti = (uintptr)((const PtrType*)t)->elem->__gc;
 					}
 				} else {
 					obj = iface->__object;
-					// objti = (uintptr)t->gc;
-					objti = 0;
+					objti = (uintptr)t->__gc;
 				}
 			}
 			break;
@@ -1092,7 +1075,7 @@ scanblock(Workbuf *wbuf, bool keepworking)
 			// Stack push.
 			*stack_ptr-- = stack_top;
 			stack_top = (Frame){1, 0, stack_top.b + pc[1], pc+3 /*return address*/};
-			pc = (uintptr*)((byte*)pc + *(int32*)(pc+2));  // target of the CALL instruction
+			pc = (const uintptr*)((const byte*)pc + *(const int32*)(pc+2));  // target of the CALL instruction
 			continue;
 
 		case GC_REGION:
@@ -1108,7 +1091,6 @@ scanblock(Workbuf *wbuf, bool keepworking)
 				flushobjbuf(&sbuf);
 			continue;
 
-#if 0
 		case GC_CHAN_PTR:
 			chan = *(Hchan**)(stack_top.b + pc[1]);
 			if(Debug > 2 && chan != nil)
@@ -1141,8 +1123,8 @@ scanblock(Workbuf *wbuf, bool keepworking)
 					// in-use part of the circular buffer is scanned.
 					// (Channel routines zero the unused part, so the current
 					// code does not lead to leaks, it's just a little inefficient.)
-					*sbuf.obj.pos++ = (Obj){(byte*)chan+runtime_Hchansize, chancap*chantype->elem->size,
-						(uintptr)chantype->elem->gc | PRECISE | LOOP};
+					*sbuf.obj.pos++ = (Obj){(byte*)chan+runtime_Hchansize, chancap*chantype->elem->__size,
+						(uintptr)chantype->elem->__gc | PRECISE | LOOP};
 					if(sbuf.obj.pos == sbuf.obj.end)
 						flushobjbuf(&sbuf);
 				}
@@ -1151,7 +1133,6 @@ scanblock(Workbuf *wbuf, bool keepworking)
 				goto next_block;
 			pc = chan_ret;
 			continue;
-#endif
 
 		default:
 			runtime_printf("runtime: invalid GC instruction %p at %p\n", pc[0], pc);
@@ -1386,6 +1367,8 @@ markroot(ParFor *desc, uint32 i)
 	if(wbuf)
 		scanblock(wbuf, false);
 }
+
+static const FuncVal markroot_funcval = { (void *) markroot };
 
 // Get an empty work buffer off the work.empty list,
 // allocating new buffers as needed.
@@ -1828,7 +1811,7 @@ runtime_MSpan_Sweep(MSpan *s)
 }
 
 // State of background sweep.
-// Pretected by gclock.
+// Protected by gclock.
 static struct
 {
 	G*	g;
@@ -2121,14 +2104,16 @@ static void mgc(G *gp);
 static int32
 readgogc(void)
 {
+	String s;
 	const byte *p;
 
-	p = runtime_getenv("GOGC");
-	if(p == nil || p[0] == '\0')
+	s = runtime_getenv("GOGC");
+	if(s.len == 0)
 		return 100;
-	if(runtime_strcmp((const char *)p, "off") == 0)
+	p = s.str;
+	if(s.len == 3 && runtime_strcmp((const char *)p, "off") == 0)
 		return -1;
-	return runtime_atoi(p);
+	return runtime_atoi(p, s.len);
 }
 
 // force = 1 - do GC regardless of current heap usage
@@ -2260,12 +2245,6 @@ gc(struct gc_args *args)
 		work.markfor = runtime_parforalloc(MaxGcproc);
 	m->locks--;
 
-	if(itabtype == nil) {
-		// get C pointer to the Go type "itab"
-		// runtime_gc_itab_ptr(&eface);
-		// itabtype = ((PtrType*)eface.__type_descriptor)->elem;
-	}
-
 	t1 = 0;
 	if(runtime_debug.gctrace)
 		t1 = runtime_nanotime();
@@ -2277,7 +2256,7 @@ gc(struct gc_args *args)
 	work.nwait = 0;
 	work.ndone = 0;
 	work.nproc = runtime_gcprocs();
-	runtime_parforsetup(work.markfor, work.nproc, RootCount + runtime_allglen, nil, false, markroot);
+	runtime_parforsetup(work.markfor, work.nproc, RootCount + runtime_allglen, false, &markroot_funcval);
 	if(work.nproc > 1) {
 		runtime_noteclear(&work.alldone);
 		runtime_helpgc(work.nproc);
@@ -2305,11 +2284,12 @@ gc(struct gc_args *args)
 	heap0 = mstats.next_gc*100/(gcpercent+100);
 	// conservatively set next_gc to high value assuming that everything is live
 	// concurrent/lazy sweep will reduce this number while discovering new garbage
-	mstats.next_gc = mstats.heap_alloc+mstats.heap_alloc*gcpercent/100;
+	mstats.next_gc = mstats.heap_alloc+(mstats.heap_alloc-runtime_stacks_sys)*gcpercent/100;
 
 	t4 = runtime_nanotime();
 	mstats.last_gc = runtime_unixnanotime();  // must be Unix time to make sense to user
 	mstats.pause_ns[mstats.numgc%nelem(mstats.pause_ns)] = t4 - t0;
+	mstats.pause_end[mstats.numgc%nelem(mstats.pause_end)] = mstats.last_gc;
 	mstats.pause_total_ns += t4 - t0;
 	mstats.numgc++;
 	if(mstats.debuggc)
@@ -2395,6 +2375,8 @@ gc(struct gc_args *args)
 		// Sweep all spans eagerly.
 		while(runtime_sweepone() != (uintptr)-1)
 			gcstats.npausesweep++;
+		// Do an additional mProf_GC, because all 'free' events are now real as well.
+		runtime_MProf_GC();
 	}
 
 	runtime_MProf_GC();
@@ -2532,8 +2514,6 @@ runfinq(void* dummy __attribute__ ((unused)))
 			continue;
 		}
 		runtime_unlock(&finlock);
-		if(raceenabled)
-			runtime_racefingo();
 		for(; fb; fb=next) {
 			next = fb->next;
 			for(i=0; i<(uint32)fb->cnt; i++) {
@@ -2542,7 +2522,7 @@ runfinq(void* dummy __attribute__ ((unused)))
 
 				f = &fb->fin[i];
 				fint = ((const Type**)f->ft->__in.array)[0];
-				if(fint->__code == KindPtr) {
+				if((fint->__code & kindMask) == KindPtr) {
 					// direct use of pointer
 					param = &f->arg;
 				} else if(((const InterfaceType*)fint)->__methods.__count == 0) {
@@ -2773,4 +2753,39 @@ runtime_MHeap_MapBits(MHeap *h)
 
 	runtime_SysMap(h->arena_start - n, n - h->bitmap_mapped, h->arena_reserved, &mstats.gc_sys);
 	h->bitmap_mapped = n;
+}
+
+// typedmemmove copies a value of type t to dst from src.
+
+extern void typedmemmove(const Type* td, void *dst, const void *src)
+  __asm__ (GOSYM_PREFIX "reflect.typedmemmove");
+
+void
+typedmemmove(const Type* td, void *dst, const void *src)
+{
+	runtime_memmove(dst, src, td->__size);
+}
+
+// typedslicecopy copies a slice of elemType values from src to dst,
+// returning the number of elements copied.
+
+extern intgo typedslicecopy(const Type* elem, Slice dst, Slice src)
+  __asm__ (GOSYM_PREFIX "reflect.typedslicecopy");
+
+intgo
+typedslicecopy(const Type* elem, Slice dst, Slice src)
+{
+	intgo n;
+	void *dstp;
+	void *srcp;
+
+	n = dst.__count;
+	if (n > src.__count)
+		n = src.__count;
+	if (n == 0)
+		return 0;
+	dstp = dst.__values;
+	srcp = src.__values;
+	memmove(dstp, srcp, (uintptr_t)n * elem->__size);
+	return n;
 }

@@ -3,7 +3,7 @@
 #include "tree-vect.h"
 
 #define N 1024
-int b[N + 1];
+int b[N + 2];
 
 int
 main ()
@@ -28,4 +28,3 @@ main ()
   return 0;
 }
 
-/* { dg-final { cleanup-tree-dump "vect" } } */

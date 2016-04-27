@@ -1,6 +1,9 @@
 /* { dg-do compile } */
 /* { dg-require-effective-target vect_int } */
 
+int posix_memalign(void **memptr, __SIZE_TYPE__ alignment, __SIZE_TYPE__ size);
+void bar (int *);
+
 int *foo (int n)
 {
   int *p;
@@ -22,4 +25,3 @@ int *foo (int n)
 /* { dg-final { scan-tree-dump "LOOP VECTORIZED" "vect" } } */
 /* { dg-final { scan-tree-dump-not "Peeling for alignment will be applied" "vect" } } */
 /* { dg-final { scan-tree-dump-not "Vectorizing an unaligned access" "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */

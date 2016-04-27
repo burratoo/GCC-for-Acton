@@ -244,6 +244,7 @@ func (p *parser) repeat(op Op, min, max int, before, after, lastRepeat string) (
 	if sub.Op >= opPseudo {
 		return "", &Error{ErrMissingRepeatArgument, before[:len(before)-len(after)]}
 	}
+
 	re := p.newRegexp(op)
 	re.Min = min
 	re.Max = max
@@ -251,7 +252,45 @@ func (p *parser) repeat(op Op, min, max int, before, after, lastRepeat string) (
 	re.Sub = re.Sub0[:1]
 	re.Sub[0] = sub
 	p.stack[n-1] = re
+
+	if op == OpRepeat && (min >= 2 || max >= 2) && !repeatIsValid(re, 1000) {
+		return "", &Error{ErrInvalidRepeatSize, before[:len(before)-len(after)]}
+	}
+
 	return after, nil
+}
+
+// repeatIsValid reports whether the repetition re is valid.
+// Valid means that the combination of the top-level repetition
+// and any inner repetitions does not exceed n copies of the
+// innermost thing.
+// This function rewalks the regexp tree and is called for every repetition,
+// so we have to worry about inducing quadratic behavior in the parser.
+// We avoid this by only calling repeatIsValid when min or max >= 2.
+// In that case the depth of any >= 2 nesting can only get to 9 without
+// triggering a parse error, so each subtree can only be rewalked 9 times.
+func repeatIsValid(re *Regexp, n int) bool {
+	if re.Op == OpRepeat {
+		m := re.Max
+		if m == 0 {
+			return true
+		}
+		if m < 0 {
+			m = re.Min
+		}
+		if m > n {
+			return false
+		}
+		if m > 0 {
+			n /= m
+		}
+	}
+	for _, sub := range re.Sub {
+		if !repeatIsValid(sub, n) {
+			return false
+		}
+	}
+	return true
 }
 
 // concat replaces the top of the stack (above the topmost '|' or '(') with its concatenation.
@@ -431,9 +470,14 @@ func (p *parser) factor(sub []*Regexp, flags Flags) []*Regexp {
 	}
 	sub = out
 
-	// Round 2: Factor out common complex prefixes,
-	// just the first piece of each concatenation,
-	// whatever it is.  This is good enough a lot of the time.
+	// Round 2: Factor out common simple prefixes,
+	// just the first piece of each concatenation.
+	// This will be good enough a lot of the time.
+	//
+	// Complex subexpressions (e.g. involving quantifiers)
+	// are not safe to factor because that collapses their
+	// distinct paths through the automaton, which affects
+	// correctness in some cases.
 	start = 0
 	out = sub[:0]
 	var first *Regexp
@@ -446,7 +490,9 @@ func (p *parser) factor(sub []*Regexp, flags Flags) []*Regexp {
 		var ifirst *Regexp
 		if i < len(sub) {
 			ifirst = p.leadingRegexp(sub[i])
-			if first != nil && first.Equal(ifirst) {
+			if first != nil && first.Equal(ifirst) &&
+				// first must be a character class OR a fixed repeat of a character class.
+				(isCharClass(first) || (first.Op == OpRepeat && first.Min == first.Max && isCharClass(first.Sub[0]))) {
 				continue
 			}
 		}
@@ -791,7 +837,14 @@ func Parse(s string, flags Flags) (*Regexp, error) {
 						lit = t[2:i]
 						t = t[i+2:]
 					}
-					p.push(literalRegexp(lit, p.flags))
+					for lit != "" {
+						c, rest, err := nextRune(lit)
+						if err != nil {
+							return nil, err
+						}
+						p.literal(c)
+						lit = rest
+					}
 					break BigSwitch
 				case 'z':
 					p.op(OpEndText)
@@ -1639,7 +1692,7 @@ const (
 	// minimum and maximum runes involved in folding.
 	// checked during test.
 	minFold = 0x0041
-	maxFold = 0x1044f
+	maxFold = 0x118df
 )
 
 // appendFoldedRange returns the result of appending the range lo-hi

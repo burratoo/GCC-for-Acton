@@ -1,6 +1,6 @@
 /* { dg-do compile } */
 /* { dg-require-alias "" } */
-/* { dg-options "-O2 -fdump-tree-optimized" } */
+/* { dg-options "-O2 -fdump-tree-optimized -std=gnu89" } */
 void abort (void);
 __attribute__ ((weak))
 int test() 
@@ -25,4 +25,3 @@ main()
 /* { dg-final { scan-tree-dump-times "  test4 " 1 "optimized" } } */
 /* { dg-final { scan-tree-dump-not "  test1 " "optimized" } } */
 /* { dg-final { scan-tree-dump-not "  test2 " "optimized" } } */
-/* { dg-final { cleanup-tree-dump "optimized" } } */

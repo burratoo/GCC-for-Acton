@@ -1,6 +1,8 @@
 /* { dg-do compile } */
 /* { dg-require-effective-target vect_int } */
 
+void bar (int *);
+
 int *foo (int n)
 {
   int *p = __builtin_aligned_alloc (256, n * sizeof (int));
@@ -15,4 +17,3 @@ int *foo (int n)
 /* { dg-final { scan-tree-dump "LOOP VECTORIZED" "vect" } } */
 /* { dg-final { scan-tree-dump-not "Peeling for alignment will be applied" "vect" } } */
 /* { dg-final { scan-tree-dump-not "Vectorizing an unaligned access" "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */

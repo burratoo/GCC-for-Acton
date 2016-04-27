@@ -1,9 +1,9 @@
 /* { dg-do compile } */ 
-/* { dg-options "-O2 -fdump-tree-isolate-paths" } */
+/* { dg-options "-O2 -fdump-tree-isolate-paths -fdelete-null-pointer-checks -Wnull-dereference" } */
 /* { dg-skip-if "" keeps_null_pointer_checks } */
 
 
-typedef long unsigned int size_t;
+typedef __SIZE_TYPE__ size_t;
 extern void *memset (void *__s, int __c, size_t __n)
   __attribute__ ((__nothrow__, __leaf__)) __attribute__ ((__nonnull__ (1)));
 struct rtx_def;
@@ -29,7 +29,7 @@ static __inline__ void
 VEC_rtx_gc_safe_grow (VEC_rtx_gc ** vec_, int size_, const char *file_,
                       unsigned line_, const char *function_)
 {
-  ((*vec_) ? &(*vec_)->base : 0)->num = size_;
+  ((*vec_) ? &(*vec_)->base : 0)->num = size_; /* { dg-warning "null pointer dereference" } */
 } 
 
 static __inline__ void
@@ -43,6 +43,8 @@ VEC_rtx_gc_safe_grow_cleared (VEC_rtx_gc ** vec_, int size_,
 }
 
 static VEC_rtx_gc *reg_base_value;
+unsigned int max_reg_num (void);
+int arf (void);
 void
 init_alias_analysis (void)
 {
@@ -61,6 +63,5 @@ init_alias_analysis (void)
    started with a PHI, but by the time the path isolation code runs
    its explicit in the IL.  */
 /* { dg-final { scan-tree-dump-times "__builtin_trap" 1 "isolate-paths"} } */
-/* { dg-final { cleanup-tree-dump "isolate-paths" } } */
 
 

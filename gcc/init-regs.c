@@ -1,5 +1,5 @@
 /* Initialization of uninitialized regs.
-   Copyright (C) 2007-2014 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,15 +20,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
+#include "backend.h"
 #include "rtl.h"
-#include "regs.h"
+#include "tree.h"
+#include "df.h"
+#include "emit-rtl.h"
 #include "expr.h"
 #include "tree-pass.h"
-#include "basic-block.h"
-#include "flags.h"
-#include "df.h"
 
 /* Check all of the uses of pseudo variables.  If any use that is MUST
    uninitialized, add a store of 0 immediately before it.  For
@@ -78,6 +76,11 @@ initialize_uninitialized_regs (void)
 
 	      /* Only do this for the pseudos.  */
 	      if (regno < FIRST_PSEUDO_REGISTER)
+		continue;
+
+	      /* Ignore pseudo PIC register.  */
+	      if (pic_offset_table_rtx
+		  && regno == REGNO (pic_offset_table_rtx))
 		continue;
 
 	      /* Do not generate multiple moves for the same regno.

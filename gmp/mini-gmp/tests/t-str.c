@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
 Public License for more details.
 
 You should have received a copy of the GNU General Public License along with
-the GNU MP Library test suite.  If not, see http://www.gnu.org/licenses/.  */
+the GNU MP Library test suite.  If not, see https://www.gnu.org/licenses/.  */
 
 #include <assert.h>
 #include <limits.h>
@@ -30,14 +30,6 @@ the GNU MP Library test suite.  If not, see http://www.gnu.org/licenses/.  */
 
 #define GMP_LIMB_BITS (sizeof(mp_limb_t) * CHAR_BIT)
 #define MAXLIMBS ((MAXBITS + GMP_LIMB_BITS - 1) / GMP_LIMB_BITS)
-
-static void
-dump (const char *label, const mpz_t x)
-{
-  char *buf = mpz_get_str (NULL, 16, x);
-  fprintf (stderr, "%s: %s\n", label, buf);
-  testfree (buf);
-}
 
 static void
 test_small (void)
@@ -251,7 +243,7 @@ testmain (int argc, char **argv)
 	      assert (tn <= MAXLIMBS);
 	      mpn_copyi (t, a->_mp_d, tn);
 
-	      bn = mpn_get_str (bp, base, t, tn);
+	      bn = mpn_get_str ((unsigned char *) bp, base, t, tn);
 	      if (bn != arn)
 		{
 		  fprintf (stderr, "mpn_get_str failed:\n");
@@ -294,7 +286,7 @@ testmain (int argc, char **argv)
 		      abort ();
 		    }
 		}
-	      tn = mpn_set_str (t, bp, bn, base);
+	      tn = mpn_set_str (t, (unsigned char *) bp, bn, base);
 	      if (tn != mpz_size (a) || mpn_cmp (t, a->_mp_d, tn))
 		{
 		  fprintf (stderr, "mpn_set_str failed:\n");

@@ -1,5 +1,5 @@
 /* Operations with affine combinations of trees.
-   Copyright (C) 2005-2014 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,8 +20,9 @@ along with GCC; see the file COPYING3.  If not see
 /* Affine combination of trees.  We keep track of at most MAX_AFF_ELTS elements
    to make things simpler; this is sufficient in most cases.  */
 
-#include "hash-map.h"
-#include "wide-int.h"
+#ifndef GCC_TREE_AFFINE_H
+#define GCC_TREE_AFFINE_H
+
 
 #define MAX_AFF_ELTS 8
 
@@ -99,3 +100,5 @@ aff_combination_zero_p (aff_tree *aff)
 
   return false;
 }
+
+#endif /* GCC_TREE_AFFINE_H */

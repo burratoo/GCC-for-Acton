@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2014 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2016 Free Software Foundation, Inc.
 
    This file is free software; you can redistribute it and/or modify it under
    the terms of the GNU General Public License as published by the Free
@@ -17,15 +17,10 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "cpplib.h"
-#include "tree.h"
-#include "stringpool.h"
-#include "c-family/c-common.h"
-#include "c-family/c-pragma.h"
-#include "tm_p.h"
-#include "langhooks.h"
 #include "target.h"
+#include "c-family/c-common.h"
+#include "stringpool.h"
+#include "langhooks.h"
 
 
 /* Keep the vector keywords handy for fast comparisons.  */
@@ -194,7 +189,8 @@ spu_cpu_cpp_builtins (struct cpp_reader *pfile)
   cpp_assert (pfile, "machine=spu");
   if (spu_arch == PROCESSOR_CELLEDP)
     cpp_define (pfile, "__SPU_EDP__");
-  cpp_define (pfile, "__vector=__attribute__((__spu_vector__))");
+  if (cpp_get_options (pfile)->lang != CLK_ASM)
+    cpp_define (pfile, "__vector=__attribute__((__spu_vector__))");
   switch (spu_ea_model)
     {
     case 32:
@@ -207,7 +203,7 @@ spu_cpu_cpp_builtins (struct cpp_reader *pfile)
        gcc_unreachable ();
     }
 
-  if (!flag_iso)
+  if (!flag_iso && cpp_get_options (pfile)->lang != CLK_ASM)
     {
       /* Define this when supporting context-sensitive keywords.  */
       cpp_define (pfile, "__VECTOR_KEYWORD_SUPPORTED__");

@@ -1,6 +1,6 @@
 // Safe sequence/iterator base implementation  -*- C++ -*-
 
-// Copyright (C) 2003-2014 Free Software Foundation, Inc.
+// Copyright (C) 2003-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -95,12 +95,6 @@ namespace __gnu_debug
     : _M_sequence(0), _M_version(0), _M_prior(0), _M_next(0)
     { this->_M_attach(__x._M_sequence, __constant); }
 
-    _Safe_iterator_base&
-    operator=(const _Safe_iterator_base&);
-
-    explicit
-    _Safe_iterator_base(const _Safe_iterator_base&);
-
     ~_Safe_iterator_base() { this->_M_detach(); }
 
     /** For use in _Safe_iterator. */
@@ -164,6 +158,13 @@ namespace __gnu_debug
 	_M_next->_M_prior = _M_prior;
     }
   };
+
+  /** Iterators that derive from _Safe_iterator_base can be determined singular
+   *  or non-singular.
+   **/
+  inline bool
+  __check_singular_aux(const _Safe_iterator_base* __x)
+  { return __x->_M_singular(); }
 
   /**
    * @brief Base class that supports tracking of iterators that

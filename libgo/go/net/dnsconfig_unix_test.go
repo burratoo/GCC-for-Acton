@@ -6,41 +6,95 @@
 
 package net
 
-import "testing"
+import (
+	"os"
+	"reflect"
+	"testing"
+)
+
+var dnsReadConfigTests = []struct {
+	name string
+	want *dnsConfig
+}{
+	{
+		name: "testdata/resolv.conf",
+		want: &dnsConfig{
+			servers:    []string{"8.8.8.8", "2001:4860:4860::8888", "fe80::1%lo0"},
+			search:     []string{"localdomain"},
+			ndots:      5,
+			timeout:    10,
+			attempts:   3,
+			rotate:     true,
+			unknownOpt: true, // the "options attempts 3" line
+		},
+	},
+	{
+		name: "testdata/domain-resolv.conf",
+		want: &dnsConfig{
+			servers:  []string{"8.8.8.8"},
+			search:   []string{"localdomain"},
+			ndots:    1,
+			timeout:  5,
+			attempts: 2,
+		},
+	},
+	{
+		name: "testdata/search-resolv.conf",
+		want: &dnsConfig{
+			servers:  []string{"8.8.8.8"},
+			search:   []string{"test", "invalid"},
+			ndots:    1,
+			timeout:  5,
+			attempts: 2,
+		},
+	},
+	{
+		name: "testdata/empty-resolv.conf",
+		want: &dnsConfig{
+			servers:  defaultNS,
+			ndots:    1,
+			timeout:  5,
+			attempts: 2,
+		},
+	},
+	{
+		name: "testdata/openbsd-resolv.conf",
+		want: &dnsConfig{
+			ndots:    1,
+			timeout:  5,
+			attempts: 2,
+			lookup:   []string{"file", "bind"},
+			servers:  []string{"169.254.169.254", "10.240.0.1"},
+			search:   []string{"c.symbolic-datum-552.internal."},
+		},
+	},
+}
 
 func TestDNSReadConfig(t *testing.T) {
-	dnsConfig, err := dnsReadConfig("testdata/resolv.conf")
-	if err != nil {
-		t.Fatal(err)
+	for _, tt := range dnsReadConfigTests {
+		conf := dnsReadConfig(tt.name)
+		if conf.err != nil {
+			t.Fatal(conf.err)
+		}
+		if !reflect.DeepEqual(conf, tt.want) {
+			t.Errorf("%s:\ngot: %+v\nwant: %+v", tt.name, conf, tt.want)
+		}
 	}
+}
 
-	if len(dnsConfig.servers) != 1 {
-		t.Errorf("len(dnsConfig.servers) = %d; want %d", len(dnsConfig.servers), 1)
+func TestDNSReadMissingFile(t *testing.T) {
+	conf := dnsReadConfig("a-nonexistent-file")
+	if !os.IsNotExist(conf.err) {
+		t.Errorf("missing resolv.conf:\ngot: %v\nwant: %v", conf.err, os.ErrNotExist)
 	}
-	if dnsConfig.servers[0] != "[192.168.1.1]" {
-		t.Errorf("dnsConfig.servers[0] = %s; want %s", dnsConfig.servers[0], "[192.168.1.1]")
+	conf.err = nil
+	want := &dnsConfig{
+		servers:  defaultNS,
+		ndots:    1,
+		timeout:  5,
+		attempts: 2,
 	}
-
-	if len(dnsConfig.search) != 1 {
-		t.Errorf("len(dnsConfig.search) = %d; want %d", len(dnsConfig.search), 1)
-	}
-	if dnsConfig.search[0] != "Home" {
-		t.Errorf("dnsConfig.search[0] = %s; want %s", dnsConfig.search[0], "Home")
-	}
-
-	if dnsConfig.ndots != 5 {
-		t.Errorf("dnsConfig.ndots = %d; want %d", dnsConfig.ndots, 5)
-	}
-
-	if dnsConfig.timeout != 10 {
-		t.Errorf("dnsConfig.timeout = %d; want %d", dnsConfig.timeout, 10)
-	}
-
-	if dnsConfig.attempts != 3 {
-		t.Errorf("dnsConfig.attempts = %d; want %d", dnsConfig.attempts, 3)
-	}
-
-	if dnsConfig.rotate != true {
-		t.Errorf("dnsConfig.rotate = %t; want %t", dnsConfig.rotate, true)
+	if !reflect.DeepEqual(conf, want) {
+		t.Errorf("missing resolv.conf:\ngot: %+v\nwant: %+v", conf, want)
 	}
 }

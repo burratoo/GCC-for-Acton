@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2010-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2010-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -38,8 +38,9 @@ pragma Elaborate_All
 
 with System; use type System.Address;
 
-package body Ada.Containers.Formal_Ordered_Sets is
-   pragma SPARK_Mode (Off);
+package body Ada.Containers.Formal_Ordered_Sets with
+  SPARK_Mode => Off
+is
 
    ------------------------------
    -- Access to Fields of Node --
@@ -582,7 +583,7 @@ package body Ada.Containers.Formal_Ordered_Sets is
    -------------------
 
    function First_Element (Container : Set) return Element_Type is
-      Fst : constant Count_Type :=  First (Container).Node;
+      Fst : constant Count_Type := First (Container).Node;
    begin
       if Fst = 0 then
          raise Constraint_Error with "set is empty";
@@ -672,7 +673,7 @@ package body Ada.Containers.Formal_Ordered_Sets is
    -- Generic_Keys --
    ------------------
 
-   package body Generic_Keys is
+   package body Generic_Keys with SPARK_Mode => Off is
 
       -----------------------
       -- Local Subprograms --

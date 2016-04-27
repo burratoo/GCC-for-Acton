@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2001-2014, AdaCore                     --
+--                     Copyright (C) 2001-2016, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -185,9 +185,10 @@ package body GNAT.Sockets is
    --  Raise Socket_Error with an exception message describing the error code
    --  from errno.
 
-   procedure Raise_Host_Error (H_Error : Integer);
+   procedure Raise_Host_Error (H_Error : Integer; Name : String);
    --  Raise Host_Error exception with message describing error code (note
-   --  hstrerror seems to be obsolete) from h_errno.
+   --  hstrerror seems to be obsolete) from h_errno. Name is the name
+   --  or address that was being looked up.
 
    procedure Narrow (Item : in out Socket_Set_Type);
    --  Update Last as it may be greater than the real last socket
@@ -481,7 +482,7 @@ package body GNAT.Sockets is
          return;
 
       --  On other platforms, fd_set is an FD_SETSIZE bitmap: check
-      --  that Fd is within range (otherwise behaviour is undefined).
+      --  that Fd is within range (otherwise behavior is undefined).
 
       elsif Fd < 0 or else Fd >= SOSC.FD_SETSIZE then
          raise Constraint_Error
@@ -973,14 +974,20 @@ package body GNAT.Sockets is
                              Res'Access, Buf'Address, Buflen, Err'Access) /= 0
       then
          Netdb_Unlock;
-         Raise_Host_Error (Integer (Err));
+         Raise_Host_Error (Integer (Err), Image (Address));
       end if;
 
-      return H : constant Host_Entry_Type :=
-                   To_Host_Entry (Res'Unchecked_Access)
-      do
-         Netdb_Unlock;
-      end return;
+      begin
+         return H : constant Host_Entry_Type :=
+                      To_Host_Entry (Res'Unchecked_Access)
+         do
+            Netdb_Unlock;
+         end return;
+      exception
+         when others =>
+            Netdb_Unlock;
+            raise;
+      end;
    end Get_Host_By_Address;
 
    ----------------------
@@ -1009,7 +1016,7 @@ package body GNAT.Sockets is
            (HN, Res'Access, Buf'Address, Buflen, Err'Access) /= 0
          then
             Netdb_Unlock;
-            Raise_Host_Error (Integer (Err));
+            Raise_Host_Error (Integer (Err), Name);
          end if;
 
          return H : constant Host_Entry_Type :=
@@ -1694,11 +1701,16 @@ package body GNAT.Sockets is
    -- Raise_Host_Error --
    ----------------------
 
-   procedure Raise_Host_Error (H_Error : Integer) is
+   procedure Raise_Host_Error (H_Error : Integer; Name : String) is
+      function Dedot (Value : String) return String is
+        (if Value /= "" and then Value (Value'Last) = '.'
+         then Value (Value'First .. Value'Last - 1) else Value);
+      --  Removes dot at the end of error message
    begin
       raise Host_Error with
         Err_Code_Image (H_Error)
-          & Host_Error_Messages.Host_Error_Message (H_Error);
+          & Dedot (Host_Error_Messages.Host_Error_Message (H_Error))
+          & ": " & Name;
    end Raise_Host_Error;
 
    ------------------------
@@ -2420,9 +2432,13 @@ package body GNAT.Sockets is
       Aliases_Count, Addresses_Count : Natural;
 
       --  H_Length is not used because it is currently only ever set to 4, as
-      --  H_Addrtype is always AF_INET.
+      --  we only handle the case of H_Addrtype being AF_INET.
 
    begin
+      if Hostent_H_Addrtype (E) /= SOSC.AF_INET then
+         Raise_Socket_Error (SOSC.EPFNOSUPPORT);
+      end if;
+
       Aliases_Count := 0;
       while Hostent_H_Alias (E, C.int (Aliases_Count)) /= Null_Address loop
          Aliases_Count := Aliases_Count + 1;

@@ -17,13 +17,22 @@
 // These calls return err == nil to indicate success; otherwise
 // err is an operating system error describing the failure.
 // On most systems, that error has type syscall.Errno.
+//
+// NOTE: This package is locked down. Code outside the standard
+// Go repository should be migrated to use the corresponding
+// package in the golang.org/x/sys repository. That is also where updates
+// required by new systems or versions should be applied.
+// See https://golang.org/s/go1.4-syscall for more information.
+//
 package syscall
 
 import "unsafe"
 
-// StringByteSlice is deprecated. Use ByteSliceFromString instead.
+// StringByteSlice converts a string to a NUL-terminated []byte,
 // If s contains a NUL byte this function panics instead of
 // returning an error.
+//
+// Deprecated: Use ByteSliceFromString instead.
 func StringByteSlice(s string) []byte {
 	a, err := ByteSliceFromString(s)
 	if err != nil {
@@ -46,9 +55,11 @@ func ByteSliceFromString(s string) ([]byte, error) {
 	return a, nil
 }
 
-// StringBytePtr is deprecated. Use BytePtrFromString instead.
-// If s contains a NUL byte this function panics instead of
-// returning an error.
+// StringBytePtr returns a pointer to a NUL-terminated array of bytes.
+// If s contains a NUL byte this function panics instead of returning
+// an error.
+//
+// Deprecated: Use BytePtrFromString instead.
 func StringBytePtr(s string) *byte { return &StringByteSlice(s)[0] }
 
 // BytePtrFromString returns a pointer to a NUL-terminated array of
@@ -85,3 +96,11 @@ func (ts *Timespec) Nano() int64 {
 func (tv *Timeval) Nano() int64 {
 	return int64(tv.Sec)*1e9 + int64(tv.Usec)*1000
 }
+
+// use is a no-op, but the compiler cannot see that it is.
+// Calling use(p) ensures that p is kept live until that point.
+// This was needed until Go 1.6 to call syscall.Syscall correctly.
+// As of Go 1.6 the compiler handles that case automatically.
+// The uses and definition of use can be removed early in the Go 1.7 cycle.
+//go:noescape
+func use(p unsafe.Pointer)

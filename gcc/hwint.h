@@ -1,5 +1,5 @@
 /* HOST_WIDE_INT definitions for the GNU compiler.
-   Copyright (C) 1998-2014 Free Software Foundation, Inc.
+   Copyright (C) 1998-2016 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -244,11 +244,27 @@ sext_hwi (HOST_WIDE_INT src, unsigned int prec)
   if (prec == HOST_BITS_PER_WIDE_INT)
     return src;
   else
+#if defined (__GNUC__)
     {
+      /* Take the faster path if the implementation-defined bits it's relying
+	 on are implemented the way we expect them to be.  Namely, conversion
+	 from unsigned to signed preserves bit pattern, and right shift of
+	 a signed value propagates the sign bit.
+	 We have to convert from signed to unsigned and back, because when left
+	 shifting signed values, any overflow is undefined behavior.  */
       gcc_checking_assert (prec < HOST_BITS_PER_WIDE_INT);
       int shift = HOST_BITS_PER_WIDE_INT - prec;
-      return (src << shift) >> shift;
+      return ((HOST_WIDE_INT) ((unsigned HOST_WIDE_INT) src << shift)) >> shift;
     }
+#else
+    {
+      /* Fall back to the slower, well defined path otherwise.  */
+      gcc_checking_assert (prec < HOST_BITS_PER_WIDE_INT);
+      HOST_WIDE_INT sign_mask = HOST_WIDE_INT_1 << (prec - 1);
+      HOST_WIDE_INT value_mask = (HOST_WIDE_INT_1U << prec) - HOST_WIDE_INT_1U;
+      return (((src & value_mask) ^ sign_mask) - sign_mask);
+    }
+#endif
 }
 
 /* Zero extend SRC starting from PREC.  */
@@ -262,6 +278,23 @@ zext_hwi (unsigned HOST_WIDE_INT src, unsigned int prec)
       gcc_checking_assert (prec < HOST_BITS_PER_WIDE_INT);
       return src & (((unsigned HOST_WIDE_INT) 1 << prec) - 1);
     }
+}
+
+/* Compute the absolute value of X.  */
+
+inline HOST_WIDE_INT
+abs_hwi (HOST_WIDE_INT x)
+{
+  gcc_checking_assert (x != HOST_WIDE_INT_MIN);
+  return x >= 0 ? x : -x;
+}
+
+/* Compute the absolute value of X as an unsigned type.  */
+
+inline unsigned HOST_WIDE_INT
+absu_hwi (HOST_WIDE_INT x)
+{
+  return x >= 0 ? (unsigned HOST_WIDE_INT)x : -(unsigned HOST_WIDE_INT)x;
 }
 
 #endif /* ! GCC_HWINT_H */

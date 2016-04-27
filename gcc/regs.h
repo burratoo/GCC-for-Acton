@@ -1,5 +1,5 @@
 /* Define per-register tables for data flow info and register allocation.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -19,10 +19,6 @@ along with GCC; see the file COPYING3.  If not see
 
 #ifndef GCC_REGS_H
 #define GCC_REGS_H
-
-#include "machmode.h"
-#include "hard-reg-set.h"
-#include "rtl.h"
 
 #define REG_BYTES(R) mode_size[(int) GET_MODE (R)]
 
@@ -236,7 +232,7 @@ struct target_regs {
      This will be a MODE_INT mode if the register can hold integers.  Otherwise
      it will be a MODE_FLOAT or a MODE_CC mode, whichever is valid for the
      register.  */
-  enum machine_mode x_reg_raw_mode[FIRST_PSEUDO_REGISTER];
+  machine_mode x_reg_raw_mode[FIRST_PSEUDO_REGISTER];
 
   /* Vector indexed by machine mode saying whether there are regs of
      that mode.  */
@@ -281,24 +277,16 @@ extern struct target_regs *this_target_regs;
    register (reg:MODE REGNO).  */
 
 static inline unsigned int
-end_hard_regno (enum machine_mode mode, unsigned int regno)
+end_hard_regno (machine_mode mode, unsigned int regno)
 {
   return regno + hard_regno_nregs[regno][(int) mode];
 }
-
-/* Likewise for hard register X.  */
-
-#define END_HARD_REGNO(X) end_hard_regno (GET_MODE (X), REGNO (X))
-
-/* Likewise for hard or pseudo register X.  */
-
-#define END_REGNO(X) (HARD_REGISTER_P (X) ? END_HARD_REGNO (X) : REGNO (X) + 1)
 
 /* Add to REGS all the registers required to store a value of mode MODE
    in register REGNO.  */
 
 static inline void
-add_to_hard_reg_set (HARD_REG_SET *regs, enum machine_mode mode,
+add_to_hard_reg_set (HARD_REG_SET *regs, machine_mode mode,
 		     unsigned int regno)
 {
   unsigned int end_regno;
@@ -312,7 +300,7 @@ add_to_hard_reg_set (HARD_REG_SET *regs, enum machine_mode mode,
 /* Likewise, but remove the registers.  */
 
 static inline void
-remove_from_hard_reg_set (HARD_REG_SET *regs, enum machine_mode mode,
+remove_from_hard_reg_set (HARD_REG_SET *regs, machine_mode mode,
 			  unsigned int regno)
 {
   unsigned int end_regno;
@@ -326,7 +314,7 @@ remove_from_hard_reg_set (HARD_REG_SET *regs, enum machine_mode mode,
 /* Return true if REGS contains the whole of (reg:MODE REGNO).  */
 
 static inline bool
-in_hard_reg_set_p (const HARD_REG_SET regs, enum machine_mode mode,
+in_hard_reg_set_p (const HARD_REG_SET regs, machine_mode mode,
 		   unsigned int regno)
 {
   unsigned int end_regno;
@@ -351,7 +339,7 @@ in_hard_reg_set_p (const HARD_REG_SET regs, enum machine_mode mode,
 /* Return true if (reg:MODE REGNO) includes an element of REGS.  */
 
 static inline bool
-overlaps_hard_reg_set_p (const HARD_REG_SET regs, enum machine_mode mode,
+overlaps_hard_reg_set_p (const HARD_REG_SET regs, machine_mode mode,
 			 unsigned int regno)
 {
   unsigned int end_regno;
@@ -412,7 +400,7 @@ range_in_hard_reg_set_p (const HARD_REG_SET set, unsigned regno, int nregs)
 }
 
 /* Get registers used by given function call instruction.  */
-extern bool get_call_reg_set_usage (rtx insn, HARD_REG_SET *reg_set,
+extern bool get_call_reg_set_usage (rtx_insn *insn, HARD_REG_SET *reg_set,
 				    HARD_REG_SET default_set);
 
 #endif /* GCC_REGS_H */

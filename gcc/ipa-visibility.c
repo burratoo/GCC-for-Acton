@@ -1,5 +1,5 @@
 /* IPA visibility pass
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -76,26 +76,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
+#include "function.h"
 #include "tree.h"
-#include "cgraph.h"
-#include "tree-pass.h"
-#include "calls.h"
 #include "gimple-expr.h"
+#include "tree-pass.h"
+#include "cgraph.h"
+#include "calls.h"
 #include "varasm.h"
 
 /* Return true when NODE can not be local. Worker for cgraph_local_node_p.  */
 
-bool
-cgraph_node::non_local_p (struct cgraph_node *node, void *data ATTRIBUTE_UNUSED)
+static bool
+non_local_p (struct cgraph_node *node, void *data ATTRIBUTE_UNUSED)
 {
-   /* FIXME: Aliases can be local, but i386 gets thunks wrong then.  */
-   return !(node->only_called_directly_or_aliased_p ()
-	    && !node->has_aliases_p ()
-	    && node->definition
-	    && !DECL_EXTERNAL (node->decl)
-	    && !node->externally_visible
-	    && !node->used_from_other_partition
-	    && !node->in_other_partition);
+  return !(node->only_called_directly_or_aliased_p ()
+	   /* i386 would need update to output thunk with locak calling
+	      ocnvetions.  */
+	   && !node->thunk.thunk_p
+	   && node->definition
+	   && !DECL_EXTERNAL (node->decl)
+	   && !node->externally_visible
+	   && !node->used_from_other_partition
+	   && !node->in_other_partition);
 }
 
 /* Return true when function can be marked local.  */
@@ -105,34 +107,11 @@ cgraph_node::local_p (void)
 {
    cgraph_node *n = ultimate_alias_target ();
 
-   /* FIXME: thunks can be considered local, but we need prevent i386
-      from attempting to change calling convention of them.  */
    if (n->thunk.thunk_p)
-     return false;
-   return !n->call_for_symbol_thunks_and_aliases (cgraph_node::non_local_p,
-						NULL, true);
+     return n->callees->callee->local_p ();
+   return !n->call_for_symbol_thunks_and_aliases (non_local_p,
+						  NULL, true);
 					
-}
-
-/* Return true when there is a reference to node and it is not vtable.  */
-
-bool
-symtab_node::address_taken_from_non_vtable_p (void)
-{
-  int i;
-  struct ipa_ref *ref = NULL;
-
-  for (i = 0; iterate_referring (i, ref); i++)
-    if (ref->use == IPA_REF_ADDR)
-      {
-	varpool_node *node;
-	if (is_a <cgraph_node *> (ref->referring))
-	  return true;
-	node = dyn_cast <varpool_node *> (ref->referring);
-	if (!DECL_VIRTUAL_P (node->decl))
-	  return true;
-      }
-  return false;
 }
 
 /* A helper for comdat_can_be_unshared_p.  */
@@ -142,16 +121,14 @@ comdat_can_be_unshared_p_1 (symtab_node *node)
 {
   if (!node->externally_visible)
     return true;
-  /* When address is taken, we don't know if equality comparison won't
-     break eventually. Exception are virutal functions, C++
-     constructors/destructors and vtables, where this is not possible by
-     language standard.  */
-  if (!DECL_VIRTUAL_P (node->decl)
-      && (TREE_CODE (node->decl) != FUNCTION_DECL
-	  || (!DECL_CXX_CONSTRUCTOR_P (node->decl)
-	      && !DECL_CXX_DESTRUCTOR_P (node->decl)))
-      && node->address_taken_from_non_vtable_p ())
-    return false;
+  if (node->address_can_be_compared_p ())
+    {
+      struct ipa_ref *ref;
+
+      for (unsigned int i = 0; node->iterate_referring (i, ref); i++)
+	if (ref->address_matters_p ())
+	  return false;
+    }
 
   /* If the symbol is used in some weird way, better to not touch it.  */
   if (node->force_output)
@@ -208,6 +185,8 @@ static bool
 cgraph_externally_visible_p (struct cgraph_node *node,
 			     bool whole_program)
 {
+  while (node->transparent_alias && node->definition)
+    node = node->get_alias_target ();
   if (!node->definition)
     return false;
   if (!TREE_PUBLIC (node->decl)
@@ -240,13 +219,13 @@ cgraph_externally_visible_p (struct cgraph_node *node,
      This improves code quality and we know we will duplicate them at most twice
      (in the case that we are not using plugin and link with object file
       implementing same COMDAT)  */
-  if ((in_lto_p || whole_program)
+  if (((in_lto_p || whole_program) && !flag_incremental_link)
       && DECL_COMDAT (node->decl)
       && comdat_can_be_unshared_p (node))
     return false;
 
   /* When doing link time optimizations, hidden symbols become local.  */
-  if (in_lto_p
+  if ((in_lto_p && !flag_incremental_link)
       && (DECL_VISIBILITY (node->decl) == VISIBILITY_HIDDEN
 	  || DECL_VISIBILITY (node->decl) == VISIBILITY_INTERNAL)
       /* Be sure that node is defined in IR file, not in other object
@@ -259,6 +238,10 @@ cgraph_externally_visible_p (struct cgraph_node *node,
   if (MAIN_NAME_P (DECL_NAME (node->decl)))
     return true;
 
+  if (node->instrumentation_clone
+      && MAIN_NAME_P (DECL_NAME (node->orig_decl)))
+    return true;
+
   return false;
 }
 
@@ -267,6 +250,8 @@ cgraph_externally_visible_p (struct cgraph_node *node,
 bool
 varpool_node::externally_visible_p (void)
 {
+  while (transparent_alias && definition)
+    return get_alias_target ()->externally_visible_p ();
   if (DECL_EXTERNAL (decl))
     return true;
 
@@ -275,6 +260,13 @@ varpool_node::externally_visible_p (void)
 
   /* If linker counts on us, we must preserve the function.  */
   if (used_from_object_file_p ())
+    return true;
+
+  /* Bringing TLS variables local may cause dynamic linker failures
+     on limits of static TLS vars.  */
+  if (DECL_THREAD_LOCAL_P (decl)
+      && (DECL_TLS_MODEL (decl) != TLS_MODEL_EMULATED
+	  && DECL_TLS_MODEL (decl) != TLS_MODEL_INITIAL_EXEC))
     return true;
 
   if (DECL_HARD_REGISTER (decl))
@@ -305,13 +297,13 @@ varpool_node::externally_visible_p (void)
      so this does not enable more optimization, but referring static var
      is faster for dynamic linking.  Also this match logic hidding vtables
      from LTO symbol tables.  */
-  if ((in_lto_p || flag_whole_program)
+  if (((in_lto_p || flag_whole_program) && !flag_incremental_link)
       && DECL_COMDAT (decl)
       && comdat_can_be_unshared_p (this))
     return false;
 
   /* When doing link time optimizations, hidden symbols become local.  */
-  if (in_lto_p
+  if (in_lto_p && !flag_incremental_link
       && (DECL_VISIBILITY (decl) == VISIBILITY_HIDDEN
 	  || DECL_VISIBILITY (decl) == VISIBILITY_INTERNAL)
       /* Be sure that node is defined in IR file, not in other object
@@ -337,19 +329,30 @@ varpool_node::externally_visible_p (void)
    Local aliases save dynamic linking overhead and enable more optimizations.
  */
 
-bool
+static bool
 can_replace_by_local_alias (symtab_node *node)
 {
+#ifndef ASM_OUTPUT_DEF
+  /* If aliases aren't supported, we can't do replacement.  */
+  return false;
+#endif
+  /* Weakrefs have a reason to be non-local.  Be sure we do not replace
+     them.  */
+  while (node->transparent_alias && node->definition && !node->weakref)
+    node = node->get_alias_target ();
+  if (node->weakref)
+    return false;
+  
   return (node->get_availability () > AVAIL_INTERPOSABLE
 	  && !decl_binds_to_current_def_p (node->decl)
 	  && !node->can_be_discarded_p ());
 }
 
-/* Return true if we can replace refernece to NODE by local alias
+/* Return true if we can replace reference to NODE by local alias
    within a virtual table.  Generally we can replace function pointers
    and virtual table pointers.  */
 
-bool
+static bool
 can_replace_by_local_alias_in_vtable (symtab_node *node)
 {
   if (is_a <varpool_node *> (node)
@@ -361,7 +364,8 @@ can_replace_by_local_alias_in_vtable (symtab_node *node)
 /* walk_tree callback that rewrites initializer references.   */
 
 static tree
-update_vtable_references (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
+update_vtable_references (tree *tp, int *walk_subtrees,
+			  void *data ATTRIBUTE_UNUSED)
 {
   if (TREE_CODE (*tp) == VAR_DECL
       || TREE_CODE (*tp) == FUNCTION_DECL)
@@ -398,27 +402,132 @@ update_visibility_by_resolution_info (symtab_node * node)
   if (node->same_comdat_group)
     for (symtab_node *next = node->same_comdat_group;
 	 next != node; next = next->same_comdat_group)
-      gcc_assert (!next->externally_visible
-		  || define == (next->resolution == LDPR_PREVAILING_DEF_IRONLY
-			        || next->resolution == LDPR_PREVAILING_DEF
-			        || next->resolution == LDPR_UNDEF
-			        || next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP));
+      {
+	if (!next->externally_visible || next->transparent_alias)
+	  continue;
+
+	bool same_def
+	  = define == (next->resolution == LDPR_PREVAILING_DEF_IRONLY
+		       || next->resolution == LDPR_PREVAILING_DEF
+		       || next->resolution == LDPR_UNDEF
+		       || next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP);
+	gcc_assert (in_lto_p || same_def);
+	if (!same_def)
+	  return;
+      }
 
   if (node->same_comdat_group)
     for (symtab_node *next = node->same_comdat_group;
 	 next != node; next = next->same_comdat_group)
       {
-	next->set_comdat_group (NULL);
-	DECL_WEAK (next->decl) = false;
-	if (next->externally_visible
-	    && !define)
-	  DECL_EXTERNAL (next->decl) = true;
+	/* During incremental linking we need to keep symbol weak for future
+	   linking.  We can still drop definition if we know non-LTO world
+	   prevails.  */
+	if (!flag_incremental_link)
+	  {
+	    DECL_WEAK (next->decl) = false;
+	    next->set_comdat_group (NULL);
+	  }
+	if (!define)
+	  {
+	    if (next->externally_visible)
+	      DECL_EXTERNAL (next->decl) = true;
+	    next->set_comdat_group (NULL);
+	  }
       }
-  node->set_comdat_group (NULL);
-  DECL_WEAK (node->decl) = false;
+
+  /* During incremental linking we need to keep symbol weak for future
+     linking.  We can still drop definition if we know non-LTO world prevails.  */
+  if (!flag_incremental_link)
+    {
+      DECL_WEAK (node->decl) = false;
+      node->set_comdat_group (NULL);
+      node->dissolve_same_comdat_group_list ();
+    }
   if (!define)
-    DECL_EXTERNAL (node->decl) = true;
-  node->dissolve_same_comdat_group_list ();
+    {
+      DECL_EXTERNAL (node->decl) = true;
+      node->set_comdat_group (NULL);
+      node->dissolve_same_comdat_group_list ();
+    }
+}
+
+/* Try to get rid of weakref.  */
+
+static void
+optimize_weakref (symtab_node *node)
+{
+#ifdef ASM_OUTPUT_DEF
+  bool aliases_supported = true;
+#else
+  bool aliases_supported = false;
+#endif
+  bool strip_weakref = false;
+  bool static_alias = false;
+
+  gcc_assert (node->weakref);
+
+  /* Weakrefs with no target defined can not be optimized.  */
+  if (!node->analyzed)
+    return;
+  symtab_node *target = node->get_alias_target ();
+
+  /* Weakrefs to weakrefs can be optimized only if target can be.  */
+  if (target->weakref)
+    optimize_weakref (target);
+  if (target->weakref)
+    return;
+
+  /* If we have definition of weakref's target and we know it binds locally,
+     we can turn weakref to static alias.  */
+  if (target->definition && decl_binds_to_current_def_p (target->decl)
+      && aliases_supported)
+    strip_weakref = static_alias = true;
+  /* Otherwise we can turn weakref into transparent alias.  This transformation
+     may break asm statements which directly refers to symbol name and expect
+     GNU as to translate it via .weakref directive. So do not optimize when
+     DECL_PRESERVED is set and .weakref is supported.  */
+  else if ((!DECL_PRESERVE_P (target->decl)
+	    || IDENTIFIER_TRANSPARENT_ALIAS (DECL_ASSEMBLER_NAME (node->decl)))
+	   && !DECL_WEAK (target->decl)
+	   && !DECL_EXTERNAL (target->decl)
+	   && ((target->definition && !target->can_be_discarded_p ())
+	       || target->resolution != LDPR_UNDEF))
+    strip_weakref = true;
+  if (!strip_weakref)
+    return;
+  node->weakref = false;
+  IDENTIFIER_TRANSPARENT_ALIAS (DECL_ASSEMBLER_NAME (node->decl)) = 0;
+  TREE_CHAIN (DECL_ASSEMBLER_NAME (node->decl)) = NULL_TREE;
+  DECL_ATTRIBUTES (node->decl) = remove_attribute ("weakref",
+					           DECL_ATTRIBUTES
+							 (node->decl));
+
+  if (dump_file)
+    fprintf (dump_file, "Optimizing weakref %s %s\n",
+	     node->name(),
+	     static_alias ? "as static alias" : "as transparent alias");
+
+  if (static_alias)
+    {
+      /* make_decl_local will shortcircuit if it doesn't see TREE_PUBLIC.
+	 be sure it really clears the WEAK flag.  */
+      TREE_PUBLIC (node->decl) = true;
+      node->make_decl_local ();
+      node->forced_by_abi = false;
+      node->resolution = LDPR_PREVAILING_DEF_IRONLY;
+      node->externally_visible = false;
+      gcc_assert (!DECL_WEAK (node->decl));
+      node->transparent_alias = false;
+    }
+  else
+    {
+      symtab->change_decl_assembler_name
+        (node->decl, DECL_ASSEMBLER_NAME (node->get_alias_target ()->decl));
+      node->transparent_alias = true;
+      node->copy_visibility_from (target);
+    }
+  gcc_assert (node->alias);
 }
 
 /* Decide on visibility of all symbols.  */
@@ -462,19 +571,22 @@ function_and_variable_visibility (bool whole_program)
         DECL_COMDAT (node->decl) = 0;
 
       /* For external decls stop tracking same_comdat_group. It doesn't matter
-	 what comdat group they are in when they won't be emitted in this TU.  */
-      if (node->same_comdat_group && DECL_EXTERNAL (node->decl))
-	{
-#ifdef ENABLE_CHECKING
-	  symtab_node *n;
+	 what comdat group they are in when they won't be emitted in this TU.
 
-	  for (n = node->same_comdat_group;
-	       n != node;
-	       n = n->same_comdat_group)
-	      /* If at least one of same comdat group functions is external,
-		 all of them have to be, otherwise it is a front-end bug.  */
-	      gcc_assert (DECL_EXTERNAL (n->decl));
-#endif
+	 An exception is LTO where we may end up with both external
+	 and non-external declarations in the same comdat group in
+	 the case declarations was not merged.  */
+      if (node->same_comdat_group && DECL_EXTERNAL (node->decl) && !in_lto_p)
+	{
+	  if (flag_checking)
+	    {
+	      for (symtab_node *n = node->same_comdat_group;
+		   n != node;
+		   n = n->same_comdat_group)
+		/* If at least one of same comdat group functions is external,
+		   all of them have to be, otherwise it is a front-end bug.  */
+		gcc_assert (DECL_EXTERNAL (n->decl));
+	    }
 	  node->dissolve_same_comdat_group_list ();
 	}
       gcc_assert ((!DECL_WEAK (node->decl)
@@ -498,10 +610,10 @@ function_and_variable_visibility (bool whole_program)
 	{
 	  gcc_assert (whole_program || in_lto_p
 		      || !TREE_PUBLIC (node->decl));
-	  node->unique_name = ((node->resolution == LDPR_PREVAILING_DEF_IRONLY
-				|| node->unique_name
-				|| node->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
-				&& TREE_PUBLIC (node->decl));
+	  node->unique_name |= ((node->resolution == LDPR_PREVAILING_DEF_IRONLY
+				 || node->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
+				&& TREE_PUBLIC (node->decl)
+				&& !flag_incremental_link);
 	  node->resolution = LDPR_PREVAILING_DEF_IRONLY;
 	  if (node->same_comdat_group && TREE_PUBLIC (node->decl))
 	    {
@@ -516,11 +628,12 @@ function_and_variable_visibility (bool whole_program)
 		  next->set_comdat_group (NULL);
 		  if (!next->alias)
 		    next->set_section (NULL);
-		  next->make_decl_local ();
-		  next->unique_name = ((next->resolution == LDPR_PREVAILING_DEF_IRONLY
-					|| next->unique_name
-					|| next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
-				       && TREE_PUBLIC (next->decl));
+		  if (!next->transparent_alias)
+		    next->make_decl_local ();
+		  next->unique_name |= ((next->resolution == LDPR_PREVAILING_DEF_IRONLY
+					 || next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
+				        && TREE_PUBLIC (next->decl)
+					&& !flag_incremental_link);
 		}
 	      /* cgraph_externally_visible_p has already checked all other nodes
 	         in the group and they will all be made local.  We need to
@@ -532,10 +645,12 @@ function_and_variable_visibility (bool whole_program)
 	    node->set_comdat_group (NULL);
 	  if (DECL_COMDAT (node->decl) && !node->alias)
 	    node->set_section (NULL);
-	  node->make_decl_local ();
+	  if (!node->transparent_alias)
+	    node->make_decl_local ();
 	}
 
       if (node->thunk.thunk_p
+	  && !node->thunk.add_pointer_bounds_args
 	  && TREE_PUBLIC (node->decl))
 	{
 	  struct cgraph_node *decl_node = node;
@@ -557,15 +672,19 @@ function_and_variable_visibility (bool whole_program)
 	}
 
       update_visibility_by_resolution_info (node);
+      if (node->weakref)
+	optimize_weakref (node);
     }
   FOR_EACH_DEFINED_FUNCTION (node)
     {
-      node->local.local |= node->local_p ();
+      if (!node->local.local)
+        node->local.local |= node->local_p ();
 
-      /* If we know that function can not be overwritten by a different semantics
-	 and moreover its section can not be discarded, replace all direct calls
-	 by calls to an noninterposable alias.  This make dynamic linking
-	 cheaper and enable more optimization.
+      /* If we know that function can not be overwritten by a
+	 different semantics and moreover its section can not be
+	 discarded, replace all direct calls by calls to an
+	 noninterposable alias.  This make dynamic linking cheaper and
+	 enable more optimization.
 
 	 TODO: We can also update virtual tables.  */
       if (node->callers 
@@ -580,11 +699,11 @@ function_and_variable_visibility (bool whole_program)
 		{
 		  struct cgraph_edge *e = node->callers;
 
-		  cgraph_redirect_edge_callee (e, alias);
+		  e->redirect_callee (alias);
 		  if (gimple_has_body_p (e->caller->decl))
 		    {
 		      push_cfun (DECL_STRUCT_FUNCTION (e->caller->decl));
-		      cgraph_redirect_edge_call_stmt_to_callee (e);
+		      e->redirect_call_stmt_to_callee ();
 		      pop_cfun ();
 		    }
 		}
@@ -621,6 +740,8 @@ function_and_variable_visibility (bool whole_program)
 	      || ! (ADDR_SPACE_GENERIC_P
 		    (TYPE_ADDR_SPACE (TREE_TYPE (vnode->decl))))))
 	DECL_COMMON (vnode->decl) = 0;
+      if (vnode->weakref)
+	optimize_weakref (vnode);
     }
   FOR_EACH_DEFINED_VARIABLE (vnode)
     {
@@ -633,13 +754,18 @@ function_and_variable_visibility (bool whole_program)
           vnode->externally_visible = false;
 	  vnode->forced_by_abi = false;
 	}
+      if (lookup_attribute ("no_reorder",
+			    DECL_ATTRIBUTES (vnode->decl)))
+	vnode->no_reorder = 1;
       if (!vnode->externally_visible
-	  && !vnode->weakref)
+	  && !vnode->transparent_alias)
 	{
 	  gcc_assert (in_lto_p || whole_program || !TREE_PUBLIC (vnode->decl));
-	  vnode->unique_name = ((vnode->resolution == LDPR_PREVAILING_DEF_IRONLY
-				       || vnode->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
-				       && TREE_PUBLIC (vnode->decl));
+	  vnode->unique_name |= ((vnode->resolution == LDPR_PREVAILING_DEF_IRONLY
+			          || vnode->resolution
+				      == LDPR_PREVAILING_DEF_IRONLY_EXP)
+			         && TREE_PUBLIC (vnode->decl)
+				 && !flag_incremental_link);
 	  if (vnode->same_comdat_group && TREE_PUBLIC (vnode->decl))
 	    {
 	      symtab_node *next = vnode;
@@ -653,11 +779,14 @@ function_and_variable_visibility (bool whole_program)
 		  next->set_comdat_group (NULL);
 		  if (!next->alias)
 		    next->set_section (NULL);
-		  next->make_decl_local ();
-		  next->unique_name = ((next->resolution == LDPR_PREVAILING_DEF_IRONLY
-					|| next->unique_name
-					|| next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
-				       && TREE_PUBLIC (next->decl));
+		  if (!next->transparent_alias)
+		    {
+		      next->make_decl_local ();
+		      next->unique_name |= ((next->resolution == LDPR_PREVAILING_DEF_IRONLY
+					     || next->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
+					    && TREE_PUBLIC (next->decl)
+					    && !flag_incremental_link);
+		    }
 		}
 	      vnode->dissolve_same_comdat_group_list ();
 	    }
@@ -665,8 +794,11 @@ function_and_variable_visibility (bool whole_program)
 	    vnode->set_comdat_group (NULL);
 	  if (DECL_COMDAT (vnode->decl) && !vnode->alias)
 	    vnode->set_section (NULL);
-	  vnode->make_decl_local ();
-	  vnode->resolution = LDPR_PREVAILING_DEF_IRONLY;
+	  if (!vnode->transparent_alias)
+	    {
+	      vnode->make_decl_local ();
+	      vnode->resolution = LDPR_PREVAILING_DEF_IRONLY;
+	    }
 	}
       update_visibility_by_resolution_info (vnode);
 
@@ -679,7 +811,7 @@ function_and_variable_visibility (bool whole_program)
 	  bool found = false;
 
 	  /* See if there is something to update.  */
-	  for (i = 0; vnode->iterate_referring (i, ref); i++)
+	  for (i = 0; vnode->iterate_reference (i, ref); i++)
 	    if (ref->use == IPA_REF_ADDR
 		&& can_replace_by_local_alias_in_vtable (ref->referred))
 	      {
@@ -717,7 +849,7 @@ function_and_variable_visibility (bool whole_program)
 	  fprintf (dump_file, " %s", vnode->name ());
       fprintf (dump_file, "\n\n");
     }
-  cgraph_function_flags_ready = true;
+  symtab->function_flags_ready = true;
   return 0;
 }
 

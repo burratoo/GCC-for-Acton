@@ -1,6 +1,6 @@
 // -*- C++ -*- forwarding header.
 
-// Copyright (C) 1997-2014 Free Software Foundation, Inc.
+// Copyright (C) 1997-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -69,7 +69,11 @@ namespace std
 
 #else
 
-#include <stdlib.h>
+// Need to ensure this finds the C library's <stdlib.h> not a libstdc++
+// wrapper that might already be installed later in the include search path.
+#define _GLIBCXX_INCLUDE_NEXT_C_HEADERS
+#include_next <stdlib.h>
+#undef _GLIBCXX_INCLUDE_NEXT_C_HEADERS
 
 // Get rid of those macros defined in <stdlib.h> in lieu of real functions.
 #undef abort
@@ -111,6 +115,8 @@ namespace std
 #undef wcstombs
 #undef wctomb
 
+extern "C++"
+{
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
@@ -174,15 +180,28 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   abs(long long __x) { return __builtin_llabs (__x); }
 #endif
 
-#if !defined(__STRICT_ANSI__) && defined(_GLIBCXX_USE_INT128)
-  inline __int128
-  abs(__int128 __x) { return __x >= 0 ? __x : -__x; }
+#if defined(__GLIBCXX_TYPE_INT_N_0)
+  inline __GLIBCXX_TYPE_INT_N_0
+  abs(__GLIBCXX_TYPE_INT_N_0 __x) { return __x >= 0 ? __x : -__x; }
 #endif
+#if defined(__GLIBCXX_TYPE_INT_N_1)
+  inline __GLIBCXX_TYPE_INT_N_1
+  abs(__GLIBCXX_TYPE_INT_N_1 __x) { return __x >= 0 ? __x : -__x; }
+#endif
+#if defined(__GLIBCXX_TYPE_INT_N_2)
+  inline __GLIBCXX_TYPE_INT_N_2
+  abs(__GLIBCXX_TYPE_INT_N_2 __x) { return __x >= 0 ? __x : -__x; }
+#endif
+#if defined(__GLIBCXX_TYPE_INT_N_3)
+  inline __GLIBCXX_TYPE_INT_N_3
+  abs(__GLIBCXX_TYPE_INT_N_3 __x) { return __x >= 0 ? __x : -__x; }
+#endif
+
 
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
 
-#if _GLIBCXX_USE_C99
+#if _GLIBCXX_USE_C99_STDLIB
 
 #undef _Exit
 #undef llabs
@@ -253,7 +272,9 @@ namespace std
   using ::__gnu_cxx::strtold;
 } // namespace std
 
-#endif // _GLIBCXX_USE_C99
+#endif // _GLIBCXX_USE_C99_STDLIB
+
+} // extern "C++"
 
 #endif // !_GLIBCXX_HOSTED
 

@@ -1,5 +1,5 @@
 ;; Predicate definitions for MIPS.
-;; Copyright (C) 2004-2014 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2016 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -32,6 +32,10 @@
 (define_predicate "arith_operand"
   (ior (match_operand 0 "const_arith_operand")
        (match_operand 0 "register_operand")))
+
+(define_predicate "const_immlsa_operand"
+  (and (match_code "const_int")
+         (match_test "IN_RANGE (INTVAL (op), 1, 4)")))
 
 (define_predicate "const_uimm6_operand"
   (and (match_code "const_int")
@@ -471,7 +475,18 @@
   (match_code "eq,ne,lt,ltu,ge,geu"))
 
 (define_predicate "order_operator"
-  (match_code "lt,ltu,le,leu,ge,geu,gt,gtu"))
+  (match_code "lt,ltu,le,leu,ge,geu,gt,gtu")
+{
+  if (XEXP (op, 1) == const0_rtx)
+    return true;
+
+  if (TARGET_CB_MAYBE
+      && (GET_CODE (op) == LT || GET_CODE (op) == LTU
+	  || GET_CODE (op) == GE || GET_CODE (op) == GEU))
+    return true;
+
+  return false;
+})
 
 ;; For NE, cstore uses sltu instructions in which the first operand is $0.
 ;; This isn't possible in mips16 code.

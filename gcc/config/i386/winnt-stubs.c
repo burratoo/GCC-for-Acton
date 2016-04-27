@@ -1,6 +1,6 @@
 /* Dummy subroutines for language-specific support on Windows.
    Contributed by Danny Smith (dannysmith@users.sourceforge.net)
-   Copyright (C) 2005-2014 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -21,16 +21,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "output.h"
-#include "tree.h"
-#include "flags.h"
-#include "tm_p.h"
-#include "diagnostic-core.h"
-#include "hashtab.h"
 
 bool
 i386_pe_type_dllimport_p (tree)

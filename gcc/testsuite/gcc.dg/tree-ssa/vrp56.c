@@ -26,6 +26,7 @@ struct basic_block_def
 {
   VEC_edge_gc *succs;
 };
+void foo (void);
 
 unsigned char
 cleanup_empty_eh (basic_block bb)
@@ -38,5 +39,4 @@ cleanup_empty_eh (basic_block bb)
     }
 }
 /* { dg-final { scan-tree-dump-times "Threaded" 1 "vrp1"} } */
-/* { dg-final { cleanup-tree-dump "vrp1" } } */
 

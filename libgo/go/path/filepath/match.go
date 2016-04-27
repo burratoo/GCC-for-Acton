@@ -16,7 +16,7 @@ import (
 // ErrBadPattern indicates a globbing pattern was malformed.
 var ErrBadPattern = errors.New("syntax error in pattern")
 
-// Match returns true if name matches the shell file name pattern.
+// Match reports whether name matches the shell file name pattern.
 // The pattern syntax is:
 //
 //	pattern:
@@ -228,6 +228,9 @@ func getEsc(chunk string) (r rune, nchunk string, err error) {
 // as in Match. The pattern may describe hierarchical names such as
 // /usr/*/bin/ed (assuming the Separator is '/').
 //
+// Glob ignores file system errors such as I/O errors reading directories.
+// The only possible returned error is ErrBadPattern, when pattern
+// is malformed.
 func Glob(pattern string) (matches []string, err error) {
 	if !hasMeta(pattern) {
 		if _, err = os.Lstat(pattern); err != nil {
@@ -283,10 +286,7 @@ func glob(dir, pattern string, matches []string) (m []string, e error) {
 	}
 	defer d.Close()
 
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return
-	}
+	names, _ := d.Readdirnames(-1)
 	sort.Strings(names)
 
 	for _, n := range names {
@@ -301,7 +301,7 @@ func glob(dir, pattern string, matches []string) (m []string, e error) {
 	return
 }
 
-// hasMeta returns true if path contains any of the magic characters
+// hasMeta reports whether path contains any of the magic characters
 // recognized by Match.
 func hasMeta(path string) bool {
 	// TODO(niemeyer): Should other magic characters be added here?

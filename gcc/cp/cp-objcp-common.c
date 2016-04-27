@@ -1,5 +1,5 @@
 /* Some code common to C++ and ObjC++ front ends.
-   Copyright (C) 2004-2014 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
@@ -21,18 +21,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
 #include "cp-tree.h"
-#include "c-family/c-common.h"
-#include "langhooks.h"
-#include "langhooks-def.h"
-#include "diagnostic.h"
-#include "debug.h"
-#include "cxx-pretty-print.h"
 #include "cp-objcp-common.h"
-
-#include <new>                       // For placement new.
 
 /* Special routine to get the alias set for C++.  */
 
@@ -53,7 +43,7 @@ cxx_get_alias_set (tree t)
   return c_common_get_alias_set (t);
 }
 
-/* Called from check_global_declarations.  */
+/* Called from check_global_declaration.  */
 
 bool
 cxx_warn_unused_global_decl (const_tree decl)
@@ -61,10 +51,6 @@ cxx_warn_unused_global_decl (const_tree decl)
   if (TREE_CODE (decl) == FUNCTION_DECL && DECL_DECLARED_INLINE_P (decl))
     return false;
   if (DECL_IN_SYSTEM_HEADER (decl))
-    return false;
-
-  /* Const variables take the place of #defines in C++.  */
-  if (VAR_P (decl) && TREE_READONLY (decl))
     return false;
 
   return true;
@@ -101,6 +87,8 @@ cp_tree_size (enum tree_code code)
 
     case TEMPLATE_INFO:         return sizeof (struct tree_template_info);
 
+    case CONSTRAINT_INFO:       return sizeof (struct tree_constraint_info);
+
     case USERDEF_LITERAL:	return sizeof (struct tree_userdef_literal);
 
     case TEMPLATE_DECL:		return sizeof (struct tree_template_decl);
@@ -132,22 +120,6 @@ cp_var_mod_type_p (tree type, tree fn)
   return false;
 }
 
-/* Construct a C++-aware pretty-printer for CONTEXT.  It is assumed
-   that CONTEXT->printer is an already constructed basic pretty_printer.  */
-void
-cxx_initialize_diagnostics (diagnostic_context *context)
-{
-  c_common_initialize_diagnostics (context);
-
-  pretty_printer *base = context->printer;
-  cxx_pretty_printer *pp = XNEW (cxx_pretty_printer);
-  context->printer = new (pp) cxx_pretty_printer ();
-
-  /* It is safe to free this object because it was previously XNEW()'d.  */
-  base->~pretty_printer ();
-  XDELETE (base);
-}
-
 /* This compares two types for equivalence ("compatible" in C-based languages).
    This routine should only return 1 if it is sure.  It should not be used
    in contexts where erroneously returning 0 causes problems.  */
@@ -168,6 +140,16 @@ cp_function_decl_explicit_p (tree decl)
 	  && DECL_NONCONVERTING_P (decl));
 }
 
+/* Return true if DECL is deleted special member function.  */
+
+bool
+cp_function_decl_deleted_p (tree decl)
+{
+  return (decl
+	  && DECL_LANG_SPECIFIC (STRIP_TEMPLATE (decl))
+	  && DECL_DELETED_FN (decl));
+}
+
 /* Stubs to keep c-opts.c happy.  */
 void
 push_file_scope (void)
@@ -186,8 +168,8 @@ has_c_linkage (const_tree decl)
   return DECL_EXTERN_C_P (decl);
 }
 
-static GTY ((if_marked ("tree_decl_map_marked_p"), param_is (struct tree_decl_map)))
-     htab_t shadowed_var_for_decl;
+static GTY ((cache))
+     hash_table<tree_decl_map_cache_hasher> *shadowed_var_for_decl;
 
 /* Lookup a shadowed var for FROM, and return it if we find one.  */
 
@@ -197,8 +179,7 @@ decl_shadowed_for_var_lookup (tree from)
   struct tree_decl_map *h, in;
   in.base.from = from;
 
-  h = (struct tree_decl_map *)
-      htab_find_with_hash (shadowed_var_for_decl, &in, DECL_UID (from));
+  h = shadowed_var_for_decl->find_with_hash (&in, DECL_UID (from));
   if (h)
     return h->to;
   return NULL_TREE;
@@ -210,21 +191,18 @@ void
 decl_shadowed_for_var_insert (tree from, tree to)
 {
   struct tree_decl_map *h;
-  void **loc;
 
   h = ggc_alloc<tree_decl_map> ();
   h->base.from = from;
   h->to = to;
-  loc = htab_find_slot_with_hash (shadowed_var_for_decl, h, DECL_UID (from),
-				  INSERT);
-  *(struct tree_decl_map **) loc = h;
+  *shadowed_var_for_decl->find_slot_with_hash (h, DECL_UID (from), INSERT) = h;
 }
 
 void
 init_shadowed_var_for_decl (void)
 {
-  shadowed_var_for_decl = htab_create_ggc (512, tree_decl_map_hash,
-					   tree_decl_map_eq, 0);
+  shadowed_var_for_decl
+    = hash_table<tree_decl_map_cache_hasher>::create_ggc (512);
 }
 
 /* Return true if stmt can fall through.  Used by block_may_fallthru
@@ -251,6 +229,7 @@ cp_common_init_ts (void)
 {
   MARK_TS_DECL_NON_COMMON (USING_DECL);
   MARK_TS_DECL_COMMON (TEMPLATE_DECL);
+  MARK_TS_DECL_COMMON (WILDCARD_DECL);
 
   MARK_TS_COMMON (TEMPLATE_TEMPLATE_PARM);
   MARK_TS_COMMON (TEMPLATE_TYPE_PARM);
@@ -322,6 +301,11 @@ cp_common_init_ts (void)
   MARK_TS_TYPED (LAMBDA_EXPR);
   MARK_TS_TYPED (CTOR_INITIALIZER);
   MARK_TS_TYPED (ARRAY_NOTATION_REF);
+  MARK_TS_TYPED (REQUIRES_EXPR);
+  MARK_TS_TYPED (UNARY_LEFT_FOLD_EXPR);
+  MARK_TS_TYPED (UNARY_RIGHT_FOLD_EXPR);
+  MARK_TS_TYPED (BINARY_LEFT_FOLD_EXPR);
+  MARK_TS_TYPED (BINARY_RIGHT_FOLD_EXPR);
 }
 
 #include "gt-cp-cp-objcp-common.h"

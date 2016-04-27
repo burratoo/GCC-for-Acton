@@ -1,5 +1,5 @@
 /* Read and write coverage files, and associated functionality.
-   Copyright (C) 1990-2014 Free Software Foundation, Inc.
+   Copyright (C) 1990-2016 Free Software Foundation, Inc.
    Contributed by James E. Wilson, UC Berkeley/Cygnus Support;
    based on some ideas from Dain Samples of UC Berkeley.
    Further mangling by Bob Manson, Cygnus Support.
@@ -27,36 +27,28 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "target.h"
 #include "rtl.h"
 #include "tree.h"
-#include "stringpool.h"
-#include "stor-layout.h"
-#include "flags.h"
-#include "output.h"
-#include "regs.h"
-#include "expr.h"
-#include "function.h"
-#include "basic-block.h"
-#include "toplev.h"
+#include "tree-pass.h"
 #include "tm_p.h"
-#include "ggc.h"
+#include "stringpool.h"
+#include "cgraph.h"
 #include "coverage.h"
+#include "diagnostic-core.h"
+#include "fold-const.h"
+#include "stor-layout.h"
+#include "output.h"
+#include "toplev.h"
 #include "langhooks.h"
-#include "hash-table.h"
 #include "tree-iterator.h"
 #include "context.h"
 #include "pass_manager.h"
-#include "tree-pass.h"
-#include "cgraph.h"
-#include "dumpfile.h"
-#include "diagnostic-core.h"
 #include "intl.h"
-#include "filenames.h"
-#include "target.h"
 #include "params.h"
+#include "auto-profile.h"
 
-#include "gcov-io.h"
 #include "gcov-io.c"
 
 struct GTY((chain_next ("%h.next"))) coverage_data
@@ -70,7 +62,7 @@ struct GTY((chain_next ("%h.next"))) coverage_data
 };
 
 /* Counts information for a function.  */
-typedef struct counts_entry
+struct counts_entry : pointer_hash <counts_entry>
 {
   /* We hash by  */
   unsigned ident;
@@ -83,12 +75,10 @@ typedef struct counts_entry
   struct gcov_ctr_summary summary;
 
   /* hash_table support.  */
-  typedef counts_entry value_type;
-  typedef counts_entry compare_type;
-  static inline hashval_t hash (const value_type *);
-  static int equal (const value_type *, const compare_type *);
-  static void remove (value_type *);
-} counts_entry_t;
+  static inline hashval_t hash (const counts_entry *);
+  static int equal (const counts_entry *, const counts_entry *);
+  static void remove (counts_entry *);
+};
 
 static GTY(()) struct coverage_data *functions_head = 0;
 static struct coverage_data **functions_tail = &functions_head;
@@ -152,7 +142,7 @@ static void coverage_obj_finish (vec<constructor_elt, va_gc> *);
 tree
 get_gcov_type (void)
 {
-  enum machine_mode mode = smallest_mode_for_size (GCOV_TYPE_SIZE, MODE_INT);
+  machine_mode mode = smallest_mode_for_size (GCOV_TYPE_SIZE, MODE_INT);
   return lang_hooks.types.type_for_mode (mode, false);
 }
 
@@ -161,25 +151,24 @@ get_gcov_type (void)
 static tree
 get_gcov_unsigned_t (void)
 {
-  enum machine_mode mode = smallest_mode_for_size (32, MODE_INT);
+  machine_mode mode = smallest_mode_for_size (32, MODE_INT);
   return lang_hooks.types.type_for_mode (mode, true);
 }
 
 inline hashval_t
-counts_entry::hash (const value_type *entry)
+counts_entry::hash (const counts_entry *entry)
 {
   return entry->ident * GCOV_COUNTERS + entry->ctr;
 }
 
 inline int
-counts_entry::equal (const value_type *entry1,
-		     const compare_type *entry2)
+counts_entry::equal (const counts_entry *entry1, const counts_entry *entry2)
 {
   return entry1->ident == entry2->ident && entry1->ctr == entry2->ctr;
 }
 
 inline void
-counts_entry::remove (value_type *entry)
+counts_entry::remove (counts_entry *entry)
 {
   free (entry->counts);
   free (entry);
@@ -275,7 +264,7 @@ read_counts_file (void)
 	}
       else if (GCOV_TAG_IS_COUNTER (tag) && fn_ident)
 	{
-	  counts_entry_t **slot, *entry, elt;
+	  counts_entry **slot, *entry, elt;
 	  unsigned n_counts = GCOV_TAG_COUNTER_NUM (length);
 	  unsigned ix;
 
@@ -286,7 +275,7 @@ read_counts_file (void)
 	  entry = *slot;
 	  if (!entry)
 	    {
-	      *slot = entry = XCNEW (counts_entry_t);
+	      *slot = entry = XCNEW (counts_entry);
 	      entry->ident = fn_ident;
 	      entry->ctr = elt.ctr;
 	      entry->lineno_checksum = lineno_checksum;
@@ -354,7 +343,7 @@ get_coverage_counts (unsigned counter, unsigned expected,
                      unsigned cfg_checksum, unsigned lineno_checksum,
 		     const struct gcov_ctr_summary **summary)
 {
-  counts_entry_t *entry, elt;
+  counts_entry *entry, elt;
 
   /* No hash table, no counts.  */
   if (!counts_hash)
@@ -756,17 +745,13 @@ build_var (tree fn_decl, tree type, int counter)
   else
     sprintf (buf, "__gcov%u_", counter);
   len = strlen (buf);
-#ifndef NO_DOT_IN_LABEL
-  buf[len - 1] = '.';
-#elif !defined NO_DOLLAR_IN_LABEL
-  buf[len - 1] = '$';
-#endif
+  buf[len - 1] = symbol_table::symbol_suffix_separator ();
   memcpy (buf + len, fn_name, fn_name_len + 1);
   DECL_NAME (var) = get_identifier (buf);
   TREE_STATIC (var) = 1;
   TREE_ADDRESSABLE (var) = 1;
   DECL_NONALIASED (var) = 1;
-  DECL_ALIGN (var) = TYPE_ALIGN (type);
+  SET_DECL_ALIGN (var, TYPE_ALIGN (type));
 
   return var;
 }
@@ -1090,8 +1075,8 @@ coverage_obj_init (void)
   if (!prg_ctr_mask)
     return false;
 
-  if (cgraph_dump_file)
-    fprintf (cgraph_dump_file, "Using data file %s\n", da_file_name);
+  if (symtab->dump_file)
+    fprintf (symtab->dump_file, "Using data file %s\n", da_file_name);
 
   /* Prune functions.  */
   for (fn_prev = &functions_head; (fn = *fn_prev);)
@@ -1111,9 +1096,10 @@ coverage_obj_init (void)
   /* Build the info and fn_info types.  These are mutually recursive.  */
   gcov_info_type = lang_hooks.types.make_type (RECORD_TYPE);
   gcov_fn_info_type = lang_hooks.types.make_type (RECORD_TYPE);
+  build_fn_info_type (gcov_fn_info_type, n_counters, gcov_info_type);
+  gcov_info_type = lang_hooks.types.make_type (RECORD_TYPE);
   gcov_fn_info_ptr_type = build_pointer_type
     (build_qualified_type (gcov_fn_info_type, TYPE_QUAL_CONST));
-  build_fn_info_type (gcov_fn_info_type, n_counters, gcov_info_type);
   build_info_type (gcov_info_type, gcov_fn_info_ptr_type);
   
   /* Build the gcov info var, this is referred to in its own
@@ -1208,7 +1194,9 @@ coverage_init (const char *filename)
 
   bbg_file_stamp = local_tick;
   
-  if (flag_branch_probabilities)
+  if (flag_auto_profile)
+    read_autofdo_file ();
+  else if (flag_branch_probabilities)
     read_counts_file ();
 
   /* Name of bbg file.  */

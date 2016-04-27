@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:generate go run gen.go -full -output md5block.go
+
 // Package md5 implements the MD5 hash algorithm as defined in RFC 1321.
 package md5
 
@@ -60,16 +62,10 @@ func (d *digest) Write(p []byte) (nn int, err error) {
 	nn = len(p)
 	d.len += uint64(nn)
 	if d.nx > 0 {
-		n := len(p)
-		if n > chunk-d.nx {
-			n = chunk - d.nx
-		}
-		for i := 0; i < n; i++ {
-			d.x[d.nx+i] = p[i]
-		}
+		n := copy(d.x[d.nx:], p)
 		d.nx += n
 		if d.nx == chunk {
-			block(d, d.x[0:chunk])
+			block(d, d.x[:])
 			d.nx = 0
 		}
 		p = p[n:]

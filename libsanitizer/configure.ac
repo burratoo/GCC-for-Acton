@@ -5,6 +5,8 @@ AC_PREREQ([2.64])
 AC_INIT(package-unused, version-unused, libsanitizer)
 AC_CONFIG_SRCDIR([include/sanitizer/common_interface_defs.h])
 
+AM_ENABLE_MULTILIB(, ..)
+
 AC_MSG_CHECKING([for --enable-version-specific-runtime-libs])
 AC_ARG_ENABLE(version-specific-runtime-libs,
 [  --enable-version-specific-runtime-libs    Specify that runtime libraries should be installed in a compiler-specific directory ],
@@ -26,7 +28,6 @@ AC_SUBST(target_alias)
 GCC_LIBSTDCXX_RAW_CXX_FLAGS
 
 AM_INIT_AUTOMAKE(foreign no-dist)
-AM_ENABLE_MULTILIB(, ..)
 AM_MAINTAINER_MODE
 
 # Calculate toolexeclibdir
@@ -95,7 +96,17 @@ AM_CONDITIONAL(LSAN_SUPPORTED, [test "x$LSAN_SUPPORTED" = "xyes"])
 AC_CHECK_FUNCS(clock_getres clock_gettime clock_settime)
 
 # Common libraries that we need to link against for all sanitizer libs.
-link_sanitizer_common='-lpthread -ldl -lm'
+link_sanitizer_common='-lpthread -lm'
+
+# At least for glibc, shm_open is in librt.  But don't pull that
+# in if it still doesn't give us the function we want.  This
+# test is copied from libgomp.
+AC_CHECK_LIB(rt, shm_open,
+  [link_sanitizer_common="-lrt $link_sanitizer_common"])
+
+# Do a configure time check for -ldl
+AC_CHECK_LIB(dl, dlsym,
+  [link_sanitizer_common="-ldl $link_sanitizer_common"])
 
 # Set up the set of additional libraries that we need to link against for libasan.
 link_libasan=$link_sanitizer_common
@@ -113,16 +124,15 @@ AC_SUBST(link_libubsan)
 link_liblsan=$link_sanitizer_common
 AC_SUBST(link_liblsan)
 
+
 # At least for glibc, clock_gettime is in librt.  But don't pull that
 # in if it still doesn't give us the function we want.  This
 # test is copied from libgomp.
-if test $ac_cv_func_clock_gettime = no; then
-  AC_CHECK_LIB(rt, clock_gettime,
-    [link_libasan="-lrt $link_libasan"
+AC_CHECK_LIB(rt, clock_gettime,
+  [link_libasan="-lrt $link_libasan"
 link_libtsan="-lrt $link_libtsan"
 # Other sanitizers do not override clock_* API
 ])
-fi
 
 case "$host" in
   *-*-darwin*) MAC_INTERPOSE=true ; enable_static=no ;;
@@ -311,6 +321,48 @@ if test "$have_getexecname" = "yes"; then
   AC_DEFINE(HAVE_GETEXECNAME, 1, [Define if getexecname is available.])
 fi
 
+# Check for rpc/xdr.h
+AC_CHECK_HEADERS(rpc/xdr.h)
+if test x"$ac_cv_header_rpc_xdr_h" = xyes; then
+  rpc_defs="$rpc_defs -DHAVE_RPC_XDR_H=1"
+else
+  rpc_defs="$rpc_defs -DHAVE_RPC_XDR_H=0"
+fi
+
+# Check for tirpc/rpc/xdr.h
+AC_CHECK_HEADERS(tirpc/rpc/xdr.h)
+if test x"$ac_cv_header_tirpc_rpc_xdr_h" = xyes; then
+  rpc_defs="$rpc_defs -DHAVE_TIRPC_RPC_XDR_H=1"
+else
+  rpc_defs="$rpc_defs -DHAVE_TIRPC_RPC_XDR_H=0"
+fi
+
+AC_SUBST([RPC_DEFS], [$rpc_defs])
+
+dnl If this file is processed by autoconf-2.67 or later then the CPPFLAGS
+dnl "-o conftest.iii" can disappear, conftest.iii be replaced with
+dnl conftest.i in the sed command line, and the rm deleted.
+dnl Not all cpp's accept -o, and gcc -E does not accept a second file
+dnl argument as the output file.
+AC_CACHE_CHECK([obstack params],
+[libsanitizer_cv_sys_obstack],
+[save_cppflags=$CPPFLAGS
+CPPFLAGS="-I${srcdir}/../include -o conftest.iii $CPPFLAGS"
+AC_PREPROC_IFELSE([AC_LANG_SOURCE([
+#include "obstack.h"
+#ifdef _OBSTACK_SIZE_T
+_OBSTACK_SIZE_T
+#else
+int
+#endif
+])],
+[libsanitizer_cv_sys_obstack=`sed -e '/^#/d;/^[	 ]*$/d' conftest.iii | sed -e '$!d;s/size_t/SIZE_T/'`],
+[libsanitizer_cv_sys_obstack=int])
+CPPFLAGS=$save_cppflags
+rm -f conftest.iii
+])
+AC_SUBST([OBSTACK_DEFS], [-D_OBSTACK_SIZE_T=\"$libsanitizer_cv_sys_obstack\"])
+
 AM_CONDITIONAL(LIBBACKTRACE_SUPPORTED,
 	       [test "x${BACKTRACE_SUPPORTED}x${BACKTRACE_USES_MALLOC}" = "x1x0"])
 
@@ -345,5 +397,7 @@ _EOF
     AS_UNSET([ml_norecursion])
 ])
 fi
+
+AC_SUBST([TSAN_TARGET_DEPENDENT_OBJECTS])
 
 AC_OUTPUT

@@ -6,31 +6,45 @@ package jpeg
 
 import (
 	"image"
-	"io"
 )
 
 // makeImg allocates and initializes the destination image.
-func (d *decoder) makeImg(h0, v0, mxx, myy int) {
-	if d.nComp == nGrayComponent {
+func (d *decoder) makeImg(mxx, myy int) {
+	if d.nComp == 1 {
 		m := image.NewGray(image.Rect(0, 0, 8*mxx, 8*myy))
 		d.img1 = m.SubImage(image.Rect(0, 0, d.width, d.height)).(*image.Gray)
 		return
 	}
+
+	h0 := d.comp[0].h
+	v0 := d.comp[0].v
+	hRatio := h0 / d.comp[1].h
+	vRatio := v0 / d.comp[1].v
 	var subsampleRatio image.YCbCrSubsampleRatio
-	switch {
-	case h0 == 1 && v0 == 1:
+	switch hRatio<<4 | vRatio {
+	case 0x11:
 		subsampleRatio = image.YCbCrSubsampleRatio444
-	case h0 == 1 && v0 == 2:
+	case 0x12:
 		subsampleRatio = image.YCbCrSubsampleRatio440
-	case h0 == 2 && v0 == 1:
+	case 0x21:
 		subsampleRatio = image.YCbCrSubsampleRatio422
-	case h0 == 2 && v0 == 2:
+	case 0x22:
 		subsampleRatio = image.YCbCrSubsampleRatio420
+	case 0x41:
+		subsampleRatio = image.YCbCrSubsampleRatio411
+	case 0x42:
+		subsampleRatio = image.YCbCrSubsampleRatio410
 	default:
 		panic("unreachable")
 	}
 	m := image.NewYCbCr(image.Rect(0, 0, 8*h0*mxx, 8*v0*myy), subsampleRatio)
 	d.img3 = m.SubImage(image.Rect(0, 0, d.width, d.height)).(*image.YCbCr)
+
+	if d.nComp == 4 {
+		h3, v3 := d.comp[3].h, d.comp[3].v
+		d.blackPix = make([]byte, 8*h3*mxx*8*v3*myy)
+		d.blackStride = 8 * h3 * mxx
+	}
 }
 
 // Specified in section B.2.3.
@@ -41,23 +55,23 @@ func (d *decoder) processSOS(n int) error {
 	if n < 6 || 4+2*d.nComp < n || n%2 != 0 {
 		return FormatError("SOS has wrong length")
 	}
-	_, err := io.ReadFull(d.r, d.tmp[:n])
-	if err != nil {
+	if err := d.readFull(d.tmp[:n]); err != nil {
 		return err
 	}
 	nComp := int(d.tmp[0])
 	if n != 4+2*nComp {
 		return FormatError("SOS length inconsistent with number of components")
 	}
-	var scan [nColorComponent]struct {
+	var scan [maxComponents]struct {
 		compIndex uint8
 		td        uint8 // DC table selector.
 		ta        uint8 // AC table selector.
 	}
+	totalHV := 0
 	for i := 0; i < nComp; i++ {
 		cs := d.tmp[1+2*i] // Component selector.
 		compIndex := -1
-		for j, comp := range d.comp {
+		for j, comp := range d.comp[:d.nComp] {
 			if cs == comp.c {
 				compIndex = j
 			}
@@ -66,8 +80,31 @@ func (d *decoder) processSOS(n int) error {
 			return FormatError("unknown component selector")
 		}
 		scan[i].compIndex = uint8(compIndex)
+		// Section B.2.3 states that "the value of Cs_j shall be different from
+		// the values of Cs_1 through Cs_(j-1)". Since we have previously
+		// verified that a frame's component identifiers (C_i values in section
+		// B.2.2) are unique, it suffices to check that the implicit indexes
+		// into d.comp are unique.
+		for j := 0; j < i; j++ {
+			if scan[i].compIndex == scan[j].compIndex {
+				return FormatError("repeated component selector")
+			}
+		}
+		totalHV += d.comp[compIndex].h * d.comp[compIndex].v
+
 		scan[i].td = d.tmp[2+2*i] >> 4
+		if scan[i].td > maxTh {
+			return FormatError("bad Td value")
+		}
 		scan[i].ta = d.tmp[2+2*i] & 0x0f
+		if scan[i].ta > maxTh {
+			return FormatError("bad Ta value")
+		}
+	}
+	// Section B.2.3 states that if there is more than one component then the
+	// total H*V values in a scan must be <= 10.
+	if d.nComp > 1 && totalHV > 10 {
+		return FormatError("total sampling factors too large")
 	}
 
 	// zigStart and zigEnd are the spectral selection bounds.
@@ -108,7 +145,7 @@ func (d *decoder) processSOS(n int) error {
 	mxx := (d.width + 8*h0 - 1) / (8 * h0)
 	myy := (d.height + 8*v0 - 1) / (8 * v0)
 	if d.img1 == nil && d.img3 == nil {
-		d.makeImg(h0, v0, mxx, myy)
+		d.makeImg(mxx, myy)
 	}
 	if d.progressive {
 		for i := 0; i < nComp; i++ {
@@ -119,26 +156,25 @@ func (d *decoder) processSOS(n int) error {
 		}
 	}
 
-	d.b = bits{}
+	d.bits = bits{}
 	mcu, expectedRST := 0, uint8(rst0Marker)
 	var (
 		// b is the decoded coefficients, in natural (not zig-zag) order.
 		b  block
-		dc [nColorComponent]int32
-		// mx0 and my0 are the location of the current (in terms of 8x8 blocks).
-		// For example, with 4:2:0 chroma subsampling, the block whose top left
-		// pixel co-ordinates are (16, 8) is the third block in the first row:
-		// mx0 is 2 and my0 is 0, even though the pixel is in the second MCU.
-		// TODO(nigeltao): rename mx0 and my0 to bx and by?
-		mx0, my0   int
+		dc [maxComponents]int32
+		// bx and by are the location of the current block, in units of 8x8
+		// blocks: the third block in the first row has (bx, by) = (2, 0).
+		bx, by     int
 		blockCount int
 	)
 	for my := 0; my < myy; my++ {
 		for mx := 0; mx < mxx; mx++ {
 			for i := 0; i < nComp; i++ {
 				compIndex := scan[i].compIndex
+				hi := d.comp[compIndex].h
+				vi := d.comp[compIndex].v
 				qt := &d.quant[d.comp[compIndex].tq]
-				for j := 0; j < d.comp[compIndex].h*d.comp[compIndex].v; j++ {
+				for j := 0; j < hi*vi; j++ {
 					// The blocks are traversed one MCU at a time. For 4:2:0 chroma
 					// subsampling, there are four Y 8x8 blocks in every 16x16 MCU.
 					//
@@ -165,26 +201,21 @@ func (d *decoder) processSOS(n int) error {
 					//	0 1 2
 					//	3 4 5
 					if nComp != 1 {
-						mx0, my0 = d.comp[compIndex].h*mx, d.comp[compIndex].v*my
-						if h0 == 1 {
-							my0 += j
-						} else {
-							mx0 += j % 2
-							my0 += j / 2
-						}
+						bx = hi*mx + j%hi
+						by = vi*my + j/hi
 					} else {
-						q := mxx * d.comp[compIndex].h
-						mx0 = blockCount % q
-						my0 = blockCount / q
+						q := mxx * hi
+						bx = blockCount % q
+						by = blockCount / q
 						blockCount++
-						if mx0*8 >= d.width || my0*8 >= d.height {
+						if bx*8 >= d.width || by*8 >= d.height {
 							continue
 						}
 					}
 
 					// Load the previous partially decoded coefficients, if applicable.
 					if d.progressive {
-						b = d.progCoeffs[compIndex][my0*mxx*d.comp[compIndex].h+mx0]
+						b = d.progCoeffs[compIndex][by*mxx*hi+bx]
 					} else {
 						b = block{}
 					}
@@ -217,8 +248,9 @@ func (d *decoder) processSOS(n int) error {
 							d.eobRun--
 						} else {
 							// Decode the AC coefficients, as specified in section F.2.2.2.
+							huff := &d.huff[acTable][scan[i].ta]
 							for ; zig <= zigEnd; zig++ {
-								value, err := d.decodeHuffman(&d.huff[acTable][scan[i].ta])
+								value, err := d.decodeHuffman(huff)
 								if err != nil {
 									return err
 								}
@@ -238,7 +270,7 @@ func (d *decoder) processSOS(n int) error {
 									if val0 != 0x0f {
 										d.eobRun = uint16(1 << val0)
 										if val0 != 0 {
-											bits, err := d.decodeBits(int(val0))
+											bits, err := d.decodeBits(int32(val0))
 											if err != nil {
 												return err
 											}
@@ -256,7 +288,7 @@ func (d *decoder) processSOS(n int) error {
 					if d.progressive {
 						if zigEnd != blockSize-1 || al != 0 {
 							// We haven't completely decoded this 8x8 block. Save the coefficients.
-							d.progCoeffs[compIndex][my0*mxx*d.comp[compIndex].h+mx0] = b
+							d.progCoeffs[compIndex][by*mxx*hi+bx] = b
 							// At this point, we could execute the rest of the loop body to dequantize and
 							// perform the inverse DCT, to save early stages of a progressive image to the
 							// *image.YCbCr buffers (the whole point of progressive encoding), but in Go,
@@ -272,16 +304,18 @@ func (d *decoder) processSOS(n int) error {
 					}
 					idct(&b)
 					dst, stride := []byte(nil), 0
-					if d.nComp == nGrayComponent {
-						dst, stride = d.img1.Pix[8*(my0*d.img1.Stride+mx0):], d.img1.Stride
+					if d.nComp == 1 {
+						dst, stride = d.img1.Pix[8*(by*d.img1.Stride+bx):], d.img1.Stride
 					} else {
 						switch compIndex {
 						case 0:
-							dst, stride = d.img3.Y[8*(my0*d.img3.YStride+mx0):], d.img3.YStride
+							dst, stride = d.img3.Y[8*(by*d.img3.YStride+bx):], d.img3.YStride
 						case 1:
-							dst, stride = d.img3.Cb[8*(my0*d.img3.CStride+mx0):], d.img3.CStride
+							dst, stride = d.img3.Cb[8*(by*d.img3.CStride+bx):], d.img3.CStride
 						case 2:
-							dst, stride = d.img3.Cr[8*(my0*d.img3.CStride+mx0):], d.img3.CStride
+							dst, stride = d.img3.Cr[8*(by*d.img3.CStride+bx):], d.img3.CStride
+						case 3:
+							dst, stride = d.blackPix[8*(by*d.blackStride+bx):], d.blackStride
 						default:
 							return UnsupportedError("too many components")
 						}
@@ -308,8 +342,7 @@ func (d *decoder) processSOS(n int) error {
 			if d.ri > 0 && mcu%d.ri == 0 && mcu < mxx*myy {
 				// A more sophisticated decoder could use RST[0-7] markers to resynchronize from corrupt input,
 				// but this one assumes well-formed input, and hence the restart marker follows immediately.
-				_, err := io.ReadFull(d.r, d.tmp[0:2])
-				if err != nil {
+				if err := d.readFull(d.tmp[:2]); err != nil {
 					return err
 				}
 				if d.tmp[0] != 0xff || d.tmp[1] != expectedRST {
@@ -320,9 +353,9 @@ func (d *decoder) processSOS(n int) error {
 					expectedRST = rst0Marker
 				}
 				// Reset the Huffman decoder.
-				d.b = bits{}
+				d.bits = bits{}
 				// Reset the DC components, as per section F.2.1.3.1.
-				dc = [nColorComponent]int32{}
+				dc = [maxComponents]int32{}
 				// Reset the progressive decoder state, as per section G.1.2.2.
 				d.eobRun = 0
 			}
@@ -368,7 +401,7 @@ func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) er
 				if val0 != 0x0f {
 					d.eobRun = uint16(1 << val0)
 					if val0 != 0 {
-						bits, err := d.decodeBits(int(val0))
+						bits, err := d.decodeBits(int32(val0))
 						if err != nil {
 							return err
 						}

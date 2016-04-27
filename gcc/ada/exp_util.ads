@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -238,6 +238,10 @@ package Exp_Util is
    --  must be a free statement. If flag Is_Allocate is set, the generated
    --  routine is allocate, deallocate otherwise.
 
+   procedure Build_Procedure_Form (N : Node_Id);
+   --  Create a procedure declaration which emulates the behavior of a function
+   --  that returns an array type, for C-compatible generation.
+
    function Build_Runtime_Call (Loc : Source_Ptr; RE : RE_Id) return Node_Id;
    --  Build an N_Procedure_Call_Statement calling the given runtime entity.
    --  The call has no parameters. The first argument provides the location
@@ -311,6 +315,11 @@ package Exp_Util is
    --  it is harmless, so it is easier to do it in all cases, rather than
    --  conditionalize it in GNAT 5 or beyond.
 
+   function Containing_Package_With_Ext_Axioms
+     (E : Entity_Id) return Entity_Id;
+   --  Returns the package entity with an external axiomatization containing E,
+   --  if any, or Empty if none.
+
    procedure Convert_To_Actual_Subtype (Exp : Node_Id);
    --  The Etype of an expression is the nominal type of the expression,
    --  not the actual subtype. Often these are the same, but not always.
@@ -367,14 +376,24 @@ package Exp_Util is
    --  following functions allow this behavior to be modified.
 
    function Duplicate_Subexpr_No_Checks
-     (Exp          : Node_Id;
-      Name_Req     : Boolean := False;
-      Renaming_Req : Boolean := False) return Node_Id;
-   --  Identical in effect to Duplicate_Subexpr, except that Remove_Checks
-   --  is called on the result, so that the duplicated expression does not
-   --  include checks. This is appropriate for use when Exp, the original
-   --  expression is unconditionally elaborated before the duplicated
-   --  expression, so that there is no need to repeat any checks.
+     (Exp           : Node_Id;
+      Name_Req      : Boolean   := False;
+      Renaming_Req  : Boolean   := False;
+      Related_Id    : Entity_Id := Empty;
+      Is_Low_Bound  : Boolean   := False;
+      Is_High_Bound : Boolean   := False) return Node_Id;
+   --  Identical in effect to Duplicate_Subexpr, except that Remove_Checks is
+   --  called on the result, so that the duplicated expression does not include
+   --  checks. This is appropriate for use when Exp, the original expression is
+   --  unconditionally elaborated before the duplicated expression, so that
+   --  there is no need to repeat any checks.
+   --
+   --  Related_Id denotes the entity of the context where Expr appears. Flags
+   --  Is_Low_Bound and Is_High_Bound specify whether the expression to check
+   --  is the low or the high bound of a range. These three optional arguments
+   --  signal Remove_Side_Effects to create an external symbol of the form
+   --  Chars (Related_Id)_FIRST/_LAST. For suggested use of these parameters
+   --  see the warning in the body of Sem_Ch3.Process_Range_Expr_In_Decl.
 
    function Duplicate_Subexpr_Move_Checks
      (Exp          : Node_Id;
@@ -430,10 +449,16 @@ package Exp_Util is
      (N             : Node_Id;
       Unc_Type      : Entity_Id;
       Subtype_Indic : Node_Id;
-      Exp           : Node_Id);
+      Exp           : Node_Id;
+      Related_Id    : Entity_Id := Empty);
    --  Build a constrained subtype from the initial value in object
    --  declarations and/or allocations when the type is indefinite (including
-   --  class-wide).
+   --  class-wide). Set Related_Id to request an external name for the subtype
+   --  rather than an internal temporary.
+
+   function Finalize_Address (Typ : Entity_Id) return Entity_Id;
+   --  Locate TSS primitive Finalize_Address in type Typ. Return Empty if the
+   --  subprogram is not available.
 
    function Find_Interface_ADT
      (T     : Entity_Id;
@@ -448,14 +473,19 @@ package Exp_Util is
    --  Ada 2005 (AI-251): Given a type T implementing the interface Iface,
    --  return the record component containing the tag of Iface.
 
+   function Find_Primitive_Operations
+     (T    : Entity_Id;
+      Name : Name_Id) return Node_Id;
+   --  Return a reference to a primitive operation with given name. If
+   --  operation is overloaded, the node carries the corresponding set
+   --  of overloaded interpretations.
+
    function Find_Prim_Op (T : Entity_Id; Name : Name_Id) return Entity_Id;
-   --  Find the first primitive operation of type T whose name is 'Name'.
+   --  Find the first primitive operation of a tagged type T with name Name.
    --  This function allows the use of a primitive operation which is not
-   --  directly visible. If T is a class wide type, then the reference is
-   --  to an operation of the corresponding root type. Raises Program_Error
-   --  exception if no primitive operation is found. This is normally an
-   --  internal error, but in some cases is an expected consequence of
-   --  illegalities elsewhere.
+   --  directly visible. If T is a class wide type, then the reference is to an
+   --  operation of the corresponding root type. It is an error if no primitive
+   --  operation with the given name is found.
 
    function Find_Prim_Op
      (T    : Entity_Id;
@@ -465,16 +495,19 @@ package Exp_Util is
    --  with the indicated suffix). This function allows use of a primitive
    --  operation which is not directly visible. If T is a class wide type,
    --  then the reference is to an operation of the corresponding root type.
-   --  Raises Program_Error exception if no primitive operation is found.
-   --  This is normally an internal error, but in some cases is an expected
-   --  consequence of illegalities elsewhere.
+
+   function Find_Optional_Prim_Op
+     (T : Entity_Id; Name : Name_Id) return Entity_Id;
+   function Find_Optional_Prim_Op
+     (T    : Entity_Id;
+      Name : TSS_Name_Type) return Entity_Id;
+   --  Same as Find_Prim_Op, except returns Empty if not found
 
    function Find_Protection_Object (Scop : Entity_Id) return Entity_Id;
-   --  Traverse the scope stack starting from Scop and look for an entry,
-   --  entry family, or a subprogram that has a Protection_Object and return
-   --  it. Raises Program_Error if no such entity is found since the context
-   --  in which this routine is invoked should always have a protection
-   --  object.
+   --  Traverse the scope stack starting from Scop and look for an entry, entry
+   --  family, or a subprogram that has a Protection_Object and return it. Must
+   --  always return a value since the context in which this routine is invoked
+   --  should always have a protection object.
 
    function Find_Protection_Type (Conc_Typ : Entity_Id) return Entity_Id;
    --  Given a protected type or its corresponding record, find the type of
@@ -487,16 +520,40 @@ package Exp_Util is
    --  be evaluated, for example if N is the right operand of a short circuit
    --  operator.
 
+   function Following_Address_Clause (D : Node_Id) return Node_Id;
+   --  D is the node for an object declaration. This function searches the
+   --  current declarative part to look for an address clause for the object
+   --  being declared, and returns the clause if one is found, returns
+   --  Empty otherwise.
+   --
+   --  Note: this function can be costly and must be invoked with special care.
+   --  Possibly we could introduce a flag at parse time indicating the presence
+   --  of an address clause to speed this up???
+   --
+   --  Note: currently this function does not scan the private part, that seems
+   --  like a potential bug ???
+
    procedure Force_Evaluation
-     (Exp      : Node_Id;
-      Name_Req : Boolean := False);
+     (Exp           : Node_Id;
+      Name_Req      : Boolean   := False;
+      Related_Id    : Entity_Id := Empty;
+      Is_Low_Bound  : Boolean   := False;
+      Is_High_Bound : Boolean   := False);
    --  Force the evaluation of the expression right away. Similar behavior
    --  to Remove_Side_Effects when Variable_Ref is set to TRUE. That is to
-   --  say, it removes the side-effects and captures the values of the
+   --  say, it removes the side effects and captures the values of the
    --  variables. Remove_Side_Effects guarantees that multiple evaluations
    --  of the same expression won't generate multiple side effects, whereas
    --  Force_Evaluation further guarantees that all evaluations will yield
    --  the same result.
+   --
+   --  Related_Id denotes the entity of the context where Expr appears. Flags
+   --  Is_Low_Bound and Is_High_Bound specify whether the expression to check
+   --  is the low or the high bound of a range. These three optional arguments
+   --  signal Remove_Side_Effects to create an external symbol of the form
+   --  Chars (Related_Id)_FIRST/_LAST. If Related_Id is set, then exactly one
+   --  of the Is_xxx_Bound flags must be set. For use of these parameters see
+   --  the warning in the body of Sem_Ch3.Process_Range_Expr_In_Decl.
 
    function Fully_Qualified_Name_String
      (E          : Entity_Id;
@@ -542,11 +599,6 @@ package Exp_Util is
    --  N_Op_Eq), or to determine the result of some other test in other cases
    --  (e.g. no access check required if N_Op_Ne Null).
 
-   function Get_First_Parent_With_Ext_Axioms_For_Entity
-     (E : Entity_Id) return Entity_Id;
-   --  Returns the package entity with an external axiomatization containing E,
-   --  if any, or Empty if none.
-
    function Get_Handled_Statement_Sequence (N : Node_Id) return Node_Id;
    --  Return the N_Handled_Statement_Sequence node for the given node. Bodies
    --  that contain a Handled Sequence of Statements usually contain
@@ -566,11 +618,6 @@ package Exp_Util is
    --  Returns whether E is a package entity, for which the initial list of
    --  pragmas at the start of the package declaration contains
    --    pragma Annotate (GNATprove, External_Axiomatization);
-
-   function Has_Following_Address_Clause (D : Node_Id) return Boolean;
-   --  D is the node for an object declaration. This function searches the
-   --  current declarative part to look for an address clause for the object
-   --  being declared, and returns True if one is found.
 
    function Homonym_Number (Subp : Entity_Id) return Nat;
    --  Here subp is the entity for a subprogram. This routine returns the
@@ -610,7 +657,7 @@ package Exp_Util is
       Rel_Node : Node_Id) return Boolean;
    --  Determine whether declaration Decl denotes a controlled transient which
    --  should be finalized. Rel_Node is the related context. Even though some
-   --  transient are controlled, they may act as renamings of other objects or
+   --  transients are controlled, they may act as renamings of other objects or
    --  function calls.
 
    function Is_Fully_Repped_Tagged_Type (T : Entity_Id) return Boolean;
@@ -693,10 +740,6 @@ package Exp_Util is
    --  or has Volatile_Components set. A slice of a volatile variable is
    --  also volatile.
 
-   function Is_VM_By_Copy_Actual (N : Node_Id) return Boolean;
-   --  Returns True if we are compiling on VM targets and N is a node that
-   --  requires pass-by-copy in these targets.
-
    procedure Kill_Dead_Code (N : Node_Id; Warn : Boolean := False);
    --  N represents a node for a section of code that is known to be dead. Any
    --  exception handler references and warning messages relating to this code
@@ -751,11 +794,13 @@ package Exp_Util is
    --  Predicate_Check is suppressed then a null statement is returned instead.
 
    function Make_Subtype_From_Expr
-     (E       : Node_Id;
-      Unc_Typ : Entity_Id) return Node_Id;
+     (E          : Node_Id;
+      Unc_Typ    : Entity_Id;
+      Related_Id : Entity_Id := Empty) return Node_Id;
    --  Returns a subtype indication corresponding to the actual type of an
-   --  expression E. Unc_Typ is an unconstrained array or record, or
-   --  a classwide type.
+   --  expression E. Unc_Typ is an unconstrained array or record, or a class-
+   --  wide type. Set Related_Id to request an external name for the subtype
+   --  rather than an internal temporary.
 
    function Matching_Standard_Type (Typ : Entity_Id) return Entity_Id;
    --  Given a scalar subtype Typ, returns a matching type in standard that
@@ -777,7 +822,7 @@ package Exp_Util is
      (Decl : Node_Id;
       Typ  : Entity_Id) return Boolean;
    --  Check whether the expression in an address clause is restricted to
-   --  consist of constants, when the object has a non-trivial initialization
+   --  consist of constants, when the object has a nontrivial initialization
    --  or is controlled.
 
    function Needs_Finalization (T : Entity_Id) return Boolean;
@@ -831,10 +876,13 @@ package Exp_Util is
    --  associated with Var, and if found, remove and return that call node.
 
    procedure Remove_Side_Effects
-     (Exp          : Node_Id;
-      Name_Req     : Boolean := False;
-      Renaming_Req : Boolean := False;
-      Variable_Ref : Boolean := False);
+     (Exp           : Node_Id;
+      Name_Req      : Boolean   := False;
+      Renaming_Req  : Boolean   := False;
+      Variable_Ref  : Boolean   := False;
+      Related_Id    : Entity_Id := Empty;
+      Is_Low_Bound  : Boolean   := False;
+      Is_High_Bound : Boolean   := False);
    --  Given the node for a subexpression, this function replaces the node if
    --  necessary by an equivalent subexpression that is guaranteed to be side
    --  effect free. This is done by extracting any actions that could cause
@@ -843,11 +891,39 @@ package Exp_Util is
    --  call and is analyzed and resolved on return. Name_Req may only be set to
    --  True if Exp has the form of a name, and the effect is to guarantee that
    --  any replacement maintains the form of name. If Renaming_Req is set to
-   --  TRUE, the routine produces an object renaming reclaration capturing the
-   --  expression. If Variable_Ref is set to TRUE, a variable is considered as
+   --  True, the routine produces an object renaming reclaration capturing the
+   --  expression. If Variable_Ref is set to True, a variable is considered as
    --  side effect (used in implementing Force_Evaluation). Note: after call to
    --  Remove_Side_Effects, it is safe to call New_Copy_Tree to obtain a copy
    --  of the resulting expression.
+   --
+   --  Related_Id denotes the entity of the context where Expr appears. Flags
+   --  Is_Low_Bound and Is_High_Bound specify whether the expression to check
+   --  is the low or the high bound of a range. These three optional arguments
+   --  signal Remove_Side_Effects to create an external symbol of the form
+   --  Chars (Related_Id)_FIRST/_LAST. If Related_Id is set, then exactly one
+   --  of the Is_xxx_Bound flags must be set. For use of these parameters see
+   --  the warning in the body of Sem_Ch3.Process_Range_Expr_In_Decl.
+   --
+   --  The side effects are captured using one of the following methods:
+   --
+   --    1) a constant initialized with the value of the subexpression
+   --    2) a renaming of the subexpression
+   --    3) a reference to the subexpression
+   --
+   --  For elementary types, methods 1) and 2) are used; for composite types,
+   --  methods 2) and 3) are used. The renaming (method 2) is used only when
+   --  the subexpression denotes a name, so that it can be elaborated by gigi
+   --  without evaluating the subexpression.
+   --
+   --  Historical note: the reference (method 3) used to be the common fallback
+   --  method but it gives rise to aliasing issues if the subexpression denotes
+   --  a name that is not aliased, since it is equivalent to taking the address
+   --  in this case. The renaming (method 2) used to be applied to any objects
+   --  in the RM sense, that is to say to the cases where a renaming is legal
+   --  in Ada. But for some of these cases, most notably functions calls, the
+   --  renaming cannot be elaborated without evaluating the subexpression, so
+   --  gigi would resort to method 1) or 3) under the hood for them.
 
    function Represented_As_Scalar (T : Entity_Id) return Boolean;
    --  Returns True iff the implementation of this type in code generation
@@ -955,15 +1031,6 @@ package Exp_Util is
    --  Indicates that some expansion is taking place within the body of a
    --  predefined primitive operation. Some expansion activity (e.g. predicate
    --  checks) is disabled in such.
-
-   procedure Wrap_Cleanup_Procedure (N : Node_Id);
-   --  Given an N_Subprogram_Body node, this procedure adds an Abort_Defer call
-   --  at the start of the statement sequence, and an Abort_Undefer call at the
-   --  end of the statement sequence. All cleanup routines (i.e. those that are
-   --  called from "at end" handlers) must defer abort on entry and undefer
-   --  abort on exit. Note that it is assumed that the code for the procedure
-   --  does not contain any return statements which would allow the flow of
-   --  control to escape doing the undefer call.
 
 private
    pragma Inline (Duplicate_Subexpr);

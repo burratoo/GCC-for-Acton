@@ -289,6 +289,56 @@ func TestUnexportedRead(t *testing.T) {
 	Read(&buf, LittleEndian, &u2)
 }
 
+func TestReadErrorMsg(t *testing.T) {
+	var buf bytes.Buffer
+	read := func(data interface{}) {
+		err := Read(&buf, LittleEndian, data)
+		want := "binary.Read: invalid type " + reflect.TypeOf(data).String()
+		if err == nil {
+			t.Errorf("%T: got no error; want %q", data, want)
+			return
+		}
+		if got := err.Error(); got != want {
+			t.Errorf("%T: got %q; want %q", data, got, want)
+		}
+	}
+	read(0)
+	s := new(struct{})
+	read(&s)
+	p := &s
+	read(&p)
+}
+
+func TestReadTruncated(t *testing.T) {
+	const data = "0123456789abcdef"
+
+	var b1 = make([]int32, 4)
+	var b2 struct {
+		A, B, C, D byte
+		E          int32
+		F          float64
+	}
+
+	for i := 0; i <= len(data); i++ {
+		var errWant error
+		switch i {
+		case 0:
+			errWant = io.EOF
+		case len(data):
+			errWant = nil
+		default:
+			errWant = io.ErrUnexpectedEOF
+		}
+
+		if err := Read(strings.NewReader(data[:i]), LittleEndian, &b1); err != errWant {
+			t.Errorf("Read(%d) with slice: got %v, want %v", i, err, errWant)
+		}
+		if err := Read(strings.NewReader(data[:i]), LittleEndian, &b2); err != errWant {
+			t.Errorf("Read(%d) with struct: got %v, want %v", i, err, errWant)
+		}
+	}
+}
+
 type byteSliceReader struct {
 	remain []byte
 }
@@ -315,8 +365,7 @@ func BenchmarkReadStruct(b *testing.B) {
 	bsr := &byteSliceReader{}
 	var buf bytes.Buffer
 	Write(&buf, BigEndian, &s)
-	n, _ := dataSize(reflect.ValueOf(s))
-	b.SetBytes(int64(n))
+	b.SetBytes(int64(dataSize(reflect.ValueOf(s))))
 	t := s
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

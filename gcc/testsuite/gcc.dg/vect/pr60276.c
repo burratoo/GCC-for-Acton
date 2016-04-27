@@ -1,4 +1,3 @@
-/* { dg-do run } */
 
 extern void abort (void);
 
@@ -49,4 +48,3 @@ int main(void)
   return 0;
 }
 
-/* { dg-final { cleanup-tree-dump "vect" } } */

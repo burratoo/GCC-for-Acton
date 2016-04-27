@@ -1,7 +1,7 @@
 // { dg-do run }
 // { dg-options "-g -O0 -std=gnu++11" }
 
-// Copyright (C) 2011-2014 Free Software Foundation, Inc.
+// Copyright (C) 2011-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -18,6 +18,9 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
+// Type printers only recognize the old std::string for now.
+#define _GLIBCXX_USE_CXX11_ABI 0
+
 #include <string>
 #include <iostream>
 #include <regex>
@@ -30,6 +33,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <random>
 
 template<class T>
 void
@@ -283,6 +287,7 @@ main()
   placeholder(&unord2_ptr);
   placeholder(&unord2_holder);
 
+  std::cout << "\n";
   return 0;
 }
 

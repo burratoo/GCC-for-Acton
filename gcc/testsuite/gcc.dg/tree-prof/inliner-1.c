@@ -1,4 +1,4 @@
-/* { dg-options "-O2 -fdump-tree-optimized" } */
+/* { dg-options "-O2 -fdump-tree-optimized -fgnu89-inline" } */
 int a;
 int b[100];
 void abort (void);
@@ -21,6 +21,7 @@ hot_function ()
       abort ();
 }
 
+int
 main ()
 {
   int i;
@@ -39,4 +40,3 @@ main ()
    declaration or other appearances of the string in dump.  */
 /* { dg-final-use { scan-tree-dump "cold_function ..;" "optimized"} } */
 /* { dg-final-use { scan-tree-dump-not "hot_function ..;" "optimized"} } */
-/* { dg-final-use { cleanup-tree-dump "optimized" } } */

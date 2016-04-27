@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -78,7 +78,7 @@ package System.Task_Primitives is
 
 private
 
-   type Private_Task_Serial_Number is mod 2 ** 64;
+   type Private_Task_Serial_Number is mod 2 ** Long_Long_Integer'Size;
    --  Used to give each task a unique serial number
 
    type Base_Lock is new System.OS_Interface.mutex_t;
@@ -94,7 +94,7 @@ private
    type Lock is record
       L              : aliased Base_Lock;
       Ceiling        : System.Any_Priority := System.Any_Priority'First;
-      Saved_Priority : System.Any_Priority :=  System.Any_Priority'First;
+      Saved_Priority : System.Any_Priority := System.Any_Priority'First;
       Owner          : Owner_ID;
       Next           : Lock_Ptr;
       Level          : Private_Task_Serial_Number := 0;
@@ -124,7 +124,7 @@ private
    --  Note that task support on gdb relies on the fact that the first two
    --  fields of Private_Data are Thread and LWP.
 
-   type Private_Data is record
+   type Private_Data is limited record
       Thread : aliased System.OS_Interface.thread_t;
       pragma Atomic (Thread);
       --  Thread field may be updated by two different threads of control.

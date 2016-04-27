@@ -19,8 +19,12 @@ func runtime_Semacquire(s *uint32)
 // library and should not be used directly.
 func runtime_Semrelease(s *uint32)
 
-// Opaque representation of SyncSema in runtime/sema.goc.
-type syncSema [3]uintptr
+// Approximation of syncSema in runtime/sema.go.
+type syncSema struct {
+	lock uintptr
+	head unsafe.Pointer
+	tail unsafe.Pointer
+}
 
 // Syncsemacquire waits for a pairing Syncsemrelease on the same semaphore s.
 func runtime_Syncsemacquire(s *syncSema)
@@ -34,3 +38,10 @@ func init() {
 	var s syncSema
 	runtime_Syncsemcheck(unsafe.Sizeof(s))
 }
+
+// Active spinning runtime support.
+// runtime_canSpin returns true is spinning makes sense at the moment.
+func runtime_canSpin(i int) bool
+
+// runtime_doSpin does active spinning.
+func runtime_doSpin()

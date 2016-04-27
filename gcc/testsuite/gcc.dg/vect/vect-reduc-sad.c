@@ -8,6 +8,7 @@
 
 unsigned char X[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 unsigned char Y[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+int abs (int);
 
 /* Sum of absolute differences between arrays of unsigned char types.
    Detected as a sad pattern.
@@ -50,5 +51,4 @@ main (void)
 
 /* { dg-final { scan-tree-dump-times "vect_recog_sad_pattern: detected" 1 "vect" } } */
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 1 "vect" } } */
-/* { dg-final { cleanup-tree-dump "vect" } } */
 

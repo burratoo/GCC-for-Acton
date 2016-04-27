@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2010-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 2010-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -55,6 +55,7 @@ package body Aspects is
       Aspect_Unchecked_Union         => True,
       Aspect_Variable_Indexing       => True,
       Aspect_Volatile                => True,
+      Aspect_Volatile_Full_Access    => True,
       others                         => False);
 
    --  The following array indicates type aspects that are inherited and apply
@@ -153,7 +154,8 @@ package body Aspects is
 
       pragma Assert (Has_Aspects (N));
       pragma Assert (Nkind (N) in N_Body_Stub
-                       or else Nkind_In (N, N_Package_Body,
+                       or else Nkind_In (N, N_Entry_Body,
+                                            N_Package_Body,
                                             N_Protected_Body,
                                             N_Subprogram_Body,
                                             N_Task_Body));
@@ -336,8 +338,7 @@ package body Aspects is
 
    procedure Move_Or_Merge_Aspects (From : Node_Id; To : Node_Id) is
       procedure Relocate_Aspect (Asp : Node_Id);
-      --  Asp denotes an aspect specification of node From. Relocate the Asp to
-      --  the aspect specifications of node To (if any).
+      --  Move aspect specification Asp to the aspect specifications of node To
 
       ---------------------
       -- Relocate_Aspect --
@@ -358,8 +359,8 @@ package body Aspects is
             Set_Has_Aspects (To);
          end if;
 
-         --  Remove the aspect from node From's aspect specifications and
-         --  append it to node To.
+         --  Remove the aspect from its original owner and relocate it to node
+         --  To.
 
          Remove (Asp);
          Append (Asp, Asps);
@@ -401,6 +402,23 @@ package body Aspects is
                   Relocate_Aspect (Asp);
                end if;
 
+            --  When moving or merging aspects from a single concurrent type
+            --  declaration, relocate only those aspects that may apply to the
+            --  anonymous object created for the type.
+
+            --  Note: It is better to use Is_Single_Concurrent_Type_Declaration
+            --  here, but Aspects and Sem_Util have incompatible licenses.
+
+            elsif Nkind_In
+                    (Original_Node (From), N_Single_Protected_Declaration,
+                                           N_Single_Task_Declaration)
+            then
+               Asp_Id := Get_Aspect_Id (Asp);
+
+               if Aspect_On_Anonymous_Object_OK (Asp_Id) then
+                  Relocate_Aspect (Asp);
+               end if;
+
             --  Default case - relocate the aspect to its new owner
 
             else
@@ -426,6 +444,7 @@ package body Aspects is
    Has_Aspect_Specifications_Flag : constant array (Node_Kind) of Boolean :=
      (N_Abstract_Subprogram_Declaration        => True,
       N_Component_Declaration                  => True,
+      N_Entry_Body                             => True,
       N_Entry_Declaration                      => True,
       N_Exception_Declaration                  => True,
       N_Exception_Renaming_Declaration         => True,
@@ -506,6 +525,7 @@ package body Aspects is
     Aspect_Budget_Handler               => Aspect_Budget_Handler,
     Aspect_Budget_Response              => Aspect_Budget_Response,
     Aspect_Component_Size               => Aspect_Component_Size,
+    Aspect_Constant_After_Elaboration   => Aspect_Constant_After_Elaboration,
     Aspect_Constant_Indexing            => Aspect_Constant_Indexing,
     Aspect_Contract_Cases               => Aspect_Contract_Cases,
     Aspect_Convention                   => Aspect_Convention,
@@ -518,10 +538,12 @@ package body Aspects is
     Aspect_Default_Component_Value      => Aspect_Default_Component_Value,
     Aspect_Default_Initial_Condition    => Aspect_Default_Initial_Condition,
     Aspect_Default_Iterator             => Aspect_Default_Iterator,
+    Aspect_Default_Storage_Pool         => Aspect_Default_Storage_Pool,
     Aspect_Default_Value                => Aspect_Default_Value,
     Aspect_Depends                      => Aspect_Depends,
     Aspect_Dimension                    => Aspect_Dimension,
     Aspect_Dimension_System             => Aspect_Dimension_System,
+    Aspect_Disable_Controlled           => Aspect_Disable_Controlled,
     Aspect_Discard_Names                => Aspect_Discard_Names,
     Aspect_Dispatching_Domain           => Aspect_Dispatching_Domain,
     Aspect_Dynamic_Predicate            => Aspect_Predicate,
@@ -532,9 +554,11 @@ package body Aspects is
     Aspect_Execution_Server             => Aspect_Execution_Server,
     Aspect_Execution_Server_Object      => Aspect_Execution_Server_Object,
     Aspect_Export                       => Aspect_Export,
+    Aspect_Extensions_Visible           => Aspect_Extensions_Visible,
     Aspect_External_Name                => Aspect_External_Name,
     Aspect_External_Tag                 => Aspect_External_Tag,
     Aspect_Favor_Top_Level              => Aspect_Favor_Top_Level,
+    Aspect_Ghost                        => Aspect_Ghost,
     Aspect_Global                       => Aspect_Global,
     Aspect_Implicit_Dereference         => Aspect_Implicit_Dereference,
     Aspect_Import                       => Aspect_Import,
@@ -556,6 +580,7 @@ package body Aspects is
     Aspect_Machine_Radix                => Aspect_Machine_Radix,
     Aspect_No_Elaboration_Code_All      => Aspect_No_Elaboration_Code_All,
     Aspect_No_Return                    => Aspect_No_Return,
+    Aspect_No_Tagged_Streams            => Aspect_No_Tagged_Streams,
     Aspect_Obsolescent                  => Aspect_Obsolescent,
     Aspect_Object_Size                  => Aspect_Object_Size,
     Aspect_Output                       => Aspect_Output,
@@ -567,6 +592,7 @@ package body Aspects is
     Aspect_Pre                          => Aspect_Pre,
     Aspect_Precondition                 => Aspect_Pre,
     Aspect_Predicate                    => Aspect_Predicate,
+    Aspect_Predicate_Failure            => Aspect_Predicate_Failure,
     Aspect_Preelaborate                 => Aspect_Preelaborate,
     Aspect_Preelaborable_Initialization => Aspect_Preelaborable_Initialization,
     Aspect_Priority                     => Aspect_Priority,
@@ -595,11 +621,13 @@ package body Aspects is
     Aspect_Stream_Size                  => Aspect_Stream_Size,
     Aspect_Suppress                     => Aspect_Suppress,
     Aspect_Suppress_Debug_Info          => Aspect_Suppress_Debug_Info,
+    Aspect_Suppress_Initialization      => Aspect_Suppress_Initialization,
     Aspect_Synchronization              => Aspect_Synchronization,
     Aspect_Test_Case                    => Aspect_Test_Case,
     Aspect_Thread_Local_Storage         => Aspect_Thread_Local_Storage,
     Aspect_Type_Invariant               => Aspect_Invariant,
     Aspect_Unchecked_Union              => Aspect_Unchecked_Union,
+    Aspect_Unimplemented                => Aspect_Unimplemented,
     Aspect_Universal_Aliasing           => Aspect_Universal_Aliasing,
     Aspect_Universal_Data               => Aspect_Universal_Data,
     Aspect_Unmodified                   => Aspect_Unmodified,
@@ -610,6 +638,8 @@ package body Aspects is
     Aspect_Value_Size                   => Aspect_Value_Size,
     Aspect_Volatile                     => Aspect_Volatile,
     Aspect_Volatile_Components          => Aspect_Volatile_Components,
+    Aspect_Volatile_Full_Access         => Aspect_Volatile_Full_Access,
+    Aspect_Volatile_Function            => Aspect_Volatile_Function,
     Aspect_Warnings                     => Aspect_Warnings,
     Aspect_Write                        => Aspect_Write);
 

@@ -1,5 +1,5 @@
 /* Combining of if-expressions on trees.
-   Copyright (C) 2007-2014 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Richard Guenther <rguenther@suse.de>
 
 This file is part of GCC.
@@ -21,28 +21,24 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "rtl.h"
+#include "tree.h"
+#include "gimple.h"
+#include "cfghooks.h"
+#include "tree-pass.h"
+#include "tm_p.h"
+#include "ssa.h"
+#include "tree-pretty-print.h"
 /* rtl is needed only because arm back-end requires it for
    BRANCH_COST.  */
-#include "rtl.h"
-#include "tm_p.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "basic-block.h"
-#include "tree-pretty-print.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
+#include "fold-const.h"
+#include "cfganal.h"
 #include "gimple-fold.h"
-#include "gimple-expr.h"
-#include "is-a.h"
-#include "gimple.h"
 #include "gimple-iterator.h"
 #include "gimplify-me.h"
-#include "gimple-ssa.h"
 #include "tree-cfg.h"
-#include "tree-phinodes.h"
-#include "ssa-iterators.h"
-#include "tree-pass.h"
+#include "tree-ssa.h"
 
 #ifndef LOGICAL_OP_NON_SHORT_CIRCUIT
 #define LOGICAL_OP_NON_SHORT_CIRCUIT \
@@ -90,11 +86,7 @@ recognize_if_then_else (basic_block cond_bb,
   t = EDGE_SUCC (cond_bb, 0);
   e = EDGE_SUCC (cond_bb, 1);
   if (!(t->flags & EDGE_TRUE_VALUE))
-    {
-      edge tmp = t;
-      t = e;
-      e = tmp;
-    }
+    std::swap (t, e);
   if (!(t->flags & EDGE_TRUE_VALUE)
       || !(e->flags & EDGE_FALSE_VALUE))
     return false;
@@ -125,14 +117,22 @@ bb_no_side_effects_p (basic_block bb)
 
   for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
     {
-      gimple stmt = gsi_stmt (gsi);
+      gimple *stmt = gsi_stmt (gsi);
 
       if (is_gimple_debug (stmt))
 	continue;
 
       if (gimple_has_side_effects (stmt)
+	  || gimple_uses_undefined_value_p (stmt)
 	  || gimple_could_trap_p (stmt)
-	  || gimple_vuse (stmt))
+	  || gimple_vuse (stmt)
+	  /* const calls don't match any of the above, yet they could
+	     still have some side-effects - they could contain
+	     gimple_could_trap_p statements, like floating point
+	     exceptions or integer division by zero.  See PR70586.
+	     FIXME: perhaps gimple_has_side_effects or gimple_could_trap_p
+	     should handle this.  */
+	  || is_gimple_call (stmt))
 	return false;
     }
 
@@ -158,12 +158,12 @@ same_phi_args_p (basic_block bb1, basic_block bb2, basic_block dest)
 {
   edge e1 = find_edge (bb1, dest);
   edge e2 = find_edge (bb2, dest);
-  gimple_stmt_iterator gsi;
-  gimple phi;
+  gphi_iterator gsi;
+  gphi *phi;
 
   for (gsi = gsi_start_phis (dest); !gsi_end_p (gsi); gsi_next (&gsi))
     {
-      phi = gsi_stmt (gsi);
+      phi = gsi.phi ();
       if (!operand_equal_p (PHI_ARG_DEF_FROM_EDGE (phi, e1),
 			    PHI_ARG_DEF_FROM_EDGE (phi, e2), 0))
         return false;
@@ -183,7 +183,7 @@ get_name_for_bit_test (tree candidate)
   if (TREE_CODE (candidate) == SSA_NAME
       && has_single_use (candidate))
     {
-      gimple def_stmt = SSA_NAME_DEF_STMT (candidate);
+      gimple *def_stmt = SSA_NAME_DEF_STMT (candidate);
       if (is_gimple_assign (def_stmt)
 	  && CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (def_stmt)))
 	{
@@ -202,9 +202,9 @@ get_name_for_bit_test (tree candidate)
    Returns true if the pattern matched, false otherwise.  */
 
 static bool
-recognize_single_bit_test (gimple cond, tree *name, tree *bit, bool inv)
+recognize_single_bit_test (gcond *cond, tree *name, tree *bit, bool inv)
 {
-  gimple stmt;
+  gimple *stmt;
 
   /* Get at the definition of the result of the bit test.  */
   if (gimple_cond_code (cond) != (inv ? EQ_EXPR : NE_EXPR)
@@ -277,7 +277,7 @@ recognize_single_bit_test (gimple cond, tree *name, tree *bit, bool inv)
       && TREE_CODE (gimple_assign_rhs1 (stmt)) == SSA_NAME
       && TREE_CODE (gimple_assign_rhs2 (stmt)) == SSA_NAME)
     {
-      gimple tmp;
+      gimple *tmp;
 
       /* Both arguments of the BIT_AND_EXPR can be the single-bit
 	 specifying expression.  */
@@ -311,9 +311,9 @@ recognize_single_bit_test (gimple cond, tree *name, tree *bit, bool inv)
    Returns true if the pattern matched, false otherwise.  */
 
 static bool
-recognize_bits_test (gimple cond, tree *name, tree *bits, bool inv)
+recognize_bits_test (gcond *cond, tree *name, tree *bits, bool inv)
 {
-  gimple stmt;
+  gimple *stmt;
 
   /* Get at the definition of the result of the bit test.  */
   if (gimple_cond_code (cond) != (inv ? EQ_EXPR : NE_EXPR)
@@ -342,18 +342,21 @@ ifcombine_ifandif (basic_block inner_cond_bb, bool inner_inv,
 		   basic_block outer_cond_bb, bool outer_inv, bool result_inv)
 {
   gimple_stmt_iterator gsi;
-  gimple inner_cond, outer_cond;
+  gimple *inner_stmt, *outer_stmt;
+  gcond *inner_cond, *outer_cond;
   tree name1, name2, bit1, bit2, bits1, bits2;
 
-  inner_cond = last_stmt (inner_cond_bb);
-  if (!inner_cond
-      || gimple_code (inner_cond) != GIMPLE_COND)
+  inner_stmt = last_stmt (inner_cond_bb);
+  if (!inner_stmt
+      || gimple_code (inner_stmt) != GIMPLE_COND)
     return false;
+  inner_cond = as_a <gcond *> (inner_stmt);
 
-  outer_cond = last_stmt (outer_cond_bb);
-  if (!outer_cond
-      || gimple_code (outer_cond) != GIMPLE_COND)
+  outer_stmt = last_stmt (outer_cond_bb);
+  if (!outer_stmt
+      || gimple_code (outer_stmt) != GIMPLE_COND)
     return false;
+  outer_cond = as_a <gcond *> (outer_stmt);
 
   /* See if we test a single bit of the same name in both tests.  In
      that case remove the outer test, merging both else edges,
@@ -418,25 +421,13 @@ ifcombine_ifandif (basic_block inner_cond_bb, bool inner_inv,
 	;
       else if (bits1 == bits2)
 	{
-	  t = name2;
-	  name2 = bits2;
-	  bits2 = t;
-	  t = name1;
-	  name1 = bits1;
-	  bits1 = t;
+	  std::swap (name2, bits2);
+	  std::swap (name1, bits1);
 	}
       else if (name1 == bits2)
-	{
-	  t = name2;
-	  name2 = bits2;
-	  bits2 = t;
-	}
+	std::swap (name2, bits2);
       else if (bits1 == name2)
-	{
-	  t = name1;
-	  name1 = bits1;
-	  bits1 = t;
-	}
+	std::swap (name1, bits1);
       else
 	return false;
 
@@ -505,12 +496,12 @@ ifcombine_ifandif (basic_block inner_cond_bb, bool inner_inv,
       /* Invert comparisons if necessary (and possible).  */
       if (inner_inv)
 	inner_cond_code = invert_tree_comparison (inner_cond_code,
-	  HONOR_NANS (TYPE_MODE (TREE_TYPE (gimple_cond_lhs (inner_cond)))));
+	  HONOR_NANS (gimple_cond_lhs (inner_cond)));
       if (inner_cond_code == ERROR_MARK)
 	return false;
       if (outer_inv)
 	outer_cond_code = invert_tree_comparison (outer_cond_code,
-	  HONOR_NANS (TYPE_MODE (TREE_TYPE (gimple_cond_lhs (outer_cond)))));
+	  HONOR_NANS (gimple_cond_lhs (outer_cond)));
       if (outer_cond_code == ERROR_MARK)
 	return false;
       /* Don't return false so fast, try maybe_fold_or_comparisons?  */
@@ -592,8 +583,7 @@ tree_ssa_ifcombine_bb_1 (basic_block inner_cond_bb, basic_block outer_cond_bb,
      the inner cond_bb having no side-effects.  */
   if (phi_pred_bb != else_bb
       && recognize_if_then_else (outer_cond_bb, &inner_cond_bb, &else_bb)
-      && same_phi_args_p (outer_cond_bb, phi_pred_bb, else_bb)
-      && bb_no_side_effects_p (inner_cond_bb))
+      && same_phi_args_p (outer_cond_bb, phi_pred_bb, else_bb))
     {
       /* We have
 	   <outer_cond_bb>
@@ -611,8 +601,7 @@ tree_ssa_ifcombine_bb_1 (basic_block inner_cond_bb, basic_block outer_cond_bb,
   /* And a version where the outer condition is negated.  */
   if (phi_pred_bb != else_bb
       && recognize_if_then_else (outer_cond_bb, &else_bb, &inner_cond_bb)
-      && same_phi_args_p (outer_cond_bb, phi_pred_bb, else_bb)
-      && bb_no_side_effects_p (inner_cond_bb))
+      && same_phi_args_p (outer_cond_bb, phi_pred_bb, else_bb))
     {
       /* We have
 	   <outer_cond_bb>
@@ -633,8 +622,7 @@ tree_ssa_ifcombine_bb_1 (basic_block inner_cond_bb, basic_block outer_cond_bb,
      having no side-effects.  */
   if (phi_pred_bb != then_bb
       && recognize_if_then_else (outer_cond_bb, &then_bb, &inner_cond_bb)
-      && same_phi_args_p (outer_cond_bb, phi_pred_bb, then_bb)
-      && bb_no_side_effects_p (inner_cond_bb))
+      && same_phi_args_p (outer_cond_bb, phi_pred_bb, then_bb))
     {
       /* We have
 	   <outer_cond_bb>
@@ -651,8 +639,7 @@ tree_ssa_ifcombine_bb_1 (basic_block inner_cond_bb, basic_block outer_cond_bb,
   /* And a version where the outer condition is negated.  */
   if (phi_pred_bb != then_bb
       && recognize_if_then_else (outer_cond_bb, &inner_cond_bb, &then_bb)
-      && same_phi_args_p (outer_cond_bb, phi_pred_bb, then_bb)
-      && bb_no_side_effects_p (inner_cond_bb))
+      && same_phi_args_p (outer_cond_bb, phi_pred_bb, then_bb))
     {
       /* We have
 	   <outer_cond_bb>
@@ -689,7 +676,8 @@ tree_ssa_ifcombine_bb (basic_block inner_cond_bb)
        if (a && b)
 	 ;
      This requires a single predecessor of the inner cond_bb.  */
-  if (single_pred_p (inner_cond_bb))
+  if (single_pred_p (inner_cond_bb)
+      && bb_no_side_effects_p (inner_cond_bb))
     {
       basic_block outer_cond_bb = single_pred (inner_cond_bb);
 
@@ -776,11 +764,17 @@ pass_tree_ifcombine::execute (function *fun)
   for (i = n_basic_blocks_for_fn (fun) - NUM_FIXED_BLOCKS - 1; i >= 0; i--)
     {
       basic_block bb = bbs[i];
-      gimple stmt = last_stmt (bb);
+      gimple *stmt = last_stmt (bb);
 
       if (stmt
 	  && gimple_code (stmt) == GIMPLE_COND)
-	cfg_changed |= tree_ssa_ifcombine_bb (bb);
+	if (tree_ssa_ifcombine_bb (bb))
+	  {
+	    /* Clear range info from all stmts in BB which is now executed
+	       conditional on a always true/false condition.  */
+	    reset_flow_sensitive_info_in_bb (bb);
+	    cfg_changed |= true;
+	  }
     }
 
   free (bbs);

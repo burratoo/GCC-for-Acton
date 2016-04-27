@@ -3,7 +3,7 @@
 //
 // 2014-04-15  Ulrich Drepper  <drepper@gmail.com>
 //
-// Copyright (C) 2014 Free Software Foundation, Inc.
+// Copyright (C) 2014-2016 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -20,7 +20,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// Class template uniform_on_sphere_distribution [rand.dist.ext.uniform_on_sphere]
+// Class template uniform_on_sphere_distribution
 
 #include <ext/random>
 #include <testsuite_hooks.h>

@@ -1,5 +1,5 @@
 /* Utility functions used by tools like collect2 and lto-wrapper.
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -16,6 +16,9 @@ for more details.
 You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
+
+#ifndef GCC_COLLECT_UTILS_H
+#define GCC_COLLECT_UTILS_H
 
 /* Provided in collect-utils.c.  */
 extern void notice (const char *, ...)
@@ -42,3 +45,5 @@ extern const char tool_name[];
 /* Called by utils_cleanup.  */
 extern void tool_cleanup (bool);
 extern void maybe_unlink (const char *);
+
+#endif /* GCC_COLLECT_UTILS_H */

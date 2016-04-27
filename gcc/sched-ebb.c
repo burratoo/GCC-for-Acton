@@ -1,5 +1,5 @@
 /* Instruction scheduling pass.
-   Copyright (C) 1992-2014 Free Software Foundation, Inc.
+   Copyright (C) 1992-2016 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
 
@@ -22,21 +22,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "diagnostic-core.h"
-#include "rtl.h"
-#include "tm_p.h"
-#include "hard-reg-set.h"
-#include "regs.h"
-#include "function.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "insn-attr.h"
-#include "except.h"
-#include "recog.h"
-#include "params.h"
-#include "sched-int.h"
+#include "backend.h"
 #include "target.h"
+#include "rtl.h"
+#include "cfghooks.h"
+#include "df.h"
+#include "profile.h"
+#include "insn-attr.h"
+#include "params.h"
+#include "cfgrtl.h"
+#include "cfgbuild.h"
+#include "sched-int.h"
 
 
 #ifdef INSN_SCHEDULING
@@ -55,18 +51,18 @@ static basic_block last_bb;
 
 /* Implementations of the sched_info functions for region scheduling.  */
 static void init_ready_list (void);
-static void begin_schedule_ready (rtx);
+static void begin_schedule_ready (rtx_insn *);
 static int schedule_more_p (void);
-static const char *ebb_print_insn (const_rtx, int);
-static int rank (rtx, rtx);
-static int ebb_contributes_to_priority (rtx, rtx);
+static const char *ebb_print_insn (const rtx_insn *, int);
+static int rank (rtx_insn *, rtx_insn *);
+static int ebb_contributes_to_priority (rtx_insn *, rtx_insn *);
 static basic_block earliest_block_with_similiar_load (basic_block, rtx);
 static void add_deps_for_risky_insns (rtx_insn *, rtx_insn *);
-static void debug_ebb_dependencies (rtx, rtx);
+static void debug_ebb_dependencies (rtx_insn *, rtx_insn *);
 
-static void ebb_add_remove_insn (rtx, int);
+static void ebb_add_remove_insn (rtx_insn *, int);
 static void ebb_add_block (basic_block, basic_block);
-static basic_block advance_target_bb (basic_block, rtx);
+static basic_block advance_target_bb (basic_block, rtx_insn *);
 static void ebb_fix_recovery_cfg (int, int, int);
 
 /* Allocate memory and store the state of the frontend.  Return the allocated
@@ -98,7 +94,7 @@ schedule_more_p (void)
 
 /* Print dependency information about ebb between HEAD and TAIL.  */
 static void
-debug_ebb_dependencies (rtx head, rtx tail)
+debug_ebb_dependencies (rtx_insn *head, rtx_insn *tail)
 {
   fprintf (sched_dump,
 	   ";;   --------------- forward dependences: ------------ \n");
@@ -116,9 +112,9 @@ static void
 init_ready_list (void)
 {
   int n = 0;
-  rtx prev_head = current_sched_info->prev_head;
-  rtx next_tail = current_sched_info->next_tail;
-  rtx insn;
+  rtx_insn *prev_head = current_sched_info->prev_head;
+  rtx_insn *next_tail = current_sched_info->next_tail;
+  rtx_insn *insn;
 
   sched_rgn_n_insns = 0;
 
@@ -139,14 +135,14 @@ init_ready_list (void)
 
 /* INSN is being scheduled after LAST.  Update counters.  */
 static void
-begin_schedule_ready (rtx insn ATTRIBUTE_UNUSED)
+begin_schedule_ready (rtx_insn *insn ATTRIBUTE_UNUSED)
 {
   sched_rgn_n_insns++;
 }
 
 /* INSN is being moved to its place in the schedule, after LAST.  */
 static void
-begin_move_insn (rtx insn, rtx last)
+begin_move_insn (rtx_insn *insn, rtx_insn *last)
 {
   if (BLOCK_FOR_INSN (insn) == last_bb
       /* INSN is a jump in the last block, ...  */
@@ -172,9 +168,7 @@ begin_move_insn (rtx insn, rtx last)
 			   && BB_END (last_bb) == insn);
 
       {
-	rtx x;
-
-	x = NEXT_INSN (insn);
+	rtx_insn *x = NEXT_INSN (insn);
 	if (e)
 	  gcc_checking_assert (NOTE_P (x) || LABEL_P (x));
 	else
@@ -189,7 +183,7 @@ begin_move_insn (rtx insn, rtx last)
       else
 	{
 	  /* Create an empty unreachable block after the INSN.  */
-	  rtx next = NEXT_INSN (insn);
+	  rtx_insn *next = NEXT_INSN (insn);
 	  if (next && BARRIER_P (next))
 	    next = NEXT_INSN (next);
 	  bb = create_basic_block (next, NULL_RTX, last_bb);
@@ -214,7 +208,7 @@ begin_move_insn (rtx insn, rtx last)
    to be formatted so that multiple output lines will line up nicely.  */
 
 static const char *
-ebb_print_insn (const_rtx insn, int aligned ATTRIBUTE_UNUSED)
+ebb_print_insn (const rtx_insn *insn, int aligned ATTRIBUTE_UNUSED)
 {
   static char tmp[80];
 
@@ -232,7 +226,7 @@ ebb_print_insn (const_rtx insn, int aligned ATTRIBUTE_UNUSED)
    is to be preferred.  Zero if they are equally good.  */
 
 static int
-rank (rtx insn1, rtx insn2)
+rank (rtx_insn *insn1, rtx_insn *insn2)
 {
   basic_block bb1 = BLOCK_FOR_INSN (insn1);
   basic_block bb2 = BLOCK_FOR_INSN (insn2);
@@ -251,8 +245,8 @@ rank (rtx insn1, rtx insn2)
    calculations.  */
 
 static int
-ebb_contributes_to_priority (rtx next ATTRIBUTE_UNUSED,
-                             rtx insn ATTRIBUTE_UNUSED)
+ebb_contributes_to_priority (rtx_insn *next ATTRIBUTE_UNUSED,
+                             rtx_insn *insn ATTRIBUTE_UNUSED)
 {
   return 1;
 }
@@ -470,7 +464,7 @@ add_deps_for_risky_insns (rtx_insn *head, rtx_insn *tail)
 /* Schedule a single extended basic block, defined by the boundaries
    HEAD and TAIL.
 
-   We change our expectations about scheduler behaviour depending on
+   We change our expectations about scheduler behavior depending on
    whether MODULO_SCHEDULING is true.  If it is, we expect that the
    caller has already called set_modulo_params and created delay pairs
    as appropriate.  If the modulo schedule failed, we return
@@ -668,7 +662,7 @@ schedule_ebbs (void)
 
 /* INSN has been added to/removed from current ebb.  */
 static void
-ebb_add_remove_insn (rtx insn ATTRIBUTE_UNUSED, int remove_p)
+ebb_add_remove_insn (rtx_insn *insn ATTRIBUTE_UNUSED, int remove_p)
 {
   if (!remove_p)
     rgn_n_insns++;
@@ -692,7 +686,7 @@ ebb_add_block (basic_block bb, basic_block after)
 /* Return next block in ebb chain.  For parameter meaning please refer to
    sched-int.h: struct sched_info: advance_target_bb.  */
 static basic_block
-advance_target_bb (basic_block bb, rtx insn)
+advance_target_bb (basic_block bb, rtx_insn *insn)
 {
   if (insn)
     {

@@ -1,7 +1,7 @@
 /* This file is part of the Intel(R) Cilk(TM) Plus support
    This file contains the builtin functions for Array
    notations.
-   Copyright (C) 2013-2014 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
    Contributed by Balaji V. Iyer <balaji.v.iyer@intel.com>,
                   Intel Corporation
 
@@ -24,17 +24,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h" 
 #include "coretypes.h"
-#include "tree.h"
-#include "langhooks.h" 
-#include "tree-iterator.h"
+#include "options.h"
 #include "c-family/c-common.h"
-#include "diagnostic-core.h"
+#include "tree-iterator.h"
 
 /* Returns true if the function call in FNDECL is  __sec_implicit_index.  */
 
 bool
 is_sec_implicit_index_fn (tree fndecl)
 {
+  if (!fndecl)
+    return false;
+
   if (TREE_CODE (fndecl) == ADDR_EXPR)
     fndecl = TREE_OPERAND (fndecl, 0);
 
@@ -222,10 +223,10 @@ find_rank (location_t loc, tree orig_expr, tree expr, bool ignore_builtin_fn,
 	      ii_tree = ARRAY_NOTATION_ARRAY (ii_tree);
 	    }
 	  else if (handled_component_p (ii_tree)
-		   || TREE_CODE (ii_tree) == INDIRECT_REF)
+		   || INDIRECT_REF_P (ii_tree))
 	    ii_tree = TREE_OPERAND (ii_tree, 0);
 	  else if (TREE_CODE (ii_tree) == PARM_DECL
-		   || TREE_CODE (ii_tree) == VAR_DECL)
+		   || VAR_P (ii_tree))
 	    break;
 	  else
 	    gcc_unreachable ();
@@ -327,6 +328,9 @@ extract_array_notation_exprs (tree node, bool ignore_builtin_fn,
 			      vec<tree, va_gc> **array_list)
 {
   size_t ii = 0;  
+
+  if (!node)
+    return;
   if (TREE_CODE (node) == ARRAY_NOTATION_REF)
     {
       vec_safe_push (*array_list, node);
@@ -632,6 +636,8 @@ cilkplus_extract_an_triplets (vec<tree, va_gc> *list, size_t size, size_t rank,
 	      fold_build1 (CONVERT_EXPR, integer_type_node,
 			   ARRAY_NOTATION_STRIDE (ii_tree));
 	  }
+
+  release_vec_vec (array_exprs);
 }
 
 /* Replaces all the __sec_implicit_arg functions in LIST with the induction
@@ -667,4 +673,13 @@ fix_sec_implicit_args (location_t loc, vec <tree, va_gc> *list,
       /* Save the existing value into the array operand.  */
       vec_safe_push (array_operand, (*list)[ii]);
   return array_operand;
+}
+
+/* Returns true if NAME is an IDENTIFIER_NODE with identifier "vector",
+   "__vector", or "__vector__".  */
+
+bool
+is_cilkplus_vector_p (tree name)
+{
+  return flag_cilkplus && is_attribute_p ("vector", name);
 }

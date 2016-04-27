@@ -24,6 +24,7 @@ enum StatType {
   StatMop4,
   StatMop8,
   StatMopSame,
+  StatMopIgnored,
   StatMopRange,
   StatMopRodata,
   StatMopRangeRodata,
@@ -166,8 +167,9 @@ enum StatType {
   StatMtxAnnotations,
   StatMtxAtExit,
   StatMtxMBlock,
-  StatMtxJavaMBlock,
   StatMtxDeadlockDetector,
+  StatMtxFired,
+  StatMtxRacy,
   StatMtxFD,
 
   // This must be the last.

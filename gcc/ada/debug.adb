@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -73,14 +73,14 @@ package body Debug is
    --  dG   Generate all warnings including those normally suppressed
    --  dH   Hold (kill) call to gigi
    --  dI   Inhibit internal name numbering in gnatG listing
-   --  dJ   Output debugging trace info for JGNAT (Java VM version of GNAT)
+   --  dJ
    --  dK   Kill all error messages
    --  dL   Output trace information on elaboration checking
    --  dM   Assume all variables are modified (no current values)
    --  dN   No file name information in exception messages
    --  dO   Output immediate error messages
    --  dP   Do not check for controlled objects in preelaborable packages
-   --  dQ
+   --  dQ   Use old secondary stack method
    --  dR   Bypass check for correct version of s-rpc
    --  dS   Never convert numbers to machine numbers in Sem_Eval
    --  dT   Convert to machine numbers only for constant declarations
@@ -98,15 +98,15 @@ package body Debug is
    --  d.e  Enable atomic synchronization
    --  d.f  Inhibit folding of static expressions
    --  d.g  Enable conversion of raise into goto
-   --  d.h
+   --  d.h  Minimize the creation of public internal symbols for concatenation
    --  d.i  Ignore Warnings pragmas
    --  d.j  Generate listing of frontend inlined calls
-   --  d.k
+   --  d.k  Kill referenced run-time library unit line numbers
    --  d.l  Use Ada 95 semantics for limited function returns
    --  d.m  For -gnatl, print full source only for main unit
    --  d.n  Print source file names
-   --  d.o  Generate .NET listing of CIL code
-   --  d.p  Enable the .NET CIL verifier
+   --  d.o
+   --  d.p
    --  d.q
    --  d.r  Enable OK_To_Reorder_Components in non-variant records
    --  d.s  Disable expansion of slice move, use memmove
@@ -119,9 +119,9 @@ package body Debug is
    --  d.z  Restore previous support for frontend handling of Inline_Always
 
    --  d.A  Read/write Aspect_Specifications hash table to tree
-   --  d.B
+   --  d.B  Generate a bug box on abort_statement
    --  d.C  Generate concatenation call, do not generate inline code
-   --  d.D
+   --  d.D  Disable errors on use of overriding keyword in Ada 95 mode
    --  d.E  Turn selected errors into warnings
    --  d.F  Debug mode for GNATprove
    --  d.G  Ignore calls through generic formal parameters for elaboration
@@ -155,11 +155,11 @@ package body Debug is
    --  d8   Force opposite endianness in packed stuff
    --  d9   Allow lock free implementation
 
-   --  d.1
-   --  d.2
-   --  d.3
-   --  d.4
-   --  d.5
+   --  d.1  Enable unnesting of nested procedures
+   --  d.2  Allow statements in declarative part
+   --  d.3  Output debugging information from Exp_Unst
+   --  d.4  Do not delete generated C file in case of errors
+   --  d.5  Do not generate imported subprogram definitions in C code
    --  d.6
    --  d.7
    --  d.8
@@ -249,7 +249,7 @@ package body Debug is
    --       output (dt) or recreated source output (dg,do,ds) includes only
    --       the main unit. If df is set, then the output in either case
    --       includes all compiled units (see also dg,do,ds,dt). Note that to
-   --       be effective, this swich must be used in combination with one or
+   --       be effective, this switch must be used in combination with one or
    --       more of dt, dg, do or ds.
 
    --  dg   Print the source recreated from the generated tree. In the case
@@ -316,14 +316,15 @@ package body Debug is
    --  dt   Print full tree. The generated tree is output (see also df,dy)
 
    --  du   Uncheck categorization pragmas. This debug switch causes the
-   --       categorization pragmas (Pure, Preelaborate etc) to be ignored
-   --       so that normal checks are not made (this is particularly useful
-   --       for adding temporary debugging code to units that have pragmas
-   --       that are inconsistent with the debugging code added.
+   --       elaboration control pragmas (Pure, Preelaborate, etc.) and the
+   --       categorization pragmas (Shared_Passive, Remote_Types, etc.) to be
+   --       ignored, so that normal checks are not made (this is particularly
+   --       useful for adding temporary debugging code to units that have
+   --       pragmas that are inconsistent with the debugging code added).
 
    --  dv   Output trace of overload resolution. Outputs messages for
    --       overload attempts that involve cascaded errors, or where
-   --       an interepretation is incompatible with the context.
+   --       an interpretation is incompatible with the context.
 
    --  dw   Write semantic scope stack messages. Each time a scope is created
    --       or removed, a message is output (see the Sem_Ch8.Push_Scope and
@@ -399,11 +400,6 @@ package body Debug is
    --       is used in the fixed bugs run to minimize system and version
    --       dependency in filed -gnatD or -gnatG output.
 
-   --  dJ   Generate debugging trace output for the JGNAT back end. This
-   --       consists of symbolic Java Byte Code sequences for all generated
-   --       classes plus additional information to indicate local variables
-   --       and methods.
-
    --  dK   Kill all error messages. This debug flag suppresses the output
    --       of all error messages. It is used in regression tests where the
    --       error messages are target dependent and irrelevant.
@@ -429,6 +425,11 @@ package body Debug is
    --       RM 10.2.1(9) forbids the use of library level controlled objects
    --       in preelaborable packages, but this restriction is a huge pain,
    --       especially in the predefined library units.
+
+   --  dQ   Use old method for determining what goes on the secondary stack.
+   --       This disables some newer optimizations. The intent is to use this
+   --       temporarily to measure before/after efficiency. ???Remove this
+   --       when we are done (see Sem_Util.Requires_Transient_Scope).
 
    --  dR   Bypass the check for a proper version of s-rpc being present
    --       to use the -gnatz? switch. This allows debugging of the use
@@ -525,9 +526,17 @@ package body Debug is
    --       this if this debug flag is set. Later we will enable this more
    --       generally by default.
 
+   --  d.h  Minimize the creation of public internal symbols for concatenation
+   --       by enforcing a secondary stack-like handling of the final result.
+   --       The target of the concatenation is thus constrained in place and
+   --       initialized with the result instead of acting as its alias.
+
    --  d.i  Ignore all occurrences of pragma Warnings in the sources. This can
    --       be used in particular to disable Warnings (Off) to check if any of
    --       these statements are inappropriate.
+
+   --  d.k  If an error message contains a reference to a location in an
+   --       internal unit, then suppress the line number in this reference.
 
    --  d.j  Generate listing of frontend inlined calls and inline calls passed
    --       to the backend. This is useful to locate skipped calls that must be
@@ -546,13 +555,6 @@ package body Debug is
    --  d.n  Print source file names as they are loaded. This is useful if the
    --       compiler has a bug -- these are the files that need to be included
    --       in a bug report.
-
-   --  d.o  Generate listing showing the IL instructions generated by the .NET
-   --       compiler for each subprogram.
-
-   --  d.p  Enable the .NET CIL verifier. During development the verifier is
-   --       disabled by default and this flag is used to enable it. In the
-   --       future we will reverse this functionality.
 
    --  d.r  Forces the flag OK_To_Reorder_Components to be set in all record
    --       base types that have no discriminants.
@@ -584,18 +586,29 @@ package body Debug is
 
    --  d.z  Restore previous front-end support for Inline_Always. In default
    --       mode, for targets that use the GCC back end (i.e. currently all
-   --       targets except AAMP, .NET, JVM, and GNATprove), Inline_Always is
-   --       handled by the back end. Use of this switch restores the previous
-   --       handling of Inline_Always by the front end on such targets. For the
-   --       targets that do not use the GCC back end, this switch is ignored.
+   --       targets except AAMP and GNATprove), Inline_Always is handled by the
+   --       back end. Use of this switch restores the previous handling of
+   --       Inline_Always by the front end on such targets. For the targets
+   --       that do not use the GCC back end, this switch is ignored.
 
    --  d.A  There seems to be a problem with ASIS if we activate the circuit
    --       for reading and writing the aspect specification hash table, so
    --       for now, this is controlled by the debug flag d.A. The hash table
    --       is only written and read if this flag is set.
 
+   --  d.B  Generate a bug box when we see an abort_statement, even though
+   --       there is no bug. Useful for testing Comperr.Compiler_Abort: write
+   --       some code containing an abort_statement, and compile it with
+   --       -gnatd.B. There is nothing special about abort_statements; it just
+   --       provides a way to control where the bug box is generated. See "when
+   --       N_Abort_Statement" in package body Expander.
+
    --  d.C  Generate call to System.Concat_n.Str_Concat_n routines in cases
    --       where we would normally generate inline concatenation code.
+
+   --  d.D  For compatibility with some Ada 95 compilers implementing only
+   --       one feature of Ada 2005 (overriding keyword), disable errors on use
+   --       of overriding keyword in Ada 95 mode.
 
    --  d.E  Turn selected errors into warnings. This debug switch causes a
    --       specific set of error messages into warnings. Setting this switch
@@ -680,11 +693,11 @@ package body Debug is
    --       the order in which units are walked. This is primarily for use in
    --       debugging CodePeer mode.
 
-   --  d.X  A previous version of GNAT allowed indexing aspects to be
-   --       redefined on derived container types, while the default iterator
-   --       was inherited from the aprent type. This non-standard extension
-   --       is preserved temporarily for use by the modelling project under
-   --       debug flag d.X.
+   --  d.X  A previous version of GNAT allowed indexing aspects to be redefined
+   --       on derived container types, while the default iterator was
+   --       inherited from the parent type. This nonstandard extension is
+   --       preserved temporarily for use by the modeling project under debug
+   --       flag d.X.
 
    --  d.Z  Normally we always enable expansion in configurable run-time mode
    --       to make sure we get error messages about unsupported features even
@@ -736,6 +749,25 @@ package body Debug is
 
    --  d9   This allows lock free implementation for protected objects
    --       (see Exp_Ch9).
+
+   --  d.1  Sets Opt.Unnest_Subprogram_Mode to enable unnesting of subprograms.
+   --       This special pass does not actually unnest things, but it ensures
+   --       that a nested procedure does not contain any uplevel references.
+   --       See spec of Exp_Unst for full details.
+
+   --  d.2  Allow statements within declarative parts. This is not usually
+   --       allowed, but in some debugging contexts (e.g. testing the circuit
+   --       for unnesting of procedures), it is useful to allow this.
+
+   --  d.3  Output debugging information from Exp_Unst, including the name of
+   --       any unreachable subprograms that get deleted.
+
+   --  d.4  By default in case of an error during C generation, the .c or .h
+   --       file is deleted. This flag keeps the C file.
+
+   --  d.5  By default a subprogram imported generates a subprogram profile.
+   --       This debug flag disables this generation when generating C code,
+   --       assuming a proper #include will be used instead.
 
    ------------------------------------------
    -- Documentation for Binder Debug Flags --

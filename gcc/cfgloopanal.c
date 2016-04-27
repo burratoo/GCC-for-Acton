@@ -1,5 +1,5 @@
 /* Natural loop analysis code for GNU compiler.
-   Copyright (C) 2002-2014 Free Software Foundation, Inc.
+   Copyright (C) 2002-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,12 +20,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "rtl.h"
-#include "hard-reg-set.h"
-#include "obstack.h"
-#include "basic-block.h"
+#include "tree.h"
+#include "predict.h"
+#include "emit-rtl.h"
 #include "cfgloop.h"
+#include "explow.h"
 #include "expr.h"
 #include "graphds.h"
 #include "params.h"
@@ -302,26 +303,6 @@ get_loop_level (const struct loop *loop)
   return mx;
 }
 
-/* Returns estimate on cost of computing SEQ.  */
-
-static unsigned
-seq_cost (const rtx_insn *seq, bool speed)
-{
-  unsigned cost = 0;
-  rtx set;
-
-  for (; seq; seq = NEXT_INSN (seq))
-    {
-      set = single_set (seq);
-      if (set)
-	cost += set_rtx_cost (set, speed);
-      else
-	cost++;
-    }
-
-  return cost;
-}
-
 /* Initialize the constants for computing set costs.  */
 
 void
@@ -329,9 +310,9 @@ init_set_costs (void)
 {
   int speed;
   rtx_insn *seq;
-  rtx reg1 = gen_raw_REG (SImode, FIRST_PSEUDO_REGISTER);
-  rtx reg2 = gen_raw_REG (SImode, FIRST_PSEUDO_REGISTER + 1);
-  rtx addr = gen_raw_REG (Pmode, FIRST_PSEUDO_REGISTER + 2);
+  rtx reg1 = gen_raw_REG (SImode, LAST_VIRTUAL_REGISTER + 1);
+  rtx reg2 = gen_raw_REG (SImode, LAST_VIRTUAL_REGISTER + 2);
+  rtx addr = gen_raw_REG (Pmode, LAST_VIRTUAL_REGISTER + 3);
   rtx mem = validize_mem (gen_rtx_MEM (SImode, addr));
   unsigned i;
 

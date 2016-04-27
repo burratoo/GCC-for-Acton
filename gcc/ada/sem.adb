@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,6 +29,7 @@ with Debug_A;  use Debug_A;
 with Elists;   use Elists;
 with Expander; use Expander;
 with Fname;    use Fname;
+with Ghost;    use Ghost;
 with Lib;      use Lib;
 with Lib.Load; use Lib.Load;
 with Nlists;   use Nlists;
@@ -52,6 +53,7 @@ with Sem_Prag; use Sem_Prag;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 with Stand;    use Stand;
+with Stylesw;  use Stylesw;
 with Uintp;    use Uintp;
 with Uname;    use Uname;
 
@@ -95,6 +97,8 @@ package body Sem is
    -------------
 
    procedure Analyze (N : Node_Id) is
+      Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
    begin
       Debug_A_Entry ("analyzing  ", N);
 
@@ -105,10 +109,17 @@ package body Sem is
          return;
       end if;
 
+      --  A declaration may be subject to pragma Ghost. Set the mode now to
+      --  ensure that any nodes generated during analysis and expansion are
+      --  marked as Ghost.
+
+      if Is_Declaration (N) then
+         Set_Ghost_Mode (N);
+      end if;
+
       --  Otherwise processing depends on the node kind
 
       case Nkind (N) is
-
          when N_Abort_Statement =>
             Analyze_Abort_Statement (N);
 
@@ -625,10 +636,9 @@ package body Sem is
          --  the call to analyze them is generated when the full list is
          --  analyzed.
 
-         when
-           N_SCIL_Dispatch_Table_Tag_Init |
-           N_SCIL_Dispatching_Call        |
-           N_SCIL_Membership_Test         =>
+         when N_SCIL_Dispatch_Table_Tag_Init |
+              N_SCIL_Dispatching_Call        |
+              N_SCIL_Membership_Test         =>
             null;
 
          --  For the remaining node types, we generate compiler abort, because
@@ -638,66 +648,64 @@ package body Sem is
          --  node appears only in the context of a type declaration, and is
          --  processed by the analyze routine for type declarations.
 
-         when
-           N_Abortable_Part                         |
-           N_Access_Definition                      |
-           N_Access_Function_Definition             |
-           N_Access_Procedure_Definition            |
-           N_Access_To_Object_Definition            |
-           N_Aspect_Specification                   |
-           N_Case_Expression_Alternative            |
-           N_Case_Statement_Alternative             |
-           N_Compilation_Unit_Aux                   |
-           N_Component_Association                  |
-           N_Component_Clause                       |
-           N_Component_Definition                   |
-           N_Component_List                         |
-           N_Constrained_Array_Definition           |
-           N_Contract                               |
-           N_Decimal_Fixed_Point_Definition         |
-           N_Defining_Character_Literal             |
-           N_Defining_Identifier                    |
-           N_Defining_Operator_Symbol               |
-           N_Defining_Program_Unit_Name             |
-           N_Delta_Constraint                       |
-           N_Derived_Type_Definition                |
-           N_Designator                             |
-           N_Digits_Constraint                      |
-           N_Discriminant_Association               |
-           N_Discriminant_Specification             |
-           N_Elsif_Part                             |
-           N_Entry_Call_Statement                   |
-           N_Enumeration_Type_Definition            |
-           N_Exception_Handler                      |
-           N_Floating_Point_Definition              |
-           N_Formal_Decimal_Fixed_Point_Definition  |
-           N_Formal_Derived_Type_Definition         |
-           N_Formal_Discrete_Type_Definition        |
-           N_Formal_Floating_Point_Definition       |
-           N_Formal_Modular_Type_Definition         |
-           N_Formal_Ordinary_Fixed_Point_Definition |
-           N_Formal_Private_Type_Definition         |
-           N_Formal_Incomplete_Type_Definition      |
-           N_Formal_Signed_Integer_Type_Definition  |
-           N_Function_Specification                 |
-           N_Generic_Association                    |
-           N_Index_Or_Discriminant_Constraint       |
-           N_Iteration_Scheme                       |
-           N_Mod_Clause                             |
-           N_Modular_Type_Definition                |
-           N_Ordinary_Fixed_Point_Definition        |
-           N_Parameter_Specification                |
-           N_Pragma_Argument_Association            |
-           N_Procedure_Specification                |
-           N_Real_Range_Specification               |
-           N_Record_Definition                      |
-           N_Signed_Integer_Type_Definition         |
-           N_Task_Body_Statement_Sequence           |
-           N_Unconstrained_Array_Definition         |
-           N_Unused_At_Start                        |
-           N_Unused_At_End                          |
-           N_Variant                                =>
-
+         when N_Abortable_Part                         |
+              N_Access_Definition                      |
+              N_Access_Function_Definition             |
+              N_Access_Procedure_Definition            |
+              N_Access_To_Object_Definition            |
+              N_Aspect_Specification                   |
+              N_Case_Expression_Alternative            |
+              N_Case_Statement_Alternative             |
+              N_Compilation_Unit_Aux                   |
+              N_Component_Association                  |
+              N_Component_Clause                       |
+              N_Component_Definition                   |
+              N_Component_List                         |
+              N_Constrained_Array_Definition           |
+              N_Contract                               |
+              N_Decimal_Fixed_Point_Definition         |
+              N_Defining_Character_Literal             |
+              N_Defining_Identifier                    |
+              N_Defining_Operator_Symbol               |
+              N_Defining_Program_Unit_Name             |
+              N_Delta_Constraint                       |
+              N_Derived_Type_Definition                |
+              N_Designator                             |
+              N_Digits_Constraint                      |
+              N_Discriminant_Association               |
+              N_Discriminant_Specification             |
+              N_Elsif_Part                             |
+              N_Entry_Call_Statement                   |
+              N_Enumeration_Type_Definition            |
+              N_Exception_Handler                      |
+              N_Floating_Point_Definition              |
+              N_Formal_Decimal_Fixed_Point_Definition  |
+              N_Formal_Derived_Type_Definition         |
+              N_Formal_Discrete_Type_Definition        |
+              N_Formal_Floating_Point_Definition       |
+              N_Formal_Modular_Type_Definition         |
+              N_Formal_Ordinary_Fixed_Point_Definition |
+              N_Formal_Private_Type_Definition         |
+              N_Formal_Incomplete_Type_Definition      |
+              N_Formal_Signed_Integer_Type_Definition  |
+              N_Function_Specification                 |
+              N_Generic_Association                    |
+              N_Index_Or_Discriminant_Constraint       |
+              N_Iteration_Scheme                       |
+              N_Mod_Clause                             |
+              N_Modular_Type_Definition                |
+              N_Ordinary_Fixed_Point_Definition        |
+              N_Parameter_Specification                |
+              N_Pragma_Argument_Association            |
+              N_Procedure_Specification                |
+              N_Real_Range_Specification               |
+              N_Record_Definition                      |
+              N_Signed_Integer_Type_Definition         |
+              N_Task_Body_Statement_Sequence           |
+              N_Unconstrained_Array_Definition         |
+              N_Unused_At_Start                        |
+              N_Unused_At_End                          |
+              N_Variant                                =>
             raise Program_Error;
       end case;
 
@@ -723,6 +731,8 @@ package body Sem is
       then
          Expand (N);
       end if;
+
+      Ghost_Mode := Save_Ghost_Mode;
    end Analyze;
 
    --  Version with check(s) suppressed
@@ -993,7 +1003,7 @@ package body Sem is
       if Present (M) then
 
          --  If we are not at the end of the list, then the easiest
-         --  coding is simply to insert before our successor
+         --  coding is simply to insert before our successor.
 
          if Present (Next (N)) then
             Insert_Before_And_Analyze (Next (N), M);
@@ -1301,6 +1311,57 @@ package body Sem is
    ---------------
 
    procedure Semantics (Comp_Unit : Node_Id) is
+      procedure Do_Analyze;
+      --  Perform the analysis of the compilation unit
+
+      ----------------
+      -- Do_Analyze --
+      ----------------
+
+      procedure Do_Analyze is
+         Save_Ghost_Mode : constant Ghost_Mode_Type := Ghost_Mode;
+
+         --  Generally style checks are preserved across compilations, with
+         --  one exception: s-oscons.ads, which allows arbitrary long lines
+         --  unconditionally, and has no restore mechanism, because it is
+         --  intended as a lowest-level Pure package.
+
+         Save_Max_Line   : constant Int := Style_Max_Line_Length;
+
+         List : Elist_Id;
+
+      begin
+         List := Save_Scope_Stack;
+         Push_Scope (Standard_Standard);
+
+         --  Set up a clean environment before analyzing
+
+         Ghost_Mode          := None;
+         Outer_Generic_Scope := Empty;
+         Scope_Suppress      := Suppress_Options;
+         Scope_Stack.Table
+           (Scope_Stack.Last).Component_Alignment_Default := Calign_Default;
+         Scope_Stack.Table
+           (Scope_Stack.Last).Is_Active_Stack_Base := True;
+
+         --  Now analyze the top level compilation unit node
+
+         Analyze (Comp_Unit);
+
+         --  Check for scope mismatch on exit from compilation
+
+         pragma Assert (Current_Scope = Standard_Standard
+                          or else Comp_Unit = Cunit (Main_Unit));
+
+         --  Then pop entry for Standard, and pop implicit types
+
+         Pop_Scope;
+         Restore_Scope_Stack (List);
+         Ghost_Mode := Save_Ghost_Mode;
+         Style_Max_Line_Length := Save_Max_Line;
+      end Do_Analyze;
+
+      --  Local variables
 
       --  The following locations save the corresponding global flags and
       --  variables so that they can be restored on completion. This is needed
@@ -1318,6 +1379,8 @@ package body Sem is
       S_Inside_A_Generic  : constant Boolean          := Inside_A_Generic;
       S_Outer_Gen_Scope   : constant Entity_Id        := Outer_Generic_Scope;
       S_Style_Check       : constant Boolean          := Style_Check;
+
+      Already_Analyzed : constant Boolean := Analyzed (Comp_Unit);
 
       Curunit : constant Unit_Number_Type := Get_Cunit_Unit_Number (Comp_Unit);
       --  New value of Current_Sem_Unit
@@ -1347,43 +1410,6 @@ package body Sem is
       --  Used to save non-partition wide restrictions before processing new
       --  unit. All with'ed units are analyzed with config restrictions reset
       --  and we need to restore these saved values at the end.
-
-      procedure Do_Analyze;
-      --  Procedure to analyze the compilation unit
-
-      ----------------
-      -- Do_Analyze --
-      ----------------
-
-      procedure Do_Analyze is
-         List : Elist_Id;
-
-      begin
-         List := Save_Scope_Stack;
-         Push_Scope (Standard_Standard);
-         Scope_Suppress := Suppress_Options;
-         Scope_Stack.Table
-           (Scope_Stack.Last).Component_Alignment_Default := Calign_Default;
-         Scope_Stack.Table
-           (Scope_Stack.Last).Is_Active_Stack_Base := True;
-         Outer_Generic_Scope := Empty;
-
-         --  Now analyze the top level compilation unit node
-
-         Analyze (Comp_Unit);
-
-         --  Check for scope mismatch on exit from compilation
-
-         pragma Assert (Current_Scope = Standard_Standard
-                          or else Comp_Unit = Cunit (Main_Unit));
-
-         --  Then pop entry for Standard, and pop implicit types
-
-         Pop_Scope;
-         Restore_Scope_Stack (List);
-      end Do_Analyze;
-
-      Already_Analyzed : constant Boolean := Analyzed (Comp_Unit);
 
    --  Start of processing for Semantics
 
@@ -1429,7 +1455,7 @@ package body Sem is
 
            (Operating_Mode = Generate_Code
 
-             --  or if special debug flag -gnatdx is set
+             --  Or if special debug flag -gnatdx is set
 
              or else Debug_Flag_X
 
@@ -1437,11 +1463,13 @@ package body Sem is
              --  error messages about missing entities in the run-time even
              --  if we are compiling in -gnatc (no code generation) mode.
              --  Similar processing applies to No_Run_Time_Mode. However,
-             --  don't do this if debug flag -gnatd.Z is set (this is to handle
-             --  a situation where this new processing causes trouble).
+             --  don't do this if debug flag -gnatd.Z is set or when we are
+             --  compiling a separate unit (this is to handle a situation
+             --  where this new processing causes trouble).
 
              or else ((Configurable_Run_Time_Mode or No_Run_Time_Mode)
-                       and not Debug_Flag_Dot_ZZ));
+                       and not Debug_Flag_Dot_ZZ
+                       and Nkind (Unit (Cunit (Main_Unit))) /= N_Subunit));
       end if;
 
       Full_Analysis      := True;
@@ -2024,7 +2052,7 @@ package body Sem is
                --  The flag Withed_Body on a context clause indicates that a
                --  unit contains an instantiation that may be needed later,
                --  and therefore the body that contains the generic body (and
-               --  its context)  must be traversed immediately after the
+               --  its context) must be traversed immediately after the
                --  corresponding spec (see Do_Unit_And_Dependents).
 
                --  The main unit itself is processed separately after all other
@@ -2047,9 +2075,9 @@ package body Sem is
                   end if;
 
                   --  It's a spec, process it, and the units it depends on,
-                  --  unless it is a descendent of the main unit.  This can
+                  --  unless it is a descendant of the main unit.  This can
                   --  happen when the body of a parent depends on some other
-                  --  descendent.
+                  --  descendant.
 
                when others =>
                   Par := Scope (Defining_Entity (Unit (CU)));

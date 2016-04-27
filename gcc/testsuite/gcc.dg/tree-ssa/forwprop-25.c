@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O1 -fdump-tree-forwprop1" } */
+/* { dg-options "-O1 -fdump-tree-cddce1" } */
 
 struct rtx_def;
 typedef struct rtx_def *rtx;
@@ -22,6 +22,7 @@ struct rtx_def
 {
   __extension__ enum machine_mode mode:8;
 };
+void fancy_abort (const char *, int, const char *);
 void
 convert_move (rtx to, rtx from, int unsignedp)
 {
@@ -36,8 +37,4 @@ convert_move (rtx to, rtx from, int unsignedp)
     0 : 0));
 }
 
-/* { dg-final { scan-tree-dump "Replaced.*!=.*with.*!=.* " "forwprop1"} } */
-/* { dg-final { cleanup-tree-dump "forwprop1" } } */
-
-
-
+/* { dg-final { scan-tree-dump-not " ^ " "cddce1"} } */

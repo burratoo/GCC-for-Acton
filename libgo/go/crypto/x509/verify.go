@@ -5,6 +5,7 @@
 package x509
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -116,12 +117,15 @@ func (e UnknownAuthorityError) Error() string {
 }
 
 // SystemRootsError results when we fail to load the system root certificates.
-type SystemRootsError struct {
-}
+type SystemRootsError struct{}
 
-func (e SystemRootsError) Error() string {
+func (SystemRootsError) Error() string {
 	return "x509: failed to load system roots and no roots provided"
 }
+
+// errNotParsed is returned when a certificate without ASN.1 contents is
+// verified. Platform-specific verification needs the ASN.1 contents.
+var errNotParsed = errors.New("x509: missing ASN.1 contents; use ParseCertificate")
 
 // VerifyOptions contains parameters for Certificate.Verify. It's a structure
 // because other PKIX verification APIs have ended up needing many options.
@@ -206,11 +210,31 @@ func (c *Certificate) isValid(certType int, currentChain []*Certificate, opts *V
 // needed. If successful, it returns one or more chains where the first
 // element of the chain is c and the last element is from opts.Roots.
 //
+// If opts.Roots is nil and system roots are unavailable the returned error
+// will be of type SystemRootsError.
+//
 // WARNING: this doesn't do any revocation checking.
 func (c *Certificate) Verify(opts VerifyOptions) (chains [][]*Certificate, err error) {
+	// Platform-specific verification needs the ASN.1 contents so
+	// this makes the behaviour consistent across platforms.
+	if len(c.Raw) == 0 {
+		return nil, errNotParsed
+	}
+	if opts.Intermediates != nil {
+		for _, intermediate := range opts.Intermediates.certs {
+			if len(intermediate.Raw) == 0 {
+				return nil, errNotParsed
+			}
+		}
+	}
+
 	// Use Windows's own verification and chain building.
 	if opts.Roots == nil && runtime.GOOS == "windows" {
 		return c.systemVerify(&opts)
+	}
+
+	if len(c.UnhandledCriticalExtensions) > 0 {
+		return nil, UnhandledCriticalExtension{}
 	}
 
 	if opts.Roots == nil {
@@ -321,6 +345,9 @@ nextIntermediate:
 }
 
 func matchHostnames(pattern, host string) bool {
+	host = strings.TrimSuffix(host, ".")
+	pattern = strings.TrimSuffix(pattern, ".")
+
 	if len(pattern) == 0 || len(host) == 0 {
 		return false
 	}
@@ -333,7 +360,7 @@ func matchHostnames(pattern, host string) bool {
 	}
 
 	for i, patternPart := range patternParts {
-		if patternPart == "*" {
+		if i == 0 && patternPart == "*" {
 			continue
 		}
 		if patternPart != hostParts[i] {

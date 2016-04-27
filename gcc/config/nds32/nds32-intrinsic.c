@@ -1,5 +1,5 @@
 /* Intrinsic functions of Andes NDS32 cpu for GNU compiler
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GCC.
@@ -23,34 +23,15 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "tree.h"
-#include "stor-layout.h"
-#include "varasm.h"
-#include "calls.h"
-#include "rtl.h"
-#include "regs.h"
-#include "hard-reg-set.h"
-#include "insn-config.h"	/* Required by recog.h.  */
-#include "conditions.h"
-#include "output.h"
-#include "insn-attr.h"		/* For DFA state_t.  */
-#include "insn-codes.h"		/* For CODE_FOR_xxx.  */
-#include "reload.h"		/* For push_reload().  */
-#include "flags.h"
-#include "function.h"
-#include "expr.h"
-#include "recog.h"
-#include "diagnostic-core.h"
-#include "df.h"
-#include "tm_p.h"
-#include "tm-constrs.h"
-#include "optabs.h"		/* For GEN_FCN.  */
+#include "backend.h"
 #include "target.h"
-#include "target-def.h"
+#include "rtl.h"
+#include "tree.h"
+#include "optabs.h"		/* For GEN_FCN.  */
+#include "diagnostic-core.h"
+#include "stor-layout.h"
+#include "expr.h"
 #include "langhooks.h"		/* For add_builtin_function().  */
-#include "ggc.h"
-#include "builtins.h"
 
 /* ------------------------------------------------------------------------ */
 
@@ -197,7 +178,7 @@ rtx
 nds32_expand_builtin_impl (tree exp,
 			   rtx target,
 			   rtx subtarget ATTRIBUTE_UNUSED,
-			   enum machine_mode mode ATTRIBUTE_UNUSED,
+			   machine_mode mode ATTRIBUTE_UNUSED,
 			   int ignore ATTRIBUTE_UNUSED)
 {
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);

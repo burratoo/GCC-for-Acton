@@ -1,5 +1,5 @@
 /* Definitions for C parsing and type checking.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -55,6 +55,9 @@ along with GCC; see the file COPYING3.  If not see
 /* Record whether a type is defined inside a struct or union type.
    This is used for -Wc++-compat. */
 #define C_TYPE_DEFINED_IN_STRUCT(TYPE) TYPE_LANG_FLAG_2 (TYPE)
+
+/* Record whether an "incomplete type" error was given for the type.  */
+#define C_TYPE_ERROR_REPORTED(TYPE) TYPE_LANG_FLAG_3 (TYPE)
 
 /* Record whether a typedef for type `int' was actually `signed int'.  */
 #define C_TYPEDEF_EXPLICITLY_SIGNED(EXP) DECL_LANG_FLAG_1 (EXP)
@@ -129,6 +132,17 @@ struct c_expr
      The type of an enum constant is a plain integer type, but this
      field will be the enum type.  */
   tree original_type;
+
+  /* The source range of this expression.  This is redundant
+     for node values that have locations, but not all node kinds
+     have locations (e.g. constants, and references to params, locals,
+     etc), so we stash a copy here.  */
+  source_range src_range;
+
+  /* Access to the first and last locations within the source spelling
+     of this expression.  */
+  location_t get_start () const { return src_range.m_start; }
+  location_t get_finish () const { return src_range.m_finish; }
 };
 
 /* Type alias for struct c_expr. This allows to use the structure
@@ -202,7 +216,7 @@ enum c_typespec_keyword {
   cts_char,
   cts_int,
   cts_float,
-  cts_int128,
+  cts_int_n,
   cts_double,
   cts_dfloat32,
   cts_dfloat64,
@@ -269,6 +283,8 @@ struct c_declspecs {
      specifier, in bytes, or -1 if no such specifiers with nonzero
      alignment.  */
   int align_log;
+  /* For the __intN declspec, this stores the index into the int_n_* arrays.  */
+  int int_n_idx;
   /* The storage class specifier, or csc_none if none.  */
   enum c_storage_class storage_class;
   /* Any type specifier keyword used such as "int", not reflecting
@@ -350,12 +366,12 @@ enum c_declarator_kind {
   cdk_attrs
 };
 
-typedef struct c_arg_tag_d {
+struct c_arg_tag {
   /* The argument name.  */
   tree id;
   /* The type of the argument.  */
   tree type;
-} c_arg_tag;
+};
 
 
 /* Information about the parameters in a function declarator.  */
@@ -609,6 +625,7 @@ extern void maybe_warn_string_init (location_t, tree, struct c_expr);
 extern void start_init (tree, tree, int);
 extern void finish_init (void);
 extern void really_start_incremental_init (tree);
+extern void finish_implicit_inits (location_t, struct obstack *);
 extern void push_init_level (location_t, int, struct obstack *);
 extern struct c_expr pop_init_level (location_t, int, struct obstack *);
 extern void set_init_index (location_t, tree, tree, struct obstack *);
@@ -618,13 +635,13 @@ extern void process_init_element (location_t, struct c_expr, bool,
 extern tree build_compound_literal (location_t, tree, tree, bool);
 extern void check_compound_literal_type (location_t, struct c_type_name *);
 extern tree c_start_case (location_t, location_t, tree, bool);
-extern void c_finish_case (tree);
+extern void c_finish_case (tree, tree);
 extern tree build_asm_expr (location_t, tree, tree, tree, tree, tree, bool);
 extern tree build_asm_stmt (tree, tree);
 extern int c_types_compatible_p (tree, tree);
 extern tree c_begin_compound_stmt (bool);
 extern tree c_end_compound_stmt (location_t, tree, bool);
-extern void c_finish_if_stmt (location_t, tree, tree, tree, bool);
+extern void c_finish_if_stmt (location_t, tree, tree, tree);
 extern void c_finish_loop (location_t, tree, tree, tree, tree, tree, bool);
 extern tree c_begin_stmt_expr (void);
 extern tree c_finish_stmt_expr (location_t, tree);
@@ -635,14 +652,17 @@ extern tree c_finish_bc_stmt (location_t, tree *, bool);
 extern tree c_finish_goto_label (location_t, tree);
 extern tree c_finish_goto_ptr (location_t, tree);
 extern tree c_expr_to_decl (tree, bool *, bool *);
+extern tree c_finish_omp_construct (location_t, enum tree_code, tree, tree);
+extern tree c_finish_oacc_data (location_t, tree, tree);
+extern tree c_finish_oacc_host_data (location_t, tree, tree);
 extern tree c_begin_omp_parallel (void);
 extern tree c_finish_omp_parallel (location_t, tree, tree);
 extern tree c_begin_omp_task (void);
 extern tree c_finish_omp_task (location_t, tree, tree);
 extern void c_finish_omp_cancel (location_t, tree);
 extern void c_finish_omp_cancellation_point (location_t, tree);
-extern tree c_finish_omp_clauses (tree);
-extern tree c_build_va_arg (location_t, tree, tree);
+extern tree c_finish_omp_clauses (tree, bool, bool = false, bool = false);
+extern tree c_build_va_arg (location_t, tree, location_t, tree);
 extern tree c_finish_transaction (location_t, tree, int);
 extern bool c_tree_equal (tree, tree);
 extern tree c_build_function_call_vec (location_t, vec<location_t>, tree,
@@ -663,22 +683,55 @@ extern int current_function_returns_null;
 
 extern int current_function_returns_abnormally;
 
-/* Mode used to build pointers (VOIDmode means ptr_mode).  */
-
-extern enum machine_mode c_default_pointer_mode;
-
 /* In c-decl.c */
+
+/* Tell the binding oracle what kind of binding we are looking for.  */
+
+enum c_oracle_request
+{
+  C_ORACLE_SYMBOL,
+  C_ORACLE_TAG,
+  C_ORACLE_LABEL
+};
+
+/* If this is non-NULL, then it is a "binding oracle" which can lazily
+   create bindings when needed by the C compiler.  The oracle is told
+   the name and type of the binding to create.  It can call pushdecl
+   or the like to ensure the binding is visible; or do nothing,
+   leaving the binding untouched.  c-decl.c takes note of when the
+   oracle has been called and will not call it again if it fails to
+   create a given binding.  */
+
+typedef void c_binding_oracle_function (enum c_oracle_request, tree identifier);
+
+extern c_binding_oracle_function *c_binding_oracle;
+
 extern void c_finish_incomplete_decl (tree);
-extern void c_write_global_declarations (void);
 extern tree c_omp_reduction_id (enum tree_code, tree);
 extern tree c_omp_reduction_decl (tree);
 extern tree c_omp_reduction_lookup (tree, tree);
 extern tree c_check_omp_declare_reduction_r (tree *, int *, void *);
+extern void c_pushtag (location_t, tree, tree);
+extern void c_bind (location_t, tree, bool);
+extern bool tag_exists_p (enum tree_code, tree);
 
 /* In c-errors.c */
 extern void pedwarn_c90 (location_t, int opt, const char *, ...)
     ATTRIBUTE_GCC_DIAG(3,4);
 extern bool pedwarn_c99 (location_t, int opt, const char *, ...)
     ATTRIBUTE_GCC_DIAG(3,4);
+
+extern void
+set_c_expr_source_range (c_expr *expr,
+			 location_t start, location_t finish);
+
+extern void
+set_c_expr_source_range (c_expr *expr,
+			 source_range src_range);
+
+/* In c-fold.c */
+extern tree decl_constant_value_for_optimization (tree);
+
+extern vec<tree> incomplete_record_decls;
 
 #endif /* ! GCC_C_TREE_H */

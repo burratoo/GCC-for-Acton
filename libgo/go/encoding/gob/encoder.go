@@ -5,7 +5,7 @@
 package gob
 
 import (
-	"bytes"
+	"errors"
 	"io"
 	"reflect"
 	"sync"
@@ -19,7 +19,7 @@ type Encoder struct {
 	sent       map[reflect.Type]typeId // which types we've already sent
 	countState *encoderState           // stage for writing counts
 	freeList   *encoderState           // list of free encoderStates; avoids reallocation
-	byteBuf    bytes.Buffer            // buffer for top-level encoderState
+	byteBuf    encBuffer               // buffer for top-level encoderState
 	err        error
 }
 
@@ -34,7 +34,7 @@ func NewEncoder(w io.Writer) *Encoder {
 	enc := new(Encoder)
 	enc.w = []io.Writer{w}
 	enc.sent = make(map[reflect.Type]typeId)
-	enc.countState = enc.newEncoderState(new(bytes.Buffer))
+	enc.countState = enc.newEncoderState(new(encBuffer))
 	return enc
 }
 
@@ -60,12 +60,17 @@ func (enc *Encoder) setError(err error) {
 }
 
 // writeMessage sends the data item preceded by a unsigned count of its length.
-func (enc *Encoder) writeMessage(w io.Writer, b *bytes.Buffer) {
+func (enc *Encoder) writeMessage(w io.Writer, b *encBuffer) {
 	// Space has been reserved for the length at the head of the message.
 	// This is a little dirty: we grab the slice from the bytes.Buffer and massage
 	// it by hand.
 	message := b.Bytes()
 	messageLen := len(message) - maxLength
+	// Length cannot be bigger than the decoder can handle.
+	if messageLen >= tooBig {
+		enc.setError(errors.New("gob: encoder: message too big"))
+		return
+	}
 	// Encode the length.
 	enc.countState.b.Reset()
 	enc.countState.encodeUint(uint64(messageLen))
@@ -88,9 +93,7 @@ func (enc *Encoder) sendActualType(w io.Writer, state *encoderState, ut *userTyp
 	if _, alreadySent := enc.sent[actual]; alreadySent {
 		return false
 	}
-	typeLock.Lock()
 	info, err := getTypeInfo(ut)
-	typeLock.Unlock()
 	if err != nil {
 		enc.setError(err)
 		return
@@ -191,9 +194,7 @@ func (enc *Encoder) sendTypeDescriptor(w io.Writer, state *encoderState, ut *use
 		// a singleton basic type (int, []byte etc.) at top level.  We don't
 		// need to send the type info but we do need to update enc.sent.
 		if !sent {
-			typeLock.Lock()
 			info, err := getTypeInfo(ut)
-			typeLock.Unlock()
 			if err != nil {
 				enc.setError(err)
 				return

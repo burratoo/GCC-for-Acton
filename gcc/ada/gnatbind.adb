@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -634,7 +634,16 @@ begin
       Shared_Libacton := (Shared_Libacton_Default = SHARED);
    end;
 
-   --  Scan the switches and arguments
+   --  Carry out package initializations. These are initializations which
+   --  might logically be performed at elaboration time, and we decide to be
+   --  consistent. Like elaboration, the order in which these calls are made
+   --  is in some cases important.
+
+   Csets.Initialize;
+   Snames.Initialize;
+
+   --  Scan the switches and arguments. Note that Snames must already be
+   --  initialized (for processing of the -V switch).
 
    --  First, scan to detect --version and/or --help
 
@@ -689,14 +698,6 @@ begin
    end if;
 
    Osint.Add_Default_Search_Dirs;
-
-   --  Carry out package initializations. These are initializations which
-   --  might logically be performed at elaboration time, and we decide to be
-   --  consistent. Like elaboration, the order in which these calls are made
-   --  is in some cases important.
-
-   Csets.Initialize;
-   Snames.Initialize;
 
    --  Acquire target parameters
 
@@ -883,6 +884,13 @@ begin
       --  Quit if some file needs compiling
 
       if No_Object_Specified then
+         raise Unrecoverable_Error;
+      end if;
+
+      --  Quit with message if we had a GNATprove file
+
+      if GNATprove_Mode_Specified then
+         Error_Msg ("one or more files compiled in GNATprove mode");
          raise Unrecoverable_Error;
       end if;
 

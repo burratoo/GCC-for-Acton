@@ -1,6 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-O2 -fdump-tree-pre-details" } */
 
+void bark (void);
 int flag, hoist, y, z;
 
 void
@@ -18,4 +19,3 @@ foo (void)
    about bark () possibly clobbering hoist.  */
 
 /* { dg-final { scan-tree-dump "Replaced hoist" "pre" } } */
-/* { dg-final { cleanup-tree-dump "pre" } } */

@@ -1,4 +1,4 @@
-@c Copyright (C) 1988-2014 Free Software Foundation, Inc.
+@c Copyright (C) 1988-2016 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -375,6 +375,11 @@ The sequence in which libgcc and libc are specified to the linker.
 By default this is @code{%G %L %G}.
 @end defmac
 
+@defmac POST_LINK_SPEC
+Define this macro to add additional steps to be executed after linker.
+The default value of this macro is empty string.
+@end defmac
+
 @defmac LINK_COMMAND_SPEC
 A C string constant giving the complete command line need to execute the
 linker.  When you do this, you will need to update your port each time a
@@ -410,7 +415,7 @@ If defined, this macro is an additional prefix to try after
 @code{STANDARD_EXEC_PREFIX}.  @code{MD_EXEC_PREFIX} is not searched
 when the compiler is built as a cross
 compiler.  If you define @code{MD_EXEC_PREFIX}, then be sure to add it
-to the list of directories used to find the assembler in @file{configure.in}.
+to the list of directories used to find the assembler in @file{configure.ac}.
 @end defmac
 
 @defmac STANDARD_STARTFILE_PREFIX
@@ -957,6 +962,8 @@ bits.  Note that this is not the biggest alignment that is supported,
 just the biggest alignment that, when violated, may cause a fault.
 @end defmac
 
+@hook TARGET_ABSOLUTE_BIGGEST_ALIGNMENT
+
 @defmac MALLOC_ABI_ALIGNMENT
 Alignment, in bits, a C conformant malloc implementation has to
 provide.  If not defined, the default value is @code{BITS_PER_WORD}.
@@ -1046,7 +1053,7 @@ that is being placed in memory.  @var{constant} is the constant and
 have.  The value of this macro is used instead of that alignment to
 align the object.
 
-If this macro is not defined, then @var{basic-align} is used.
+The default definition just returns @var{basic-align}.
 
 The typical use of this macro is to increase alignment for string
 constants to be word aligned so that @code{strcpy} calls that copy
@@ -1226,7 +1233,7 @@ appropriate sizes.  If this macro is undefined, @code{GET_MODE_BITSIZE
 @end defmac
 
 @defmac STACK_SAVEAREA_MODE (@var{save_level})
-If defined, an expression of type @code{enum machine_mode} that
+If defined, an expression of type @code{machine_mode} that
 specifies the mode of the save area operand of a
 @code{save_stack_@var{level}} named pattern (@pxref{Standard Names}).
 @var{save_level} is one of @code{SAVE_BLOCK}, @code{SAVE_FUNCTION}, or
@@ -1240,7 +1247,7 @@ would most commonly define this macro if the
 @end defmac
 
 @defmac STACK_SIZE_MODE
-If defined, an expression of type @code{enum machine_mode} that
+If defined, an expression of type @code{machine_mode} that
 specifies the mode of the size increment operand of an
 @code{allocate_stack} named pattern (@pxref{Standard Names}).
 
@@ -1254,27 +1261,6 @@ pattern needs to support both a 32- and a 64-bit mode.
 @hook TARGET_LIBGCC_SHIFT_COUNT_MODE
 
 @hook TARGET_UNWIND_WORD_MODE
-
-@defmac ROUND_TOWARDS_ZERO
-If defined, this macro should be true if the prevailing rounding
-mode is towards zero.
-
-Defining this macro only affects the way @file{libgcc.a} emulates
-floating-point arithmetic.
-
-Not defining this macro is equivalent to returning zero.
-@end defmac
-
-@defmac LARGEST_EXPONENT_IS_NORMAL (@var{size})
-This macro should return true if floats with @var{size}
-bits do not have a NaN or infinity representation, but use the largest
-exponent for normal numbers instead.
-
-Defining this macro only affects the way @file{libgcc.a} emulates
-floating-point arithmetic.
-
-The default definition of this macro returns false for all sizes.
-@end defmac
 
 @hook TARGET_MS_BITFIELD_LAYOUT_P
 
@@ -1405,36 +1391,6 @@ the target machine.  If you don't define this, the default is
 @code{BITS_PER_UNIT * 16}.
 @end defmac
 
-@defmac LIBGCC2_LONG_DOUBLE_TYPE_SIZE
-Define this macro if @code{LONG_DOUBLE_TYPE_SIZE} is not constant or
-if you want routines in @file{libgcc2.a} for a size other than
-@code{LONG_DOUBLE_TYPE_SIZE}.  If you don't define this, the
-default is @code{LONG_DOUBLE_TYPE_SIZE}.
-@end defmac
-
-@defmac LIBGCC2_HAS_DF_MODE
-Define this macro if neither @code{DOUBLE_TYPE_SIZE} nor
-@code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE} is
-@code{DFmode} but you want @code{DFmode} routines in @file{libgcc2.a}
-anyway.  If you don't define this and either @code{DOUBLE_TYPE_SIZE}
-or @code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE} is 64 then the default is 1,
-otherwise it is 0.
-@end defmac
-
-@defmac LIBGCC2_HAS_XF_MODE
-Define this macro if @code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE} is not
-@code{XFmode} but you want @code{XFmode} routines in @file{libgcc2.a}
-anyway.  If you don't define this and @code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE}
-is 80 then the default is 1, otherwise it is 0.
-@end defmac
-
-@defmac LIBGCC2_HAS_TF_MODE
-Define this macro if @code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE} is not
-@code{TFmode} but you want @code{TFmode} routines in @file{libgcc2.a}
-anyway.  If you don't define this and @code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE}
-is 128 then the default is 1, otherwise it is 0.
-@end defmac
-
 @defmac LIBGCC2_GNU_PREFIX
 This macro corresponds to the @code{TARGET_LIBFUNC_GNU_PREFIX} target
 hook and should be defined if that hook is overriden to be true.  It
@@ -1442,20 +1398,6 @@ causes function names in libgcc to be changed to use a @code{__gnu_}
 prefix for their name rather than the default @code{__}.  A port which
 uses this macro should also arrange to use @file{t-gnu-prefix} in
 the libgcc @file{config.host}.
-@end defmac
-
-@defmac SF_SIZE
-@defmacx DF_SIZE
-@defmacx XF_SIZE
-@defmacx TF_SIZE
-Define these macros to be the size in bits of the mantissa of
-@code{SFmode}, @code{DFmode}, @code{XFmode} and @code{TFmode} values,
-if the defaults in @file{libgcc2.h} are inappropriate.  By default,
-@code{FLT_MANT_DIG} is used for @code{SF_SIZE}, @code{LDBL_MANT_DIG}
-for @code{XF_SIZE} and @code{TF_SIZE}, and @code{DBL_MANT_DIG} or
-@code{LDBL_MANT_DIG} for @code{DF_SIZE} according to whether
-@code{DOUBLE_TYPE_SIZE} or
-@code{LIBGCC2_LONG_DOUBLE_TYPE_SIZE} is 64.
 @end defmac
 
 @defmac TARGET_FLT_EVAL_METHOD
@@ -2524,8 +2466,8 @@ in the reload pass.
 If defined, a C expression that returns nonzero for a @var{class} for which
 a change from mode @var{from} to mode @var{to} is invalid.
 
-For the example, loading 32-bit integer or floating-point objects into
-floating-point registers on the Alpha extends them to 64 bits.
+For example, loading 32-bit integer or floating-point objects into
+floating-point registers on Alpha extends them to 64 bits.
 Therefore loading a 64-bit object and then storing it as a 32-bit object
 does not store the low-order 32 bits, as would be the case for a normal
 register.  Therefore, @file{alpha.h} defines @code{CANNOT_CHANGE_MODE_CLASS}
@@ -2536,7 +2478,20 @@ as below:
   (GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO) \
    ? reg_classes_intersect_p (FLOAT_REGS, (CLASS)) : 0)
 @end smallexample
+
+Even if storing from a register in mode @var{to} would be valid,
+if both @var{from} and @code{raw_reg_mode} for @var{class} are wider
+than @code{word_mode}, then we must prevent @var{to} narrowing the
+mode.  This happens when the middle-end assumes that it can load
+or store pieces of an @var{N}-word pseudo, and that the pseudo will
+eventually be allocated to @var{N} @code{word_mode} hard registers.
+Failure to prevent this kind of mode change will result in the
+entire @code{raw_reg_mode} being modified instead of the partial
+value that the middle-end intended.
+
 @end defmac
+
+@hook TARGET_IRA_CHANGE_PSEUDO_ALLOCNO_CLASS
 
 @hook TARGET_LRA_P
 
@@ -2545,6 +2500,10 @@ as below:
 @hook TARGET_REGISTER_USAGE_LEVELING_P
 
 @hook TARGET_DIFFERENT_ADDR_DISPLACEMENT_P
+
+@hook TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P
+
+@hook TARGET_LEGITIMIZE_ADDRESS_DISPLACEMENT
 
 @hook TARGET_SPILL_CLASS
 
@@ -2584,12 +2543,8 @@ This describes the stack layout and calling conventions.
 Here is the basic stack layout.
 
 @defmac STACK_GROWS_DOWNWARD
-Define this macro if pushing a word onto the stack moves the stack
-pointer to a smaller address.
-
-When we say, ``define this macro if @dots{}'', it means that the
-compiler checks this macro only with @code{#ifdef} so the precise
-definition used does not matter.
+Define this macro to be true if pushing a word onto the stack moves the stack
+pointer to a smaller address, and false otherwise.
 @end defmac
 
 @defmac STACK_PUSH_CODE
@@ -2604,7 +2559,7 @@ to the last item on the stack or whether it points to the
 space for the next item on the stack.
 
 The default is @code{PRE_DEC} when @code{STACK_GROWS_DOWNWARD} is
-defined, which is almost always right, and @code{PRE_INC} otherwise,
+true, which is almost always right, and @code{PRE_INC} otherwise,
 which is often wrong.
 @end defmac
 
@@ -2687,11 +2642,11 @@ address of the stack word that points to the previous frame.
 @end defmac
 
 @defmac SETUP_FRAME_ADDRESSES
-If defined, a C expression that produces the machine-specific code to
+A C expression that produces the machine-specific code to
 setup the stack so that arbitrary frames can be accessed.  For example,
 on the SPARC, we must flush all of the register windows to the stack
 before we can access arbitrary stack frames.  You will seldom need to
-define this macro.
+define this macro.  The default is to do nothing.
 @end defmac
 
 @hook TARGET_BUILTIN_SETJMP_FRAME_VALUE
@@ -2709,7 +2664,7 @@ A C expression whose value is RTL representing the value of the return
 address for the frame @var{count} steps up from the current frame, after
 the prologue.  @var{frameaddr} is the frame pointer of the @var{count}
 frame, or the frame pointer of the @var{count} @minus{} 1 frame if
-@code{RETURN_ADDR_IN_PREVIOUS_FRAME} is defined.
+@code{RETURN_ADDR_IN_PREVIOUS_FRAME} is nonzero.
 
 The value of the expression must always be the correct address when
 @var{count} is zero, but may be @code{NULL_RTX} if there is no way to
@@ -2717,8 +2672,9 @@ determine the return address of other frames.
 @end defmac
 
 @defmac RETURN_ADDR_IN_PREVIOUS_FRAME
-Define this if the return address of a particular stack frame is accessed
-from the frame pointer of the previous stack frame.
+Define this macro to nonzero value if the return address of a particular
+stack frame is accessed from the frame pointer of the previous stack
+frame.  The zero default for this macro is suitable for most ports.
 @end defmac
 
 @defmac INCOMING_RETURN_ADDR_RTX
@@ -3006,10 +2962,10 @@ default value of this macro is zero.
 
 @defmac STACK_CHECK_PROTECT
 The number of bytes of stack needed to recover from a stack overflow, for
-languages where such a recovery is supported.  The default value of 75 words
+languages where such a recovery is supported.  The default value of 4KB/8KB
 with the @code{setjmp}/@code{longjmp}-based exception handling mechanism and
-8192 bytes with other exception handling mechanisms should be adequate for
-most machines.
+8KB/12KB with other exception handling mechanisms should be adequate for most
+architectures and operating systems.
 @end defmac
 
 The following macros are relevant only if neither STACK_CHECK_BUILTIN
@@ -3413,6 +3369,10 @@ the stack.
 
 @hook TARGET_FUNCTION_INCOMING_ARG
 
+@hook TARGET_USE_PSEUDO_PIC_REG
+
+@hook TARGET_INIT_PIC_REG
+
 @hook TARGET_ARG_PARTIAL_BYTES
 
 @hook TARGET_PASS_BY_REFERENCE
@@ -3565,9 +3525,9 @@ stack.
 
 @hook TARGET_ARRAY_MODE_SUPPORTED_P
 
-@hook TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P
+@hook TARGET_LIBGCC_FLOATING_MODE_SUPPORTED_P
 
-@hook TARGET_FLAGS_REGNUM
+@hook TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P
 
 @node Scalar Return
 @subsection How Scalar Function Values Are Returned
@@ -3625,6 +3585,8 @@ Define this macro if @samp{untyped_call} and @samp{untyped_return}
 need more space than is implied by @code{FUNCTION_VALUE_REGNO_P} for
 saving and restoring an arbitrary return value.
 @end defmac
+
+@hook TARGET_OMIT_STRUCT_RETURN_REG
 
 @hook TARGET_RETURN_IN_MSB
 
@@ -3917,7 +3879,23 @@ These machine description macros help implement varargs:
 
 @hook TARGET_STRICT_ARGUMENT_NAMING
 
+@hook TARGET_CALL_ARGS
+
+@hook TARGET_END_CALL_ARGS
+
 @hook TARGET_PRETEND_OUTGOING_VARARGS_NAMED
+
+@hook TARGET_LOAD_BOUNDS_FOR_ARG
+
+@hook TARGET_STORE_BOUNDS_FOR_ARG
+
+@hook TARGET_LOAD_RETURNED_BOUNDS
+
+@hook TARGET_STORE_RETURNED_BOUNDS
+
+@hook TARGET_CHKP_FUNCTION_VALUE_BOUNDS
+
+@hook TARGET_SETUP_INCOMING_VARARG_BOUNDS
 
 @node Trampolines
 @section Trampolines for Nested Functions
@@ -4257,11 +4235,15 @@ address;  but often a machine-dependent strategy can generate better code.
 
 @hook TARGET_VECTORIZE_BUILTIN_VECTORIZED_FUNCTION
 
+@hook TARGET_VECTORIZE_BUILTIN_MD_VECTORIZED_FUNCTION
+
 @hook TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT
 
 @hook TARGET_VECTORIZE_PREFERRED_SIMD_MODE
 
 @hook TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_SIZES
+
+@hook TARGET_VECTORIZE_GET_MASK_MODE
 
 @hook TARGET_VECTORIZE_INIT_COST
 
@@ -4271,17 +4253,23 @@ address;  but often a machine-dependent strategy can generate better code.
 
 @hook TARGET_VECTORIZE_DESTROY_COST_DATA
 
-@hook TARGET_VECTORIZE_BUILTIN_TM_LOAD
-
-@hook TARGET_VECTORIZE_BUILTIN_TM_STORE
-
 @hook TARGET_VECTORIZE_BUILTIN_GATHER
+
+@hook TARGET_VECTORIZE_BUILTIN_SCATTER
 
 @hook TARGET_SIMD_CLONE_COMPUTE_VECSIZE_AND_SIMDLEN
 
 @hook TARGET_SIMD_CLONE_ADJUST
 
 @hook TARGET_SIMD_CLONE_USABLE
+
+@hook TARGET_GOACC_VALIDATE_DIMS
+
+@hook TARGET_GOACC_DIM_LIMIT
+
+@hook TARGET_GOACC_FORK_JOIN
+
+@hook TARGET_GOACC_REDUCTION
 
 @node Anchored Addresses
 @section Anchored Addresses
@@ -4482,10 +4470,11 @@ for comparisons whose argument is a @code{plus}:
 
 @smallexample
 #define SELECT_CC_MODE(OP,X,Y) \
-  (GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT          \
-   ? ((OP == EQ || OP == NE) ? CCFPmode : CCFPEmode)    \
-   : ((GET_CODE (X) == PLUS || GET_CODE (X) == MINUS    \
-       || GET_CODE (X) == NEG) \
+  (GET_MODE_CLASS (GET_MODE (X)) == MODE_FLOAT           \
+   ? ((OP == LT || OP == LE || OP == GT || OP == GE)     \
+      ? CCFPEmode : CCFPmode)                            \
+   : ((GET_CODE (X) == PLUS || GET_CODE (X) == MINUS     \
+       || GET_CODE (X) == NEG || GET_CODE (x) == ASHIFT) \
       ? CC_NOOVmode : CCmode))
 @end smallexample
 
@@ -4508,10 +4497,11 @@ then @code{REVERSIBLE_CC_MODE (@var{mode})} must be zero.
 You need not define this macro if it would always returns zero or if the
 floating-point format is anything other than @code{IEEE_FLOAT_FORMAT}.
 For example, here is the definition used on the SPARC, where floating-point
-inequality comparisons are always given @code{CCFPEmode}:
+inequality comparisons are given either @code{CCFPEmode} or @code{CCFPmode}:
 
 @smallexample
-#define REVERSIBLE_CC_MODE(MODE)  ((MODE) != CCFPEmode)
+#define REVERSIBLE_CC_MODE(MODE) \
+   ((MODE) != CCFPEmode && (MODE) != CCFPmode)
 @end smallexample
 @end defmac
 
@@ -4521,7 +4511,7 @@ comparison done in CC_MODE @var{mode}.  The macro is used only in case
 @code{REVERSIBLE_CC_MODE (@var{mode})} is nonzero.  Define this macro in case
 machine has some non-standard way how to reverse certain conditionals.  For
 instance in case all floating point conditions are non-trapping, compiler may
-freely convert unordered compares to ordered one.  Then definition may look
+freely convert unordered compares to ordered ones.  Then definition may look
 like:
 
 @smallexample
@@ -4534,6 +4524,8 @@ like:
 @hook TARGET_FIXED_CONDITION_CODE_REGS
 
 @hook TARGET_CC_MODES_COMPATIBLE
+
+@hook TARGET_FLAGS_REGNUM
 
 @node Costs
 @section Describing Relative Costs of Operations
@@ -4659,12 +4651,7 @@ optimized for speed rather than size.
 If you don't define this, a reasonable default is used.
 @end defmac
 
-@defmac MOVE_BY_PIECES_P (@var{size}, @var{alignment})
-A C expression used to determine whether @code{move_by_pieces} will be used to
-copy a chunk of memory, or whether some other block move mechanism
-will be used.  Defaults to 1 if @code{move_by_pieces_ninsns} returns less
-than @code{MOVE_RATIO}.
-@end defmac
+@hook TARGET_USE_BY_PIECES_INFRASTRUCTURE_P
 
 @defmac MOVE_MAX_PIECES
 A C expression used by @code{move_by_pieces} to determine the largest unit
@@ -4683,13 +4670,6 @@ optimized for speed rather than size.
 If you don't define this, a reasonable default is used.
 @end defmac
 
-@defmac CLEAR_BY_PIECES_P (@var{size}, @var{alignment})
-A C expression used to determine whether @code{clear_by_pieces} will be used
-to clear a chunk of memory, or whether some other block clear mechanism
-will be used.  Defaults to 1 if @code{move_by_pieces_ninsns} returns less
-than @code{CLEAR_RATIO}.
-@end defmac
-
 @defmac SET_RATIO (@var{speed})
 The threshold of number of scalar move insns, @emph{below} which a sequence
 of insns should be generated to set memory to a constant value, instead of
@@ -4701,24 +4681,6 @@ The parameter @var{speed} is true if the code is currently being
 optimized for speed rather than size.
 
 If you don't define this, it defaults to the value of @code{MOVE_RATIO}.
-@end defmac
-
-@defmac SET_BY_PIECES_P (@var{size}, @var{alignment})
-A C expression used to determine whether @code{store_by_pieces} will be
-used to set a chunk of memory to a constant value, or whether some
-other mechanism will be used.  Used by @code{__builtin_memset} when
-storing values other than constant zero.
-Defaults to 1 if @code{move_by_pieces_ninsns} returns less
-than @code{SET_RATIO}.
-@end defmac
-
-@defmac STORE_BY_PIECES_P (@var{size}, @var{alignment})
-A C expression used to determine whether @code{store_by_pieces} will be
-used to set a chunk of memory to a constant string value, or whether some
-other mechanism will be used.  Used by @code{__builtin_strcpy} when
-called with a constant source string.
-Defaults to 1 if @code{move_by_pieces_ninsns} returns less
-than @code{MOVE_RATIO}.
 @end defmac
 
 @defmac USE_LOAD_POST_INCREMENT (@var{mode})
@@ -4770,7 +4732,7 @@ thing to use for a given mode.  Defaults to the value of
 @end defmac
 
 @defmac NO_FUNCTION_CSE
-Define this macro if it is as good or better to call a constant
+Define this macro to be true if it is as good or better to call a constant
 function address than to call an address kept in a register.
 @end defmac
 
@@ -4780,9 +4742,13 @@ Define this macro if a non-short-circuit operation produced by
 @code{BRANCH_COST} is greater than or equal to the value 2.
 @end defmac
 
+@hook TARGET_OPTAB_SUPPORTED_P
+
 @hook TARGET_RTX_COSTS
 
 @hook TARGET_ADDRESS_COST
+
+@hook TARGET_NO_SPECULATION_IN_DELAY_SLOTS_P
 
 @node Scheduling
 @section Adjusting the Instruction Scheduler
@@ -4879,6 +4845,8 @@ them: try the first ones in this list first.
 @hook TARGET_SCHED_EXPOSED_PIPELINE
 
 @hook TARGET_SCHED_REASSOCIATION_WIDTH
+
+@hook TARGET_SCHED_FUSION_PRIORITY
 
 @node Sections
 @section Dividing the Output into Sections (Texts, Data, @dots{})
@@ -5268,6 +5236,8 @@ It must not be modified by command-line option processing.
 
 @hook TARGET_ASM_INTEGER
 
+@hook TARGET_ASM_DECL_END
+
 @hook TARGET_ASM_OUTPUT_ADDR_CONST_EXTRA
 
 @defmac ASM_OUTPUT_ASCII (@var{stream}, @var{ptr}, @var{len})
@@ -5632,6 +5602,34 @@ You may wish to use @code{ASM_OUTPUT_MEASURED_SIZE} in the definition
 of this macro.
 @end defmac
 
+@defmac ASM_DECLARE_COLD_FUNCTION_NAME (@var{stream}, @var{name}, @var{decl})
+A C statement (sans semicolon) to output to the stdio stream
+@var{stream} any text necessary for declaring the name @var{name} of a
+cold function partition which is being defined.  This macro is responsible
+for outputting the label definition (perhaps using
+@code{ASM_OUTPUT_FUNCTION_LABEL}).  The argument @var{decl} is the
+@code{FUNCTION_DECL} tree node representing the function.
+
+If this macro is not defined, then the cold partition name is defined in the
+usual manner as a label (by means of @code{ASM_OUTPUT_LABEL}).
+
+You may wish to use @code{ASM_OUTPUT_TYPE_DIRECTIVE} in the definition
+of this macro.
+@end defmac
+
+@defmac ASM_DECLARE_COLD_FUNCTION_SIZE (@var{stream}, @var{name}, @var{decl})
+A C statement (sans semicolon) to output to the stdio stream
+@var{stream} any text necessary for declaring the size of a cold function
+partition which is being defined.  The argument @var{name} is the name of the
+cold partition of the function.  The argument @var{decl} is the
+@code{FUNCTION_DECL} tree node representing the function.
+
+If this macro is not defined, then the partition size is not defined.
+
+You may wish to use @code{ASM_OUTPUT_MEASURED_SIZE} in the definition
+of this macro.
+@end defmac
+
 @defmac ASM_DECLARE_OBJECT_NAME (@var{stream}, @var{name}, @var{decl})
 A C statement (sans semicolon) to output to the stdio stream
 @var{stream} any text necessary for declaring the name @var{name} of an
@@ -5674,6 +5672,8 @@ You may wish to use @code{ASM_OUTPUT_SIZE_DIRECTIVE} and/or
 @hook TARGET_ASM_GLOBALIZE_LABEL
 
 @hook TARGET_ASM_GLOBALIZE_DECL_NAME
+
+@hook TARGET_ASM_ASSEMBLE_UNDEFINED_DECL
 
 @defmac ASM_WEAKEN_LABEL (@var{stream}, @var{name})
 A C statement (sans semicolon) to output to the stdio stream
@@ -6505,14 +6505,15 @@ You should define this symbol if your target supports DWARF 2 frame
 unwind information and the default definition does not work.
 @end defmac
 
-@defmac EH_FRAME_IN_DATA_SECTION
-If defined, DWARF 2 frame unwind information will be placed in the
-data section even though the target supports named sections.  This
-might be necessary, for instance, if the system linker does garbage
-collection and sections cannot be marked as not to be collected.
+@defmac EH_FRAME_THROUGH_COLLECT2
+If defined, DWARF 2 frame unwind information will identified by
+specially named labels.  The collect2 process will locate these
+labels and generate code to register the frames.
 
-Do not define this macro unless @code{TARGET_ASM_NAMED_SECTION} is
-also defined.
+This might be necessary, for instance, if the system linker will not
+place the eh_frames in-between the sentinals from @file{crtstuff.c},
+or if the system linker does garbage collection and sections cannot
+be marked as not to be collected.
 @end defmac
 
 @defmac EH_TABLES_CAN_BE_READ_ONLY
@@ -6585,7 +6586,7 @@ The default size is @code{FIRST_PSEUDO_REGISTER * sizeof(void *)}.
 This macro need only be defined if the target might save registers in the
 function prologue at an offset to the stack pointer that is not aligned to
 @code{UNITS_PER_WORD}.  The definition should be the negative minimum
-alignment if @code{STACK_GROWS_DOWNWARD} is defined, and the positive
+alignment if @code{STACK_GROWS_DOWNWARD} is true, and the positive
 minimum alignment otherwise.  @xref{SDB and DWARF}.  Only applicable if
 the target supports DWARF 2 frame unwind information.
 @end defmac
@@ -6593,6 +6594,8 @@ the target supports DWARF 2 frame unwind information.
 @hook TARGET_TERMINATE_DW2_EH_FRAME_INFO
 
 @hook TARGET_DWARF_REGISTER_SPAN
+
+@hook TARGET_DWARF_FRAME_REG_MODE
 
 @hook TARGET_INIT_DWARF_REG_SIZES_EXTRA
 
@@ -6994,7 +6997,7 @@ whose value is the highest absolute text address in the file.
 Here are macros for SDB and DWARF output.
 
 @defmac SDB_DEBUGGING_INFO
-Define this macro if GCC should produce COFF-style debugging output
+Define this macro to 1 if GCC should produce COFF-style debugging output
 for SDB in response to the @option{-g} option.
 @end defmac
 
@@ -7035,6 +7038,8 @@ tables, and hence is desirable if it works.
 
 @hook TARGET_DELAY_VARTRACK
 
+@hook TARGET_NO_REGISTER_ALLOCATION
+
 @defmac ASM_OUTPUT_DWARF_DELTA (@var{stream}, @var{size}, @var{label1}, @var{label2})
 A C statement to issue assembly directives that create a difference
 @var{lab1} minus @var{lab2}, using an integer of the given @var{size}.
@@ -7055,6 +7060,11 @@ given @var{size}.  The label is known to be defined in the given @var{section}.
 @defmac ASM_OUTPUT_DWARF_PCREL (@var{stream}, @var{size}, @var{label})
 A C statement to issue assembly directives that create a self-relative
 reference to the given @var{label}, using an integer of the given @var{size}.
+@end defmac
+
+@defmac ASM_OUTPUT_DWARF_DATAREL (@var{stream}, @var{size}, @var{label})
+A C statement to issue assembly directives that create a reference to the
+given @var{label} relative to the dbase, using an integer of the given @var{size}.
 @end defmac
 
 @defmac ASM_OUTPUT_DWARF_TABLE_REF (@var{label})
@@ -7147,17 +7157,6 @@ array of @code{HOST_WIDE_INT}, but all code should treat it as an opaque
 quantity.
 @end defmac
 
-@deftypefn Macro int REAL_VALUES_EQUAL (REAL_VALUE_TYPE @var{x}, REAL_VALUE_TYPE @var{y})
-Compares for equality the two values, @var{x} and @var{y}.  If the target
-floating point format supports negative zeroes and/or NaNs,
-@samp{REAL_VALUES_EQUAL (-0.0, 0.0)} is true, and
-@samp{REAL_VALUES_EQUAL (NaN, NaN)} is false.
-@end deftypefn
-
-@deftypefn Macro int REAL_VALUES_LESS (REAL_VALUE_TYPE @var{x}, REAL_VALUE_TYPE @var{y})
-Tests whether @var{x} is less than @var{y}.
-@end deftypefn
-
 @deftypefn Macro HOST_WIDE_INT REAL_VALUE_FIX (REAL_VALUE_TYPE @var{x})
 Truncates @var{x} to a signed integer, rounding toward zero.
 @end deftypefn
@@ -7167,7 +7166,7 @@ Truncates @var{x} to an unsigned integer, rounding toward zero.  If
 @var{x} is negative, returns zero.
 @end deftypefn
 
-@deftypefn Macro REAL_VALUE_TYPE REAL_VALUE_ATOF (const char *@var{string}, enum machine_mode @var{mode})
+@deftypefn Macro REAL_VALUE_TYPE REAL_VALUE_ATOF (const char *@var{string}, machine_mode @var{mode})
 Converts @var{string} into a floating point number in the target machine's
 representation for mode @var{mode}.  This routine can handle both
 decimal and hexadecimal floating point constants, using the syntax
@@ -7184,21 +7183,6 @@ Determines whether @var{x} represents infinity (positive or negative).
 
 @deftypefn Macro int REAL_VALUE_ISNAN (REAL_VALUE_TYPE @var{x})
 Determines whether @var{x} represents a ``NaN'' (not-a-number).
-@end deftypefn
-
-@deftypefn Macro void REAL_ARITHMETIC (REAL_VALUE_TYPE @var{output}, enum tree_code @var{code}, REAL_VALUE_TYPE @var{x}, REAL_VALUE_TYPE @var{y})
-Calculates an arithmetic operation on the two floating point values
-@var{x} and @var{y}, storing the result in @var{output} (which must be a
-variable).
-
-The operation to be performed is specified by @var{code}.  Only the
-following codes are supported: @code{PLUS_EXPR}, @code{MINUS_EXPR},
-@code{MULT_EXPR}, @code{RDIV_EXPR}, @code{MAX_EXPR}, @code{MIN_EXPR}.
-
-If @code{REAL_ARITHMETIC} is asked to evaluate division by zero and the
-target's floating point format cannot represent infinity, it will call
-@code{abort}.  Callers should check for this situation first, using
-@code{MODE_HAS_INFINITIES}.  @xref{Storage Layout}.
 @end deftypefn
 
 @deftypefn Macro REAL_VALUE_TYPE REAL_VALUE_NEGATE (REAL_VALUE_TYPE @var{x})
@@ -7304,6 +7288,8 @@ on this implementation detail.
 
 @hook TARGET_OPTION_RESTORE
 
+@hook TARGET_OPTION_POST_STREAM_IN
+
 @hook TARGET_OPTION_PRINT
 
 @hook TARGET_OPTION_PRAGMA_PARSE
@@ -7313,6 +7299,8 @@ on this implementation detail.
 @hook TARGET_OPTION_FUNCTION_VERSIONS
 
 @hook TARGET_CAN_INLINE_P
+
+@hook TARGET_RELAYOUT_FUNCTION
 
 @node Emulated TLS
 @section Emulating TLS
@@ -7472,7 +7460,11 @@ c_register_addr_space ("__ea", ADDR_SPACE_EA);
 
 @hook TARGET_ADDR_SPACE_SUBSET_P
 
+@hook TARGET_ADDR_SPACE_ZERO_ADDRESS_VALID
+
 @hook TARGET_ADDR_SPACE_CONVERT
+
+@hook TARGET_ADDR_SPACE_DEBUG
 
 @node Misc
 @section Miscellaneous Parameters
@@ -7525,7 +7517,7 @@ is in effect.
 @hook TARGET_CASE_VALUES_THRESHOLD
 
 @defmac WORD_REGISTER_OPERATIONS
-Define this macro if operations between registers with integral mode
+Define this macro to 1 if operations between registers with integral mode
 smaller than a word are always performed on the entire register.
 Most RISC machines have this property and most CISC machines do not.
 @end defmac
@@ -7558,7 +7550,7 @@ is larger then @var{mem_mode} but still smaller than @code{word_mode}.
 @end defmac
 
 @defmac SHORT_IMMEDIATES_SIGN_EXTEND
-Define this macro if loading short immediate values into registers sign
+Define this macro to 1 if loading short immediate values into registers sign
 extends.
 @end defmac
 
@@ -7925,7 +7917,7 @@ from shared libraries (DLLs).
 You need not define this macro if it would always evaluate to zero.
 @end defmac
 
-@hook TARGET_MD_ASM_CLOBBERS
+@hook TARGET_MD_ASM_ADJUST
 
 @defmac MATH_LIBRARY
 Define this macro as a C string constant for the linker argument to link
@@ -8013,6 +8005,12 @@ to by @var{ce_info}.
 
 @hook TARGET_EXPAND_BUILTIN
 
+@hook TARGET_BUILTIN_CHKP_FUNCTION
+@hook TARGET_CHKP_BOUND_TYPE
+@hook TARGET_CHKP_BOUND_MODE
+@hook TARGET_CHKP_MAKE_BOUNDS_CONSTANT
+@hook TARGET_CHKP_INITIALIZE_BOUNDS
+
 @hook TARGET_RESOLVE_OVERLOADED_BUILTIN
 
 @hook TARGET_FOLD_BUILTIN
@@ -8030,17 +8028,6 @@ to by @var{ce_info}.
 @hook TARGET_INVALID_WITHIN_DOLOOP
 
 @hook TARGET_LEGITIMATE_COMBINED_INSN
-
-@defmac MD_CAN_REDIRECT_BRANCH (@var{branch1}, @var{branch2})
-
-Take a branch insn in @var{branch1} and another in @var{branch2}.
-Return true if redirecting @var{branch1} to the destination of
-@var{branch2} is possible.
-
-On some targets, branches may have a limited range.  Optimizing the
-filling of delay slots can result in branches being redirected, and this
-may in turn cause a branch offset to overflow.
-@end defmac
 
 @hook TARGET_CAN_FOLLOW_JUMP
 
@@ -8096,6 +8083,10 @@ build_type_attribute_variant (@var{mdecl},
 @hook TARGET_BRANCH_TARGET_REGISTER_CALLEE_SAVED
 
 @hook TARGET_HAVE_CONDITIONAL_EXECUTION
+
+@hook TARGET_GEN_CCMP_FIRST
+
+@hook TARGET_GEN_CCMP_NEXT
 
 @hook TARGET_LOOP_UNROLL_ADJUST
 
@@ -8168,8 +8159,6 @@ routine for target specific customizations of the system printf
 and scanf formatter settings.
 @end defmac
 
-@hook TARGET_RELAXED_ORDERING
-
 @hook TARGET_INVALID_ARG_FOR_UNPROTOTYPED_FN
 
 @hook TARGET_INVALID_CONVERSION
@@ -8223,6 +8212,10 @@ and the associated definitions of those functions.
 @hook TARGET_ATOMIC_ALIGN_FOR_MODE
 
 @hook TARGET_ATOMIC_ASSIGN_EXPAND_FENV
+
+@hook TARGET_RECORD_OFFLOAD_SYMBOL
+
+@hook TARGET_OFFLOAD_OPTIONS
 
 @defmac TARGET_SUPPORTS_WIDE_INT
 

@@ -1,5 +1,5 @@
-/* With -fnon-call-exceptions 0 / 0 should not be eliminated.  The .x
-   file sets the option.  */
+/* { dg-options "-fnon-call-exceptions" } */
+/* With -fnon-call-exceptions 0 / 0 should not be eliminated.  */
 
 #ifdef SIGNAL_SUPPRESS
 # define DO_TEST 0
@@ -12,11 +12,26 @@
 #elif defined (__sh__)
   /* On SH division by zero does not trap.  */
 # define DO_TEST 0
+#elif defined (__v850__)
+  /* On V850 division by zero does not trap.  */
+# define DO_TEST 0
+#elif defined (__MSP430__)
+  /* On MSP430 division by zero does not trap.  */
+# define DO_TEST 0
+#elif defined (__RL78__)
+  /* On RL78 division by zero does not trap.  */
+# define DO_TEST 0
+#elif defined (__RX__)
+  /* On RX division by zero does not trap.  */
+# define DO_TEST 0
 #elif defined (__aarch64__)
   /* On AArch64 integer division by zero does not trap.  */
 # define DO_TEST 0
 #elif defined (__TMS320C6X__)
   /* On TI C6X division by zero does not trap.  */
+# define DO_TEST 0
+#elif defined (__VISIUM__)
+  /* On Visium division by zero does not trap.  */
 # define DO_TEST 0
 #elif defined (__mips__) && !defined(__linux__)
   /* MIPS divisions do trap by default, but libgloss targets do not
@@ -33,7 +48,7 @@
 # define DO_TEST 0
 #elif defined (__epiphany__)
   /* Epiphany does not have hardware division, and the software implementation
-     has truly undefined behaviour for division by 0.  */
+     has truly undefined behavior for division by 0.  */
 # define DO_TEST 0
 #elif defined (__m68k__) && !defined(__linux__)
   /* Attempting to trap division-by-zero in this way isn't likely to work on 
@@ -56,9 +71,9 @@
 #  define DO_TEST 0
 # else
 #  include <signal.h>
-  /* ARM division-by-zero behaviour is to call a helper function, which
+  /* ARM division-by-zero behavior is to call a helper function, which
      can do several different things, depending on requirements.  Emulate
-     the behaviour of other targets here by raising SIGFPE.  */
+     the behavior of other targets here by raising SIGFPE.  */
 int __attribute__((used))
 __aeabi_idiv0 (int return_value)
 {
@@ -71,9 +86,15 @@ __aeabi_idiv0 (int return_value)
   /* Nios II requires both hardware support and user configuration to
      raise an exception on divide by zero.  */
 # define DO_TEST 0
+#elif defined (__nvptx__)
+/* There isn't even a signal function.  */
+# define DO_TEST 0
 #else
 # define DO_TEST 1
 #endif
+
+extern void abort (void);
+extern void exit (int);
 
 #if DO_TEST
 

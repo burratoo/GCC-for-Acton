@@ -1,5 +1,5 @@
 /* Copy propagation and SSA_NAME replacement support routines.
-   Copyright (C) 2004-2014 Free Software Foundation, Inc.
+   Copyright (C) 2004-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,31 +20,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
 #include "tree.h"
-#include "flags.h"
-#include "tm_p.h"
-#include "basic-block.h"
-#include "function.h"
-#include "gimple-pretty-print.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "gimple-expr.h"
-#include "is-a.h"
 #include "gimple.h"
-#include "gimple-iterator.h"
-#include "gimple-ssa.h"
-#include "tree-cfg.h"
-#include "tree-phinodes.h"
-#include "ssa-iterators.h"
-#include "stringpool.h"
-#include "tree-ssanames.h"
 #include "tree-pass.h"
+#include "ssa.h"
+#include "gimple-pretty-print.h"
+#include "fold-const.h"
+#include "gimple-iterator.h"
+#include "tree-cfg.h"
 #include "tree-ssa-propagate.h"
-#include "langhooks.h"
 #include "cfgloop.h"
 #include "tree-scalar-evolution.h"
-#include "tree-ssa-dom.h"
 #include "tree-ssa-loop-niter.h"
 
 
@@ -76,11 +63,10 @@ along with GCC; see the file COPYING3.  If not see
    When visiting a statement or PHI node the lattice value for an
    SSA name can transition from UNDEFINED to COPY to VARYING.  */
 
-struct prop_value_d {
+struct prop_value_t {
     /* Copy-of value.  */
     tree value;
 };
-typedef struct prop_value_d prop_value_t;
 
 static prop_value_t *copy_of;
 static unsigned n_copy_of;
@@ -89,7 +75,7 @@ static unsigned n_copy_of;
 /* Return true if this statement may generate a useful copy.  */
 
 static bool
-stmt_may_generate_copy (gimple stmt)
+stmt_may_generate_copy (gimple *stmt)
 {
   if (gimple_code (stmt) == GIMPLE_PHI)
     return !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (gimple_phi_result (stmt));
@@ -202,7 +188,7 @@ dump_copy_of (FILE *file, tree var)
    value and store the LHS into *RESULT_P.  */
 
 static enum ssa_prop_result
-copy_prop_visit_assignment (gimple stmt, tree *result_p)
+copy_prop_visit_assignment (gimple *stmt, tree *result_p)
 {
   tree lhs, rhs;
 
@@ -232,7 +218,7 @@ copy_prop_visit_assignment (gimple stmt, tree *result_p)
    SSA_PROP_VARYING.  */
 
 static enum ssa_prop_result
-copy_prop_visit_cond_stmt (gimple stmt, edge *taken_edge_p)
+copy_prop_visit_cond_stmt (gimple *stmt, edge *taken_edge_p)
 {
   enum ssa_prop_result retval = SSA_PROP_VARYING;
   location_t loc = gimple_location (stmt);
@@ -278,7 +264,7 @@ copy_prop_visit_cond_stmt (gimple stmt, edge *taken_edge_p)
    SSA_PROP_VARYING.  */
 
 static enum ssa_prop_result
-copy_prop_visit_stmt (gimple stmt, edge *taken_edge_p, tree *result_p)
+copy_prop_visit_stmt (gimple *stmt, edge *taken_edge_p, tree *result_p)
 {
   enum ssa_prop_result retval;
 
@@ -332,7 +318,7 @@ copy_prop_visit_stmt (gimple stmt, edge *taken_edge_p, tree *result_p)
    set it to be the value of the LHS of PHI.  */
 
 static enum ssa_prop_result
-copy_prop_visit_phi_node (gimple phi)
+copy_prop_visit_phi_node (gphi *phi)
 {
   enum ssa_prop_result retval;
   unsigned i;
@@ -453,11 +439,10 @@ init_copy_prop (void)
 
   FOR_EACH_BB_FN (bb, cfun)
     {
-      gimple_stmt_iterator si;
-
-      for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
+      for (gimple_stmt_iterator si = gsi_start_bb (bb); !gsi_end_p (si);
+	   gsi_next (&si))
 	{
-	  gimple stmt = gsi_stmt (si);
+	  gimple *stmt = gsi_stmt (si);
 	  ssa_op_iter iter;
           tree def;
 
@@ -479,9 +464,10 @@ init_copy_prop (void)
 	      set_copy_of_val (def, def);
 	}
 
-      for (si = gsi_start_phis (bb); !gsi_end_p (si); gsi_next (&si))
+      for (gphi_iterator si = gsi_start_phis (bb); !gsi_end_p (si);
+	   gsi_next (&si))
 	{
-          gimple phi = gsi_stmt (si);
+          gphi *phi = si.phi ();
           tree def;
 
 	  def = gimple_phi_result (phi);
@@ -568,7 +554,7 @@ fini_copy_prop (void)
   bool changed = substitute_and_fold (get_value, NULL, true);
   if (changed)
     {
-      free_numbers_of_iterations_estimates ();
+      free_numbers_of_iterations_estimates (cfun);
       if (scev_initialized_p ())
 	scev_reset ();
     }

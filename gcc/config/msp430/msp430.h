@@ -1,5 +1,5 @@
 /* GCC backend definitions for the TI MSP430 Processor
-   Copyright (C) 2012-2014 Free Software Foundation, Inc.
+   Copyright (C) 2012-2016 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -56,6 +56,8 @@ extern bool msp430x;
   "%{mrelax=-mQ} " /* Pass the relax option on to the assembler.  */ \
   "%{mlarge:-ml} " /* Tell the assembler if we are building for the LARGE pointer model.  */ \
   "%{!msim:-md} %{msim:%{mlarge:-md}} " /* Copy data from ROM to RAM if necessary.  */ \
+  "%{msilicon-errata=*:-msilicon-errata=%*} " /* Pass on -msilicon-errata.  */ \
+  "%{msilicon-errata-warn=*:-msilicon-errata-warn=%*} " /* Pass on -msilicon-errata-warn.  */ \
   "%{ffunction-sections:-gdwarf-sections} " /* If function sections are being created then create DWARF line number sections as well.  */
 
 /* Enable linker section garbage collection by default, unless we
@@ -63,9 +65,32 @@ extern bool msp430x;
    is enabled  (the GDB testsuite relies upon unused entities not being deleted).  */
 #define LINK_SPEC "%{mrelax:--relax} %{mlarge:%{!r:%{!g:--gc-sections}}}"
 
+extern const char * msp430_select_hwmult_lib (int, const char **);
+# define EXTRA_SPEC_FUNCTIONS				\
+  { "msp430_hwmult_lib", msp430_select_hwmult_lib },
+
+/* Specify the libraries to include on the linker command line.
+
+   Selecting the hardware multiply library to use is quite complex.
+   If the user has specified -mhwmult=FOO then the mapping is quite
+   easy (and could be handled here in the SPEC string), unless FOO
+   is set to AUTO.  In this case the -mmcu= option must be consulted
+   instead.  If the -mhwmult= option is not specified then the -mmcu=
+   option must then be examined.  If neither -mhwmult= nor -mmcu= are
+   specified then a default hardware multiply library is used.
+
+   Examining the -mmcu=FOO option is difficult, and it is so this
+   reason that a spec function is used.  There are so many possible
+   values of FOO that a table is used to look up the name and map
+   it to a hardware multiply library.  This table (in device-msp430.c)
+   must be kept in sync with the same table in msp430.c.  */
 #undef  LIB_SPEC
 #define LIB_SPEC "					\
 --start-group						\
+%{mhwmult=auto:%{mmcu=*:%:msp430_hwmult_lib(mcu %{mmcu=*:%*});:%:msp430_hwmult_lib(default)}; \
+  mhwmult=*:%:msp430_hwmult_lib(hwmult %{mhwmult=*:%*}); \
+  mmcu=*:%:msp430_hwmult_lib(mcu %{mmcu=*:%*});		\
+  :%:msp430_hwmult_lib(default)}			\
 -lc							\
 -lgcc							\
 -lcrt							\
@@ -112,9 +137,6 @@ extern bool msp430x;
 #define DOUBLE_TYPE_SIZE 		64
 #define LONG_DOUBLE_TYPE_SIZE		64 /*DOUBLE_TYPE_SIZE*/
 
-#define LIBGCC2_HAS_DF_MODE		1
-#define LIBGCC2_LONG_DOUBLE_TYPE_SIZE   64
-
 #define DEFAULT_SIGNED_CHAR		0
 
 #define STRICT_ALIGNMENT 		1
@@ -131,10 +153,9 @@ extern bool msp430x;
 #define MAX_REGS_PER_ADDRESS 		1
 
 #define Pmode 				(TARGET_LARGE ? PSImode : HImode)
-/* Note: 32 is a lie.  Large pointers are actually 20-bits wide.  But gcc
-   thinks that any non-power-of-2 pointer size equates to BLKmode, which
-   causes all kinds of problems...  */
-#define POINTER_SIZE			(TARGET_LARGE ? 32 : 16)
+#define POINTER_SIZE			(TARGET_LARGE ? 20 : 16)
+/* This is just for .eh_frame, to match bfd.  */
+#define PTR_SIZE			(TARGET_LARGE ? 4 : 2)
 #define	POINTERS_EXTEND_UNSIGNED	1
 
 #define ADDR_SPACE_NEAR	1
@@ -158,9 +179,9 @@ extern bool msp430x;
 /* Layout of Source Language Data Types */
 
 #undef  SIZE_TYPE
-#define SIZE_TYPE			(TARGET_LARGE ? "long unsigned int" : "unsigned int")
+#define SIZE_TYPE			(TARGET_LARGE ? "__int20 unsigned" : "unsigned int")
 #undef  PTRDIFF_TYPE
-#define PTRDIFF_TYPE			(TARGET_LARGE ? "long int" : "int")
+#define PTRDIFF_TYPE			(TARGET_LARGE ? "__int20" : "int")
 #undef  WCHAR_TYPE
 #define WCHAR_TYPE			"long int"
 #undef  WCHAR_TYPE_SIZE
@@ -171,7 +192,7 @@ extern bool msp430x;
 #define HAS_LONG_UNCOND_BRANCH		0
 
 #define LOAD_EXTEND_OP(M)		ZERO_EXTEND
-/*#define WORD_REGISTER_OPERATIONS	1*/
+#define WORD_REGISTER_OPERATIONS	1
 
 #define MOVE_MAX 			8
 #define STARTING_FRAME_OFFSET		0
@@ -382,7 +403,7 @@ typedef struct
 #undef	DWARF2_ADDR_SIZE
 #define	DWARF2_ADDR_SIZE			4
 
-#define INCOMING_FRAME_SP_OFFSET		(POINTER_SIZE / BITS_PER_UNIT)
+#define INCOMING_FRAME_SP_OFFSET		(TARGET_LARGE ? 4 : 2)
 
 #undef  PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
@@ -409,3 +430,9 @@ typedef struct
   msp430_start_function ((FILE), (NAME), (DECL))
 
 #define TARGET_HAS_NO_HW_DIVIDE (! TARGET_HWMULT)
+
+#undef  USE_SELECT_SECTION_FOR_FUNCTIONS
+#define USE_SELECT_SECTION_FOR_FUNCTIONS 1
+
+#define ASM_OUTPUT_ALIGNED_DECL_COMMON(FILE, DECL, NAME, SIZE, ALIGN)	\
+  msp430_output_aligned_decl_common ((FILE), (DECL), (NAME), (SIZE), (ALIGN))
