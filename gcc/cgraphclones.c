@@ -337,7 +337,6 @@ duplicate_thunk_for_node (cgraph_node *thunk, cgraph_node *node)
 
   cgraph_edge *e = new_thunk->create_edge (node, NULL, 0,
 						  CGRAPH_FREQ_BASE);
-  e->call_stmt_cannot_inline_p = true;
   symtab->call_edge_duplication_hooks (thunk->callees, e);
   symtab->call_cgraph_duplication_hooks (thunk, new_thunk);
   return new_thunk;
@@ -435,6 +434,7 @@ cgraph_node::create_clone (tree new_decl, gcov_type gcov_count, int freq,
   new_node->tm_clone = tm_clone;
   new_node->icf_merged = icf_merged;
   new_node->merged_comdat = merged_comdat;
+  new_node->thunk = thunk;
 
   new_node->clone.tree_map = NULL;
   new_node->clone.args_to_skip = args_to_skip;

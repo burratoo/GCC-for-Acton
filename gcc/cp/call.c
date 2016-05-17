@@ -4634,7 +4634,7 @@ build_conditional_expr_1 (location_t loc, tree arg1, tree arg2, tree arg3,
 
       /* Make sure that lvalues remain lvalues.  See g++.oliva/ext1.C.  */
       if (real_lvalue_p (arg1))
-	arg2 = arg1 = stabilize_reference (arg1);
+	arg2 = arg1 = cp_stabilize_reference (arg1);
       else
 	arg2 = arg1 = save_expr (arg1);
     }
@@ -5757,7 +5757,7 @@ build_new_op_1 (location_t loc, enum tree_code code, int flags, tree arg1,
   switch (code)
     {
     case MODIFY_EXPR:
-      return cp_build_modify_expr (arg1, code2, arg2, complain);
+      return cp_build_modify_expr (loc, arg1, code2, arg2, complain);
 
     case INDIRECT_REF:
       return cp_build_indirect_ref (arg1, RO_UNARY_STAR, complain);
@@ -7644,8 +7644,9 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	       || (TREE_CODE (arg) == TARGET_EXPR
 		   && !unsafe_copy_elision_p (fa, arg)))
 	{
-	  tree to = stabilize_reference (cp_build_indirect_ref (fa, RO_NULL,
-								complain));
+	  tree to = cp_stabilize_reference (cp_build_indirect_ref (fa,
+								   RO_NULL,
+								   complain));
 
 	  val = build2 (INIT_EXPR, DECL_CONTEXT (fn), to, arg);
 	  return val;
@@ -7655,7 +7656,7 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	   && trivial_fn_p (fn)
 	   && !DECL_DELETED_FN (fn))
     {
-      tree to = stabilize_reference
+      tree to = cp_stabilize_reference
 	(cp_build_indirect_ref (argarray[0], RO_NULL, complain));
       tree type = TREE_TYPE (to);
       tree as_base = CLASSTYPE_AS_BASE (type);
@@ -7789,7 +7790,8 @@ build_cxx_call (tree fn, int nargs, tree *argarray,
       for (i = 0; i < nargs; i++)
 	argarray[i] = fold_non_dependent_expr (argarray[i]);
 
-      if (!check_builtin_function_arguments (fndecl, nargs, argarray))
+      if (!check_builtin_function_arguments (EXPR_LOCATION (fn), vNULL, fndecl,
+					     nargs, argarray))
 	return error_mark_node;
     }
 
@@ -8405,6 +8407,9 @@ build_new_method_call_1 (tree instance, tree fns, vec<tree, va_gc> **args,
 		     we know we really need it.  */
 		  cand->first_arg = instance;
 		}
+	      else if (any_dependent_bases_p ())
+		/* We can't tell until instantiation time whether we can use
+		   *this as the implicit object argument.  */;
 	      else
 		{
 		  if (complain & tf_error)

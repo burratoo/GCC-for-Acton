@@ -543,6 +543,7 @@ package body Exp_Pakd is
          end if;
 
          Set_Is_Itype (PAT, True);
+         Set_Is_Packed_Array_Impl_Type (PAT, True);
          Set_Packed_Array_Impl_Type (Typ, PAT);
          Analyze (Decl, Suppress => All_Checks);
 
@@ -569,7 +570,6 @@ package body Exp_Pakd is
          Init_Alignment                (PAT);
          Set_Parent                    (PAT, Empty);
          Set_Associated_Node_For_Itype (PAT, Typ);
-         Set_Is_Packed_Array_Impl_Type (PAT, True);
          Set_Original_Array_Type       (PAT, Typ);
 
          --  Propagate representation aspects
@@ -701,8 +701,6 @@ package body Exp_Pakd is
            Make_Defining_Identifier (Loc,
              Chars => New_External_Name (Chars (Typ), 'P'));
 
-         Set_Packed_Array_Impl_Type (Typ, PAT);
-
          declare
             Indexes   : constant List_Id := New_List;
             Indx      : Node_Id;
@@ -798,9 +796,6 @@ package body Exp_Pakd is
                 Type_Definition     => Typedef);
          end;
 
-         --  Set type as packed array type and install it
-
-         Set_Is_Packed_Array_Impl_Type (PAT);
          Install_PAT;
          return;
 
@@ -819,13 +814,13 @@ package body Exp_Pakd is
            Make_Defining_Identifier (Loc,
              Chars => Make_Packed_Array_Impl_Type_Name (Typ, Csize));
 
-         Set_Packed_Array_Impl_Type (Typ, PAT);
          Set_PB_Type;
 
          Decl :=
            Make_Subtype_Declaration (Loc,
              Defining_Identifier => PAT,
                Subtype_Indication => New_Occurrence_Of (PB_Type, Loc));
+
          Install_PAT;
          return;
 
@@ -842,8 +837,6 @@ package body Exp_Pakd is
          PAT :=
            Make_Defining_Identifier (Loc,
              Chars => Make_Packed_Array_Impl_Type_Name (Typ, Csize));
-
-         Set_Packed_Array_Impl_Type (Typ, PAT);
 
          --  Build an expression for the length of the array in bits.
          --  This is the product of the length of each of the dimensions
@@ -1145,19 +1138,6 @@ package body Exp_Pakd is
          Analyze_And_Resolve (Rhs, Ctyp, Suppress => All_Checks);
       else
          Analyze_And_Resolve (Rhs, Ctyp);
-      end if;
-
-      --  For the AAMP target, indexing of certain packed array is passed
-      --  through to the back end without expansion, because the expansion
-      --  results in very inefficient code on that target. This allows the
-      --  GNAAMP back end to generate specialized macros that support more
-      --  efficient indexing of packed arrays with components having sizes
-      --  that are small powers of two.
-
-      if AAMP_On_Target
-        and then (Csiz = 1 or else Csiz = 2 or else Csiz = 4)
-      then
-         return;
       end if;
 
       --  Case of component size 1,2,4 or any component size for the modular
@@ -1739,19 +1719,6 @@ package body Exp_Pakd is
       Ctyp := Component_Type (Atyp);
       Csiz := UI_To_Int (Component_Size (Atyp));
 
-      --  For the AAMP target, indexing of certain packed array is passed
-      --  through to the back end without expansion, because the expansion
-      --  results in very inefficient code on that target. This allows the
-      --  GNAAMP back end to generate specialized macros that support more
-      --  efficient indexing of packed arrays with components having sizes
-      --  that are small powers of two.
-
-      if AAMP_On_Target
-        and then (Csiz = 1 or else Csiz = 2 or else Csiz = 4)
-      then
-         return;
-      end if;
-
       --  Case of component size 1,2,4 or any component size for the modular
       --  case. These are the cases for which we can inline the code.
 
@@ -2324,9 +2291,12 @@ package body Exp_Pakd is
       --  convert to a modular type of the source length, since otherwise, on
       --  a big-endian machine, we get left-justification. We do it for little-
       --  endian machines as well, because there might be junk bits that are
-      --  not cleared if the type is not numeric.
+      --  not cleared if the type is not numeric. This can be done only if the
+      --  source siz is different from 0 (i.e. known), otherwise we must trust
+      --  the type declarations (case of non-discrete components).
 
-      if Source_Siz /= Target_Siz
+      if Source_Siz /= 0
+        and then Source_Siz /= Target_Siz
         and then not Is_Discrete_Type (Source_Typ)
       then
          Src := Unchecked_Convert_To (RTE (Bits_Id (Source_Siz)), Src);
