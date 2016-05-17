@@ -1544,7 +1544,7 @@ package Einfo is
 --       Convention, Import, or Export has been given. Used to prevent more
 --       than one such pragma appearing for a given entity (RM B.1(45)).
 
---    Has_Cyclic_Section (Flag286)
+--    Has_Cyclic_Section (Flag309)
 --       Defined in E_Task_Type and E_Task_Subtype entities. Set true for a
 --       task that contains a Cycle_Sequence_Of_Statements in its body.
 
@@ -6280,7 +6280,6 @@ package Einfo is
    --    First_Private_Entity                (Node16)
    --    First_Entity                        (Node17)
    --    Corresponding_Record_Type           (Node18)
-   --    Entry_Bodies_Array                  (Node19)
    --    Last_Entity                         (Node20)
    --    Discriminant_Constraint             (Elist21)
    --    Scope_Depth_Value                   (Uint22)
@@ -6289,7 +6288,7 @@ package Einfo is
    --    Contract                            (Node34)
    --    SPARK_Pragma                        (Node40)
    --    SPARK_Aux_Pragma                    (Node41)
-   --    Barrier_Service_Function            (Node28)
+   --    Barrier_Service_Function            (Node26)
    --    Sec_Stack_Needed_For_Return         (Flag167)  ???
    --    SPARK_Aux_Pragma_Inherited          (Flag266)
    --    SPARK_Pragma_Inherited              (Flag265)
@@ -6434,7 +6433,6 @@ package Einfo is
    --    Stored_Constraint                   (Elist23)
    --    Task_Body_Procedure                 (Node25)
    --    Storage_Size_Variable               (Node26)   (base type only)
-   --    Relative_Deadline_Variable          (Node28)   (base type only)
    --    Anonymous_Object                    (Node30)
    --    Contract                            (Node34)
    --    SPARK_Pragma                        (Node40)

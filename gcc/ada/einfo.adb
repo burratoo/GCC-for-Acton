@@ -166,7 +166,6 @@ package body Einfo is
    --    Corresponding_Discriminant      Node19
    --    Default_Aspect_Component_Value  Node19
    --    Default_Aspect_Value            Node19
-   --    Entry_Bodies_Array              Node19
    --    Extra_Accessibility_Of_Result   Node19
    --    Non_Limited_View                Node19
    --    Parent_Subtype                  Node19
@@ -232,6 +231,7 @@ package body Einfo is
    --    Overridden_Operation            Node26
    --    Package_Instantiation           Node26
    --    Storage_Size_Variable           Node26
+   --    Barrier_Service_Function        Node26
 
    --    Current_Use_Clause              Node27
    --    Related_Type                    Node27
@@ -241,7 +241,6 @@ package body Einfo is
    --    Finalizer                       Node28
    --    Initialization_Statements       Node28
    --    Original_Access_Type            Node28
-   --    Barrier_Service_Function        Node28
    --    Underlying_Record_View          Node28
 
    --    BIP_Initialization_Call         Node29
@@ -3093,7 +3092,7 @@ package body Einfo is
    begin
       pragma Assert (Ekind_In (Id, E_Protected_Type, E_Protected_Subtype,
                                E_Subprogram_Body));
-      return Node28 (Id);
+      return Node26 (Id);
    end Barrier_Service_Function;
 
    function Shadow_Entities (Id : E) return S is
@@ -6156,7 +6155,7 @@ package body Einfo is
    begin
       pragma Assert (Ekind_In (Id, E_Void, E_Protected_Type,
                      E_Protected_Subtype, E_Subprogram_Body));
-      Set_Node28 (Id, V);
+      Set_Node26 (Id, V);
    end Set_Barrier_Service_Function;
 
    procedure Set_Shadow_Entities (Id : E; V : S) is
@@ -10130,6 +10129,11 @@ package body Einfo is
               Task_Kind                                    =>
             Write_Str ("Storage_Size_Variable");
 
+         when E_Subprogram_Body                            |
+              E_Protected_Type                             |
+              E_Protected_Subtype                          =>
+            Write_Str ("Barrier_Service_Function");
+
          when others                                       =>
             Write_Str ("Field26??");
       end case;
@@ -10188,11 +10192,6 @@ package body Einfo is
 
          when E_Record_Type =>
             Write_Str ("Underlying_Record_View");
-
-         when E_Subprogram_Body                            |
-              E_Protected_Type                             |
-              E_Protected_Subtype                          =>
-            Write_Str ("Barrier_Service_Function");
 
          when others                                       =>
             Write_Str ("Field28??");

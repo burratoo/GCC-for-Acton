@@ -57,7 +57,6 @@ extern "C" {
 #endif
 
 /* Addresses of exception data blocks for predefined exceptions. */
-extern struct Exception_Data atomic_error;
 extern struct Exception_Data constraint_error;
 extern struct Exception_Data numeric_error;
 extern struct Exception_Data program_error;

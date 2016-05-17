@@ -545,7 +545,7 @@ package body Exp_Ch7 is
                     Prefix        =>
                       New_Occurrence_Of (Defining_Identifier (Param), Loc),
                     Selector_Name =>
-                      Make_Identifier (Loc, Name_uProtected_Agent)))));
+                      Make_Identifier (Loc, Name_uProtected_Broker)))));
          end;
 
       --  Add a call to Expunge_Unactivated_Tasks for dynamically allocated

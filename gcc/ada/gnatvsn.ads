@@ -48,7 +48,8 @@ package Gnatvsn is
    Current_Year : constant String := "2016";
    --  Used in printing copyright messages
 
-   Verbose_Library_Version : constant String := "Acton Lib v" & Library_Version;
+   Verbose_Library_Version : constant String :=
+      "Acton Lib v" & Library_Version;
    --  Version string stored in e.g. ALI files
 
    function Gnat_Version_String return String;

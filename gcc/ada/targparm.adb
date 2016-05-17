@@ -359,7 +359,9 @@ package body Targparm is
                  "pragma Profile (GNAT_Extended_Ravenscar);"
          then
             Set_Profile_Restrictions (GNAT_Extended_Ravenscar);
-            Opt.Task_Dispatching_Policy := 'F';
+            Name_Buffer (1 .. 22) := "FIFO_Within_Priorities";
+            Name_Len := 22;
+            Opt.Task_Dispatching_Policy := Name_Find;
             Opt.Locking_Policy          := 'C';
             P := P + 27;
             goto Line_Loop_Continue;

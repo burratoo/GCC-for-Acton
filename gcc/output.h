@@ -610,9 +610,7 @@ extern int maybe_assemble_visibility (tree);
 
 extern int default_address_cost (rtx, machine_mode, addr_space_t, bool);
 
-/* Stack usage.  */
-enum stack_usage_kind_type { SU_STATIC = 0, SU_DYNAMIC, SU_DYNAMIC_BOUNDED };
-extern const char *stack_usage_qual[];
+/* Output stack usage information.  */
 extern void output_stack_usage (void);
 
 #endif /* ! GCC_OUTPUT_H */

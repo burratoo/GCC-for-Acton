@@ -55,38 +55,12 @@ package body Bindgen is
    Num_Elab_Calls : Nat := 0;
    --  Number of generated calls to elaboration routines
 
-   System_Restrictions_Used : Boolean := False;
-   --  Flag indicating whether the unit System.Restrictions is in the closure
-   --  of the partition. This is set by Resolve_Binder_Options, and is used
-   --  to determine whether or not to initialize the restrictions information
-   --  in the body of the binder generated file (we do not want to do this
-   --  unconditionally, since it drags in the System.Restrictions unit
-   --  unconditionally, which is unpleasand, especially for ZFP etc.)
-
    Dispatching_Domains_Used : Boolean := False;
    --  Flag indicating whether multiprocessor dispatching domains are used in
    --  the closure of the partition. This is set by Resolve_Binder_Options, and
    --  is used to call the routine to disallow the creation of new dispatching
    --  domains just before calling the main procedure from the environment
    --  task.
-
-   System_Tasking_Restricted_Stages_Used : Boolean := False;
-   --  Flag indicating whether the unit System.Tasking.Restricted.Stages is in
-   --  the closure of the partition. This is set by Resolve_Binder_Options,
-   --  and it used to call a routine to active all the tasks at the end of
-   --  the elaboration when partition elaboration policy is sequential.
-
-   System_Interrupts_Used : Boolean := False;
-   --  Flag indicating whether the unit System.Interrups is in the closure of
-   --  the partition. This is set by Resolve_Binder_Options, and it used to
-   --  attach interrupt handlers at the end of the elaboration when partition
-   --  elaboration policy is sequential.
-
-   System_BB_CPU_Primitives_Multiprocessors_Used : Boolean := False;
-   --  Flag indicating whether unit System.BB.CPU_Primitives.Multiprocessors
-   --  is in the closure of the partition. This is set by procedure
-   --  Resolve_Binder_Options, and it is used to call a procedure that starts
-   --  slave processors.
 
    Lib_Final_Built : Boolean := False;
    --  Flag indicating whether the finalize_library rountine has been built
@@ -536,51 +510,6 @@ package body Bindgen is
          WBI ("      pragma Import (C, Runtime_Initialize, " &
               """__gnat_runtime_initialize"");");
 
-         --  Import handlers attach procedure for sequential elaboration policy
-
-         if System_Interrupts_Used
-           and then Partition_Elaboration_Policy_Specified = 'S'
-         then
-            WBI ("      procedure Install_Restricted_Handlers_Sequential;");
-            WBI ("      pragma Import (C," &
-                 "Install_Restricted_Handlers_Sequential," &
-                 " ""__gnat_attach_all_handlers"");");
-            WBI ("");
-         end if;
-
-         --  Import task activation procedure for sequential elaboration
-         --  policy.
-
-         if System_Tasking_Restricted_Stages_Used
-           and then Partition_Elaboration_Policy_Specified = 'S'
-         then
-            WBI ("      Partition_Elaboration_Policy : Character;");
-            WBI ("      pragma Import (C, Partition_Elaboration_Policy," &
-                 " ""__gnat_partition_elaboration_policy"");");
-            WBI ("");
-            WBI ("      procedure Activate_All_Tasks_Sequential;");
-            WBI ("      pragma Import (C, Activate_All_Tasks_Sequential," &
-                 " ""__gnat_activate_all_tasks"");");
-         end if;
-
-         --  Import procedure to start slave cpus for bareboard runtime
-
-         if System_BB_CPU_Primitives_Multiprocessors_Used then
-            WBI ("      procedure Start_Slave_CPUs;");
-            WBI ("      pragma Import (C, Start_Slave_CPUs," &
-                 " ""__gnat_start_slave_cpus"");");
-         end if;
-
-         --  For restricted run-time libraries (ZFP and Ravenscar)
-         --  tasks are non-terminating, so we do not want finalization.
-
-         if not Configurable_Run_Time_On_Target then
-            WBI ("");
-            WBI ("      Finalize_Library_Objects : No_Param_Proc;");
-            WBI ("      pragma Import (C, Finalize_Library_Objects, " &
-                 """__gnat_finalize_library_objects"");");
-         end if;
-
          --  Initialize stack limit variable of the environment task if the
          --  stack check method is stack limit and stack check is enabled.
 
@@ -643,15 +572,6 @@ package body Bindgen is
          Set_Char   (Queuing_Policy_Specified);
          Set_String ("';");
          Write_Statement_Buffer;
-
-         if System_Tasking_Restricted_Stages_Used
-           and then Partition_Elaboration_Policy_Specified = 'S'
-         then
-            Set_String ("      Partition_Elaboration_Policy := '");
-            Set_Char   (Partition_Elaboration_Policy_Specified);
-            Set_String ("';");
-            Write_Statement_Buffer;
-         end if;
 
          Gen_Restrictions;
 
@@ -803,22 +723,6 @@ package body Bindgen is
 
       if Dispatching_Domains_Used then
          WBI ("      Freeze_Dispatching_Domains;");
-      end if;
-
-      --  Sequential partition elaboration policy
-
-      if Partition_Elaboration_Policy_Specified = 'S' then
-         if System_Interrupts_Used then
-            WBI ("      Install_Restricted_Handlers_Sequential;");
-         end if;
-
-         if System_Tasking_Restricted_Stages_Used then
-            WBI ("      Activate_All_Tasks_Sequential;");
-         end if;
-      end if;
-
-      if System_BB_CPU_Primitives_Multiprocessors_Used then
-         WBI ("      Start_Slave_CPUs;");
       end if;
 
       WBI ("   end " & Ada_Init_Name.all & ";");
@@ -1596,7 +1500,7 @@ package body Bindgen is
 
          for J in Scheduler_Agents.First .. Scheduler_Agents.Last loop
             declare
-               Policy_Str : String :=
+               Policy_Str : constant String :=
                  Get_Name_String
                    (Scheduler_Agents.Table (J).Dispatching_Policy);
             begin
@@ -1789,21 +1693,6 @@ package body Bindgen is
             Write_Linker_Option;
          end;
       end loop;
-
-      if not (Opt.No_Run_Time_Mode or Opt.No_Stdlib) then
-         Name_Len := 0;
-
-         if Opt.Shared_Libgnat then
-            Add_Str_To_Name_Buffer ("-shared");
-         else
-            Add_Str_To_Name_Buffer ("-static");
-         end if;
-
-         --  Write directly to avoid inclusion in -K output as -static and
-         --  -shared are not usually specified linker options.
-
-         WBI ("   --   " & Name_Buffer (1 .. Name_Len));
-      end if;
 
       --  Sort linker options
 
@@ -2131,16 +2020,6 @@ package body Bindgen is
 
       WBI ("pragma Suppress (Overflow_Check);");
 
-      --  Generate with of System.Restrictions to initialize
-      --  Run_Time_Restrictions.
-
-      if System_Restrictions_Used
-        and not Suppress_Standard_Library_On_Target
-      then
-         WBI ("");
-         WBI ("with System.Restrictions;");
-      end if;
-
       --  Generate with of Ada.Exceptions if needs library finalization
 
       if Needs_Library_Finalization then
@@ -2167,7 +2046,7 @@ package body Bindgen is
                     .. Unique_Dispatching_Policies.Last
          loop
             declare
-               Policy_Str : String := Get_Name_String
+               Policy_Str : constant String := Get_Name_String
                                    (Unique_Dispatching_Policies.Table (J));
             begin
                Set_String ("with Acton.Scheduler_Agents.");
@@ -2256,9 +2135,7 @@ package body Bindgen is
       Count : Integer;
 
    begin
-      if Suppress_Standard_Library_On_Target
-        or not System_Restrictions_Used
-      then
+      if Suppress_Standard_Library_On_Target then
          return;
       end if;
 
@@ -2640,10 +2517,38 @@ package body Bindgen is
    ----------------------------
 
    procedure Resolve_Binder_Options is
-   begin
-      null;
-   end Resolve_Binder_Options;
 
+      procedure Check_Package (Var : in out Boolean; Name : String);
+      --  Set Var to true iff the current identifier in Namet is Name. Do
+      --  nothing if it doesn't match. This procedure is just a helper to
+      --  avoid explicitly dealing with length.
+
+      -------------------
+      -- Check_Package --
+      -------------------
+
+      procedure Check_Package (Var : in out Boolean; Name : String) is
+      begin
+         if Name_Len = Name'Length
+           and then Name_Buffer (1 .. Name_Len) = Name
+         then
+            Var := True;
+         end if;
+      end Check_Package;
+
+   --  Start of processing for Resolve_Binder_Options
+
+   begin
+      for E in Elab_Order.First .. Elab_Order.Last loop
+         Get_Name_String (Units.Table (Elab_Order.Table (E)).Uname);
+
+         --  Ditto for the use of dispatching domains
+
+         Check_Package
+           (Dispatching_Domains_Used,
+            "system.multiprocessors.dispatching_domains%s");
+      end loop;
+   end Resolve_Binder_Options;
    ------------------
    -- Set_Bind_Env --
    ------------------

@@ -166,7 +166,6 @@ const char *user_label_prefix;
 
 FILE *asm_out_file;
 FILE *aux_info_file;
-FILE *callgraph_info_file = NULL;
 FILE *stack_usage_file = NULL;
 
 /* The current working directory of a translation.  It's generally the
@@ -946,13 +945,17 @@ alloc_for_identifier_to_locale (size_t len)
   return ggc_alloc_atomic (len);
 }
 
-const char *stack_usage_qual[] = { "static", "dynamic", "dynamic,bounded" };
-
 /* Output stack usage information.  */
 void
 output_stack_usage (void)
 {
   static bool warning_issued = false;
+  enum stack_usage_kind_type { STATIC = 0, DYNAMIC, DYNAMIC_BOUNDED };
+  const char *stack_usage_kind_str[] = {
+    "static",
+    "dynamic",
+    "dynamic,bounded"
+  };
   HOST_WIDE_INT stack_usage = current_function_static_stack_size;
   enum stack_usage_kind_type stack_usage_kind;
 
@@ -966,33 +969,25 @@ output_stack_usage (void)
       return;
     }
 
-  stack_usage_kind = SU_STATIC;
+  stack_usage_kind = STATIC;
 
   /* Add the maximum amount of space pushed onto the stack.  */
   if (current_function_pushed_stack_size > 0)
     {
       stack_usage += current_function_pushed_stack_size;
-      stack_usage_kind = SU_DYNAMIC_BOUNDED;
+      stack_usage_kind = DYNAMIC_BOUNDED;
     }
 
   /* Now on to the tricky part: dynamic stack allocation.  */
   if (current_function_allocates_dynamic_stack_space)
     {
       if (current_function_has_unbounded_dynamic_stack_size)
-	stack_usage_kind = SU_DYNAMIC;
+	stack_usage_kind = DYNAMIC;
       else
-	stack_usage_kind = SU_DYNAMIC_BOUNDED;
+	stack_usage_kind = DYNAMIC_BOUNDED;
 
       /* Add the size even in the unbounded case, this can't hurt.  */
       stack_usage += current_function_dynamic_stack_size;
-    }
-
-  if (flag_callgraph_info & CALLGRAPH_INFO_STACK_USAGE)
-    {
-      struct cgraph_final_info *cfi
-	= get_cgraph_final_info (current_function_decl);
-      cfi->stack_usage = stack_usage;
-      cfi->stack_usage_kind = stack_usage_kind;
     }
 
   if (flag_stack_usage)
@@ -1036,11 +1031,11 @@ output_stack_usage (void)
     {
       const location_t loc = DECL_SOURCE_LOCATION (current_function_decl);
 
-      if (stack_usage_kind == SU_DYNAMIC)
+      if (stack_usage_kind == DYNAMIC)
 	warning_at (loc, OPT_Wstack_usage_, "stack usage might be unbounded");
       else if (stack_usage > warn_stack_usage)
 	{
-	  if (stack_usage_kind == SU_DYNAMIC_BOUNDED)
+	  if (stack_usage_kind == DYNAMIC_BOUNDED)
 	    warning_at (loc,
 			OPT_Wstack_usage_, "stack usage might be %wd bytes",
 			stack_usage);
@@ -1767,10 +1762,6 @@ lang_dependent_init (const char *name)
       /* If stack usage information is desired, open the output file.  */
       if (flag_stack_usage)
 	stack_usage_file = open_auxiliary_file ("su");
-
-      /* If call graph information is desired, open the output file.  */
-      if (flag_callgraph_info)
-        callgraph_info_file = open_auxiliary_file ("ci");	
     }
 
   /* This creates various _DECL nodes, so needs to be called after the
@@ -1909,12 +1900,6 @@ finalize (bool no_backend)
 
   if (stack_usage_file)
     fclose (stack_usage_file);
-
-  if (callgraph_info_file)
-    {
-      cgraph_node::dump_cgraph_final_vcg (callgraph_info_file);
-      fclose (callgraph_info_file);
-    }
 
   if (!no_backend)
     {

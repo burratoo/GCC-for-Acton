@@ -790,7 +790,7 @@ package body Exp_Attr is
 
       --  Case where the prefix is not an entity name and 'Unprotected_Access
       --  is present and we use the unprotected version of the protected
-      --  subprogram. This attribute is only for interrupt handlers where it is 
+      --  subprogram. This attribute is only for interrupt handlers where it is
       --  safe for them to call the unprotected subprogram directly.
 
       elsif Get_Attribute_Id (Attribute_Name (N)) =

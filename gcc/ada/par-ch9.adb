@@ -413,7 +413,6 @@ package body Ch9 is
 
    function P_Cycle_Sequence_Of_Statements return Node_Id is
       Cycle_Stmt_Seq_Node : Node_Id;
-      Scan_State          : Saved_Scan_State;
    begin
       Cycle_Stmt_Seq_Node :=
         New_Node (N_Cycle_Sequence_Of_Statements, Token_Ptr);

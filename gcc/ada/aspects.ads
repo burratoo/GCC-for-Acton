@@ -215,10 +215,11 @@ package Aspects is
       Aspect_Unreferenced_Objects,          -- GNAT
       Aspect_Volatile,
       Aspect_Volatile_Components,
-      Aspect_Volatile_Full_Access);         -- GNAT
+      Aspect_Volatile_Full_Access,         -- GNAT
 
       --  Aspects that have a static boolean value but don't correspond to
       --  pragmas with a single argument that it is the entity in question.
+      --  TODO: Remove!
 
       Aspect_Execution_Server_Object);       -- Acton
 

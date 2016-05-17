@@ -95,7 +95,6 @@ package System.Rident is
       No_Allocators,                             -- (RM H.4(7))
       No_Anonymous_Allocators,                   -- Ada 2012 (RM H.4(8/1))
       No_Asynchronous_Control,                   -- (RM J.13(3/2)
-      No_Atomic_Types,                           -- Acton
       No_Calendar,                               -- GNAT
       No_Coextensions,                           -- Ada 2012 (RM H.4(8.2/3))
       No_Default_Stream_Attributes,              -- Ada 2012 (RM 13.12.1(4/2))

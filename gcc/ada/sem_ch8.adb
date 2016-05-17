@@ -7826,9 +7826,9 @@ package body Sem_Ch8 is
       end loop;
    end Install_Use_Clauses;
 
-   ------------------------------------------
-   -- Is_Appropriate_For_Concurrent_Prefix --
-   ------------------------------------------
+   -------------------------------------
+   -- Is_Appropriate_For_Entry_Prefix --
+   -------------------------------------
 
    function Is_Appropriate_For_Entry_Prefix (T : Entity_Id) return Boolean is
       P_Type : Entity_Id := T;

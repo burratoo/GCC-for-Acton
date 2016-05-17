@@ -40,7 +40,6 @@ with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
 with Freeze;   use Freeze;
 with Hostparm;
-with Itypes;   use Itypes;
 with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
@@ -100,18 +99,6 @@ package body Exp_Ch9 is
    --  Address pointer passed to entry barrier functions and entry body
    --  procedures.
 
-   procedure Add_Formal_Renamings
-     (Spec  : Node_Id;
-      Decls : List_Id;
-      Ent   : Entity_Id;
-      Loc   : Source_Ptr);
-   --  Create renaming declarations for the formals, inside the procedure that
-   --  implements an entry body. The renamings make the original names of the
-   --  formals accessible to gdb, and serve no other purpose.
-   --    Spec is the specification of the procedure being built.
-   --    Decls is the list of declarations to be enhanced.
-   --    Ent is the entity for the original entry body.
-
    function Build_Accept_Body (Astat : Node_Id) return Node_Id;
    --  Transform accept statement into a block with added exception handler.
    --  Used both for simple accept statements and for accept alternatives in
@@ -165,15 +152,6 @@ package body Exp_Ch9 is
    --  transfer of control is a call to a primitive of a non-synchronized type.
    --  K is the temporary that holds the tagged kind of the target object, and
    --  N is the enclosing construct.
-
-   function Build_Entry_Count_Expression
-     (Concurrent_Type : Node_Id;
-      Component_List  : List_Id;
-      Loc             : Source_Ptr) return Node_Id;
-   --  Compute number of entries for concurrent object. This is a count of
-   --  simple entries, followed by an expression that computes the length
-   --  of the range of each entry family. A single array with that size is
-   --  allocated for each concurrent object of the type.
 
    function Build_Lock_Free_Protected_Subprogram_Body
      (N           : Node_Id;
@@ -691,70 +669,6 @@ package body Exp_Ch9 is
       return Expr;
    end Actual_Index_Expression;
 
-   --------------------------
-   -- Add_Formal_Renamings --
-   --------------------------
-
-   procedure Add_Formal_Renamings
-     (Spec  : Node_Id;
-      Decls : List_Id;
-      Ent   : Entity_Id;
-      Loc   : Source_Ptr)
-   is
-      Ptr : constant Entity_Id :=
-              Defining_Identifier
-                (Next (First (Parameter_Specifications (Spec))));
-      --  The name of the formal that holds the address of the parameter block
-      --  for the call.
-
-      Comp            : Entity_Id;
-      Decl            : Node_Id;
-      Formal          : Entity_Id;
-      New_F           : Entity_Id;
-      Renamed_Formal  : Node_Id;
-
-   begin
-      Formal := First_Formal (Ent);
-      while Present (Formal) loop
-         Comp := Entry_Component (Formal);
-         New_F :=
-           Make_Defining_Identifier (Sloc (Formal),
-             Chars => Chars (Formal));
-         Set_Etype (New_F, Etype (Formal));
-         Set_Scope (New_F, Ent);
-
-         --  Now we set debug info needed on New_F even though it does not come
-         --  from source, so that the debugger will get the right information
-         --  for these generated names.
-
-         Set_Debug_Info_Needed (New_F);
-
-         if Ekind (Formal) = E_In_Parameter then
-            Set_Ekind (New_F, E_Constant);
-         else
-            Set_Ekind (New_F, E_Variable);
-            Set_Extra_Constrained (New_F, Extra_Constrained (Formal));
-         end if;
-
-         Set_Actual_Subtype (New_F, Actual_Subtype (Formal));
-
-         Renamed_Formal :=
-           Make_Selected_Component (Loc,
-             Prefix        =>
-               Unchecked_Convert_To (Entry_Parameters_Type (Ent),
-                 Make_Identifier (Loc, Chars (Ptr))),
-             Selector_Name => New_Occurrence_Of (Comp, Loc));
-
-         Decl :=
-           Build_Renamed_Formal_Declaration
-             (New_F, Formal, Comp, Renamed_Formal);
-
-         Append (Decl, Decls);
-         Set_Renamed_Object (Formal, New_F);
-         Next_Formal (Formal);
-      end loop;
-   end Add_Formal_Renamings;
-
    ------------------------
    -- Add_Object_Pointer --
    ------------------------
@@ -1114,12 +1028,11 @@ package body Exp_Ch9 is
       Loc   : constant Source_Ptr := Sloc (Typ);
       Ent   : Entity_Id;
       E_Typ : Entity_Id;
-      Has_F : Boolean := False;
       Index : Nat;
       If_St : Node_Id := Empty;
       Lo    : Node_Id;
       Hi    : Node_Id;
-      Decls : List_Id := New_List;
+      Decls : constant List_Id := New_List;
       Ret   : Node_Id;
       Spec  : Node_Id;
       Siz   : Node_Id := Empty;
@@ -1333,13 +1246,7 @@ package body Exp_Ch9 is
    -----------------------------
 
    procedure Build_Class_Wide_Master (Typ : Entity_Id) is
-      Loc          : constant Source_Ptr := Sloc (Typ);
-      Master_Id    : Entity_Id;
-      Master_Scope : Entity_Id;
-      Name_Id      : Node_Id;
-      Related_Node : Node_Id;
-      Ren_Decl     : Node_Id;
-
+      pragma Unreferenced (Typ);
    begin
       --  Nothing to do if there is no task hierarchy
 
@@ -1347,107 +1254,8 @@ package body Exp_Ch9 is
          return;
       end if;
 
-      --  ??? Disable masters in acton for now.
-      return;
-
-      --  Find the declaration that created the access type. It is either a
-      --  type declaration, or an object declaration with an access definition,
-      --  in which case the type is anonymous.
-
-      if Is_Itype (Typ) then
-         Related_Node := Associated_Node_For_Itype (Typ);
-      else
-         Related_Node := Parent (Typ);
-      end if;
-
-      Master_Scope := Find_Master_Scope (Typ);
-
-      --  Nothing to do if the master scope already contains a _master entity.
-      --  The only exception to this is the following scenario:
-
-      --    Source_Scope
-      --       Transient_Scope_1
-      --          _master
-
-      --       Transient_Scope_2
-      --          use of master
-
-      --  In this case the source scope is marked as having the master entity
-      --  even though the actual declaration appears inside an inner scope. If
-      --  the second transient scope requires a _master, it cannot use the one
-      --  already declared because the entity is not visible.
-
-      Name_Id := Make_Identifier (Loc, Name_uMaster);
-
-      if not Has_Master_Entity (Master_Scope)
-        or else No (Current_Entity_In_Scope (Name_Id))
-      then
-         declare
-            Master_Decl : Node_Id;
-         begin
-            Set_Has_Master_Entity (Master_Scope);
-
-            --  Generate:
-            --    _master : constant Integer := Current_Master.all;
-
-            Master_Decl :=
-              Make_Object_Declaration (Loc,
-                Defining_Identifier =>
-                  Make_Defining_Identifier (Loc, Name_uMaster),
-                Constant_Present    => True,
-                Object_Definition   =>
-                  New_Occurrence_Of (Standard_Integer, Loc),
-                Expression          =>
-                  Make_Explicit_Dereference (Loc,
-                    New_Occurrence_Of (RTE (RE_Current_Master), Loc)));
-
-            Insert_Action (Find_Hook_Context (Related_Node), Master_Decl);
-            Analyze (Master_Decl);
-
-            --  Mark the containing scope as a task master. Masters associated
-            --  with return statements are already marked at this stage (see
-            --  Analyze_Subprogram_Body).
-
-            if Ekind (Current_Scope) /= E_Return_Statement then
-               declare
-                  Par : Node_Id := Related_Node;
-
-               begin
-                  while Nkind (Par) /= N_Compilation_Unit loop
-                     Par := Parent (Par);
-
-                     --  If we fall off the top, we are at the outer level,
-                     --  and the environment task is our effective master,
-                     --  so nothing to mark.
-
-                     if Nkind_In (Par, N_Block_Statement,
-                                       N_Subprogram_Body,
-                                       N_Task_Body)
-                     then
-                        Set_Is_Task_Master (Par);
-                        exit;
-                     end if;
-                  end loop;
-               end;
-            end if;
-         end;
-      end if;
-
-      Master_Id :=
-        Make_Defining_Identifier (Loc, New_External_Name (Chars (Typ), 'M'));
-
-      --  Generate:
-      --    typeMnn renames _master;
-
-      Ren_Decl :=
-        Make_Object_Renaming_Declaration (Loc,
-          Defining_Identifier => Master_Id,
-          Subtype_Mark        => New_Occurrence_Of (Standard_Integer, Loc),
-          Name                => Name_Id);
-
-      Insert_Action (Related_Node, Ren_Decl);
-
-      Set_Master_Id (Typ, Master_Id);
+      --  ??? Disable masters in acton for now. When implemented pull from
+      --  gcc trunk implementation.
    end Build_Class_Wide_Master;
 
    ----------------------------
@@ -1846,67 +1654,6 @@ package body Exp_Ch9 is
              Right_Opnd =>
                New_Occurrence_Of (RTE (RE_TK_Tagged), Loc)));
    end Build_Dispatching_Tag_Check;
-
-   ----------------------------------
-   -- Build_Entry_Count_Expression --
-   ----------------------------------
-
-   function Build_Entry_Count_Expression
-     (Concurrent_Type : Node_Id;
-      Component_List  : List_Id;
-      Loc             : Source_Ptr) return Node_Id
-   is
-      Eindx  : Nat;
-      Ent    : Entity_Id;
-      Ecount : Node_Id;
-      Comp   : Node_Id;
-      Lo     : Node_Id;
-      Hi     : Node_Id;
-      Typ    : Entity_Id;
-      Large  : Boolean;
-
-   begin
-      --  Count number of non-family entries
-
-      Eindx := 0;
-      Ent := First_Entity (Concurrent_Type);
-      while Present (Ent) loop
-         if Ekind (Ent) = E_Entry then
-            Eindx := Eindx + 1;
-         end if;
-
-         Next_Entity (Ent);
-      end loop;
-
-      Ecount := Make_Integer_Literal (Loc, Eindx);
-
-      --  Loop through entry families building the addition nodes
-
-      Ent := First_Entity (Concurrent_Type);
-      Comp := First (Component_List);
-      while Present (Ent) loop
-         if Ekind (Ent) = E_Entry_Family then
-            while Chars (Ent) /= Chars (Defining_Identifier (Comp)) loop
-               Next (Comp);
-            end loop;
-
-            Typ := Etype (Discrete_Subtype_Definition (Parent (Ent)));
-            Hi := Type_High_Bound (Typ);
-            Lo := Type_Low_Bound  (Typ);
-            Large := Is_Potentially_Large_Family
-                       (Base_Type (Typ), Concurrent_Type, Lo, Hi);
-            Ecount :=
-              Make_Op_Add (Loc,
-                Left_Opnd  => Ecount,
-                Right_Opnd =>
-                  Family_Size (Loc, Hi, Lo, Concurrent_Type, Large));
-         end if;
-
-         Next_Entity (Ent);
-      end loop;
-
-      return Ecount;
-   end Build_Entry_Count_Expression;
 
    -----------------------
    -- Build_Entry_Names --
@@ -3962,12 +3709,9 @@ package body Exp_Ch9 is
       Pformal     : Node_Id;
       Unprot_Call : Node_Id;
       Sub_Body    : Node_Id;
-      Sub_Type    : Node_Id;
-      Lock_Stmt   : Node_Id;
       Stmts       : List_Id;
       Object_Parm : Node_Id;
-      Exc_Safe    : Boolean;
-      Decls       : List_Id := Empty_List;
+      Decls       : constant List_Id := Empty_List;
 
    begin
       P_Op_Spec :=
@@ -4005,7 +3749,7 @@ package body Exp_Ch9 is
       Object_Parm :=
         Make_Selected_Component (Loc,
           Prefix        => Make_Identifier (Loc, Name_uObject),
-          Selector_Name => Make_Identifier (Loc, Name_uProtected_Agent));
+          Selector_Name => Make_Identifier (Loc, Name_uProtected_Broker));
 
       --  Build call to Enter_Protected_Object.
 
@@ -4254,7 +3998,7 @@ package body Exp_Ch9 is
       Stmts       : List_Id;
       Object_Parm : Node_Id;
       Exc_Safe    : Boolean;
-      Decls       : List_Id := Empty_List;
+      Decls       : constant List_Id := Empty_List;
 
    begin
       Op_Spec := Specification (N);
@@ -4331,7 +4075,7 @@ package body Exp_Ch9 is
       Object_Parm :=
         Make_Selected_Component (Loc,
           Prefix        => Make_Identifier (Loc, Name_uObject),
-          Selector_Name => Make_Identifier (Loc, Name_uProtected_Agent));
+          Selector_Name => Make_Identifier (Loc, Name_uProtected_Broker));
 
       --  Build call to Enter_Protected_Object
 
@@ -5104,16 +4848,16 @@ package body Exp_Ch9 is
 
    --  for a task, and
 
-   --    objectV!(name)._Protected_Agent
+   --    objectV!(name)._Protected_Broker
 
    --  for a protected object. For the case of an access to a concurrent
    --  object, there is an extra explicit dereference:
 
    --    taskV!(name.all)._Task_Agent
-   --    objectV!(name.all)._Protected_Agent
+   --    objectV!(name.all)._Protected_Broker
 
    --  here taskV and objectV are the types for the associated records, which
-   --  contain the required _Task_Agent and _Protected_Agent fields for tasks
+   --  contain the required _Task_Agent and _Protected_Broker fields for tasks
    --  and protected objects, respectively.
 
    --  For the case of a task type name, the expression is
@@ -5180,7 +4924,7 @@ package body Exp_Ch9 is
          Dtyp := Designated_Type (Ntyp);
 
          if Is_Protected_Type (Dtyp) then
-            Sel := Name_uProtected_Agent;
+            Sel := Name_uProtected_Broker;
          else
             Sel := Name_uTask_Agent;
          end if;
@@ -5232,7 +4976,7 @@ package body Exp_Ch9 is
 
       else
          if Is_Protected_Type (Ntyp) then
-            Sel := Name_uProtected_Agent;
+            Sel := Name_uProtected_Broker;
          elsif Is_Task_Type (Ntyp) then
             Sel := Name_uTask_Agent;
          else
@@ -7993,10 +7737,8 @@ package body Exp_Ch9 is
       Entry_Ent  : constant Entity_Id  := Defining_Identifier (N);
       Components : List_Id;
       Formal     : Node_Id;
-      Ftype      : Entity_Id;
       Last_Decl  : Node_Id;
       Component  : Entity_Id;
-      Ctype      : Entity_Id;
       Decl       : Node_Id;
       Rec_Ent    : Entity_Id;
       Acc_Ent    : Entity_Id;
@@ -8018,7 +7760,6 @@ package body Exp_Ch9 is
               Make_Defining_Identifier (Sloc (Formal), Chars (Formal));
             Set_Entry_Component (Formal, Component);
             Set_Entry_Formal (Component, Formal);
-            Ftype := Etype (Formal);
 
             Next_Formal_With_Extras (Formal);
          end loop;
@@ -8089,11 +7830,11 @@ package body Exp_Ch9 is
    --     procedure _finalizer is
    --     begin
    --       poREB (_object);
-   --       Exit_Protected_Object (_object._protected_agent);
+   --       Exit_Protected_Object (_object._protected_broker);
    --     end _finalizer;
 
    --  begin
-   --     Enter_Protected_Object (_object._protected_agent, As => Procedure);
+   --     Enter_Protected_Object (_object._protected_broker, As => Procedure);
    --     pprocN (_object;...);
    --  at end
    --     _finalizer;
@@ -8109,11 +7850,11 @@ package body Exp_Ch9 is
    --  function pfuncP (_object : poV) return Return_Type is
    --     procedure _finalizer is
    --     begin
-   --        Exit_Protected_Object (_object._protected_agent);
+   --        Exit_Protected_Object (_object._protected_broker);
    --     end _clean;
 
    --  begin
-   --     Enter_Protected_Object (_object._protected_agent, As => Function);
+   --     Enter_Protected_Object (_object._protected_broker, As => Function);
    --     return pfuncN (_object);
 
    --  at end
@@ -8131,11 +7872,11 @@ package body Exp_Ch9 is
    --     procedure _finalizer is
    --     begin
    --       poREB (_object);
-   --       Exit_Protected_Object (_object._protected_agent);
+   --       Exit_Protected_Object (_object._protected_broker);
    --     end _finalizer;
 
    --  begin
-   --     Enter_Protected_Object (_object._protected_agent,
+   --     Enter_Protected_Object (_object._protected_broker,
    --                             As       => Entry,
    --                             Entry_Id => Entry_Id);
    --     entN (_object;...);
@@ -8162,7 +7903,6 @@ package body Exp_Ch9 is
       Disp_Op_Body : Node_Id;
       New_Op_Body  : Node_Id;
       Op_Body      : Node_Id;
-      Op_Id        : Entity_Id;
 
       function Build_Dispatching_Subprogram_Body
         (N        : Node_Id;
@@ -8431,7 +8171,7 @@ package body Exp_Ch9 is
    --  The general form of this type declaration is
 
    --    type poV (discriminants) is record
-   --      _Object       : aliased <kind>Protected_Agent
+   --      _Object       : aliased <kind>Protected_Broker
    --         [(<entry count>)];
    --      [_barriers   : aliased Protected_Object_Barriers (bounds)];
    --      [entry_family  : array (bounds) of Void;]
@@ -8447,7 +8187,7 @@ package body Exp_Ch9 is
    --  to control the protected object. It is declared as Aliased so that it
    --  can be passed as a pointer to the RTS. This allows the protected record
    --  to be referenced within RTS data structures. An appropriate
-   --  Protected_Agent type and discriminant are generated.
+   --  Protected_Broker type and discriminant are generated.
 
    --  The barrier field is present when the protected object has entries. The
    --  length of the barrier array is equal to the number of each individual
@@ -8501,17 +8241,12 @@ package body Exp_Ch9 is
       --  This contains two lists; one for visible and one for private decls
 
       Agent_Comp   : Node_Id;
-      Body_Arr     : Node_Id;
-      Body_Id      : Entity_Id;
       Cdecls       : List_Id;
       Bdef         : Entity_Id := Empty; -- avoid uninit warning
       Comp         : Node_Id;
+      Comp_Id      : Entity_Id;
       Current_Node : Node_Id := N;
-      E_Count      : Int;
-      Edef         : Entity_Id := Empty; -- avoid uninit warning
-      Entries_Aggr : Node_Id;
       New_Priv     : Node_Id;
-      Object_Comp  : Node_Id;
       Priv         : Node_Id;
       Rec_Decl     : Node_Id;
 
@@ -8682,9 +8417,9 @@ package body Exp_Ch9 is
                                To_Subprogram : Node_Id) is
          PPC : constant Node_Id :=
            Pre_Post_Conditions (Contract (From_Entity));
-         C   : constant Node_Id := Make_Contract
-           (Sloc (From_Entity), Pre_Post_Conditions => Relocate_Node (PPC));
+         C   : constant Node_Id := Make_Contract (Sloc (From_Entity));
       begin
+         Set_Pre_Post_Conditions (C, Relocate_Node (PPC));
          Set_Contract (Defining_Unit_Name (Specification (To_Subprogram)), C);
       end Move_PPC_List;
 
@@ -8735,22 +8470,22 @@ package body Exp_Ch9 is
 
       --  Fill in the component declarations
 
-      --  Start with a access pointer to the protected agent. This allows
-      --  Oak to access the protected agent with only a reference to the
+      --  Start with a access pointer to the protected broker. This allows
+      --  Oak to access the protected broker with only a reference to the
       --  object.
 
       if not Lock_Free_Active then
          Agent_Comp :=
            Make_Component_Declaration (Loc,
              Defining_Identifier =>
-               Make_Defining_Identifier (Loc, Name_uProtected_Agent),
+               Make_Defining_Identifier (Loc, Name_uProtected_Broker),
              Component_Definition =>
                Make_Component_Definition (Loc,
                  Aliased_Present   => False,
                  Subtype_Indication =>
                     New_Occurrence_Of (RTE (RE_Protected_Id), Loc)));
 
-         --  Put the _Protected_Agent component after the private component so
+         --  Put the _Protected_Broker component after the private component so
          --  that it be finalized early as required by 9.4 (20)
 
          Append_To (Cdecls, Agent_Comp);
@@ -8910,6 +8645,15 @@ package body Exp_Ch9 is
                Analyze (Sub);
                Current_Node := Sub;
 
+               --  At the moment this should not get called
+
+               if Is_Interrupt_Handler
+                 (Defining_Unit_Name (Specification (Priv)))
+               then
+                  if not Restricted_Profile then
+                     Register_Handler;
+                  end if;
+               end if;
             end if;
 
             Next (Priv);
@@ -8941,7 +8685,6 @@ package body Exp_Ch9 is
       --  array. If subprogram is flagged as eliminated, do not generate any
       --  internal operations.
 
-      E_Count := 0;
       Comp := First (Visible_Declarations (Pdef));
       while Present (Comp) loop
          if Nkind (Comp) = N_Subprogram_Declaration then
@@ -11028,7 +10771,6 @@ package body Exp_Ch9 is
          return;
       end if;
 
-
       --  Expanded the N_Task_Body_Statement_Sequence first so the expander
       --  can treat the task body as before
 
@@ -11058,7 +10800,7 @@ package body Exp_Ch9 is
         Make_Subprogram_Body (Loc,
           Specification              => Build_Task_Proc_Specification (Ttyp),
           Declarations               => Declarations (N),
-          Handled_Statement_Sequence => Handled_Statement_Sequence (HSS));
+          Handled_Statement_Sequence => HSS);
       Set_Is_Task_Body_Procedure (New_N);
 
       --  If the task contains generic instantiations, cleanup actions are
@@ -11145,7 +10887,7 @@ package body Exp_Ch9 is
       HSS   : constant Node_Id    := Handled_Statement_Sequence (N);
       Loc   : constant Source_Ptr := Sloc (N);
 
-      CSS   : Node_Id    := Cycle_Statement_Sequence (N);
+      CSS   : constant Node_Id    := Cycle_Statement_Sequence (N);
       Stmts : List_Id;
    begin
 
@@ -12704,7 +12446,7 @@ package body Exp_Ch9 is
             Prot_Typ := RE_Protected_Id;
 
             --  Generate:
-            --    conc_typR : protection_typ renames _object._protected_agent;
+            --    conc_typR : protection_typ renames _object._protected_broker;
 
             Decl :=
               Make_Object_Renaming_Declaration (Loc,
@@ -12715,7 +12457,7 @@ package body Exp_Ch9 is
                   Make_Selected_Component (Loc,
                     Prefix        => New_Occurrence_Of (Obj_Ent, Loc),
                   Selector_Name =>
-                    Make_Identifier (Loc, Name_uProtected_Agent)));
+                    Make_Identifier (Loc, Name_uProtected_Broker)));
             Add (Decl);
          end;
       end if;
@@ -13083,13 +12825,11 @@ package body Exp_Ch9 is
      (Protect_Rec : Entity_Id) return List_Id
    is
       Loc         : constant Source_Ptr := Sloc (Protect_Rec);
-      P_Arr       : Entity_Id;
       Pdec        : Node_Id;
       Ptyp        : constant Node_Id    :=
                       Corresponding_Concurrent_Type (Protect_Rec);
       Args        : List_Id;
       L           : constant List_Id    := New_List;
-      Has_Entry   : constant Boolean    := Has_Entries (Ptyp);
       Prio_Type   : Entity_Id;
       Prio_Var    : Entity_Id           := Empty;
       Restricted  : constant Boolean    := Restricted_Profile;
@@ -13126,14 +12866,14 @@ package body Exp_Ch9 is
 
       if not Uses_Lock_Free (Defining_Identifier (Pdec)) then
 
-         --  Protected Agent parameter. This is the Agent that is used by Oak
-         --  to control the protected object.
+         --  Protected Broker parameter. This is the broker used by Oak to
+         --  control the protected object.
 
          Append_To (Args,
            Make_Selected_Component (Loc,
              Prefix        => Make_Identifier (Loc, Name_uInit),
              Selector_Name =>
-               Make_Identifier (Loc, Name_uProtected_Agent)));
+               Make_Identifier (Loc, Name_uProtected_Broker)));
 
          --  Name parameter. Since protected objects are are agents they have
          --  can have names attached to them.
@@ -13248,7 +12988,7 @@ package body Exp_Ch9 is
       Append_To (L,
         Make_Procedure_Call_Statement (Loc,
           Name                   =>
-            New_Occurrence_Of (RTE (RE_New_Protected_Agent), Loc),
+            New_Occurrence_Of (RTE (RE_New_Protected_Broker), Loc),
           Parameter_Associations => Args));
 
       if Has_Attach_Handler (Ptyp) then
@@ -13339,7 +13079,6 @@ package body Exp_Ch9 is
    function Make_Task_Create_Call (Task_Rec : Entity_Id) return Node_Id is
       Loc    : constant Source_Ptr := Sloc (Task_Rec);
       Args   : List_Id;
-      Ecount : Node_Id;
       Name   : Node_Id;
       Tdec   : Node_Id;
       Tdef   : Node_Id;
@@ -13565,10 +13304,9 @@ package body Exp_Ch9 is
      return List_Id is
       Loc    : constant Source_Ptr := Sloc (Task_Rec);
       Tdec   : Node_Id;
-      Tdef   : Node_Id;
       Ttyp   : constant Node_Id := Corresponding_Concurrent_Type (Task_Rec);
 
-      Decls  : List_Id := New_List;
+      Decls  : constant List_Id := New_List;
       Expr   : Node_Id;
 
    begin
@@ -13589,10 +13327,6 @@ package body Exp_Ch9 is
          Next (Tdec);
       end loop;
 
-      --  Now we can find the task definition from this declaration
-
-      Tdef := Task_Definition (Tdec);
-
       --  Add the _Cycle_Behaviour variable and set it value to NORMAL if the
       --  task does not contain a Cycle_Behaviour aspect. If the aspect is
       --  present _Cycle_Behaviour is set to the value contained within the
@@ -13610,7 +13344,6 @@ package body Exp_Ch9 is
 
       else
          Expr := New_Occurrence_Of (RTE (RE_Normal), Loc);
-
       end if;
 
       Append_To (Decls,
@@ -13840,9 +13573,8 @@ package body Exp_Ch9 is
      (Exec_Object : Entity_Id) return Node_Id
    is
       Loc    : constant Source_Ptr := Sloc (Exec_Object);
-      Args   : List_Id := New_List;
+      Args   : constant List_Id := New_List;
       Expr   : Node_Id;
-      Name   : Node_Id;
 
    begin
 

@@ -1350,8 +1350,7 @@ emit_block_move_via_libcall (rtx dst, rtx src, rtx size, bool tailcall)
   fn = emit_block_move_libcall_fn (true);
   call_expr = build_call_expr (fn, 3, dst_tree, src_tree, size_tree);
   CALL_EXPR_TAILCALL (call_expr) = tailcall;
-  SET_EXPR_LOCATION (call_expr, input_location);
-  
+
   retval = expand_normal (call_expr);
 
   return retval;
@@ -1360,7 +1359,7 @@ emit_block_move_via_libcall (rtx dst, rtx src, rtx size, bool tailcall)
 /* A subroutine of emit_block_move_via_libcall.  Create the tree node
    for the function we use for block copies.  */
 
-tree block_move_fn;
+static GTY(()) tree block_move_fn;
 
 void
 init_block_move_fn (const char *asmspec)
@@ -2811,7 +2810,6 @@ set_storage_via_libcall (rtx object, rtx size, rtx val, bool tailcall)
   fn = clear_storage_libcall_fn (true);
   call_expr = build_call_expr (fn, 3, object_tree, val_tree, size_tree);
   CALL_EXPR_TAILCALL (call_expr) = tailcall;
-  SET_EXPR_LOCATION (call_expr, input_location);
 
   retval = expand_normal (call_expr);
 

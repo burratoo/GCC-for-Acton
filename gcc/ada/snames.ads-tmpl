@@ -183,7 +183,7 @@ package Snames is
    Name_uPre                           : constant Name_Id := N + $;
    Name_uPriority                      : constant Name_Id := N + $;
    Name_uProcess_ATSD                  : constant Name_Id := N + $;
-   Name_uProtected_Agent               : constant Name_Id := N + $;
+   Name_uProtected_Broker               : constant Name_Id := N + $;
    Name_uRelative_Deadline             : constant Name_Id := N + $;
    Name_uResult                        : constant Name_Id := N + $;
    Name_uScheduler_Agent               : constant Name_Id := N + $;

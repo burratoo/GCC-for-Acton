@@ -1861,7 +1861,7 @@ package Rtsfind is
 
      RE_Protected_Id,                    -- Oak.Brokers
 
-     RE_New_Protected_Agent,             -- Oak.Brokers.Protected_Objects
+     RE_New_Protected_Broker,             -- Oak.Brokers.Protected_Objects
 
      RE_Action_Index,                    -- Oak.Indices
      RE_Protected_Entry_Index,           -- Oak.Indices
@@ -3178,7 +3178,7 @@ package Rtsfind is
 
      RE_Protected_Id                     => Oak_Brokers,
 
-     RE_New_Protected_Agent              => Oak_Brokers_Protected_Objects,
+     RE_New_Protected_Broker              => Oak_Brokers_Protected_Objects,
 
      RE_Activation_Chain_Access          => Oak_Agent_Tasks,
      RE_New_Task_Agent                   => Oak_Agent_Tasks,

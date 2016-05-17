@@ -532,7 +532,7 @@ public:
   int order;
 
   /* Declaration representing the symbol.  */
-  tree decl; 
+  tree decl;
 
   /* Linked list of symbol table entries starting with symtab_nodes.  */
   symtab_node *next;
@@ -1221,9 +1221,6 @@ public:
   /* Dump the callgraph to file F.  */
   static void dump_cgraph (FILE *f);
 
-  /* Dump the final callgraph to file F in VCG format */
-  static void dump_cgraph_final_vcg (FILE *f);
-
   /* Dump the call graph to stderr.  */
   static inline
   void debug_cgraph (void)
@@ -1351,8 +1348,6 @@ public:
   struct cgraph_rtl_info *rtl;
   cgraph_clone_info clone;
   cgraph_thunk_info thunk;
-
-  struct cgraph_final_info *final;
 
   /* Expected number of executions: calculated in profile.c.  */
   gcov_type count;

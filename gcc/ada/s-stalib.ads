@@ -139,7 +139,6 @@ package System.Standard_Library is
    --  Why are the NULs necessary here, seems like they should not be
    --  required, since Gigi is supposed to add a Nul to each name ???
 
-   Atomic_Error_Name     : constant String := "ATOMIC_ERROR"     & ASCII.NUL;
    Constraint_Error_Name : constant String := "CONSTRAINT_ERROR" & ASCII.NUL;
    Program_Error_Name    : constant String := "PROGRAM_ERROR"    & ASCII.NUL;
    Storage_Error_Name    : constant String := "STORAGE_ERROR"    & ASCII.NUL;

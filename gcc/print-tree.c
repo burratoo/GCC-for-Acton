@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -26,7 +27,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "diagnostic.h"
 #include "varasm.h"
 #include "print-rtl.h"
-#include "print-tree.h"
 #include "stor-layout.h"
 #include "langhooks.h"
 #include "tree-iterator.h"
@@ -1131,70 +1131,4 @@ DEBUG_FUNCTION void
 debug_vec_tree (vec<tree, va_gc> *vec)
 {
   debug_raw (vec);
-}
-
-/* Print the identifier for DECL according to FLAGS.  */
-
-void
-print_decl_identifier (FILE *file, tree decl, int flags)
-{
-  bool needs_colon = false;
-  const char *name;
-  char *malloced_name = NULL;
-  char c;
-
-  if (flags & PRINT_DECL_ORIGIN)
-    {
-      if (DECL_IS_BUILTIN (decl))
-	fputs ("<built-in>", file);
-      else
-	{
-	  expanded_location loc
-	    = expand_location (DECL_SOURCE_LOCATION (decl));
-	  fprintf (file, "%s:%d:%d", loc.file, loc.line, loc.column);
-	}
-      needs_colon = true;
-    }
-
-  if (flags & PRINT_DECL_UNIQUE_NAME)
-    {
-      name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl));
-      if (!TREE_PUBLIC (decl)
-	  || (DECL_WEAK (decl) && !DECL_EXTERNAL (decl)))
-        /* The symbol has internal or weak linkage so its assembler name
-	   is not necessarily unique among the compilation units of the
-	   program.  We therefore have to further mangle it.  But we can't
-	   simply use DECL_SOURCE_FILE because it contains the name of the
-	   file the symbol originates from so, e.g. for function templates
-	   in C++ where the templates are defined in a header file, we can
-	   have symbols with the same assembler name and DECL_SOURCE_FILE.
-	   That's why we use the name of the top-level source file of the
-	   compilation unit.  ??? Unnecessary for Ada.  */
-	name = malloced_name = concat (main_input_filename, ":", name, NULL);
-    }
-  else if (flags & PRINT_DECL_NAME)
-    {
-      const char *dot;
-
-      name = lang_hooks.decl_printable_name (decl, 2);
-      dot = strrchr (name, '.');
-      if (dot)
-	name = dot + 1;
-    }
-  else
-    return;
-
-  if (needs_colon)
-    fputc (':', file);
-
-  while ((c = *name++) != '\0')
-    {
-      /* Strip double-quotes because of VCG.  */
-      if (c == '"')
-	continue;
-      fputc (c, file);
-    }
-
-  if (malloced_name)
-    free (malloced_name);
 }
