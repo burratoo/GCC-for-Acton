@@ -652,21 +652,6 @@ typedef struct
 
 #define CONSTANT_ADDRESS_P(X)		aarch64_constant_address_p(X)
 
-/* Try a machine-dependent way of reloading an illegitimate address
-   operand.  If we find one, push the reload and jump to WIN.  This
-   macro is used in only one place: `find_reloads_address' in reload.c.  */
-
-#define LEGITIMIZE_RELOAD_ADDRESS(X, MODE, OPNUM, TYPE, IND_L, WIN)	     \
-do {									     \
-  rtx new_x = aarch64_legitimize_reload_address (&(X), MODE, OPNUM, TYPE,    \
-						 IND_L);		     \
-  if (new_x)								     \
-    {									     \
-      X = new_x;							     \
-      goto WIN;								     \
-    }									     \
-} while (0)
-
 #define REGNO_OK_FOR_BASE_P(REGNO)	\
   aarch64_regno_ok_for_base_p (REGNO, true)
 
@@ -722,7 +707,12 @@ do {									     \
 #define USE_STORE_PRE_INCREMENT(MODE)   0
 #define USE_STORE_PRE_DECREMENT(MODE)   0
 
-/* ?? #define WORD_REGISTER_OPERATIONS  */
+/* WORD_REGISTER_OPERATIONS does not hold for AArch64.
+   The assigned word_mode is DImode but operations narrower than SImode
+   behave as 32-bit operations if using the W-form of the registers rather
+   than as word_mode (64-bit) operations as WORD_REGISTER_OPERATIONS
+   expects.  */
+#define WORD_REGISTER_OPERATIONS 0
 
 /* Define if loading from memory in MODE, an integral mode narrower than
    BITS_PER_WORD will either zero-extend or sign-extend.  The value of this
@@ -845,7 +835,7 @@ do {									     \
 #define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS)	\
   aarch64_cannot_change_mode_class (FROM, TO, CLASS)
 
-#define SHIFT_COUNT_TRUNCATED !TARGET_SIMD
+#define SHIFT_COUNT_TRUNCATED (!TARGET_SIMD)
 
 /* Choose appropriate mode for caller saves, so we do the minimum
    required size of load/store.  */

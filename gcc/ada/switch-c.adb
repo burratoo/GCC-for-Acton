@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1401,7 +1401,7 @@ package body Switch.C is
 
                Ptr := Ptr + 1;
 
-               if Switch_Chars (Ptr) /= '3' then
+               if Switch_Chars (Ptr) /= '3' or else Latest_Ada_Only then
                   Bad_Switch ("-gnat8" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
@@ -1419,7 +1419,7 @@ package body Switch.C is
 
                Ptr := Ptr + 1;
 
-               if Switch_Chars (Ptr) /= '5' then
+               if Switch_Chars (Ptr) /= '5' or else Latest_Ada_Only then
                   Bad_Switch ("-gnat9" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
@@ -1437,7 +1437,7 @@ package body Switch.C is
 
                Ptr := Ptr + 1;
 
-               if Switch_Chars (Ptr) /= '5' then
+               if Switch_Chars (Ptr) /= '5' or else Latest_Ada_Only then
                   Bad_Switch ("-gnat0" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
@@ -1470,7 +1470,9 @@ package body Switch.C is
                if Ptr > Max - 3 then
                   Bad_Switch ("-gnat" & Switch_Chars (Ptr .. Max));
 
-               elsif Switch_Chars (Ptr .. Ptr + 3) = "2005" then
+               elsif Switch_Chars (Ptr .. Ptr + 3) = "2005"
+                 and then not Latest_Ada_Only
+               then
                   Ada_Version := Ada_2005;
 
                elsif Switch_Chars (Ptr .. Ptr + 3) = "2012" then

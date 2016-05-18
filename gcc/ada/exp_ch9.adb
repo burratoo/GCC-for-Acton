@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -2421,13 +2421,6 @@ package body Exp_Ch9 is
       Obj_Typ : Entity_Id;
       Formals : List_Id) return Node_Id
    is
-      Loc           : constant Source_Ptr := Sloc (Subp_Id);
-      First_Param   : Node_Id;
-      Iface         : Entity_Id;
-      Iface_Elmt    : Elmt_Id;
-      Iface_Op      : Entity_Id;
-      Iface_Op_Elmt : Elmt_Id;
-
       function Overriding_Possible
         (Iface_Op : Entity_Id;
          Wrapper  : Entity_Id) return Boolean;
@@ -2543,9 +2536,9 @@ package body Exp_Ch9 is
          end if;
 
          return
-           Type_Conformant_Parameters (
-             Parameter_Specifications (Iface_Op_Spec),
-             Parameter_Specifications (Wrapper_Spec));
+           Type_Conformant_Parameters
+             (Parameter_Specifications (Iface_Op_Spec),
+              Parameter_Specifications (Wrapper_Spec));
       end Overriding_Possible;
 
       -----------------------
@@ -2594,20 +2587,29 @@ package body Exp_Ch9 is
 
             Append_To (New_Formals,
               Make_Parameter_Specification (Loc,
-                Defining_Identifier =>
+                Defining_Identifier    =>
                   Make_Defining_Identifier (Loc,
-                    Chars                  => Chars
-                                             (Defining_Identifier (Formal))),
-                    In_Present             => In_Present  (Formal),
-                    Out_Present            => Out_Present (Formal),
-                    Null_Exclusion_Present => Null_Exclusion_Present (Formal),
-                    Parameter_Type         => Param_Type));
+                    Chars => Chars (Defining_Identifier (Formal))),
+                In_Present             => In_Present  (Formal),
+                Out_Present            => Out_Present (Formal),
+                Null_Exclusion_Present => Null_Exclusion_Present (Formal),
+                Parameter_Type         => Param_Type));
 
             Next (Formal);
          end loop;
 
          return New_Formals;
       end Replicate_Formals;
+
+      --  Local variables
+
+      Loc             : constant Source_Ptr := Sloc (Subp_Id);
+      First_Param     : Node_Id := Empty;
+      Iface           : Entity_Id;
+      Iface_Elmt      : Elmt_Id;
+      Iface_Op        : Entity_Id;
+      Iface_Op_Elmt   : Elmt_Id;
+      Overridden_Subp : Entity_Id;
 
    --  Start of processing for Build_Wrapper_Spec
 
@@ -2616,17 +2618,24 @@ package body Exp_Ch9 is
 
       pragma Assert (Is_Tagged_Type (Obj_Typ));
 
+      --  Check if this subprogram has a profile that matches some interface
+      --  primitive.
+
+      Check_Synchronized_Overriding (Subp_Id, Overridden_Subp);
+
+      if Present (Overridden_Subp) then
+         First_Param :=
+           First (Parameter_Specifications (Parent (Overridden_Subp)));
+
       --  An entry or a protected procedure can override a routine where the
       --  controlling formal is either IN OUT, OUT or is of access-to-variable
       --  type. Since the wrapper must have the exact same signature as that of
       --  the overridden subprogram, we try to find the overriding candidate
       --  and use its controlling formal.
 
-      First_Param := Empty;
-
       --  Check every implemented interface
 
-      if Present (Interfaces (Obj_Typ)) then
+      elsif Present (Interfaces (Obj_Typ)) then
          Iface_Elmt := First_Elmt (Interfaces (Obj_Typ));
          Search : while Present (Iface_Elmt) loop
             Iface := Node (Iface_Elmt);
@@ -2662,40 +2671,14 @@ package body Exp_Ch9 is
          end loop Search;
       end if;
 
-      --  Ada 2012 (AI05-0090-1): If no interface primitive is covered by
-      --  this subprogram and this is not a primitive declared between two
-      --  views then force the generation of a wrapper. As an optimization,
-      --  previous versions of the frontend avoid generating the wrapper;
-      --  however, the wrapper facilitates locating and reporting an error
-      --  when a duplicate declaration is found later. See example in
-      --  AI05-0090-1.
+      --  Do not generate the wrapper if no interface primitive is covered by
+      --  the subprogram and it is not a primitive declared between two views
+      --  (see Process_Full_View).
 
       if No (First_Param)
         and then not Is_Private_Primitive_Subprogram (Subp_Id)
       then
-         if Is_Task_Type
-              (Corresponding_Concurrent_Type (Obj_Typ))
-         then
-            First_Param :=
-              Make_Parameter_Specification (Loc,
-                Defining_Identifier => Make_Defining_Identifier (Loc, Name_uO),
-                In_Present          => True,
-                Out_Present         => False,
-                Parameter_Type      => New_Occurrence_Of (Obj_Typ, Loc));
-
-         --  For entries and procedures of protected types the mode of
-         --  the controlling argument must be in-out.
-
-         else
-            First_Param :=
-              Make_Parameter_Specification (Loc,
-                Defining_Identifier =>
-                  Make_Defining_Identifier (Loc,
-                    Chars => Name_uO),
-                In_Present     => True,
-                Out_Present    => (Ekind (Subp_Id) /= E_Function),
-                Parameter_Type => New_Occurrence_Of (Obj_Typ, Loc));
-         end if;
+         return Empty;
       end if;
 
       declare
@@ -2770,13 +2753,16 @@ package body Exp_Ch9 is
 
          else
             pragma Assert (Is_Private_Primitive_Subprogram (Subp_Id));
+
             Obj_Param :=
               Make_Parameter_Specification (Loc,
                 Defining_Identifier =>
                   Make_Defining_Identifier (Loc, Name_uO),
-                In_Present  => In_Present (Parent (First_Entity (Subp_Id))),
-                Out_Present => Ekind (Subp_Id) /= E_Function,
-                  Parameter_Type => New_Occurrence_Of (Obj_Typ, Loc));
+                In_Present          =>
+                  In_Present (Parent (First_Entity (Subp_Id))),
+                Out_Present         => Ekind (Subp_Id) /= E_Function,
+                Parameter_Type      => New_Occurrence_Of (Obj_Typ, Loc));
+
             Prepend_To (New_Formals, Obj_Param);
          end if;
 
@@ -3922,8 +3908,7 @@ package body Exp_Ch9 is
                       Unprotected_Mode => 'N');
 
    begin
-      if Ekind (Defining_Unit_Name (Specification (N))) =
-           E_Subprogram_Body
+      if Ekind (Defining_Unit_Name (Specification (N))) = E_Subprogram_Body
       then
          Decl := Unit_Declaration_Node (Corresponding_Spec (N));
       else
@@ -3939,6 +3924,15 @@ package body Exp_Ch9 is
       New_Id :=
         Make_Defining_Identifier (Loc,
           Chars => Build_Selected_Name (Prot_Typ, Def_Id, Append_Chr (Mode)));
+
+      --  Reference the original nondispatching subprogram since the analysis
+      --  of the object.operation notation may need its original name (see
+      --  Sem_Ch4.Names_Match).
+
+      if Mode = Dispatching_Mode then
+         Set_Ekind (New_Id, Ekind (Def_Id));
+         Set_Original_Protected_Subprogram (New_Id, Def_Id);
+      end if;
 
       --  The unprotected operation carries the user code, and debugging
       --  information must be generated for it, even though this spec does
@@ -3956,7 +3950,7 @@ package body Exp_Ch9 is
       if Nkind (Specification (Decl)) = N_Procedure_Specification then
          New_Spec :=
            Make_Procedure_Specification (Loc,
-             Defining_Unit_Name => New_Id,
+             Defining_Unit_Name       => New_Id,
              Parameter_Specifications => New_Plist);
 
       --  Create a new specification for the anonymous subprogram type
@@ -3964,9 +3958,9 @@ package body Exp_Ch9 is
       else
          New_Spec :=
            Make_Function_Specification (Loc,
-             Defining_Unit_Name => New_Id,
+             Defining_Unit_Name       => New_Id,
              Parameter_Specifications => New_Plist,
-             Result_Definition =>
+             Result_Definition        =>
                Copy_Result_Type (Result_Definition (Specification (Decl))));
 
          Set_Return_Present (Defining_Unit_Name (New_Spec));
@@ -8719,22 +8713,51 @@ package body Exp_Ch9 is
             Current_Node := Sub;
 
             --  Generate an overriding primitive operation specification for
-            --  this subprogram if the protected type implements an interface.
+            --  this subprogram if the protected type implements an interface
+            --  and Build_Wrapper_Spec did not generate its wrapper.
 
             if Ada_Version >= Ada_2005
               and then
                 Present (Interfaces (Corresponding_Record_Type (Prot_Typ)))
             then
-               Sub :=
-                 Make_Subprogram_Declaration (Loc,
-                   Specification =>
-                     Build_Protected_Sub_Specification
-                       (Comp, Prot_Typ, Dispatching_Mode));
+               declare
+                  Found     : Boolean := False;
+                  Prim_Elmt : Elmt_Id;
+                  Prim_Op   : Node_Id;
 
-               Insert_After (Current_Node, Sub);
-               Analyze (Sub);
+               begin
+                  Prim_Elmt :=
+                    First_Elmt
+                      (Primitive_Operations
+                        (Corresponding_Record_Type (Prot_Typ)));
 
-               Current_Node := Sub;
+                  while Present (Prim_Elmt) loop
+                     Prim_Op := Node (Prim_Elmt);
+
+                     if Is_Primitive_Wrapper (Prim_Op)
+                       and then Wrapped_Entity (Prim_Op) =
+                                  Defining_Entity (Specification (Comp))
+                     then
+                        Found := True;
+                        exit;
+                     end if;
+
+                     Next_Elmt (Prim_Elmt);
+                  end loop;
+
+                  if not Found then
+                     Sub :=
+                       Make_Subprogram_Declaration (Loc,
+                         Specification =>
+                           Build_Protected_Sub_Specification
+                             (Comp, Prot_Typ, Dispatching_Mode));
+
+                     Insert_After (Current_Node, Sub);
+                     Analyze (Sub);
+
+                     Current_Node := Sub;
+                  end if;
+               end;
             end if;
 
          elsif Nkind (Comp) = N_Entry_Declaration then
@@ -8867,7 +8890,7 @@ package body Exp_Ch9 is
    -- Expand_N_Requeue_Statement --
    --------------------------------
 
-   --  A non-dispatching requeue statement is expanded into one of four GNARLI
+   --  A nondispatching requeue statement is expanded into one of four GNARLI
    --  operations, depending on the source and destination (task or protected
    --  object). A dispatching requeue statement is expanded into a call to the
    --  predefined primitive _Disp_Requeue. In addition, code is generated to
@@ -9071,7 +9094,7 @@ package body Exp_Ch9 is
       --  and perform the appropriate kind of dispatching select.
 
       function Build_Normal_Requeue return Node_Id;
-      --  N denotes a non-dispatching requeue statement to either a task or a
+      --  N denotes a nondispatching requeue statement to either a task or a
       --  protected entry. Build the appropriate runtime call to perform the
       --  action.
 
@@ -9623,7 +9646,7 @@ package body Exp_Ch9 is
             end if;
          end;
 
-      --  Processing for regular (non-dispatching) requeues
+      --  Processing for regular (nondispatching) requeues
 
       else
          Rewrite (N, Build_Normal_Requeue);
@@ -11841,7 +11864,7 @@ package body Exp_Ch9 is
              Else_Statements => D_Stats));
 
       else
-         --  Simple case of a non-dispatching trigger. Skip assignments to
+         --  Simple case of a nondispatching trigger. Skip assignments to
          --  temporaries created for in-out parameters.
 
          --  This makes unwarranted assumptions about the shape of the expanded

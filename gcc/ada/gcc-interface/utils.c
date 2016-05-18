@@ -239,17 +239,24 @@ static tree convert_to_fat_pointer (tree, tree);
 static unsigned int scale_by_factor_of (tree, unsigned int);
 static bool potential_alignment_gap (tree, tree, tree);
 
-/* A linked list used as a queue to defer the initialization of the
-   DECL_CONTEXT attribute of ..._DECL nodes and of the TYPE_CONTEXT attribute
-   of ..._TYPE nodes.  */
+/* Linked list used as a queue to defer the initialization of the DECL_CONTEXT
+   of ..._DECL nodes and of the TYPE_CONTEXT of ..._TYPE nodes.  */
 struct deferred_decl_context_node
 {
-  tree decl;		    /* The ..._DECL node to work on.  */
-  Entity_Id gnat_scope;     /* The corresponding entity's Scope attribute.  */
-  int force_global;	    /* force_global value when pushing DECL. */
-  vec<tree, va_heap, vl_ptr> types;	    /* A list of ..._TYPE nodes to propagate the
-			       context to.  */
-  struct deferred_decl_context_node *next;  /* The next queue item.  */
+  /* The ..._DECL node to work on.  */
+  tree decl;
+
+  /* The corresponding entity's Scope.  */
+  Entity_Id gnat_scope;
+
+  /* The value of force_global when DECL was pushed.  */
+  int force_global;
+
+  /* The list of ..._TYPE nodes to propagate the context to.  */
+  vec<tree> types;
+
+  /* The next queue item.  */
+  struct deferred_decl_context_node *next;
 };
 
 static struct deferred_decl_context_node *deferred_decl_context_queue = NULL;
@@ -421,6 +428,7 @@ build_dummy_unc_pointer_types (Entity_Id gnat_desig_type, tree gnu_desig_type)
   TYPE_DUMMY_P (gnu_object_type) = 1;
 
   TYPE_POINTER_TO (gnu_desig_type) = gnu_fat_type;
+  TYPE_REFERENCE_TO (gnu_desig_type) = gnu_fat_type;
   TYPE_OBJECT_RECORD_TYPE (gnu_desig_type) = gnu_object_type;
 }
 
@@ -929,23 +937,24 @@ make_aligning_type (tree type, unsigned int align, tree size,
 /* TYPE is a RECORD_TYPE, UNION_TYPE or QUAL_UNION_TYPE that is being used
    as the field type of a packed record if IN_RECORD is true, or as the
    component type of a packed array if IN_RECORD is false.  See if we can
-   rewrite it either as a type that has a non-BLKmode, which we can pack
-   tighter in the packed record case, or as a smaller type.  If so, return
-   the new type.  If not, return the original type.  */
+   rewrite it either as a type that has non-BLKmode, which we can pack
+   tighter in the packed record case, or as a smaller type with at most
+   MAX_ALIGN alignment if the value is non-zero.  If so, return the new
+   type; if not, return the original type.  */
 
 tree
-make_packable_type (tree type, bool in_record)
+make_packable_type (tree type, bool in_record, unsigned int max_align)
 {
   unsigned HOST_WIDE_INT size = tree_to_uhwi (TYPE_SIZE (type));
   unsigned HOST_WIDE_INT new_size;
-  tree new_type, old_field, field_list = NULL_TREE;
-  unsigned int align;
+  unsigned int align = TYPE_ALIGN (type);
+  unsigned int new_align;
 
   /* No point in doing anything if the size is zero.  */
   if (size == 0)
     return type;
 
-  new_type = make_node (TREE_CODE (type));
+  tree new_type = make_node (TREE_CODE (type));
 
   /* Copy the name and flags from the old type to that of the new.
      Note that we rely on the pointer equality created here for
@@ -962,49 +971,50 @@ make_packable_type (tree type, bool in_record)
      type with BLKmode.  */
   if (in_record && size <= MAX_FIXED_MODE_SIZE)
     {
-      align = ceil_pow2 (size);
-      SET_TYPE_ALIGN (new_type, align);
-      new_size = (size + align - 1) & -align;
+      new_size = ceil_pow2 (size);
+      new_align = MIN (new_size, BIGGEST_ALIGNMENT);
+      SET_TYPE_ALIGN (new_type, new_align);
     }
   else
     {
-      unsigned HOST_WIDE_INT align;
-
       /* Do not try to shrink the size if the RM size is not constant.  */
       if (TYPE_CONTAINS_TEMPLATE_P (type)
 	  || !tree_fits_uhwi_p (TYPE_ADA_SIZE (type)))
 	return type;
 
       /* Round the RM size up to a unit boundary to get the minimal size
-	 for a BLKmode record.  Give up if it's already the size.  */
+	 for a BLKmode record.  Give up if it's already the size and we
+	 don't need to lower the alignment.  */
       new_size = tree_to_uhwi (TYPE_ADA_SIZE (type));
       new_size = (new_size + BITS_PER_UNIT - 1) & -BITS_PER_UNIT;
-      if (new_size == size)
+      if (new_size == size && (max_align == 0 || align <= max_align))
 	return type;
 
-      align = new_size & -new_size;
-      SET_TYPE_ALIGN (new_type, MIN (TYPE_ALIGN (type), align));
+      new_align = MIN (new_size & -new_size, BIGGEST_ALIGNMENT);
+      if (max_align > 0 && new_align > max_align)
+	new_align = max_align;
+      SET_TYPE_ALIGN (new_type, MIN (align, new_align));
     }
 
   TYPE_USER_ALIGN (new_type) = 1;
 
   /* Now copy the fields, keeping the position and size as we don't want
      to change the layout by propagating the packedness downwards.  */
-  for (old_field = TYPE_FIELDS (type); old_field;
-       old_field = DECL_CHAIN (old_field))
+  tree new_field_list = NULL_TREE;
+  for (tree field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
     {
-      tree new_field_type = TREE_TYPE (old_field);
+      tree new_field_type = TREE_TYPE (field);
       tree new_field, new_size;
 
       if (RECORD_OR_UNION_TYPE_P (new_field_type)
 	  && !TYPE_FAT_POINTER_P (new_field_type)
 	  && tree_fits_uhwi_p (TYPE_SIZE (new_field_type)))
-	new_field_type = make_packable_type (new_field_type, true);
+	new_field_type = make_packable_type (new_field_type, true, max_align);
 
       /* However, for the last field in a not already packed record type
 	 that is of an aggregate type, we need to use the RM size in the
 	 packable version of the record type, see finish_record_type.  */
-      if (!DECL_CHAIN (old_field)
+      if (!DECL_CHAIN (field)
 	  && !TYPE_PACKED (type)
 	  && RECORD_OR_UNION_TYPE_P (new_field_type)
 	  && !TYPE_FAT_POINTER_P (new_field_type)
@@ -1012,24 +1022,24 @@ make_packable_type (tree type, bool in_record)
 	  && TYPE_ADA_SIZE (new_field_type))
 	new_size = TYPE_ADA_SIZE (new_field_type);
       else
-	new_size = DECL_SIZE (old_field);
+	new_size = DECL_SIZE (field);
 
       new_field
-	= create_field_decl (DECL_NAME (old_field), new_field_type, new_type,
-			     new_size, bit_position (old_field),
+	= create_field_decl (DECL_NAME (field), new_field_type, new_type,
+			     new_size, bit_position (field),
 			     TYPE_PACKED (type),
-			     !DECL_NONADDRESSABLE_P (old_field));
+			     !DECL_NONADDRESSABLE_P (field));
 
-      DECL_INTERNAL_P (new_field) = DECL_INTERNAL_P (old_field);
-      SET_DECL_ORIGINAL_FIELD_TO_FIELD (new_field, old_field);
+      DECL_INTERNAL_P (new_field) = DECL_INTERNAL_P (field);
+      SET_DECL_ORIGINAL_FIELD_TO_FIELD (new_field, field);
       if (TREE_CODE (new_type) == QUAL_UNION_TYPE)
-	DECL_QUALIFIER (new_field) = DECL_QUALIFIER (old_field);
+	DECL_QUALIFIER (new_field) = DECL_QUALIFIER (field);
 
-      DECL_CHAIN (new_field) = field_list;
-      field_list = new_field;
+      DECL_CHAIN (new_field) = new_field_list;
+      new_field_list = new_field;
     }
 
-  finish_record_type (new_type, nreverse (field_list), 2, false);
+  finish_record_type (new_type, nreverse (new_field_list), 2, false);
   relate_alias_sets (new_type, type, ALIAS_SET_COPY);
   if (TYPE_STUB_DECL (type))
     SET_DECL_PARALLEL_TYPE (TYPE_STUB_DECL (new_type),
@@ -1046,8 +1056,7 @@ make_packable_type (tree type, bool in_record)
   else
     {
       TYPE_SIZE (new_type) = bitsize_int (new_size);
-      TYPE_SIZE_UNIT (new_type)
-	= size_int ((new_size + BITS_PER_UNIT - 1) / BITS_PER_UNIT);
+      TYPE_SIZE_UNIT (new_type) = size_int (new_size / BITS_PER_UNIT);
     }
 
   if (!TYPE_CONTAINS_TEMPLATE_P (type))
@@ -1061,8 +1070,8 @@ make_packable_type (tree type, bool in_record)
     SET_TYPE_MODE (new_type,
 		   mode_for_size_tree (TYPE_SIZE (new_type), MODE_INT, 1));
 
-  /* If neither the mode nor the size has shrunk, return the old type.  */
-  if (TYPE_MODE (new_type) == BLKmode && new_size >= size)
+  /* If neither mode nor size nor alignment shrunk, return the old type.  */
+  if (TYPE_MODE (new_type) == BLKmode && new_size >= size && max_align == 0)
     return type;
 
   return new_type;
@@ -1217,7 +1226,8 @@ lookup_and_insert_pad_type (tree type)
    IS_COMPONENT_TYPE is true if this is being done for the component type of
    an array.  IS_USER_TYPE is true if the original type needs to be completed.
    DEFINITION is true if this type is being defined.  SET_RM_SIZE is true if
-   the RM size of the resulting type is to be set to SIZE too.  */
+   the RM size of the resulting type is to be set to SIZE too; in this case,
+   the padded type is canonicalized before being returned.  */
 
 tree
 maybe_pad_type (tree type, tree size, unsigned int align,
@@ -1280,8 +1290,6 @@ maybe_pad_type (tree type, tree size, unsigned int align,
      type and name.  */
   record = make_node (RECORD_TYPE);
   TYPE_PADDING_P (record) = 1;
-  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
-    SET_TYPE_DEBUG_TYPE (record, type);
 
   /* ??? Padding types around packed array implementation types will be
      considered as root types in the array descriptor language hook (see
@@ -1337,8 +1345,11 @@ maybe_pad_type (tree type, tree size, unsigned int align,
 			     bitsize_zero_node, 0, 1);
   DECL_INTERNAL_P (field) = 1;
 
-  /* Do not emit debug info until after the auxiliary record is built.  */
+  /* We will output additional debug info manually below.  */
   finish_record_type (record, field, 1, false);
+
+  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
+    SET_TYPE_DEBUG_TYPE (record, type);
 
   /* Set the RM size if requested.  */
   if (set_rm_size)
@@ -1408,8 +1419,6 @@ maybe_pad_type (tree type, tree size, unsigned int align,
 	  add_parallel_type (record, marker);
 	}
     }
-
-  rest_of_record_type_compilation (record);
 
 built:
   /* If a simple size was explicitly given, maybe issue a warning.  */
@@ -1672,7 +1681,7 @@ finish_fat_pointer_type (tree record_type, tree field_list)
    laid out already; only set the sizes and alignment.  If REP_LEVEL is two,
    this record is derived from a parent record and thus inherits its layout;
    only make a pass on the fields to finalize them.  DEBUG_INFO_P is true if
-   we need to write debug information about this type.  */
+   additional debug info needs to be output for this type.  */
 
 void
 finish_record_type (tree record_type, tree field_list, int rep_level,
@@ -1927,10 +1936,9 @@ has_parallel_type (tree type)
   return DECL_PARALLEL_TYPE (decl) != NULL_TREE;
 }
 
-/* Wrap up compilation of RECORD_TYPE, i.e. output all the debug information
-   associated with it.  It need not be invoked directly in most cases since
-   finish_record_type takes care of doing so, but this can be necessary if
-   a parallel type is to be attached to the record type.  */
+/* Wrap up compilation of RECORD_TYPE, i.e. output additional debug info
+   associated with it.  It need not be invoked directly in most cases as
+   finish_record_type takes care of doing so.  */
 
 void
 rest_of_record_type_compilation (tree record_type)
@@ -2072,7 +2080,7 @@ rest_of_record_type_compilation (tree record_type)
 	      field_type = build_pointer_type (field_type);
 	      if (align != 0 && TYPE_ALIGN (field_type) > align)
 		{
-		  field_type = copy_node (field_type);
+		  field_type = copy_type (field_type);
 		  SET_TYPE_ALIGN (field_type, align);
 		}
 	      var = true;
@@ -2215,47 +2223,6 @@ split_plus (tree in, tree *pvar)
     return bitsize_zero_node;
 }
 
-/* Return a FUNCTION_TYPE node.  RETURN_TYPE is the type returned by the
-   subprogram.  If it is VOID_TYPE, then we are dealing with a procedure,
-   otherwise we are dealing with a function.  PARAM_DECL_LIST is a list of
-   PARM_DECL nodes that are the subprogram parameters.  CICO_LIST is the
-   copy-in/copy-out list to be stored into the TYPE_CICO_LIST field.
-   RETURN_UNCONSTRAINED_P is true if the function returns an unconstrained
-   object.  RETURN_BY_DIRECT_REF_P is true if the function returns by direct
-   reference.  RETURN_BY_INVISI_REF_P is true if the function returns by
-   invisible reference.  */
-
-tree
-create_subprog_type (tree return_type, tree param_decl_list, tree cico_list,
-		     bool return_unconstrained_p, bool return_by_direct_ref_p,
-		     bool return_by_invisi_ref_p)
-{
-  /* A list of the data type nodes of the subprogram formal parameters.
-     This list is generated by traversing the input list of PARM_DECL
-     nodes.  */
-  vec<tree, va_gc> *param_type_list = NULL;
-  tree t, type;
-
-  for (t = param_decl_list; t; t = DECL_CHAIN (t))
-    vec_safe_push (param_type_list, TREE_TYPE (t));
-
-  type = build_function_type_vec (return_type, param_type_list);
-
-  /* TYPE may have been shared since GCC hashes types.  If it has a different
-     CICO_LIST, make a copy.  Likewise for the various flags.  */
-  if (!fntype_same_flags_p (type, cico_list, return_unconstrained_p,
-			    return_by_direct_ref_p, return_by_invisi_ref_p))
-    {
-      type = copy_type (type);
-      TYPE_CI_CO_LIST (type) = cico_list;
-      TYPE_RETURN_UNCONSTRAINED_P (type) = return_unconstrained_p;
-      TYPE_RETURN_BY_DIRECT_REF_P (type) = return_by_direct_ref_p;
-      TREE_ADDRESSABLE (type) = return_by_invisi_ref_p;
-    }
-
-  return type;
-}
-
 /* Return a copy of TYPE but safe to modify in any way.  */
 
 tree
@@ -2284,10 +2251,10 @@ copy_type (tree type)
      aliased with TREE_CHAIN.  */
   TYPE_STUB_DECL (new_type) = TYPE_STUB_DECL (type);
 
-  TYPE_POINTER_TO (new_type) = 0;
-  TYPE_REFERENCE_TO (new_type) = 0;
+  TYPE_POINTER_TO (new_type) = NULL_TREE;
+  TYPE_REFERENCE_TO (new_type) = NULL_TREE;
   TYPE_MAIN_VARIANT (new_type) = new_type;
-  TYPE_NEXT_VARIANT (new_type) = 0;
+  TYPE_NEXT_VARIANT (new_type) = NULL_TREE;
   TYPE_CANONICAL (new_type) = new_type;
 
   return new_type;
@@ -2736,12 +2703,10 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
   return field_decl;
 }
 
-/* Return a PARM_DECL node.  NAME is the name of the parameter and TYPE is
-   its type.  READONLY is true if the parameter is readonly (either an In
-   parameter or an address of a pass-by-ref parameter).  */
+/* Return a PARM_DECL node with NAME and TYPE.  */
 
 tree
-create_param_decl (tree name, tree type, bool readonly)
+create_param_decl (tree name, tree type)
 {
   tree param_decl = build_decl (input_location, PARM_DECL, name, type);
 
@@ -2769,7 +2734,6 @@ create_param_decl (tree name, tree type, bool readonly)
     }
 
   DECL_ARG_TYPE (param_decl) = type;
-  TREE_READONLY (param_decl) = readonly;
   return param_decl;
 }
 
@@ -3145,8 +3109,10 @@ create_label_decl (tree name, Node_Id gnat_node)
 
    INLINE_STATUS describes the inline flags to be set on the FUNCTION_DECL.
 
-   CONST_FLAG, PUBLIC_FLAG, EXTERN_FLAG, VOLATILE_FLAG are used to set the
-   appropriate flags on the FUNCTION_DECL.
+   PUBLIC_FLAG is true if this is for a reference to a public entity or for a
+   definition to be made visible outside of the current compilation unit.
+
+   EXTERN_FLAG is true when processing an external subprogram declaration.
 
    ARTIFICIAL_P is true if the subprogram was generated by the compiler.
 
@@ -3158,18 +3124,20 @@ create_label_decl (tree name, Node_Id gnat_node)
 
 tree
 create_subprog_decl (tree name, tree asm_name, tree type, tree param_decl_list,
-		     enum inline_status_t inline_status, bool const_flag,
-		     bool public_flag, bool extern_flag, bool volatile_flag,
-		     bool artificial_p, bool debug_info_p,
+		     enum inline_status_t inline_status, bool public_flag,
+		     bool extern_flag, bool artificial_p, bool debug_info_p,
 		     struct attrib *attr_list, Node_Id gnat_node)
 {
   tree subprog_decl = build_decl (input_location, FUNCTION_DECL, name, type);
-  tree result_decl
-    = build_decl (input_location, RESULT_DECL, NULL_TREE, TREE_TYPE (type));
   DECL_ARGUMENTS (subprog_decl) = param_decl_list;
+  finish_subprog_decl (subprog_decl, type);
 
   DECL_ARTIFICIAL (subprog_decl) = artificial_p;
   DECL_EXTERNAL (subprog_decl) = extern_flag;
+  TREE_PUBLIC (subprog_decl) = public_flag;
+
+  if (!debug_info_p)
+    DECL_IGNORED_P (subprog_decl) = 1;
 
   switch (inline_status)
     {
@@ -3198,20 +3166,6 @@ create_subprog_decl (tree name, tree asm_name, tree type, tree param_decl_list,
       gcc_unreachable ();
     }
 
-  if (!debug_info_p)
-    DECL_IGNORED_P (subprog_decl) = 1;
-
-  TREE_READONLY (subprog_decl) = TYPE_READONLY (type) | const_flag;
-  TREE_PUBLIC (subprog_decl) = public_flag;
-  TREE_SIDE_EFFECTS (subprog_decl)
-    = TREE_THIS_VOLATILE (subprog_decl)
-    = TYPE_VOLATILE (type) | volatile_flag;
-
-  DECL_ARTIFICIAL (result_decl) = 1;
-  DECL_IGNORED_P (result_decl) = 1;
-  DECL_BY_REFERENCE (result_decl) = TREE_ADDRESSABLE (type);
-  DECL_RESULT (subprog_decl) = result_decl;
-
   process_attributes (&subprog_decl, &attr_list, true, gnat_node);
 
   /* Add this decl to the current binding level.  */
@@ -3239,6 +3193,25 @@ create_subprog_decl (tree name, tree asm_name, tree type, tree param_decl_list,
   rest_of_decl_compilation (subprog_decl, global_bindings_p (), 0);
 
   return subprog_decl;
+}
+
+/* Given a subprogram declaration DECL and its TYPE, finish constructing the
+   subprogram declaration from TYPE.  */
+
+void
+finish_subprog_decl (tree decl, tree type)
+{
+  tree result_decl
+    = build_decl (DECL_SOURCE_LOCATION (decl), RESULT_DECL, NULL_TREE,
+		  TREE_TYPE (type));
+
+  DECL_ARTIFICIAL (result_decl) = 1;
+  DECL_IGNORED_P (result_decl) = 1;
+  DECL_BY_REFERENCE (result_decl) = TREE_ADDRESSABLE (type);
+  DECL_RESULT (decl) = result_decl;
+
+  TREE_READONLY (decl) = TYPE_READONLY (type);
+  TREE_SIDE_EFFECTS (decl) = TREE_THIS_VOLATILE (decl) = TYPE_VOLATILE (type);
 }
 
 /* Set up the framework for generating code for SUBPROG_DECL, a subprogram
@@ -3431,14 +3404,14 @@ gnat_signed_or_unsigned_type_for (int unsignedp, tree type_node)
 
   if (TREE_CODE (type_node) == INTEGER_TYPE && TYPE_MODULAR_P (type_node))
     {
-      type = copy_node (type);
+      type = copy_type (type);
       TREE_TYPE (type) = type_node;
     }
   else if (TREE_TYPE (type_node)
 	   && TREE_CODE (TREE_TYPE (type_node)) == INTEGER_TYPE
 	   && TYPE_MODULAR_P (TREE_TYPE (type_node)))
     {
-      type = copy_node (type);
+      type = copy_type (type);
       TREE_TYPE (type) = TREE_TYPE (type_node);
     }
 
@@ -3986,6 +3959,7 @@ update_pointer_to (tree old_type, tree new_type)
 			 TYPE_OBJECT_RECORD_TYPE (new_type));
 
       TYPE_POINTER_TO (old_type) = NULL_TREE;
+      TYPE_REFERENCE_TO (old_type) = NULL_TREE;
     }
 }
 
