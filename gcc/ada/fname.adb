@@ -166,11 +166,6 @@ package body Fname is
                   Name_Buffer (3) in 'A' .. 'Z')
       then
          return True;
-
-      --  Definitely false if longer than 12 characters (8.3)
-
-      elsif Name_Len > 8 then
-         return False;
       end if;
 
       --  Otherwise check against special list, first padding to 8 characters
