@@ -1157,7 +1157,7 @@ package body Lib.Writ is
          end if;
 
          if Global_Start_Phase /= No_Global_Start_Phase then
-            Write_Info_Str (" G");
+            Write_Info_Str (" GS");
             Write_Info_Nat (Global_Start_Phase);
          end if;
 

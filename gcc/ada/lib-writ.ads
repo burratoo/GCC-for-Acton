@@ -204,7 +204,7 @@ package Lib.Writ is
    --         GP   Set if this compilation was done in GNATprove mode, either
    --              from direct use of GNATprove, or from use of -gnatdF.
 
-   --         Gu   A valid Global_Start_Phase pragma applies to all the units
+   --         GSu  A valid Global_Start_Phase pragma applies to all the units
    --              in this file, where u is the unsigned integer of the
    --              corresponding policy name.
 

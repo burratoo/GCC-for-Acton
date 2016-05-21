@@ -1117,19 +1117,30 @@ package body ALI is
                   Fatal_Error_Ignore;
                end if;
 
-            --  Processing for GP
+            --  Processing for flags starting with G
 
             elsif C = 'G' then
-               Checkc ('P');
-               GNATprove_Mode_Specified := True;
-               ALIs.Table (Id).GNATprove_Mode := True;
+               C := Getc;
 
-            --  Processing for Gx
+               --  Processing for GP
 
-            elsif C = 'G' then
-               Global_Start_Phase_Specified := Get_Nat;
-               ALIs.Table (Id).Global_Start_Phase :=
-                 Global_Start_Phase_Specified;
+               if C = 'P' then
+                  Checkc ('P');
+                  GNATprove_Mode_Specified := True;
+                  ALIs.Table (Id).GNATprove_Mode := True;
+
+               --  Processing for GSx
+
+               elsif C = 'S' then
+                  Global_Start_Phase_Specified := Get_Nat;
+                  ALIs.Table (Id).Global_Start_Phase :=
+                    Global_Start_Phase_Specified;
+
+               --  Invalid switch starting with G
+
+               else
+                  Fatal_Error_Ignore;
+               end if;
 
             --  Processing for Lx
 
