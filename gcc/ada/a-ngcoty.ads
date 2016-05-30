@@ -67,14 +67,14 @@ package Ada.Numerics.Generic_Complex_Types is
    function "abs"   (Right : Complex) return Real'Base renames Modulus;
 
    function Argument (X : Complex)                    return Real'Base;
-   function Argument (X : Complex; Cycle : Real'Base) return Real'Base;
+   function Argument (X : Complex; Turn : Real'Base) return Real'Base;
 
    function Compose_From_Polar (
      Modulus, Argument : Real'Base)
      return Complex;
 
    function Compose_From_Polar (
-     Modulus, Argument, Cycle : Real'Base)
+     Modulus, Argument, Turn : Real'Base)
      return Complex;
 
    function "+"       (Right : Complex) return Complex;

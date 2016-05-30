@@ -68,7 +68,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    function Local_Atan
      (Y : Float_Type'Base;
       X : Float_Type'Base := 1.0) return Float_Type'Base;
-   --  Common code for arc tangent after cycle reduction
+   --  Common code for arc tangent after turn reduction
 
    ----------
    -- "**" --
@@ -173,7 +173,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Arccos --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arccos (X : Float_Type'Base) return Float_Type'Base is
       Temp : Float_Type'Base;
@@ -201,32 +201,32 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Temp;
    end Arccos;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Arccos (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Arccos (X, Turn : Float_Type'Base) return Float_Type'Base is
       Temp : Float_Type'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif abs X > 1.0 then
          raise Argument_Error;
 
       elsif abs X < Sqrt_Epsilon then
-         return Cycle / 4.0;
+         return Turn / 4.0;
 
       elsif X = 1.0 then
          return 0.0;
 
       elsif X = -1.0 then
-         return Cycle / 2.0;
+         return Turn / 2.0;
       end if;
 
-      Temp := Arctan (Sqrt ((1.0 - X) * (1.0 + X)) / X, 1.0, Cycle);
+      Temp := Arctan (Sqrt ((1.0 - X) * (1.0 + X)) / X, 1.0, Turn);
 
       if Temp < 0.0 then
-         Temp := Cycle / 2.0 + Temp;
+         Temp := Turn / 2.0 + Temp;
       end if;
 
       return Temp;
@@ -259,7 +259,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Arccot --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arccot
      (X    : Float_Type'Base;
@@ -272,18 +272,18 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Arctan (Y, X);
    end Arccot;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
    function Arccot
      (X     : Float_Type'Base;
       Y     : Float_Type'Base := 1.0;
-      Cycle : Float_Type'Base)
+      Turn  : Float_Type'Base)
       return  Float_Type'Base
    is
    begin
       --  Just reverse arguments
 
-      return Arctan (Y, X, Cycle);
+      return Arctan (Y, X, Turn);
    end Arccot;
 
    -------------
@@ -313,7 +313,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Arcsin --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arcsin (X : Float_Type'Base) return Float_Type'Base is
    begin
@@ -333,11 +333,11 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Float_Type'Base (Aux.Asin (Double (X)));
    end Arcsin;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Arcsin (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Arcsin (X, Turn : Float_Type'Base) return Float_Type'Base is
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif abs X > 1.0 then
@@ -347,13 +347,13 @@ package body Ada.Numerics.Generic_Elementary_Functions is
          return X;
 
       elsif X = 1.0 then
-         return Cycle / 4.0;
+         return Turn / 4.0;
 
       elsif X = -1.0 then
-         return -(Cycle / 4.0);
+         return -(Turn / 4.0);
       end if;
 
-      return Arctan (X / Sqrt ((1.0 - X) * (1.0 + X)), 1.0, Cycle);
+      return Arctan (X / Sqrt ((1.0 - X) * (1.0 + X)), 1.0, Turn);
    end Arcsin;
 
    -------------
@@ -383,7 +383,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Arctan --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arctan
      (Y    : Float_Type'Base;
@@ -409,16 +409,16 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       end if;
    end Arctan;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
    function Arctan
-     (Y     : Float_Type'Base;
-      X     : Float_Type'Base := 1.0;
-      Cycle : Float_Type'Base)
+     (Y    : Float_Type'Base;
+      X    : Float_Type'Base := 1.0;
+      Turn : Float_Type'Base)
       return  Float_Type'Base
    is
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif X = 0.0 and then Y = 0.0 then
@@ -428,14 +428,14 @@ package body Ada.Numerics.Generic_Elementary_Functions is
          if X > 0.0 then
             return 0.0;
          else -- X < 0.0
-            return Cycle / 2.0 * Float_Type'Copy_Sign (1.0, Y);
+            return Turn / 2.0 * Float_Type'Copy_Sign (1.0, Y);
          end if;
 
       elsif X = 0.0 then
-         return Float_Type'Copy_Sign (Cycle / 4.0, Y);
+         return Float_Type'Copy_Sign (Turn / 4.0, Y);
 
       else
-         return Local_Atan (Y, X) *  Cycle / Two_Pi;
+         return Local_Atan (Y, X) *  Turn / Two_Pi;
       end if;
    end Arctan;
 
@@ -505,7 +505,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Cos --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Cos (X : Float_Type'Base) return Float_Type'Base is
    begin
@@ -516,14 +516,14 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Float_Type'Base (Aux.Cos (Double (X)));
    end Cos;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Cos (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Cos (X, Turn : Float_Type'Base) return Float_Type'Base is
    begin
       --  Just reuse the code for Sin. The potential small loss of speed is
       --  negligible with proper (front-end) inlining.
 
-      return -Sin (abs X - Cycle * 0.25, Cycle);
+      return -Sin (abs X - Turn * 0.25, Turn);
    end Cos;
 
    ----------
@@ -555,7 +555,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Cot --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Cot (X : Float_Type'Base) return Float_Type'Base is
    begin
@@ -569,29 +569,29 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return 1.0 / Float_Type'Base (Aux.Tan (Double (X)));
    end Cot;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Cot (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Cot (X, Turn : Float_Type'Base) return Float_Type'Base is
       T : Float_Type'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
       end if;
 
-      T := Float_Type'Base'Remainder (X, Cycle);
+      T := Float_Type'Base'Remainder (X, Turn);
 
-      if T = 0.0 or else abs T = 0.5 * Cycle then
+      if T = 0.0 or else abs T = 0.5 * Turn then
          raise Constraint_Error;
 
       elsif abs T < Sqrt_Epsilon then
          return 1.0 / T;
 
-      elsif abs T = 0.25 * Cycle then
+      elsif abs T = 0.25 * Turn then
          return 0.0;
 
       else
-         T := T / Cycle * Two_Pi;
+         T := T / Turn * Two_Pi;
          return Cos (T) / Sin (T);
       end if;
    end Cot;
@@ -770,7 +770,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Sin --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Sin (X : Float_Type'Base) return Float_Type'Base is
    begin
@@ -781,13 +781,13 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Float_Type'Base (Aux.Sin (Double (X)));
    end Sin;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Sin (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Sin (X, Turn : Float_Type'Base) return Float_Type'Base is
       T : Float_Type'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       --  If X is zero, return it as the result, preserving the argument sign.
@@ -797,22 +797,22 @@ package body Ada.Numerics.Generic_Elementary_Functions is
          return X;
       end if;
 
-      T := Float_Type'Base'Remainder (X, Cycle);
+      T := Float_Type'Base'Remainder (X, Turn);
 
       --  The following two reductions reduce the argument to the interval
-      --  [-0.25 * Cycle, 0.25 * Cycle]. This reduction is exact and is needed
+      --  [-0.25 * Turn, 0.25 * Turn]. This reduction is exact and is needed
       --  to prevent inaccuracy that may result if the sine function uses a
       --  different (more accurate) value of Pi in its reduction than is used
       --  in the multiplication with Two_Pi.
 
-      if abs T > 0.25 * Cycle then
-         T := 0.5 * Float_Type'Copy_Sign (Cycle, T) - T;
+      if abs T > 0.25 * Turn then
+         T := 0.5 * Float_Type'Copy_Sign (Turn, T) - T;
       end if;
 
-      --  Could test for 12.0 * abs T = Cycle, and return an exact value in
+      --  Could test for 12.0 * abs T = Turn, and return an exact value in
       --  those cases. It is not clear this is worth the extra test though.
 
-      return Float_Type'Base (Aux.Sin (Double (T / Cycle * Two_Pi)));
+      return Float_Type'Base (Aux.Sin (Double (T / Turn * Two_Pi)));
    end Sin;
 
    ----------
@@ -902,7 +902,7 @@ package body Ada.Numerics.Generic_Elementary_Functions is
    -- Tan --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Tan (X : Float_Type'Base) return Float_Type'Base is
    begin
@@ -918,29 +918,29 @@ package body Ada.Numerics.Generic_Elementary_Functions is
       return Float_Type'Base (Aux.Tan (Double (X)));
    end Tan;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Tan (X, Cycle : Float_Type'Base) return Float_Type'Base is
+   function Tan (X, Turn : Float_Type'Base) return Float_Type'Base is
       T : Float_Type'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif X = 0.0 then
          return X;
       end if;
 
-      T := Float_Type'Base'Remainder (X, Cycle);
+      T := Float_Type'Base'Remainder (X, Turn);
 
-      if abs T = 0.25 * Cycle then
+      if abs T = 0.25 * Turn then
          raise Constraint_Error;
 
-      elsif abs T = 0.5 * Cycle then
+      elsif abs T = 0.5 * Turn then
          return 0.0;
 
       else
-         T := T / Cycle * Two_Pi;
+         T := T / Turn * Two_Pi;
          return Sin (T) / Cos (T);
       end if;
 

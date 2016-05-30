@@ -73,9 +73,9 @@ package body Math_Lib is
       return Real;
 
    function Arctan
-     (Y     : Real;
-      A     : Real := 1.0;
-      Cycle : Real)
+     (Y    : Real;
+      A    : Real := 1.0;
+      Turn : Real)
       return  Real;
 
    function Exact_Remainder
@@ -91,7 +91,7 @@ package body Math_Lib is
      (Y    : Real;
       A    : Real := 1.0)
       return Real;
-   --  Common code for arc tangent after cycle reduction
+   --  Common code for arc tangent after Turn reduction
 
    function Log_Inverse_Epsilon return Real;
    --  Function to provide constant: Log (1.0 / Epsilon)
@@ -150,7 +150,7 @@ package body Math_Lib is
    -- Arccos --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arccos (A : Real) return Real is
       Temp : Real'Base;
@@ -178,32 +178,32 @@ package body Math_Lib is
       return Temp;
    end Arccos;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Arccos (A, Cycle : Real) return Real is
+   function Arccos (A, Turn : Real) return Real is
       Temp : Real'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif abs A > 1.0 then
          raise Argument_Error;
 
       elsif abs A < Square_Root_Epsilon then
-         return Cycle / 4.0;
+         return Turn / 4.0;
 
       elsif A = 1.0 then
          return 0.0;
 
       elsif A = -1.0 then
-         return Cycle / 2.0;
+         return Turn / 2.0;
       end if;
 
-      Temp := Arctan (Sqrt (1.0 - A * A) / A, 1.0, Cycle);
+      Temp := Arctan (Sqrt (1.0 - A * A) / A, 1.0, Turn);
 
       if Temp < 0.0 then
-         Temp := Cycle / 2.0 + Temp;
+         Temp := Turn / 2.0 + Temp;
       end if;
 
       return Temp;
@@ -237,7 +237,7 @@ package body Math_Lib is
    -- Arccot --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arccot
      (A    : Real;
@@ -250,18 +250,18 @@ package body Math_Lib is
       return Arctan (Y, A);
    end Arccot;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
    function Arccot
      (A     : Real;
       Y     : Real := 1.0;
-      Cycle : Real)
+      Turn : Real)
       return  Real
    is
    begin
       --  Just reverse arguments
 
-      return Arctan (Y, A, Cycle);
+      return Arctan (Y, A, Turn);
    end Arccot;
 
    -------------
@@ -288,7 +288,7 @@ package body Math_Lib is
    -- Arcsin --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arcsin (A : Real) return Real is
    begin
@@ -308,11 +308,11 @@ package body Math_Lib is
       return Real (Aux.asin (Double (A)));
    end Arcsin;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Arcsin (A, Cycle : Real) return Real is
+   function Arcsin (A, Turn : Real) return Real is
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif abs A > 1.0 then
@@ -322,13 +322,13 @@ package body Math_Lib is
          return A;
 
       elsif A = 1.0 then
-         return Cycle / 4.0;
+         return Turn / 4.0;
 
       elsif A = -1.0 then
-         return -Cycle / 4.0;
+         return -Turn / 4.0;
       end if;
 
-      return Arctan (A / Sqrt (1.0 - A * A), 1.0, Cycle);
+      return Arctan (A / Sqrt (1.0 - A * A), 1.0, Turn);
    end Arcsin;
 
    -------------
@@ -358,7 +358,7 @@ package body Math_Lib is
    -- Arctan --
    ------------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Arctan
      (Y    : Real;
@@ -390,16 +390,16 @@ package body Math_Lib is
       end if;
    end Arctan;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
    function Arctan
-     (Y     : Real;
-      A     : Real := 1.0;
-      Cycle : Real)
+     (Y    : Real;
+      A    : Real := 1.0;
+      Turn : Real)
       return  Real
    is
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif A = 0.0
@@ -411,18 +411,18 @@ package body Math_Lib is
          if A > 0.0 then
             return 0.0;
          else -- A < 0.0
-            return Cycle / 2.0;
+            return Turn / 2.0;
          end if;
 
       elsif A = 0.0 then
          if Y > 0.0 then
-            return Cycle / 4.0;
+            return Turn / 4.0;
          else -- Y < 0.0
-            return -Cycle / 4.0;
+            return -Turn / 4.0;
          end if;
 
       else
-         return Local_Atan (Y, A) *  Cycle / Two_Pi;
+         return Local_Atan (Y, A) *  Turn / Two_Pi;
       end if;
    end Arctan;
 
@@ -450,7 +450,7 @@ package body Math_Lib is
    -- Cos --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Cos (A : Real) return Real is
    begin
@@ -465,20 +465,20 @@ package body Math_Lib is
       return Real (Aux.Cos (Double (A)));
    end Cos;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Cos (A, Cycle : Real) return Real is
+   function Cos (A, Turn : Real) return Real is
       T : Real'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif A = 0.0 then
          return 1.0;
       end if;
 
-      T := Exact_Remainder (abs (A), Cycle) / Cycle;
+      T := Exact_Remainder (abs (A), Turn) / Turn;
 
       if T = 0.25
         or else T = 0.75
@@ -518,7 +518,7 @@ package body Math_Lib is
    -- Cot --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Cot (A : Real) return Real is
    begin
@@ -532,13 +532,13 @@ package body Math_Lib is
       return Real (1.0 / Real'Base (Aux.tan (Double (A))));
    end Cot;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Cot (A, Cycle : Real) return Real is
+   function Cot (A, Turn : Real) return Real is
       T : Real'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif A = 0.0 then
@@ -548,7 +548,7 @@ package body Math_Lib is
          return 1.0 / A;
       end if;
 
-      T := Exact_Remainder (A, Cycle) / Cycle;
+      T := Exact_Remainder (A, Turn) / Turn;
 
       if T = 0.0 or T = 0.5 or T = -0.5 then
          raise Constraint_Error;
@@ -795,7 +795,7 @@ package body Math_Lib is
    -- Sin --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Sin (A : Real) return Real is
    begin
@@ -806,20 +806,20 @@ package body Math_Lib is
       return Real (Aux.Sin (Double (A)));
    end Sin;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Sin (A, Cycle : Real) return Real is
+   function Sin (A, Turn : Real) return Real is
       T : Real'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif A = 0.0 then
          return A;
       end if;
 
-      T := Exact_Remainder (A, Cycle) / Cycle;
+      T := Exact_Remainder (A, Turn) / Turn;
 
       if T = 0.0 or T = 0.5 or T = -0.5 then
          return 0.0;
@@ -898,7 +898,7 @@ package body Math_Lib is
    -- Tan --
    ---------
 
-   --  Natural cycle
+   --  Natural turn
 
    function Tan (A : Real) return Real is
    begin
@@ -912,20 +912,20 @@ package body Math_Lib is
       return Real (Aux.tan (Double (A)));
    end Tan;
 
-   --  Arbitrary cycle
+   --  Arbitrary turn
 
-   function Tan (A, Cycle : Real) return Real is
+   function Tan (A, Turn : Real) return Real is
       T : Real'Base;
 
    begin
-      if Cycle <= 0.0 then
+      if Turn <= 0.0 then
          raise Argument_Error;
 
       elsif A = 0.0 then
          return A;
       end if;
 
-      T := Exact_Remainder (A, Cycle) / Cycle;
+      T := Exact_Remainder (A, Turn) / Turn;
 
       if T = 0.25
         or else T = 0.75

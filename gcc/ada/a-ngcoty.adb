@@ -459,10 +459,10 @@ package body Ada.Numerics.Generic_Complex_Types is
          end if;
    end Argument;
 
-   function Argument (X : Complex; Cycle : Real'Base) return Real'Base is
+   function Argument (X : Complex; Turn : Real'Base) return Real'Base is
    begin
-      if Cycle > 0.0 then
-         return Argument (X) * Cycle / Two_Pi;
+      if Turn > 0.0 then
+         return Argument (X) * Turn / Two_Pi;
       else
          raise Argument_Error;
       end if;
@@ -505,7 +505,7 @@ package body Ada.Numerics.Generic_Complex_Types is
    end Compose_From_Polar;
 
    function Compose_From_Polar (
-     Modulus, Argument, Cycle : Real'Base)
+     Modulus, Argument, Turn : Real'Base)
      return Complex
    is
       Arg : Real'Base;
@@ -514,20 +514,20 @@ package body Ada.Numerics.Generic_Complex_Types is
       if Modulus = 0.0 then
          return (0.0, 0.0);
 
-      elsif Cycle > 0.0 then
+      elsif Turn > 0.0 then
          if Argument = 0.0 then
             return (Modulus, 0.0);
 
-         elsif Argument = Cycle / 4.0 then
+         elsif Argument = Turn / 4.0 then
             return (0.0, Modulus);
 
-         elsif Argument = Cycle / 2.0 then
+         elsif Argument = Turn / 2.0 then
             return (-Modulus, 0.0);
 
-         elsif Argument = 3.0 * Cycle / R (4.0) then
+         elsif Argument = 3.0 * Turn / R (4.0) then
             return (0.0, -Modulus);
          else
-            Arg := Two_Pi * Argument / Cycle;
+            Arg := Two_Pi * Argument / Turn;
             return (Modulus * R (Cos (Double (Arg))),
                     Modulus * R (Sin (Double (Arg))));
          end if;

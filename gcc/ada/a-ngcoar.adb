@@ -955,16 +955,16 @@ package body Ada.Numerics.Generic_Complex_Arrays is
      renames Instantiations.Argument;
 
    function Argument
-     (X     : Complex_Vector;
-      Cycle : Real'Base) return Real_Vector
+     (X    : Complex_Vector;
+      Turn : Real'Base) return Real_Vector
      renames Instantiations.Argument;
 
    function Argument (X : Complex_Matrix) return Real_Matrix
      renames Instantiations.Argument;
 
    function Argument
-     (X     : Complex_Matrix;
-      Cycle : Real'Base) return Real_Matrix
+     (X    : Complex_Matrix;
+      Turn : Real'Base) return Real_Matrix
      renames Instantiations.Argument;
 
    ----------------------------
@@ -999,7 +999,7 @@ package body Ada.Numerics.Generic_Complex_Arrays is
    function Compose_From_Polar
      (Modulus  : Real_Vector;
       Argument : Real_Vector;
-      Cycle    : Real'Base) return Complex_Vector
+      Turn     : Real'Base) return Complex_Vector
      renames Instantiations.Compose_From_Polar;
 
    function Compose_From_Polar
@@ -1010,7 +1010,7 @@ package body Ada.Numerics.Generic_Complex_Arrays is
    function Compose_From_Polar
      (Modulus  : Real_Matrix;
       Argument : Real_Matrix;
-      Cycle    : Real'Base) return Complex_Matrix
+      Turn     : Real'Base) return Complex_Matrix
      renames Instantiations.Compose_From_Polar;
 
    ---------------

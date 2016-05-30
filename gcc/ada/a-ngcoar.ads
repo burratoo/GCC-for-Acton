@@ -48,15 +48,15 @@ package Ada.Numerics.Generic_Complex_Arrays is
    function Argument (X : Complex_Vector) return Real_Vector;
 
    function Argument
-     (X     : Complex_Vector;
-      Cycle : Real'Base) return Real_Vector;
+     (X    : Complex_Vector;
+      Turn : Real'Base) return Real_Vector;
 
    function Compose_From_Polar
      (Modulus, Argument : Real_Vector) return Complex_Vector;
 
    function Compose_From_Polar
      (Modulus, Argument : Real_Vector;
-      Cycle             : Real'Base) return Complex_Vector;
+      Turn              : Real'Base) return Complex_Vector;
 
    --  Complex_Vector arithmetic operations
 
@@ -143,8 +143,8 @@ package Ada.Numerics.Generic_Complex_Arrays is
    function Argument (X : Complex_Matrix) return Real_Matrix;
 
    function Argument
-     (X     : Complex_Matrix;
-      Cycle : Real'Base) return Real_Matrix;
+     (X    : Complex_Matrix;
+      Turn : Real'Base) return Real_Matrix;
 
    function Compose_From_Polar
      (Modulus, Argument : Real_Matrix) return Complex_Matrix;
@@ -152,7 +152,7 @@ package Ada.Numerics.Generic_Complex_Arrays is
    function Compose_From_Polar
      (Modulus  : Real_Matrix;
       Argument : Real_Matrix;
-      Cycle    : Real'Base) return Complex_Matrix;
+      Turn     : Real'Base) return Complex_Matrix;
 
    --  Complex_Matrix arithmetic operations
 
