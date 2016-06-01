@@ -1855,18 +1855,102 @@ package body Exp_Ch11 is
      (Ename : Entity_Id;
       Nod   : Node_Id) return Node_Id
    is
+
+      function Find_Handler_In_Node
+        (Node   : Node_Id;
+         ERaise : Entity_Id) return Node_Id;
+
+      --------------------------
+      -- Find_Handler_In_Node --
+      --------------------------
+
+      function Find_Handler_In_Node
+        (Node   : Node_Id;
+         ERaise : Entity_Id) return Node_Id
+      is
+         C : Node_Id;
+         H : Node_Id;
+
+         EHandle : Entity_Id;
+         --  The entity Id for the exception we are handling, using the
+         --  renamed exception if a Renamed_Entity is present.
+
+      begin
+         --  Loop through exception handlers
+
+         H := First (Exception_Handlers (Node));
+         while Present (H) loop
+
+            --  Guard against other constructs appearing in the
+            --  list of exception handlers.
+
+            if Nkind (H) = N_Exception_Handler then
+
+               --  Loop through choices in one handler
+
+               C := First (Exception_Choices (H));
+               while Present (C) loop
+
+                  --  Deal with others case
+
+                  if Nkind (C) = N_Others_Choice then
+
+                     --  Matching others handler, but we need
+                     --  to ensure there is no choice parameter.
+                     --  If there is, then we don't have a local
+                     --  handler after all (since we do not allow
+                     --  choice parameters for local handlers).
+
+                     if No (Choice_Parameter (H)) then
+                        return H;
+                     else
+                        return Empty;
+                     end if;
+
+                     --  If not others must be entity name
+
+                  elsif Nkind (C) /= N_Others_Choice then
+                     pragma Assert (Is_Entity_Name (C));
+                     pragma Assert (Present (Entity (C)));
+
+                     --  Get exception being handled, dealing with
+                     --  renaming.
+
+                     EHandle := Get_Renamed_Entity (Entity (C));
+
+                     --  If match, then check choice parameter
+
+                     if ERaise = EHandle then
+                        if No (Choice_Parameter (H)) then
+                           return H;
+                        else
+                           return Empty;
+                        end if;
+                     end if;
+                  end if;
+
+                  Next (C);
+               end loop;
+            end if;
+
+            Next (H);
+
+         end loop;
+
+         return Empty;
+      end Find_Handler_In_Node;
+
       N : Node_Id;
       P : Node_Id;
-      H : Node_Id;
-      C : Node_Id;
 
       SSE : Scope_Stack_Entry renames Scope_Stack.Table (Scope_Stack.Last);
       --  This is used to test for wrapped actions below
 
       ERaise  : Entity_Id;
-      EHandle : Entity_Id;
-      --  The entity Id's for the exception we are raising and handling, using
-      --  the renamed exception if a Renamed_Entity is present.
+      --  The entity Id for the exception we are raising, using the renamed
+      --  exception if a Renamed_Entity is present.
+
+      --  Start of processing for Find_Local_Handler
 
    begin
       --  Never any local handler if all handlers removed
@@ -1931,65 +2015,36 @@ package body Exp_Ch11 is
                        or else
                      LCN = SSE.Actions_To_Be_Wrapped (Cleanup)
                   then
-                     --  Loop through exception handlers
+                     return Find_Handler_In_Node (P, ERaise);
+                  end if;
+               end;
+            end if;
 
-                     H := First (Exception_Handlers (P));
-                     while Present (H) loop
+            --  Test for task sequence of statements with at least one
+            --  exception handler which might be the one we are looking for.
+            --  This needs to be done since task body statement nodes still
+            --  point to the task sequence of statement node and not the
+            --  generated task body procedure. At this point it does not make
+            --  sense to update these node links as this is the only part of
+            --  the expander that uses the parent links.
 
-                        --  Guard against other constructs appearing in the
-                        --  list of exception handlers.
+         elsif Nkind (P) = N_Task_Sequence_Of_Statements
+           and then Present (Exception_Handlers (P))
+         then
+            --  Before we proceed we need to check if the node N is covered
+            --  by the statement part of P rather than one of its exception
+            --  handlers (an exception handler obviously does not cover its
+            --  own statements).
 
-                        if Nkind (H) = N_Exception_Handler then
+            if Is_List_Member (N) then
+               declare
+                  LCN : constant List_Id := List_Containing (N);
 
-                           --  Loop through choices in one handler
-
-                           C := First (Exception_Choices (H));
-                           while Present (C) loop
-
-                              --  Deal with others case
-
-                              if Nkind (C) = N_Others_Choice then
-
-                                 --  Matching others handler, but we need
-                                 --  to ensure there is no choice parameter.
-                                 --  If there is, then we don't have a local
-                                 --  handler after all (since we do not allow
-                                 --  choice parameters for local handlers).
-
-                                 if No (Choice_Parameter (H)) then
-                                    return H;
-                                 else
-                                    return Empty;
-                                 end if;
-
-                                 --  If not others must be entity name
-
-                              elsif Nkind (C) /= N_Others_Choice then
-                                 pragma Assert (Is_Entity_Name (C));
-                                 pragma Assert (Present (Entity (C)));
-
-                                 --  Get exception being handled, dealing with
-                                 --  renaming.
-
-                                 EHandle := Get_Renamed_Entity (Entity (C));
-
-                                 --  If match, then check choice parameter
-
-                                 if ERaise = EHandle then
-                                    if No (Choice_Parameter (H)) then
-                                       return H;
-                                    else
-                                       return Empty;
-                                    end if;
-                                 end if;
-                              end if;
-
-                              Next (C);
-                           end loop;
-                        end if;
-
-                        Next (H);
-                     end loop;
+               begin
+                  if LCN = Sequential_Statements (P)
+                    or else  LCN = Cyclic_Statements (P)
+                  then
+                     return Find_Handler_In_Node (P, ERaise);
                   end if;
                end;
             end if;
