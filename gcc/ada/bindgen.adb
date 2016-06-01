@@ -1429,7 +1429,11 @@ package body Bindgen is
       --  WBI ("      ada_main'Elab_Body;");
 
       Set_String ("      Global_Start_Phase := Ada.Real_Time.Milliseconds (");
-      Set_Int (Global_Start_Phase_Specified);
+      if Global_Start_Phase_Specified = No_Global_Start_Phase then
+         Set_Int (0);
+      else
+         Set_Int (Global_Start_Phase_Specified);
+      end if;
       Set_String (");");
       Write_Statement_Buffer;
 
