@@ -56,7 +56,7 @@ package body Prep is
       Tok_Body          => Name_Body,
       Tok_Case          => Name_Case,
       Tok_Constant      => Name_Constant,
-      Tok_Cycles        => Name_Cycles,
+      Tok_Cycle         => Name_Cycle,
       Tok_Declare       => Name_Declare,
       Tok_Delay         => Name_Delay,
       Tok_Delta         => Name_Delta,

@@ -16439,6 +16439,32 @@ package body Sem_Util is
                   Set_First_Real_Statement (New_Node, N2);
                end;
             end if;
+
+            --  Reset First_Real_Statement for Task_Sequence_Of_Statements.
+            --  The replacement mechanism applies to entities, and is not used
+            --  here. Eventually we may need a more general graph-copying
+            --  routine. For now, do a sequential search to find desired node.
+
+            if Nkind (Old_Node) = N_Task_Sequence_Of_Statements
+              and then Present (First_Real_Statement (Old_Node))
+            then
+               declare
+                  Old_F  : constant Node_Id := First_Real_Statement (Old_Node);
+                  N1, N2 : Node_Id;
+
+               begin
+                  N1 := First (Sequential_Statements (Old_Node));
+                  N2 := First (Sequential_Statements (New_Node));
+
+                  while N1 /= Old_F loop
+                     Next (N1);
+                     Next (N2);
+                  end loop;
+
+                  Set_First_Real_Statement (New_Node, N2);
+               end;
+            end if;
+
          end if;
 
          --  All done, return copied node

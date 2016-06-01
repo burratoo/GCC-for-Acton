@@ -111,7 +111,7 @@ package body Ch5 is
    --  This procedure scans a sequence of statements. The caller sets SS_Flags
    --  to indicate acceptable termination conditions for the sequence:
 
-   --    SS_Flags.Cytm Terminate on CYCLES
+   --    SS_Flags.Cytm Terminate on CYCLE
    --    SS_Flags.Eftm Terminate on ELSIF
    --    SS_Flags.Eltm Terminate on ELSE
    --    SS_Flags.Extm Terminate on EXCEPTION
@@ -394,7 +394,7 @@ package body Ch5 is
                      Statement_Required := False;
                   end if;
 
-               --  Case of exception
+               --  Case of EXCEPTION
 
                when Tok_Exception =>
                   Test_Statement_Required;
@@ -421,10 +421,10 @@ package body Ch5 is
 
                --  Case of CYCLES
 
-               when Tok_Cycles =>
+               when Tok_Cycle =>
                   Test_Statement_Required;
 
-                  --  If Cytm not set and CYCLES is not to the left of the
+                  --  If Cytm not set and CYCLE is not to the left of the
                   --  expected column of the end for this sequence, then we
                   --  assume it belongs to the current sequence, even though it
                   --  is not permitted.
@@ -433,13 +433,14 @@ package body Ch5 is
                      Start_Column >= Scope.Table (Scope.Last).Ecol
 
                   then
-                     Error_Msg_SC ("cycle section not permitted here");
-                     Scan; -- past CYCLES
-                     Discard_Junk_Node (P_Cycle_Sequence_Of_Statements);
+                     Error_Msg_SC ("cyclic section not permitted here");
+                     Scan; -- past CYCLE
+                     Discard_Junk_List
+                       (P_Sequence_Of_Statements (SS_Extm_Sreq));
                   end if;
 
-                  --  Always return, in the case where we scanned out handlers
-                  --  that we did not expect,
+                  --  Always return, in the case where we scanned out cyclic
+                  --  statements that we did not expect,
                   --  Parse_Cycle_Sequence_Of_Statements returned with Token
                   --  being either end or EOF, so we are OK.
 
@@ -750,7 +751,7 @@ package body Ch5 is
                      if Bad_Spelling_Of (Tok_Abort)
                        or else Bad_Spelling_Of (Tok_Accept)
                        or else Bad_Spelling_Of (Tok_Case)
-                       or else Bad_Spelling_Of (Tok_Cycles)
+                       or else Bad_Spelling_Of (Tok_Cycle)
                        or else Bad_Spelling_Of (Tok_Declare)
                        or else Bad_Spelling_Of (Tok_Delay)
                        or else Bad_Spelling_Of (Tok_Elsif)
@@ -2031,21 +2032,29 @@ package body Ch5 is
    -- Parse_Decls_Begin_End --
    ---------------------------
 
-   --  This function parses the construct:
+   --  This function parses the constructs:
 
    --      DECLARATIVE_PART
    --    begin
    --      HANDLED_SEQUENCE_OF_STATEMENTS
-   --    [cycles
-   --      CYCLE_SEQUENCE_OF_STATEMENTS]
    --    end [NAME];
 
+   --  and
+
+   --      DECLARATIVE_PART
+   --    begin
+   --      TASK_SEQUENCE_OF_STATEMENTS
+   --    end [NAME];
+
+   --  Both constructs are handled here since they largely share the same
+   --  operations.
+
    --  The caller has built the scope stack entry, and created the node to
-   --  whose Declarations and Handled_Statement_Sequence fields are to be
-   --  set. On return these fields are filled in (except in the case of a
-   --  task body, where the handled statement sequence is optional, and may
-   --  thus be Empty), and the scan is positioned past the End sequence. The
-   --  Cycle_Sequence_Of_Statements is only present in a task body.
+   --  whose Declarations and Handled_Statement_Sequence/
+   --  Task_Statement_Sequence fields are to be set. On return these fields are
+   --  filled in (except in the case of a task body, where the task statement
+   --  sequence is optional, and may thus be Empty), and the scan is positioned
+   --  past the End sequence.
 
    --  If the BEGIN is missing, then the parent node is used to help construct
    --  an appropriate missing BEGIN message. Possibilities for the parent are:
@@ -2068,13 +2077,18 @@ package body Ch5 is
       Parent_Nkind : Node_Kind;
       Spec_Node    : Node_Id;
       HSS          : Node_Id;
-      TBSS         : Node_Id;
 
       procedure Missing_Begin (Msg : String);
       --  Called to post a missing begin message. In the normal case this is
       --  posted at the start of the current token. A special case arises when
       --  P_Declarative_Items has previously found a missing begin, in which
       --  case we replace the original error message.
+
+      procedure Parse_Statements (Parent : Node_Id);
+      --  Called to parse either the handled statement sequence or task
+      --  statement sequence. The operations here are factored out since
+      --  Parse_Decls_Begin_End parses statements in two different code paths
+      --  depending on whether the BEGIN .. END is malformed or not.
 
       procedure Set_Null_HSS (Parent : Node_Id);
       --  Construct an empty handled statement sequence and install in Parent
@@ -2098,6 +2112,28 @@ package body Ch5 is
             Purge_Messages (Get_Location (Missing_Begin_Msg), Prev_Token_Ptr);
          end if;
       end Missing_Begin;
+
+      ----------------------
+      -- Parse_Statements --
+      ----------------------
+
+      procedure Parse_Statements (Parent : Node_Id) is
+      begin
+
+         --  A task body has a task sequence of statments
+
+         if Parent_Nkind = N_Task_Body then
+            Set_Task_Body_Statement_Sequence
+              (Parent, P_Task_Sequence_Of_Statements);
+
+         --  While other BEGIN .. END blocks have a handled sequence of
+         --  statements.
+
+         else
+            Set_Handled_Statement_Sequence
+              (Parent, P_Handled_Sequence_Of_Statements);
+         end if;
+      end Parse_Statements;
 
       ------------------
       -- Set_Null_HSS --
@@ -2202,31 +2238,7 @@ package body Ch5 is
             Scope.Table (Scope.Last).Sloc := Token_Ptr;
             Scan; -- past BEGIN
 
-            --  A task body, unlike other bodies, consist of two sections:
-            --  a handled sequence of statements and a cycle sequence of
-            --  statements. These are found in a special node that is a child
-            --  of the task body node due to space constraints in the latter.
-
-            if Parent_Nkind = N_Task_Body then
-               --  Update the parent to point the task body's sequence of
-               --  statements.
-
-               TBSS := Task_Body_Statement_Sequence (Parent);
-               Set_Handled_Statement_Sequence (TBSS,
-                 P_Handled_Sequence_Of_Statements (In_Task_Body => True));
-
-               --  The cycle section begins on the CYCLE keyword.
-
-               if Token = Tok_Cycles then
-                  Scan; -- past CYCLE
-                  Set_Cycle_Statement_Sequence (TBSS,
-                    P_Cycle_Sequence_Of_Statements);
-               end if;
-
-            else
-               Set_Handled_Statement_Sequence (Parent,
-                 P_Handled_Sequence_Of_Statements);
-            end if;
+            Parse_Statements (Parent);
 
          --  No BEGIN present
 
@@ -2309,26 +2321,26 @@ package body Ch5 is
                then
                   null;
                else
-                  Set_Handled_Statement_Sequence (Parent,
-                    P_Handled_Sequence_Of_Statements);
+                  Parse_Statements (Parent);
                end if;
             end if;
          end if;
       end if;
 
-      --  Here with declarations and handled statement sequence scanned
+      --  Here with declarations and handled/task statement sequence scanned
 
       if Nkind (Parent) = N_Task_Body then
-         HSS := Handled_Statement_Sequence
-           (Task_Body_Statement_Sequence (Parent));
+         if Present (Task_Body_Statement_Sequence (Parent)) then
+            End_Statements (Task_Body_Statement_Sequence (Parent));
+         else
+            End_Statements;
+         end if;
       else
-         HSS := Handled_Statement_Sequence (Parent);
-      end if;
-
-      if Present (HSS) then
-         End_Statements (HSS);
-      else
-         End_Statements;
+         if Present (Handled_Statement_Sequence (Parent)) then
+            End_Statements (Handled_Statement_Sequence (Parent));
+         else
+            End_Statements;
+         end if;
       end if;
 
       --  We know that End_Statements removed an entry from the scope stack

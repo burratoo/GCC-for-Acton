@@ -1465,17 +1465,6 @@ package body Sprint is
                Indent_End;
             end;
 
-         when N_Cycle_Sequence_Of_Statements =>
-            Set_Debug_Sloc;
-            Sprint_Indented_List (Statements (Node));
-
-            if Present (Exception_Handlers (Node)) then
-               Write_Indent_Str ("cycles exception");
-               Indent_Begin;
-               Sprint_Node_List (Exception_Handlers (Node));
-               Indent_End;
-            end if;
-
          when N_Decimal_Fixed_Point_Definition =>
             Write_Str_With_Col_Check_Sloc (" delta ");
             Sprint_Node (Delta_Expression (Node));
@@ -3296,16 +3285,31 @@ package body Sprint is
             Sprint_Node (Task_Body_Statement_Sequence (Node));
             Write_Indent_Str ("end ");
             Sprint_End_Label
-              (Handled_Statement_Sequence
-                (Task_Body_Statement_Sequence (Node)),
-                 Defining_Identifier (Node));
+              (Task_Body_Statement_Sequence (Node),
+               Defining_Identifier (Node));
             Write_Char (';');
 
-         when N_Task_Body_Statement_Sequence =>
-            Sprint_Node (Handled_Statement_Sequence (Node));
-            if Present (Cycle_Statement_Sequence (Node)) then
+         when N_Task_Sequence_Of_Statements =>
+            Set_Debug_Sloc;
+            Sprint_Indented_List (Sequential_Statements (Node));
+
+            if Is_Non_Empty_List (Cyclic_Statements (Node)) then
                Write_Indent_Str ("cycle");
-               Sprint_Node (Cycle_Statement_Sequence (Node));
+               Sprint_Indented_List (Cyclic_Statements (Node));
+            end if;
+
+            if Present (Exception_Handlers (Node)) then
+               Write_Indent_Str ("exception");
+               Sprint_Indented_List (Exception_Handlers (Node));
+            end if;
+
+            if Present (At_End_Proc (Node)) then
+               Write_Indent_Str ("at end");
+               Indent_Begin;
+               Write_Indent;
+               Sprint_Node (At_End_Proc (Node));
+               Write_Char (';');
+               Indent_End;
             end if;
 
          when N_Task_Body_Stub =>

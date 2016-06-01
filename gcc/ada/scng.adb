@@ -168,7 +168,7 @@ package body Scng is
               (System.CRC32.CRC32 (Checksum),
                Character'Val (Token_Type'Pos (Token)));
 
-         when Tok_Cycles | Tok_Some =>
+         when Tok_Cycle | Tok_Some =>
 
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),
@@ -222,7 +222,7 @@ package body Scng is
               (System.CRC32.CRC32 (Checksum),
                Character'Val (Token_Type'Pos (Token)));
 
-         when Tok_Cycles | Tok_Interface | Tok_Some | Tok_Overriding |
+         when Tok_Cycle | Tok_Interface | Tok_Some | Tok_Overriding |
               Tok_Synchronized =>
             System.CRC32.Update
               (System.CRC32.CRC32 (Checksum),

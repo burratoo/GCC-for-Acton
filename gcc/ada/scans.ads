@@ -82,7 +82,7 @@ package Scans is
       Tok_Others,          -- OTHERS
       Tok_Null,            -- NULL
 
-      --  Note: Tok_Raise is in no categories now, it used to be Cterm, Eterm,
+      --  Note: Tok_Raise is in no categories now, it used to be Sterm, Eterm,
       --  After_SM, but now that Ada 2012 has added raise expressions, the
       --  raise token can appear anywhere. Note in particular that Tok_Raise
       --  being in Eterm stopped the parser from recognizing "return raise
@@ -148,7 +148,7 @@ package Scans is
       Tok_Abort,           -- ABORT        Eterm, Sterm, After_SM
       Tok_Accept,          -- ACCEPT       Eterm, Sterm, After_SM
       Tok_Case,            -- CASE         Eterm, Sterm, After_SM
-      Tok_Cycles,          -- CYCLE        Eterm, Sterm, After_SM
+      Tok_Cycle,           -- CYCLE        Eterm, Sterm, After_SM
       Tok_Delay,           -- DELAY        Eterm, Sterm, After_SM
       Tok_Else,            -- ELSE         Eterm, Sterm, After_SM
       Tok_Elsif,           -- ELSIF        Eterm, Sterm, After_SM

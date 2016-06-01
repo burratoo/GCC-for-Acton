@@ -1408,11 +1408,7 @@ package body Exp_Ch11 is
 
         and then not Is_Thunk (Current_Scope)
       then
-         if Nkind (Parent (N)) = N_Task_Body_Statement_Sequence then
-            Expand_Cleanup_Actions (Parent (Parent (N)));
-         else
-            Expand_Cleanup_Actions (Parent (N));
-         end if;
+         Expand_Cleanup_Actions (Parent (N));
       else
          Set_First_Real_Statement (N, First (Statements (N)));
       end if;

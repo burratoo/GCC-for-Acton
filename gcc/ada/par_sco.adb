@@ -195,10 +195,6 @@ package body Par_SCO is
    procedure Record_Instance (Id : Instance_Id; Inst_Sloc : Source_Ptr);
    --  Add one entry from the instance table to the corresponding SCO table
 
-   procedure Traverse_Cycle_Statement_Sequence
-     (N : Node_Id;
-      D : Dominant_Info := No_Dominant);
-
    procedure Traverse_Declarations_Or_Statements
      (L : List_Id;
       D : Dominant_Info := No_Dominant;
@@ -233,7 +229,11 @@ package body Par_SCO is
      (N : Node_Id;
       D : Dominant_Info := No_Dominant);
 
-   procedure Traverse_Subprogram_Or_Task_Body
+   procedure Traverse_Subprogram_Body
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant);
+
+   procedure Traverse_Task_Body
      (N : Node_Id;
       D : Dominant_Info := No_Dominant);
 
@@ -1769,7 +1769,7 @@ package body Par_SCO is
 
             when N_Task_Body | N_Subprogram_Body =>
                Set_Statement_Entry;
-               Traverse_Subprogram_Or_Task_Body (N);
+               Traverse_Task_Body (N);
 
             --  Entry body
 
@@ -1792,7 +1792,7 @@ package body Par_SCO is
                      Inner_Dominant := ('T', N);
                   end if;
 
-                  Traverse_Subprogram_Or_Task_Body (N, Inner_Dominant);
+                  Traverse_Subprogram_Body (N, Inner_Dominant);
                end;
 
             --  Protected body
@@ -2330,31 +2330,6 @@ package body Par_SCO is
 
       return Current_Dominant;
    end Traverse_Declarations_Or_Statements;
-   ----------------------------------------
-   -- Traverse_Cycle_Statement_Sequence --
-   ----------------------------------------
-
-   procedure Traverse_Cycle_Statement_Sequence
-     (N : Node_Id;
-      D : Dominant_Info := No_Dominant)
-   is
-      Handler : Node_Id;
-
-   begin
-      if Present (N) and then Comes_From_Source (N) then
-         Traverse_Declarations_Or_Statements (Statements (N), D);
-
-         if Present (Exception_Handlers (N)) then
-            Handler := First (Exception_Handlers (N));
-            while Present (Handler) loop
-               Traverse_Declarations_Or_Statements
-                 (L => Statements (Handler),
-                  D => ('E', Handler));
-               Next (Handler);
-            end loop;
-         end if;
-      end if;
-   end Traverse_Cycle_Statement_Sequence;
 
    ------------------------------------
    -- Traverse_Generic_Instantiation --
@@ -2489,11 +2464,11 @@ package body Par_SCO is
          D => Dom_Info);
    end Traverse_Sync_Definition;
 
-   --------------------------------------
-   -- Traverse_Subprogram_Or_Task_Body --
-   --------------------------------------
+   ------------------------------
+   -- Traverse_Subprogram_Body --
+   ------------------------------
 
-   procedure Traverse_Subprogram_Or_Task_Body
+   procedure Traverse_Subprogram_Body
      (N : Node_Id;
       D : Dominant_Info := No_Dominant)
    is
@@ -2505,26 +2480,50 @@ package body Par_SCO is
       --  last declaration.
 
       Dom_Info := Traverse_Declarations_Or_Statements
-                    (L => Decls, D => Dom_Info);
+        (L => Decls, D => Dom_Info);
 
-      if Nkind (N) = N_Task_Body then
-         declare
-            Body_Statements : constant Node_Id :=
-                                Task_Body_Statement_Sequence (N);
-         begin
-            Traverse_Handled_Statement_Sequence
-              (Handled_Statement_Sequence (Body_Statements), D);
-            if Present (Cycle_Statement_Sequence (Body_Statements)) then
-               Traverse_Cycle_Statement_Sequence
-                 (Handled_Statement_Sequence (Body_Statements), D);
-            end if;
-         end;
-      else
-         Traverse_Handled_Statement_Sequence
-           (N => Handled_Statement_Sequence (N),
-            D => Dom_Info);
+      Traverse_Handled_Statement_Sequence
+        (N => Handled_Statement_Sequence (N),
+         D => Dom_Info);
+   end Traverse_Subprogram_Body;
+
+   procedure Traverse_Task_Body
+     (N : Node_Id;
+      D : Dominant_Info := No_Dominant)
+   is
+      Decls    : constant List_Id := Declarations (N);
+      Dom_Info : Dominant_Info    := D;
+      Handler  : Node_Id;
+
+   begin
+      --  If declarations are present, the first statement is dominated by the
+      --  last declaration.
+
+      Dom_Info := Traverse_Declarations_Or_Statements
+        (L => Decls, D => Dom_Info);
+
+      --  Traverse sequential and cyclic statements, and then exception
+      --  handlers
+
+      Traverse_Declarations_Or_Statements
+        (Sequential_Statements (N), Dom_Info);
+
+      if Present (Cyclic_Statements (N)) then
+         Traverse_Declarations_Or_Statements
+           (Cyclic_Statements (N), Dom_Info);
       end if;
-   end Traverse_Subprogram_Or_Task_Body;
+
+      if Present (Exception_Handlers (N)) then
+         Handler := First_Non_Pragma (Exception_Handlers (N));
+         while Present (Handler) loop
+            Traverse_Declarations_Or_Statements
+              (L => Statements (Handler),
+               D => ('E', Handler));
+            Next (Handler);
+         end loop;
+      end if;
+
+   end Traverse_Task_Body;
 
    -------------------------
    -- SCO_Record_Filtered --

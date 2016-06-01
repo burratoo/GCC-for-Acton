@@ -143,7 +143,7 @@ package body Scans is
 
       --  Ada for Acton reserve words
 
-      Set_Reserved (Name_Cycles, Tok_Cycles);
+      Set_Reserved (Name_Cycle, Tok_Cycle);
    end Initialize_Ada_Keywords;
 
    ------------------------

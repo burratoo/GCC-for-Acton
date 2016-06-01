@@ -31,7 +31,6 @@ with Debug;     use Debug;
 with Einfo;     use Einfo;
 with Errout;    use Errout;
 with Exp_Ch9;   use Exp_Ch9;
-with Expander;  use Expander;
 with Elists;    use Elists;
 with Freeze;    use Freeze;
 with Layout;    use Layout;
@@ -1087,18 +1086,6 @@ package body Sem_Ch9 is
          Analyze_Statements (Else_Statements (N));
       end if;
    end Analyze_Conditional_Entry_Call;
-
-   --------------------------------------
-   -- Analyze_Cycle_Statement_Sequence --
-   --------------------------------------
-
-   procedure Analyze_Cycle_Statement_Sequence (N : Node_Id) is
-   begin
-      --  N_Cycle_Sequence_Of_Statements is effectively an
-      --  N_Handled_Sequence_Of_Statements by another name
-
-      Analyze_Handled_Statements (N);
-   end Analyze_Cycle_Statement_Sequence;
 
    --------------------------------
    -- Analyze_Delay_Alternative  --
@@ -2822,8 +2809,7 @@ package body Sem_Ch9 is
    procedure Analyze_Task_Body (N : Node_Id) is
       Body_Id : constant Entity_Id := Defining_Identifier (N);
       Decls   : constant List_Id   := Declarations (N);
-      TBSS    : constant Node_Id   := Task_Body_Statement_Sequence (N);
-      HSS     : constant Node_Id   := Handled_Statement_Sequence (TBSS);
+      TSS     : constant Node_Id   := Task_Body_Statement_Sequence (N);
       Last_E  : Entity_Id;
 
       Spec_Id : Entity_Id;
@@ -2923,11 +2909,11 @@ package body Sem_Ch9 is
       --  Mark all handlers as not suitable for local raise optimization,
       --  since this optimization causes difficulties in a task context.
 
-      if Present (Exception_Handlers (HSS)) then
+      if Present (Exception_Handlers (TSS)) then
          declare
             Handlr : Node_Id;
          begin
-            Handlr := First (Exception_Handlers (HSS));
+            Handlr := First (Exception_Handlers (TSS));
             while Present (Handlr) loop
                Set_Local_Raise_Not_OK (Handlr);
                Next (Handlr);
@@ -2936,41 +2922,8 @@ package body Sem_Ch9 is
       end if;
 
       --  Now go ahead and complete analysis of the task body
-      --  ?? Move this analysis to an N_Task_Body_Statement_Sequence analyser
-      --  procedure?
 
-      if Present (Cycle_Statement_Sequence (TBSS)) then
-         --  Record in the task's entity that the task has a cylic section
-         Set_Has_Cyclic_Section (Spec_Id);
-      end if;
-
-      --  The processing of the N_Task_Body_Statement_Sequence requires
-      --  both its child nodes to be analyzed before the expansion process
-      --  assembles both nodes into a single handled statement sequence which
-      --  can be then expanded. This requires modification to GNAT's usual
-      --  approach where it would otherwise analyze-resolve-expand one node
-      --  before the other which causes problems when combining the two
-      --  expanded nodes later on. One approach around this would be two
-      --  pre-analyze both nodes here and preform the actual analyze-with-
-      --  expansion later after both nodes have been combined. The problem
-      --  with this approach is that it requires the task body to be passed
-      --  over twice and that GNAT has issues re-analyzing some statement nodes
-      --  (e.g. entry calls) which assume the analyzer runs over them once.
-      --  Instead two different paths are provided below depending on whether
-      --  the expander is active.
-
-      if Expander_Active then
-         Expand (TBSS);
-      else
-         Analyze (Handled_Statement_Sequence (TBSS));
-
-         if Present (Cycle_Statement_Sequence (TBSS)) then
-            Analyze (Cycle_Statement_Sequence (TBSS));
-         end if;
-      end if;
-
-      Set_Analyzed (TBSS);
-
+      Analyze (TSS);
       Check_Completion (Body_Id);
       Check_References (Body_Id);
       Check_References (Spec_Id);
@@ -2994,9 +2947,7 @@ package body Sem_Ch9 is
          end loop;
       end;
 
-      --  Remember the end label is stored in N_Handled_Sequence_Of_Statements
-      --  regardless of where the task body has a cycles section.
-      Process_End_Label (HSS, 't', Ref_Id);
+      Process_End_Label (TSS, 't', Ref_Id);
       End_Scope;
    end Analyze_Task_Body;
 
@@ -3031,6 +2982,64 @@ package body Sem_Ch9 is
       Check_Max_Entries (N, Max_Task_Entries);
       Process_End_Label (N, 'e', Current_Scope);
    end Analyze_Task_Definition;
+
+   -----------------------------
+   -- Analyze_Task_Statements --
+   -----------------------------
+
+   --  Based on Sem_Ch11.Analyze_Handled_Statements
+
+   procedure Analyze_Task_Statements (N : Node_Id) is
+      Handlers : constant List_Id := Exception_Handlers (N);
+      Handler  : Node_Id;
+      Choice   : Node_Id;
+
+   begin
+      if Present (Handlers) then
+         Kill_All_Checks;
+      end if;
+
+      --  We are now going to analyze the statements and then the exception
+      --  handlers. We certainly need to do things in this order to get the
+      --  proper sequential semantics for various warnings.
+
+      --  However, there is a glitch. When we process raise statements, an
+      --  optimization is to look for local handlers and specialize the code
+      --  in this case.
+
+      --  In order to detect if a handler is matching, we must have at least
+      --  analyzed the choices in the proper scope so that proper visibility
+      --  analysis is performed. Hence we analyze just the choices first,
+      --  before we analyze the statement sequence.
+
+      Handler := First_Non_Pragma (Handlers);
+      while Present (Handler) loop
+         Choice := First_Non_Pragma (Exception_Choices (Handler));
+         while Present (Choice) loop
+            Analyze (Choice);
+            Next_Non_Pragma (Choice);
+         end loop;
+
+         Next_Non_Pragma (Handler);
+      end loop;
+
+      --  Analyze statements in sequence
+
+      Analyze_Statements (Sequential_Statements (N));
+      Analyze_Statements (Cyclic_Statements (N));
+
+      --  Check for hanging useless assignments from the statement sequences
+
+      Warn_On_Useless_Assignments (Current_Scope);
+
+      --  Deal with handlers or AT END proc
+
+      if Present (Handlers) then
+         Analyze_Exception_Handlers (Handlers);
+      elsif Present (At_End_Proc (N)) then
+         Analyze (At_End_Proc (N));
+      end if;
+   end Analyze_Task_Statements;
 
    -----------------------------------
    -- Analyze_Task_Type_Declaration --

@@ -239,7 +239,6 @@ package Exp_Ch9 is
    procedure Expand_N_Accept_Statement             (N : Node_Id);
    procedure Expand_N_Asynchronous_Select          (N : Node_Id);
    procedure Expand_N_Conditional_Entry_Call       (N : Node_Id);
-   procedure Expand_N_Task_Body_Statement_Sequence (N : Node_Id);
    procedure Expand_N_Delay_Relative_Statement     (N : Node_Id);
    procedure Expand_N_Delay_Until_Statement        (N : Node_Id);
    procedure Expand_N_Entry_Body                   (N : Node_Id);
@@ -299,14 +298,15 @@ package Exp_Ch9 is
       Barrier  : Boolean := False;
       Family   : Boolean := False);
    --  This routines generates several types, objects and object renamings used
-   --  in the handling of discriminants and private components of atomic,
-   --  protected and task types. It also generates the entry index for
-   --  entry families. Formal Spec_Id denotes an entry, entry family or a
-   --  subprogram, Conc_Typ is the concurrent type where Spec_Id resides,
-   --  Body_Nod is the corresponding body of Spec_Id, Decls are the
-   --  declarations of the subprogram or entry. Flag Barrier denotes whether
-   --  the context is an entry barrier function. Flag Family is used in
-   --  conjunction with Barrier to denote a barrier for an entry family.
+   --  in the handling of discriminants and private components of protected and
+   --  task types. It also generates the entry index for entry families. Formal
+   --  Spec_Id denotes an entry, entry family or a subprogram, Conc_Typ is the
+   --  concurrent type where Spec_Id resides, Body_Nod is the corresponding
+   --  body of Spec_Id, Decls are the declarations of the subprogram or entry.
+   --  Flag Barrier denotes whether the context is an entry barrier function.
+   --  Flag Family is used in conjunction with Barrier to denote a barrier for
+   --  an entry family.
+
    --
    --  The generated types, entities and renamings are:
    --

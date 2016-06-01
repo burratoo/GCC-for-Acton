@@ -28,7 +28,6 @@ with Checks;   use Checks;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
-with Expander; use Expander;
 with Exp_Ch3;  use Exp_Ch3;
 with Exp_Ch6;  use Exp_Ch6;
 with Exp_Ch11; use Exp_Ch11;
@@ -58,7 +57,6 @@ with Sem_Eval; use Sem_Eval;
 with Sem_Res;  use Sem_Res;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
-with Sinfo.CN; use Sinfo.CN;
 with Snames;   use Snames;
 with Stand;    use Stand;
 with Stringt;  use Stringt;
@@ -10764,6 +10762,31 @@ package body Exp_Ch9 is
 
    --    tnameE := True;
 
+   --  If the task has a cyclic sequenece of statements
+
+   --    task body tname is
+   --       <declarations>
+   --    begin
+   --       <sequential sequence of statements>
+   --    cycle
+   --       <cyclic sequence of statements>
+   --    end x;
+
+   --  This expansion routine converts the statement sequences into
+   --  a single set set of handled sequence of statements:
+
+   --    <statements>:=
+   --       begin
+   --          <sequential sequence of statements>
+   --       end;
+   --       Oakland.Tasks.Begin_Cyclic_Stage;
+   --       loop
+   --          begin
+   --             New_Cycle;
+   --             <cyclic sequence of statements>
+   --          end;
+   --       end loop;
+
    --  In addition, if the task body is an activator, then a call to activate
    --  tasks is added at the start of the statements, before the call to
    --  Complete_Activation, and if in addition the task is a master then it
@@ -10776,12 +10799,10 @@ package body Exp_Ch9 is
    --  discriminant references inside the body (see Exp_Ch2.Expand_Name).
 
    procedure Expand_N_Task_Body (N : Node_Id) is
-      TBSS  : constant Node_Id    := Task_Body_Statement_Sequence (N);
-      HSS   : Node_Id;
-      Loc   : constant Source_Ptr := Sloc (N);
-      Ttyp  : constant Entity_Id  := Corresponding_Spec (N);
-      Call  : Node_Id;
-      New_N : Node_Id;
+      Loc        : constant Source_Ptr := Sloc (N);
+      Ttyp       : constant Entity_Id  := Corresponding_Spec (N);
+      Body_Stmts : List_Id;
+      New_N      : Node_Id;
 
       Insert_Nod : Node_Id;
       --  Used to determine the proper location of wrapper body insertions
@@ -10794,36 +10815,69 @@ package body Exp_Ch9 is
          return;
       end if;
 
-      --  Expanded the N_Task_Body_Statement_Sequence first so the expander
-      --  can treat the task body as before
-
-      Expand (TBSS);
-      HSS := Handled_Statement_Sequence (TBSS);
-
       --  Add renaming declarations for discriminals and a declaration for the
       --  entry family index (if applicable).
 
       Install_Private_Data_Declarations
         (Loc, Task_Body_Procedure (Ttyp), Ttyp, N, Declarations (N));
 
-      --  The statement part has already been protected with an at_end and
-      --  cleanup actions. The call to Complete_Activation must be placed
-      --  at the head of the sequence of statements of that block. The
-      --  declarations have been merged in this sequence of statements but
-      --  the first real statement is accessible from the First_Real_Statement
-      --  field (which was set for exactly this purpose).
+      --  Build the task body procedure's Handled_Sequence_Of_Statements from
+      --  the Task_Sequence_of_Statements node, expanding the cyclic sequeuence
+      --  of statements and adding the required run-time calls as appropriate.
+      --  The Task_Sequence_of_Statements elements are expanded only once
+      --  assembled into a Handled_Sequence_Of_Statements so as to utilise
+      --  Exp_Ch7.Expand_Cleanup_Actions directly (via the
+      --  N_Handled_Sequence_Of_Statements expansion).
 
-      Call := Build_Runtime_Call (Loc, RE_Complete_Activation);
+      --  Assemble the task body's statements starting with the sequential
+      --  statements
 
-      Insert_Before
-        (First_Real_Statement (HSS), Call);
-      Analyze (Call);
+      Body_Stmts := Sequential_Statements (Task_Body_Statement_Sequence (N));
+
+      --  Before executing the sequential statements notify the run-time the
+      --  task has completed activating (via Complete_Activation)
+
+      Prepend_To
+        (Body_Stmts,
+         Build_Runtime_Call (Loc, RE_Complete_Activation));
+
+      --  If the task has a cyclic section, expand the task body to create
+      --  a single sequence of statements
+
+      if Present (Cyclic_Statements (Task_Body_Statement_Sequence (N))) then
+
+         --  Insert New_Cycle call before the start cycle sequence of
+         --  statements
+
+         Prepend_To
+           (Cyclic_Statements (Task_Body_Statement_Sequence (N)),
+            Build_Runtime_Call (Loc, RE_New_Cycle));
+
+         --  Appended the Begin_Cycles_Stage call and a loop containing the
+         --  cyclic statements to create the unified sequence of statements
+
+         Append_List_To (Body_Stmts,
+           New_List (
+             Build_Runtime_Call (Loc, (RE_Begin_Cycles_Stage)),
+             Make_Loop_Statement (Loc,
+               Statements =>
+                 Cyclic_Statements (Task_Body_Statement_Sequence (N)),
+               End_Label  => Empty)));
+      end if;
 
       New_N :=
         Make_Subprogram_Body (Loc,
           Specification              => Build_Task_Proc_Specification (Ttyp),
           Declarations               => Declarations (N),
-          Handled_Statement_Sequence => HSS);
+          Handled_Statement_Sequence =>
+            Make_Handled_Sequence_Of_Statements (Loc,
+              Statements         => Body_Stmts,
+              End_Label          =>
+                End_Label (Task_Body_Statement_Sequence (N)),
+              Exception_Handlers =>
+                Exception_Handlers (Task_Body_Statement_Sequence (N)),
+              At_End_Proc        =>
+                At_End_Proc (Task_Body_Statement_Sequence (N))));
       Set_Is_Task_Body_Procedure (New_N);
 
       --  If the task contains generic instantiations, cleanup actions are
@@ -10839,6 +10893,19 @@ package body Exp_Ch9 is
 
       Rewrite (N, New_N);
       Analyze (N);
+
+      --  Add a call to Abort_Undefer at the very beginning of the task
+      --  body since this body is called with abort still deferred. This
+      --  is add after the analysis of the task body procedure because
+      --  the declarations of the procedure merge with its statements as
+      --  part of the expansion of the clean up statements.
+
+      --        if Abort_Allowed then
+      --           Call := Build_Runtime_Call (Loc, RE_Abort_Undefer);
+      --           Insert_Before
+      --           (First (Statements (Handled_Statement_Sequence (N))), Call);
+      --           Analyze (Call);
+      --        end if;
 
       --  Set elaboration flag immediately after task body. If the body is a
       --  subunit, the flag is set in the declarative part containing the stub.
@@ -10865,104 +10932,6 @@ package body Exp_Ch9 is
          Build_Wrapper_Bodies (Loc, Ttyp, Insert_Nod);
       end if;
    end Expand_N_Task_Body;
-
-   -------------------------------------------
-   -- Expand_N_Task_Body_Statement_Sequence --
-   -------------------------------------------
-
-   --  Take a task body:
-
-   --    task body tname is
-   --       <declarations>
-   --    begin
-   --       <handled sequence of statements>
-   --    cycles
-   --       <cycle sequence of statements>
-   --    end tname;
-
-   --  This expansion routine converts the body's statements as follows:
-
-   --    task body tname is
-   --       <declarations>
-   --    begin
-   --       declare
-   --       begin
-   --          <handled sequence of statements>
-   --       end;
-
-   --       Begin_Cyclic_Stage;
-
-   --       loop
-   --          declare
-   --          begin
-   --             New_Cycle;
-   --             <sequence of statements from cycle section>
-   --          exception
-   --              <exception handlers from cycle section>
-   --          end;
-   --       end loop;
-   --    end tname;
-
-   --  If a task has no cycle section then no expansion needs to be carried
-   --  out.
-
-   procedure Expand_N_Task_Body_Statement_Sequence (N : Node_Id) is
-      HSS   : constant Node_Id    := Handled_Statement_Sequence (N);
-      Loc   : constant Source_Ptr := Sloc (N);
-
-      CSS   : constant Node_Id    := Cycle_Statement_Sequence (N);
-      Stmts : List_Id;
-   begin
-
-      --  If there is a cycle sequence of statements, transform the task body
-      --  into a single handled sequence of statements.
-
-      if Present (CSS) then
-         Change_Cycle_To_Handle_Statement_Sequence (CSS);
-
-         --  Insert New_Cycle call before the cycle sequence of statments
-
-         Prepend_To
-           (Statements (CSS), Build_Runtime_Call (Loc, RE_New_Cycle));
-
-         --  Build new handled sequence of statements for the task and rewrite
-         --  the N_Task_Body_Statement_Sequence node. Note that
-         --  Make_Loop_Statement is used instead of
-         --  Make_Implicit_Loop_Statement as it is clear to the user that the
-         --  cycle section uses a loop.
-
-         Stmts :=
-           New_List (
-             Make_Block_Statement (Loc,
-               Handled_Statement_Sequence => HSS),
-             Build_Runtime_Call (Loc, (RE_Begin_Cycles_Stage)),
-             Make_Loop_Statement (Loc,
-               Statements => New_List (
-                 Make_Block_Statement (Loc,
-                   Handled_Statement_Sequence => CSS)),
-               End_Label  => Empty));
-
-         --  As part of making the new handled statement sequence, we move the
-         --  end label and AT_END_PROC to this new block and clear them from
-         --  the old HSS
-
-         Set_Handled_Statement_Sequence (N,
-           Make_Handled_Sequence_Of_Statements (Loc,
-             Statements  => Stmts,
-             End_Label   => End_Label (HSS),
-             At_End_Proc => At_End_Proc (HSS)));
-
-         Set_End_Label (HSS, Empty);
-         Set_At_End_Proc (HSS, Empty);
-
-         --  The N_Cycle_Sequence_Of_Statements node is no longer used
-
-         Set_Cycle_Statement_Sequence (N, Empty);
-      end if;
-
-      Analyze (Handled_Statement_Sequence (N));
-
-   end Expand_N_Task_Body_Statement_Sequence;
 
    ------------------------------------
    -- Expand_N_Task_Type_Declaration --

@@ -64,13 +64,8 @@ package body Ch9 is
    --    task body DEFINING_IDENTIFIER [ASPECT_SPECIFICATIONS] is
    --      DECLARATIVE_PART
    --    begin
-   --      TASK_BODY_STATEMENTS
+   --      TASK_SEQUENCE_OF_STATEMENTS
    --    end [task_IDENTIFIER]
-
-   --  TASK_BODY_STATEMENTS ::=
-   --      HANDLED_SEQUENCE_OF_STATEMENTS
-   --    [cycles
-   --      CYCLE_SEQUENCE_OF_STATEMENTS]
 
    --  TASK_BODY_STUB ::=
    --    task body DEFINING_IDENTIFIER is separate
@@ -141,8 +136,6 @@ package body Ch9 is
          else
             Task_Node := New_Node (N_Task_Body, Task_Sloc);
             Set_Defining_Identifier (Task_Node, Name_Node);
-            Set_Task_Body_Statement_Sequence (Task_Node,
-              New_Node (N_Task_Body_Statement_Sequence, Task_Sloc));
 
             --  Move the aspect specifications to the body node
 
@@ -152,18 +145,6 @@ package body Ch9 is
 
             Parse_Decls_Begin_End (Task_Node);
 
-            --  The statement list of a task body needs to include at least a
-            --  null statement, so if a parsing error produces an empty list,
-            --  patch it now.
-
-            if No (First (Statements
-                           (Handled_Statement_Sequence
-                             (Task_Body_Statement_Sequence (Task_Node)))))
-            then
-               Set_Statements (Task_Body_Statement_Sequence
-                                 (Handled_Statement_Sequence (Task_Node)),
-                 New_List (Make_Null_Statement (Token_Ptr)));
-            end if;
          end if;
 
          return Task_Node;
@@ -399,73 +380,83 @@ package body Ch9 is
 
    --  Parsed by P_Task (9.1)
 
-   ---------------------------------------
-   -- 9.1  Cycle Sequence Of Statements --
-   ---------------------------------------
+   --------------------------------------
+   -- 9.1  Task Sequence Of Statements --
+   --------------------------------------
 
-   --  CYCLE_SEQUENCE_OF_STATEMENTS ::=
-   --      SEQUENCE_OF_STATEMENTS
-   --    [cycles exception
+   --  TASK_SEQUENCE_OF_STATEMENTS ::=
+   --      SEQUENTIAL_SEQUENCE_OF_STATEMENTS
+   --    [cycles
+   --      CYCLIC_SEQUENCE_OF_STATEMENTS]
+   --    [exception
    --      EXCEPTION_HANDLER
    --      {EXCEPTION_HANDLER}]
 
+   --  Implementation closely follows P_Handled_Sequence_Of_Statements
+
    --  Error_Recovery : Cannot raise Error_Resync
 
-   function P_Cycle_Sequence_Of_Statements return Node_Id is
-      Cycle_Stmt_Seq_Node : Node_Id;
-   begin
-      Cycle_Stmt_Seq_Node :=
-        New_Node (N_Cycle_Sequence_Of_Statements, Token_Ptr);
+   function P_Task_Sequence_Of_Statements return Node_Id is
+      Task_Stmt_Seq_Node     : Node_Id;
+      Seq_Is_Hidden_In_SPARK : Boolean;
+      Hidden_Region_Start    : Source_Ptr;
 
-      --  A special error case to deal with is when the exception keyword
-      --  follows cycles. This likely means the user forgot to include the
-      --  cyclic section.
+   begin
+      Task_Stmt_Seq_Node :=
+        New_Node (N_Task_Sequence_Of_Statements, Token_Ptr);
+
+      --  In SPARK, a HIDE directive can be placed at the beginning of a
+      --  package initialization, thus hiding the sequence of statements (and
+      --  possible exception handlers) from SPARK tool-set. No violation of the
+      --  SPARK restriction should be issued on nodes in a hidden part, which
+      --  is obtained by marking such hidden parts. This processing remains
+      --  here to support SPARK 2005 with non-cyclic tasks.
+
+      if Token = Tok_SPARK_Hide then
+         Seq_Is_Hidden_In_SPARK := True;
+         Hidden_Region_Start    := Token_Ptr;
+         Scan; -- past HIDE directive
+      else
+         Seq_Is_Hidden_In_SPARK := False;
+      end if;
+
+      --  Parse the sequential statement sequence and terminate on either
+      --  EXCEPTION or CYCLE
+
+      Set_Sequential_Statements
+        (Task_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Cytm_Extm_Sreq));
+
+      --  The sequential statement list of a task body needs to include at
+      --  least a null statement, so if a parsing error produces an empty list,
+      --  patch it now.
+
+      if No (Sequential_Statements (Task_Stmt_Seq_Node)) then
+         Set_Sequential_Statements
+           (Task_Stmt_Seq_Node,
+            New_List (Make_Null_Statement (Token_Ptr)));
+      end if;
+
+      --  Handle CYCLE first since exception handlers follow the cyclic
+      --  statements.
+
+      if Token = Tok_Cycle then
+         Scan; -- past CYCLE
+         Set_Cyclic_Statements
+           (Task_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Sreq));
+      end if;
 
       if Token = Tok_Exception then
-         Error_Msg_SC
-           ("cycles exception handlers can only follow a cycles part");
-         Discard_Junk_List (Parse_Exception_Handlers);
-      end if;
-
-      --  A cycle sequence of statements is terminated by an end statment
-      --  or another cycles keyword
-
-      Set_Statements
-        (Cycle_Stmt_Seq_Node,
-         P_Sequence_Of_Statements (SS_Cytm_Sreq));
-
-      if Token = Tok_Cycles then
-         Scan; -- past CYCLES
-
-         if Token = Tok_Exception then
-            Scan; -- past EXCEPTION
-            Set_Exception_Handlers
-              (Cycle_Stmt_Seq_Node, Parse_Exception_Handlers);
-         end if;
-      end if;
-
-      --  At this point for valid code we should be at an END keyword. If
-      --  not the user has stuffed up. This could be done in three ways:
-      --  The user could have placed a second cycle section in the task body;
-      --  wrote "cycles" or "execption" instead of "cycles exception"; or has
-      --  just placed junk at the end of the task body. For the first two,
-      --  we can handle them here, for the later it is treated the same as
-      --  for the Handled_Sequence_Of_Statements, i.e. it is not handled here.
-
-      if Token = Tok_When and then
-        (Prev_Token = Tok_Cycles or Prev_Token = Tok_Exception)
-      then
-         Error_Msg_SP
-           ("Cycle exception block should be 'cyles exception'");
+         Scan; -- past EXCEPTION
          Set_Exception_Handlers
-           (Cycle_Stmt_Seq_Node, Parse_Exception_Handlers);
-      elsif Prev_Token = Tok_Cycles then
-         Error_Msg_SP ("only one cycles part allowed per task");
-         Discard_Junk_Node (P_Cycle_Sequence_Of_Statements);
+           (Task_Stmt_Seq_Node, Parse_Exception_Handlers);
       end if;
 
-      return Cycle_Stmt_Seq_Node;
-   end P_Cycle_Sequence_Of_Statements;
+      if Seq_Is_Hidden_In_SPARK then
+         Set_Hidden_Part_In_SPARK (Hidden_Region_Start, Token_Ptr);
+      end if;
+
+      return Task_Stmt_Seq_Node;
+   end P_Task_Sequence_Of_Statements;
 
    ----------------------------------
    -- 9.4  Protected (also 10.1.3) --

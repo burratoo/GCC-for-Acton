@@ -184,9 +184,6 @@ package body Sem is
          when N_Conditional_Entry_Call =>
             Analyze_Conditional_Entry_Call (N);
 
-         when N_Cycle_Sequence_Of_Statements =>
-            Analyze_Cycle_Statement_Sequence (N);
-
          when N_Delay_Alternative =>
             Analyze_Delay_Alternative (N);
 
@@ -569,6 +566,9 @@ package body Sem is
          when N_Task_Definition =>
             Analyze_Task_Definition (N);
 
+         when N_Task_Sequence_Of_Statements =>
+            Analyze_Task_Statements (N);
+
          when N_Task_Type_Declaration =>
             Analyze_Task_Type_Declaration (N);
 
@@ -705,7 +705,6 @@ package body Sem is
               N_Real_Range_Specification               |
               N_Record_Definition                      |
               N_Signed_Integer_Type_Definition         |
-              N_Task_Body_Statement_Sequence           |
               N_Unconstrained_Array_Definition         |
               N_Unused_At_Start                        |
               N_Unused_At_End                          |

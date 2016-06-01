@@ -417,15 +417,15 @@ package body Sem_Ch11 is
 
       Analyze_Statements (Statements (N));
 
-      --  If the current scope is a subprogram, entry or task body or declare
+      --  If the current scope is a subprogram, entry body or declare
       --  block then this is the right place to check for hanging useless
       --  assignments from the statement sequence. Skip this in the body of a
-      --  postcondition, since in that case there are no source references, and
-      --  we need to preserve deferred references from the enclosing scope.
+      --  postcondition, since in that case there are no source references,
+      --  and we need to preserve deferred references from the enclosing scope.
 
       if ((Is_Subprogram (Current_Scope) or else Is_Entry (Current_Scope))
            and then Chars (Current_Scope) /= Name_uPostconditions)
-         or else Ekind_In (Current_Scope, E_Block, E_Task_Type)
+         or else Ekind (Current_Scope) =  E_Block
       then
          Warn_On_Useless_Assignments (Current_Scope);
       end if;

@@ -383,7 +383,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --  The above are the only allowed values of Pf_Rec arguments
 
    type SS_Rec is record
-      Cytm : Boolean;      -- CYCLES can terminate sequence
+      Cytm : Boolean;      -- CYCLE can terminate sequence
       Eftm : Boolean;      -- ELSIF can terminate sequence
       Eltm : Boolean;      -- ELSE can terminate sequence
       Extm : Boolean;      -- EXCEPTION can terminate sequence
@@ -397,7 +397,6 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
    SS_Cytm_Extm_Sreq : constant SS_Rec := SS_Rec'(T, F, F, T, F, T, F, F, F);
    SS_Cytm_Sreq_Whtm : constant SS_Rec := SS_Rec'(T, F, F, F, F, F, F, T, F);
-   SS_Cytm_Sreq      : constant SS_Rec := SS_Rec'(T, F, F, F, F, T, F, F, F);
    SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(F, T, T, F, F, T, F, F, F);
    SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, T, F, F);
    SS_Extm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, T, F, T, F, F, F);
@@ -822,8 +821,8 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  See body in Par.Ch5 for details of the use of this parameter.
 
       procedure Parse_Decls_Begin_End (Parent : Node_Id);
-      --  Parses declarations and handled statement sequence, setting
-      --  fields of Parent node appropriately.
+      --  Parses declarations and handled statement sequence/task statement
+      --  sequence, setting fields of Parent node appropriately.
    end Ch5;
 
    -------------
@@ -876,13 +875,13 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Abort_Statement                      return Node_Id;
       function P_Abortable_Part                       return Node_Id;
       function P_Accept_Statement                     return Node_Id;
-      function P_Cycle_Sequence_Of_Statements         return Node_Id;
       function P_Delay_Statement                      return Node_Id;
       function P_Entry_Body                           return Node_Id;
       function P_Protected                            return Node_Id;
       function P_Requeue_Statement                    return Node_Id;
       function P_Select_Statement                     return Node_Id;
       function P_Task                                 return Node_Id;
+      function P_Task_Sequence_Of_Statements          return Node_Id;
       function P_Terminate_Alternative                return Node_Id;
    end Ch9;
 
@@ -913,15 +912,9 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --------------
 
    package Ch11 is
+      function P_Handled_Sequence_Of_Statements       return Node_Id;
       function P_Raise_Expression                     return Node_Id;
       function P_Raise_Statement                      return Node_Id;
-
-      function P_Handled_Sequence_Of_Statements
-        (In_Task_Body : Boolean := False) return Node_Id;
-      --  Parses a handled sequence of statments. The function needs to know
-      --  if the sequence appears as part of the body of a task since the
-      --  sequence in this case can be terminated by the CYCLES keyword. In
-      --  other use, the appearance of CYCLES is erroneous.
 
       function Parse_Exception_Handlers               return List_Id;
       --  Parses the partial construct EXCEPTION followed by a list of

@@ -69,15 +69,6 @@ package body Sinfo.CN is
    -- Change_Identifier_To_Defining_Identifier --
    ----------------------------------------------
 
-   procedure Change_Cycle_To_Handle_Statement_Sequence (N : Node_Id) is
-   begin
-      Set_Nkind (N, N_Handled_Sequence_Of_Statements);
-   end Change_Cycle_To_Handle_Statement_Sequence;
-
-   ----------------------------------------------
-   -- Change_Identifier_To_Defining_Identifier --
-   ----------------------------------------------
-
    procedure Change_Identifier_To_Defining_Identifier (N : in out Node_Id) is
    begin
       Set_Nkind (N, N_Defining_Identifier);

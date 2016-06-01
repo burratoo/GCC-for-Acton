@@ -5725,19 +5725,8 @@ package Sinfo is
       --    is
       --      DECLARATIVE_PART
       --    begin
-      --      TASK_BODY_STATEMENTS
+      --      TASK_SEQUENCE_OF_STATEMENTS
       --    end [task_IDENTIFIER];
-
-      --  TASK_BODY_STATEMENTS ::=
-      --      HANDLED_SEQUENCE_OF_STATEMENTS
-      --    [cycles
-      --      CYCLE_SEQUENCE_OF_STATEMENTS]
-
-      --  The RM grammer for a task body is changed here since the N_Task_Body
-      --  is not large enough to contain reference to both the
-      --  HANDLED_SEQUENCE_OF_STATEMENTS and the CYCLE_SEQUENCE_OF_STATEMENTS.
-      --  Instead a new node TASK_BODY_STATEMENTS is used to contain these
-      --  References.
 
       --  Gigi restriction: This node never appears
 
@@ -5751,32 +5740,32 @@ package Sinfo is
       --  Corresponding_Spec (Node5-Sem)
       --  Was_Originally_Stub (Flag13-Sem)
 
-      --  N_Task_Body_Statement_Sequence
-      --  Handled_Statement_Sequence (Node4)
-      --  Cycle_Statement_Sequence (Node1)
+      --------------------------------------
+      -- 9.1  Task Sequence Of Statements --
+      --------------------------------------
 
-      ---------------------------------------
-      -- 9.1  Cycle_Sequence_Of_Statements --
-      ---------------------------------------
-
-      --  CYCLE_SEQUENCE_OF_STATEMENTS ::=
-      --      SEQUENCE_OF_STATEMENTS
-      --    [cycle exception
+      --  TASK_SEQUENCE_OF_STATEMENTS ::=
+      --      SEQUENTIAL_SEQUENCE_OF_STATEMENTS
+      --    [cycles
+      --      CYCLIC_SEQUENCE_OF_STATEMENTS]
+      --    [exception
       --      EXCEPTION_HANDLER
       --      {EXCEPTION_HANDLER}]
+      --    [at end
+      --      cleanup_procedure_call (param, param, param, ...);]
 
-      --  The N_Cycle_Sequence_Of_Statements node follows the same layout as
-      --  the N_Handled_Sequence_Of_Statement node to allow it to be easily
-      --  converted to that node when needed to.
+      --  Note: see HANDLED_SEQUENCE_OF_STATEMENTS for details about the AT END
+      --  phrase.
 
       --  Gigi restriction: This node never appears
 
-      --  N_Cycle_Sequence_Of_Statements
+      --  N_Task_Sequence_Of_Statements
       --  Sloc points to first token of first statement
-      --  Statements (List3)
+      --  Sequential_Statements (List2)
+      --  Cyclic_Statements (List3) (set to No_List if none present)
+      --  End_Label (Node4) (set to Empty if expander generated)
       --  Exception_Handlers (List5) (set to No_List if none present)
       --  At_End_Proc (Node1) (set to Empty if no clean up procedure)
-      --  First_Real_Statement (Node2-Sem)
 
       -------------------------------------
       -- 9.4  Protected Type Declaration --
@@ -8568,7 +8557,6 @@ package Sinfo is
       N_Component_Definition,
       N_Component_List,
       N_Contract,
-      N_Cycle_Sequence_Of_Statements,
       N_Derived_Type_Definition,
       N_Decimal_Fixed_Point_Definition,
       N_Defining_Program_Unit_Name,
@@ -8617,7 +8605,7 @@ package Sinfo is
       N_Single_Protected_Declaration,
       N_Subunit,
       N_Task_Definition,
-      N_Task_Body_Statement_Sequence,
+      N_Task_Sequence_Of_Statements,
       N_Triggering_Alternative,
       N_Use_Type_Clause,
       N_Validate_Unchecked_Conversion,
@@ -9045,8 +9033,8 @@ package Sinfo is
    function Corresponding_Stub
      (N : Node_Id) return Node_Id;    -- Node3
 
-   function Cycle_Statement_Sequence
-     (N : Node_Id) return Node_Id;    -- Node1
+   function Cyclic_Statements
+     (N : Node_Id) return List_Id;    -- List3
 
    function Dcheck_Function
      (N : Node_Id) return Entity_Id;  -- Node5
@@ -9746,6 +9734,9 @@ package Sinfo is
    function Selector_Names
      (N : Node_Id) return List_Id;    -- List1
 
+   function Sequential_Statements
+     (N : Node_Id) return List_Id;    -- List2
+
    function Shift_Count_OK
      (N : Node_Id) return Boolean;    -- Flag4
 
@@ -10091,8 +10082,8 @@ package Sinfo is
    procedure Set_Corresponding_Stub
      (N : Node_Id; Val : Node_Id);            -- Node3
 
-   procedure Set_Cycle_Statement_Sequence
-     (N : Node_Id; Val : Node_Id);            -- Node1
+   procedure Set_Cyclic_Statements
+     (N : Node_Id; Val : List_Id);            -- List3
 
    procedure Set_Dcheck_Function
      (N : Node_Id; Val : Entity_Id);          -- Node5
@@ -10789,6 +10780,9 @@ package Sinfo is
 
    procedure Set_Selector_Names
      (N : Node_Id; Val : List_Id);            -- List1
+
+   procedure Set_Sequential_Statements
+     (N : Node_Id; Val : List_Id);            -- List2
 
    procedure Set_Shift_Count_OK
      (N : Node_Id; Val : Boolean := True);    -- Flag4
@@ -11979,12 +11973,12 @@ package Sinfo is
         4 => True,    --  Task_Body_Statement_Sequence (Node4)
         5 => False),  --  Corresponding_Spec (Node5-Sem)
 
-     N_Task_Body_Statement_Sequence =>
-       (1 => True,    --  Cycle_Statement_Sequence (Node1)
-        2 => False,   --  unused
-        3 => False,   --  unused
-        4 => True,    --  Handled_Statement_Sequence (Node4)
-        5 => False),  --  unused
+     N_Task_Sequence_Of_Statements =>
+       (1 => True,    --  At_End_Proc (Node1)
+        2 => True,    --  Sequential_Statements (List2)
+        3 => True,    --  Cyclic_Statements (List3)
+        4 => True,    --  End_Label (Node4)
+        5 => True),   --  Exception_Handlers (List5)
 
      N_Protected_Type_Declaration =>
        (1 => True,    --  Defining_Identifier (Node1)
@@ -12222,13 +12216,6 @@ package Sinfo is
         2 => False,   --  First_Real_Statement (Node2-Sem)
         3 => True,    --  Statements (List3)
         4 => True,    --  End_Label (Node4)
-        5 => True),   --  Exception_Handlers (List5)
-
-     N_Cycle_Sequence_Of_Statements =>
-       (1 => True,    --  At_End_Proc (Node1)
-        2 => False,   --  First_Real_Statement (Node2-Sem)
-        3 => True,    --  Statements (List3)
-        4 => False,   --  unused
         5 => True),   --  Exception_Handlers (List5)
 
      N_Exception_Handler                      =>
@@ -12782,7 +12769,7 @@ package Sinfo is
    pragma Inline (Corresponding_Spec);
    pragma Inline (Corresponding_Spec_Of_Stub);
    pragma Inline (Corresponding_Stub);
-   pragma Inline (Cycle_Statement_Sequence);
+   pragma Inline (Cyclic_Statements);
    pragma Inline (Dcheck_Function);
    pragma Inline (Declarations);
    pragma Inline (Default_Expression);
@@ -13016,6 +13003,7 @@ package Sinfo is
    pragma Inline (Select_Alternatives);
    pragma Inline (Selector_Name);
    pragma Inline (Selector_Names);
+   pragma Inline (Sequential_Statements);
    pragma Inline (Shift_Count_OK);
    pragma Inline (Source_Type);
    pragma Inline (Specification);
@@ -13128,7 +13116,7 @@ package Sinfo is
    pragma Inline (Set_Corresponding_Spec);
    pragma Inline (Set_Corresponding_Spec_Of_Stub);
    pragma Inline (Set_Corresponding_Stub);
-   pragma Inline (Set_Cycle_Statement_Sequence);
+   pragma Inline (Set_Cyclic_Statements);
    pragma Inline (Set_Dcheck_Function);
    pragma Inline (Set_Declarations);
    pragma Inline (Set_Default_Expression);
@@ -13359,6 +13347,7 @@ package Sinfo is
    pragma Inline (Set_Select_Alternatives);
    pragma Inline (Set_Selector_Name);
    pragma Inline (Set_Selector_Names);
+   pragma Inline (Set_Sequential_Statements);
    pragma Inline (Set_Shift_Count_OK);
    pragma Inline (Set_Source_Type);
    pragma Inline (Set_Split_PPC);
