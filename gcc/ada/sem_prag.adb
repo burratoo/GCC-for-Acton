@@ -5543,7 +5543,9 @@ package body Sem_Prag is
             if No (P) then
                exit;
 
-            elsif Nkind (P) = N_Handled_Sequence_Of_Statements then
+            elsif Nkind_In (P, N_Handled_Sequence_Of_Statements,
+                               N_Task_Sequence_Of_Statements)
+            then
                exit;
 
             elsif Nkind_In (P, N_Package_Specification,
