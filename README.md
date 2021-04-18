@@ -11,4 +11,4 @@ The compiler can be built for arm targets using the following command:
         --disable-libada --disable-libssp --target=arm-burratoo-acton --disable-gdbtk \
         --with-multilib-list=armv6-m,armv7-m,armv7e-m,armv7-r
 
-The project is not currently been actively developed.
+The project is not currently being developed.
